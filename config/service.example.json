@@ -1,0 +1,9 @@
+{
+  "claude": "/absolute/path/to/claude",
+  "model": "YOUR_NATIVE_MODEL",
+  "jev_provider": "typesafe",
+  "jev_model": "jev-1.13.0",
+  "timeout": "10m",
+  "max_concurrent_conversations": 4,
+  "allowed_tools": []
+}

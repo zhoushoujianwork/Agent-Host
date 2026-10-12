@@ -1,0 +1,664 @@
+//go:build unix
+
+package claude
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"agent-host/internal/harness"
+)
+
+const testSession = "e7a0d011-08ab-48ca-908e-77d853094ba0"
+
+func TestMain(m *testing.M) {
+	if mode := os.Getenv("AGENT_HOST_CLAUDE_FIXTURE"); mode != "" {
+		fixture(mode)
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func fixture(mode string) {
+	apiError := strings.HasPrefix(mode, "api_error_nonzero")
+	if mode == "grandchild" {
+		time.Sleep(350 * time.Millisecond)
+		_ = os.WriteFile(os.Getenv("AGENT_HOST_FIXTURE_MARKER"), []byte("still alive"), 0600)
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		version := os.Getenv("AGENT_HOST_FIXTURE_VERSION")
+		if version == "" {
+			version = "2.1.fixture"
+		}
+		fmt.Println(version)
+		return
+	}
+	session := testSession
+	for i, arg := range os.Args {
+		if (arg == "--session-id" || arg == "--resume") && i+1 < len(os.Args) {
+			session = os.Args[i+1]
+		}
+	}
+	prompt, _ := io.ReadAll(os.Stdin)
+	if path := os.Getenv("AGENT_HOST_FIXTURE_REQUEST"); path != "" {
+		body, _ := json.Marshal(map[string]any{"args": os.Args[1:], "prompt": string(prompt), "cwd": func() string { cwd, _ := os.Getwd(); return cwd }(), "auto_memory_disabled": os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY"), "additional_instructions": os.Getenv("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"), "nonstreaming_fallback_disabled": os.Getenv("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"), "max_output_tokens": os.Getenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS"), "native_profile": os.Getenv("CLAUDE_CONFIG_DIR")})
+		_ = os.WriteFile(path, body, 0600)
+	}
+	if mode == "stderr" {
+		fmt.Fprint(os.Stderr, strings.Repeat("diagnostic!", 5000))
+		os.Exit(3)
+	}
+	write := func(v any) { body, _ := json.Marshal(v); fmt.Println(string(body)) }
+	if mode != "missing_init" && mode != "api_error_nonzero_missing_init" {
+		init := map[string]any{"type": "system", "subtype": "init", "session_id": session, "model": "claude-fixture"}
+		if strings.HasPrefix(mode, "mcp_") {
+			var config struct {
+				Servers map[string]json.RawMessage `json:"mcpServers"`
+			}
+			for i, arg := range os.Args {
+				if arg == "--mcp-config" && i+1 < len(os.Args) {
+					_ = json.Unmarshal([]byte(os.Args[i+1]), &config)
+				}
+			}
+			servers := []any{}
+			for name := range config.Servers {
+				status := strings.TrimPrefix(mode, "mcp_")
+				servers = append(servers, map[string]string{"name": name, "status": status})
+			}
+			if mode == "mcp_ambient" {
+				servers = []any{map[string]string{"name": "ambient", "status": "connected"}}
+			}
+			init["mcp_servers"] = servers
+		}
+		write(init)
+	}
+	if mode == "cancel_tree" {
+		exe, _ := os.Executable()
+		child := exec.Command(exe)
+		child.Env = append(os.Environ(), "AGENT_HOST_CLAUDE_FIXTURE=grandchild")
+		if err := child.Start(); err != nil {
+			panic(err)
+		}
+	}
+	if mode == "image_echo" {
+		// A native input acknowledgment must not journal image payload bytes.
+		fmt.Print(string(prompt))
+	}
+	write(map[string]any{"type": "stream_event", "session_id": session,
+		"event": map[string]any{"type": "message_start", "message": map[string]any{"model": "claude-resolved"}}})
+	write(map[string]any{"type": "stream_event", "session_id": session,
+		"event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": "hello"}}})
+	if mode == "stream_gate" {
+		deadline := time.Now().Add(4 * time.Second)
+		for {
+			if _, err := os.Stat(os.Getenv("AGENT_HOST_FIXTURE_MARKER")); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				os.Exit(4)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if mode == "cancel_tree" || mode == "callback" {
+		time.Sleep(10 * time.Second)
+		return
+	}
+	if mode == "malformed" {
+		fmt.Println("{malformed")
+		return
+	}
+	if mode == "missing_final" {
+		return
+	}
+	text, model := "hello", "claude-resolved"
+	if apiError {
+		text, model = "API Error: 400 streaming is required for operations that may take longer than 10 minutes", "<synthetic>"
+	}
+	write(map[string]any{"type": "assistant", "session_id": session, "is_api_error_message": apiError,
+		"message": map[string]any{"model": model, "content": []any{map[string]any{"type": "text", "text": text}}}})
+	if mode == "mismatch" || mode == "api_error_nonzero_mismatched_session" {
+		session = "other-session"
+	}
+	final := map[string]any{"type": "result", "subtype": "success", "session_id": session, "is_error": mode == "error" || apiError, "result": text}
+	if mode == "structured" {
+		final["structured_output"] = map[string]any{"candidates": []any{}}
+	}
+	if mode == "structured_null" {
+		final["structured_output"] = nil
+	}
+	if mode == "missing_error_field" {
+		delete(final, "is_error")
+	}
+	if mode == "error_subtype" {
+		final["subtype"] = "error_max_turns"
+	}
+	if mode == "unterminated_line" {
+		body, _ := json.Marshal(final)
+		fmt.Print(string(body))
+	} else {
+		write(final)
+	}
+	if mode == "duplicate" {
+		write(final)
+	}
+	if mode == "nonzero" {
+		os.Exit(7)
+	}
+	if apiError {
+		os.Exit(1)
+	}
+}
+
+func fixtureAdapter(t *testing.T, mode string) (*Adapter, harness.Request) {
+	t.Helper()
+	t.Setenv("AGENT_HOST_CLAUDE_FIXTURE", mode)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return New(exe), harness.Request{Prompt: "private prompt", Workspace: workspace, Model: "requested-model", NativeSessionID: testSession}
+}
+
+func TestStreamingArrivesBeforeNativeExit(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "stream_gate")
+	marker := filepath.Join(t.TempDir(), "release")
+	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var observations []harness.Observation
+	var output strings.Builder
+	result, err := adapter.Run(ctx, request, func(o harness.Observation) error {
+		observations = append(observations, o)
+		if o.Delta != "" {
+			output.WriteString(o.Delta)
+			return os.WriteFile(marker, []byte("received before exit"), 0600)
+		}
+		return nil
+	})
+	if err != nil || result.Status != "completed" || result.ExitCode != 0 || result.Text != "hello" || result.Model != "claude-resolved" {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+	if output.String() != "hello" {
+		t.Fatalf("text duplicated or absent: %q", output.String())
+	}
+	if len(observations) != 5 {
+		t.Fatalf("retained %d native observations, want 5", len(observations))
+	}
+	for _, observation := range observations {
+		if !json.Valid(observation.Raw) {
+			t.Fatalf("native evidence lost: %+v", observation)
+		}
+	}
+}
+
+func TestCompletionNeedsProtocolAndExitAgreement(t *testing.T) {
+	cases := []struct{ mode, status, contains string }{
+		{"error", "failed", "unsuccessful"},
+		{"error_subtype", "failed", "error_max_turns"},
+		{"nonzero", "failed", "exit status 7"},
+		{"missing_final", "unknown", "missing final"},
+		{"missing_init", "unknown", "missing session initialization"},
+		{"malformed", "unknown", "malformed event"},
+		{"mismatch", "unknown", "does not match"},
+		{"duplicate", "unknown", "after final"},
+		{"missing_error_field", "unknown", "lacks session"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, tc.mode)
+			result, err := adapter.Run(context.Background(), request, nil)
+			if err == nil || result.Status != tc.status || !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("result = %+v, err = %v", result, err)
+			}
+		})
+	}
+}
+
+func TestNativeAPIFailureRetainsFinalCauseAndProcessExit(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "api_error_nonzero")
+	result, err := adapter.Run(context.Background(), request, nil)
+	var exitErr *exec.ExitError
+	if err == nil || !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || result.ExitCode != 1 || result.Status != "failed" {
+		t.Fatalf("native API failure lost its process outcome: result=%+v err=%v", result, err)
+	}
+	for _, cause := range []string{"unsuccessful result (success)", "API Error: 400 streaming is required", "Claude process: exit status 1"} {
+		if !strings.Contains(err.Error(), cause) || !strings.Contains(result.Error, cause) {
+			t.Fatalf("native failure diagnostic omitted %q: result=%+v err=%v", cause, result, err)
+		}
+	}
+	if result.Text != "API Error: 400 streaming is required for operations that may take longer than 10 minutes" || result.Model != "<synthetic>" {
+		t.Fatalf("native API evidence changed: %+v", result)
+	}
+}
+
+func TestNativeAPIFailureRequiresValidProtocolBeforePromotingDiagnostic(t *testing.T) {
+	for _, mode := range []string{"api_error_nonzero_missing_init", "api_error_nonzero_mismatched_session"} {
+		t.Run(mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, mode)
+			result, err := adapter.Run(context.Background(), request, nil)
+			if err == nil || strings.Contains(err.Error(), "API Error: 400") || strings.Contains(result.Error, "API Error: 400") {
+				t.Fatalf("invalid native protocol promoted a final diagnostic: result=%+v err=%v", result, err)
+			}
+			if mode == "api_error_nonzero_missing_init" && (result.Status != "failed" || !strings.Contains(err.Error(), "Claude process: exit status 1")) {
+				t.Fatalf("nonzero exit without initialization changed outcome: result=%+v err=%v", result, err)
+			}
+			if mode == "api_error_nonzero_mismatched_session" && (result.Status != "unknown" || !strings.Contains(err.Error(), "does not match requested session")) {
+				t.Fatalf("invalid session lost protocol failure precedence: result=%+v err=%v", result, err)
+			}
+		})
+	}
+}
+
+func TestFinalLineWithoutNewline(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "unterminated_line")
+	result, err := adapter.Run(context.Background(), request, nil)
+	if err != nil || result.Status != "completed" {
+		t.Fatalf("result = %+v, err = %v", result, err)
+	}
+}
+
+func TestPromptUsesStdinAndToolFreeModeRestrictsNativeFacilities(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "normal")
+	path := filepath.Join(t.TempDir(), "request.json")
+	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+	request.ToolsDisabled, request.Resume = true, true
+	_, err := adapter.Run(context.Background(), request, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captured struct {
+		Args   []string `json:"args"`
+		Prompt string   `json:"prompt"`
+	}
+	if err := json.Unmarshal(raw, &captured); err != nil {
+		t.Fatal(err)
+	}
+	if captured.Prompt != request.Prompt || slices.Contains(captured.Args, request.Prompt) {
+		t.Fatalf("prompt transport = %+v", captured)
+	}
+	for _, flag := range []string{"--resume", "--model", "--include-partial-messages", "--strict-mcp-config", "--disable-slash-commands"} {
+		if !slices.Contains(captured.Args, flag) {
+			t.Errorf("missing flag %s", flag)
+		}
+	}
+	toolsIndex := slices.Index(captured.Args, "--tools")
+	if toolsIndex < 0 || captured.Args[toolsIndex+1] != "" {
+		t.Fatal("built-in tools were not disabled")
+	}
+	for _, arg := range captured.Args {
+		if strings.Contains(arg, "skip-permissions") || arg == "bypassPermissions" || arg == "--fallback-model" || arg == "--session-id" {
+			t.Errorf("unexpected argument %q", arg)
+		}
+	}
+}
+
+func TestNativeStreamingPolicyMatchesValidatedEnvironmentForTaskAndExtraction(t *testing.T) {
+	for _, extraction := range []bool{false, true} {
+		for _, tc := range []struct{ name, disabled, limit string }{
+			{"default", "1", ""},
+			{"native-recovery", "0", ""},
+			{"configured-recovery", "0", "64000"},
+		} {
+			t.Run(fmt.Sprintf("extraction=%t/%s", extraction, tc.name), func(t *testing.T) {
+				adapter, request := fixtureAdapter(t, "normal")
+				request.Extraction, request.ToolsDisabled = extraction, extraction
+				path := filepath.Join(t.TempDir(), "request.json")
+				t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+				t.Setenv(nativeFallbackEnvironment, "1")
+				t.Setenv(nativeOutputEnvironment, "8192")
+				wantFallback, wantLimit := tc.disabled, tc.limit
+				if tc.disabled == "0" {
+					t.Setenv(nativeFallbackEnvironment, "0")
+				} else {
+					if err := os.Unsetenv(nativeFallbackEnvironment); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if tc.limit == "" {
+					if err := os.Unsetenv(nativeOutputEnvironment); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					t.Setenv(nativeOutputEnvironment, tc.limit)
+				}
+				result, err := adapter.Run(context.Background(), request, nil)
+				if err != nil || result.Status != "completed" {
+					t.Fatalf("result=%+v err=%v", result, err)
+				}
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var captured struct {
+					Args             []string `json:"args"`
+					FallbackDisabled string   `json:"nonstreaming_fallback_disabled"`
+					MaxOutputTokens  string   `json:"max_output_tokens"`
+				}
+				if err := json.Unmarshal(raw, &captured); err != nil {
+					t.Fatal(err)
+				}
+				if captured.FallbackDisabled != wantFallback || captured.MaxOutputTokens != wantLimit {
+					t.Fatalf("native environment differs from validated policy: %+v", captured)
+				}
+				var settings struct {
+					Env               map[string]string `json:"env"`
+					AutoMemoryEnabled *bool             `json:"autoMemoryEnabled"`
+					DisableAllHooks   *bool             `json:"disableAllHooks"`
+				}
+				index := slices.Index(captured.Args, "--settings")
+				if index < 0 || index+1 >= len(captured.Args) || json.Unmarshal([]byte(captured.Args[index+1]), &settings) != nil || settings.Env[nativeFallbackEnvironment] != wantFallback || settings.Env[nativeOutputEnvironment] != wantLimit {
+					t.Fatalf("native settings could override the validated policy: %v", captured.Args)
+				}
+				if _, supplied := settings.Env[nativeOutputEnvironment]; supplied != (wantLimit != "") {
+					t.Fatalf("native model output defaults were overridden: %v", settings.Env)
+				}
+				if settings.AutoMemoryEnabled == nil || *settings.AutoMemoryEnabled || extraction && (settings.DisableAllHooks == nil || !*settings.DisableAllHooks) || !extraction && settings.DisableAllHooks != nil {
+					t.Fatalf("streaming policy changed native memory or hook restrictions: %+v", settings)
+				}
+				if slices.Contains(captured.Args, "--fallback-model") {
+					t.Fatal("native recovery configured a different model")
+				}
+			})
+		}
+	}
+}
+
+func TestNativeStreamingPolicyRejectsMalformedConfigurationBeforeLaunch(t *testing.T) {
+	for _, tc := range []struct{ name, disabled, limit string }{
+		{"empty-limit", "0", ""},
+		{"zero-limit", "0", "0"},
+		{"negative-limit", "0", "-1"},
+		{"invalid-limit", "0", "many"},
+		{"leading-zero", "0", "08192"},
+		{"signed-limit", "0", "+8192"},
+		{"whitespace-limit", "0", "8192 "},
+		{"overflow-limit", "0", "99999999999999999999999999999"},
+		{"invalid-disable", "true", "8192"},
+		{"empty-disable", "", "8192"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, "normal")
+			path := filepath.Join(t.TempDir(), "request.json")
+			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+			t.Setenv(nativeFallbackEnvironment, tc.disabled)
+			t.Setenv(nativeOutputEnvironment, tc.limit)
+			var observed int
+			result, err := adapter.Run(context.Background(), request, func(harness.Observation) error { observed++; return nil })
+			if err == nil || result.Status != "failed" || result.ExitCode != -1 || observed != 0 {
+				t.Fatalf("unsafe policy reached native execution: result=%+v err=%v observed=%d", result, err, observed)
+			}
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("unsafe policy launched the native fixture: %v", err)
+			}
+		})
+	}
+}
+
+func TestNativeStreamingPolicyPreservesNativeOutputCaps(t *testing.T) {
+	for _, disabled := range []string{"0", "1"} {
+		for _, limit := range []string{"1", "64000", "128000"} {
+			policy, err := NativeStreamEnvironment(map[string]string{nativeFallbackEnvironment: disabled, nativeOutputEnvironment: limit})
+			if err != nil || policy[nativeOutputEnvironment] != limit {
+				t.Fatalf("native output configuration changed: policy=%v err=%v", policy, err)
+			}
+		}
+	}
+}
+
+func TestCancellationStopsProcessGroup(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "cancel_tree")
+	marker := filepath.Join(t.TempDir(), "child-survived")
+	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	start := time.Now()
+	result, err := adapter.Run(ctx, request, func(o harness.Observation) error {
+		if o.Type == "text_delta" {
+			cancel()
+		}
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || result.Status != "canceled" || time.Since(start) > 2*time.Second {
+		t.Fatalf("cancellation result = %+v, err = %v", result, err)
+	}
+	time.Sleep(500 * time.Millisecond)
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("descendant survived group cancellation: %v", err)
+	}
+}
+
+func TestCallbackFailureAbortsNativeProcess(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "callback")
+	want := errors.New("journal disk full")
+	start := time.Now()
+	result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
+		if o.Delta != "" {
+			return want
+		}
+		return nil
+	})
+	if !errors.Is(err, want) || result.Status != "unknown" || time.Since(start) > 2*time.Second {
+		t.Fatalf("callback result = %+v, err = %v", result, err)
+	}
+}
+
+func TestStderrIsBoundedAndFailureVisible(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "stderr")
+	result, err := adapter.Run(context.Background(), request, nil)
+	if err == nil || result.Status != "failed" || !strings.Contains(result.Error, "[truncated]") || len(result.Error) > stderrLimit+200 {
+		t.Fatalf("stderr result status=%s length=%d err=%v", result.Status, len(result.Error), err)
+	}
+}
+
+func TestNativeVersion(t *testing.T) {
+	adapter, _ := fixtureAdapter(t, "normal")
+	version, err := adapter.Version(context.Background())
+	if err != nil || version != "2.1.fixture" {
+		t.Fatalf("version=%q err=%v", version, err)
+	}
+}
+
+func TestExplicitAllowedToolsAndExtractionFlags(t *testing.T) {
+	base := harness.Request{Prompt: "extract", Workspace: t.TempDir(), NativeSessionID: testSession, AllowedTools: []string{"Read", "Edit", "Bash(go test *)"}}
+	args, err := arguments(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := slices.Index(args, "--allowedTools")
+	if index < 0 || !slices.Equal(args[index+1:index+4], base.AllowedTools) {
+		t.Fatalf("native permission rules changed: %v", args)
+	}
+	base.AllowedTools = nil
+	base.ToolsDisabled, base.Extraction = true, true
+	base.JSONSchema = `{"type":"object","properties":{"candidates":{"type":"array"}},"required":["candidates"]}`
+	args, err = arguments(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--safe-mode", "--no-session-persistence", "--system-prompt", "--session-id", "--json-schema", "--tools", "--disable-slash-commands", "--strict-mcp-config", "--no-chrome"} {
+		if !slices.Contains(args, flag) {
+			t.Fatalf("missing extraction restriction %s: %v", flag, args)
+		}
+	}
+	if args[slices.Index(args, "--system-prompt")+1] != extractionSystemPrompt || args[slices.Index(args, "--tools")+1] != "" || args[slices.Index(args, "--json-schema")+1] != base.JSONSchema {
+		t.Fatal("extraction context flags changed")
+	}
+	for _, arg := range args {
+		if strings.Contains(arg, "skip-permissions") || arg == "bypassPermissions" || arg == "--fallback-model" || arg == "--resume" || arg == "--bare" {
+			t.Fatalf("unsafe extraction argument %s", arg)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(*harness.Request)
+	}{
+		{"resume", func(r *harness.Request) { r.Resume = true }},
+		{"additional-directory", func(r *harness.Request) { r.AdditionalDirectories = []string{t.TempDir()} }},
+		{"tools-enabled", func(r *harness.Request) { r.ToolsDisabled = false }},
+		{"business-permissions", func(r *harness.Request) { r.PermissionMode = "bypassPermissions" }},
+		{"business-instructions", func(r *harness.Request) { r.HostInstructions = "business role" }},
+		{"allowed-tools", func(r *harness.Request) { r.AllowedTools = []string{"Read"} }},
+		{"mcp-server", func(r *harness.Request) {
+			r.MCPServers = []harness.MCPServer{{Name: "knowledge_dokki", Command: "/bin/agent-host"}}
+		}},
+		{"invalid-schema", func(r *harness.Request) { r.JSONSchema = `{"broken"` }},
+		{"null-schema", func(r *harness.Request) { r.JSONSchema = `null` }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := base
+			tc.mutate(&r)
+			if _, err := arguments(r); err == nil {
+				t.Fatal("invalid extraction request accepted")
+			}
+		})
+	}
+	for _, value := range []string{"", "  ", "--dangerously-skip-permissions", "Read\x00Edit"} {
+		base.ToolsDisabled, base.Extraction = false, false
+		base.AllowedTools = []string{value}
+		if _, err := arguments(base); err == nil {
+			t.Fatalf("invalid allowed-tool argument accepted: %q", value)
+		}
+	}
+}
+
+func TestNativeMCPMountsAreExplicitAndPreserveResumeAndPermissions(t *testing.T) {
+	for _, resume := range []bool{false, true} {
+		t.Run(fmt.Sprintf("resume=%t", resume), func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, "mcp_connected")
+			request.Resume = resume
+			request.MCPServers = []harness.MCPServer{
+				{Name: "knowledge_dokki", Command: "/opt/agent-host", Args: []string{"knowledge", "serve", "dokki"}},
+				{Name: "knowledge_confluence", Command: "/opt/agent-host", Args: []string{"knowledge", "serve", "confluence"}},
+			}
+			path := filepath.Join(t.TempDir(), "request.json")
+			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+			result, err := adapter.Run(context.Background(), request, nil)
+			if err != nil || result.Status != "completed" {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var captured struct {
+				Args []string `json:"args"`
+			}
+			if err := json.Unmarshal(raw, &captured); err != nil {
+				t.Fatal(err)
+			}
+			args := captured.Args
+			if !slices.Contains(args, "--strict-mcp-config") || slices.Contains(args, "--resume") != resume || slices.Contains(args, "--session-id") == resume {
+				t.Fatalf("MCP selection or native session changed: %v", args)
+			}
+			for _, arg := range args {
+				if strings.Contains(arg, "skip-permissions") || arg == "bypassPermissions" || arg == "--allowedTools" {
+					t.Fatalf("MCP mount granted permissions: %s", arg)
+				}
+			}
+			index := slices.Index(args, "--mcp-config")
+			var config struct {
+				Servers map[string]map[string]json.RawMessage `json:"mcpServers"`
+			}
+			if index < 0 || json.Unmarshal([]byte(args[index+1]), &config) != nil || len(config.Servers) != 2 {
+				t.Fatalf("missing exact mount set: %v", args)
+			}
+			for _, server := range request.MCPServers {
+				mount := config.Servers[server.Name]
+				command, _ := json.Marshal(server.Command)
+				wantArgs, _ := json.Marshal(server.Args)
+				if len(mount) != 3 || string(mount["type"]) != `"stdio"` || string(mount["command"]) != string(command) || string(mount["args"]) != string(wantArgs) {
+					t.Fatalf("native mount changed: %+v", mount)
+				}
+			}
+		})
+	}
+}
+
+func TestNativeMCPEmptyConfigurationAndValidation(t *testing.T) {
+	base := harness.Request{Prompt: "task", Workspace: t.TempDir(), NativeSessionID: testSession}
+	args, err := arguments(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := slices.Index(args, "--mcp-config")
+	if !slices.Contains(args, "--strict-mcp-config") || index < 0 || args[index+1] != `{"mcpServers":{}}` {
+		t.Fatalf("ambient MCP configuration allowed: %v", args)
+	}
+	good := harness.MCPServer{Name: "knowledge_dokki", Command: "/bin/agent-host", Args: []string{"serve"}}
+	for _, tc := range []struct {
+		name    string
+		servers []harness.MCPServer
+	}{
+		{"duplicate", []harness.MCPServer{good, good}},
+		{"empty-name", []harness.MCPServer{{Command: good.Command}}},
+		{"unsafe-name", []harness.MCPServer{{Name: "source/name", Command: good.Command}}},
+		{"reserved-name", []harness.MCPServer{{Name: "__proto__", Command: good.Command}}},
+		{"relative-command", []harness.MCPServer{{Name: good.Name, Command: "agent-host"}}},
+		{"nul-command", []harness.MCPServer{{Name: good.Name, Command: "/bin/host\x00"}}},
+		{"nul-argument", []harness.MCPServer{{Name: good.Name, Command: good.Command, Args: []string{"bad\x00argument"}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := base
+			request.MCPServers = tc.servers
+			if _, err := arguments(request); err == nil {
+				t.Fatal("invalid native MCP configuration accepted")
+			}
+		})
+	}
+	base.ToolsDisabled, base.MCPServers = true, []harness.MCPServer{good}
+	if _, err := arguments(base); err == nil || !strings.Contains(err.Error(), "tool-free") {
+		t.Fatalf("tool-free execution accepted MCP mount: %v", err)
+	}
+}
+
+func TestNativeMCPSetupFailureCannotBecomeSuccessfulExecution(t *testing.T) {
+	for _, mode := range []string{"normal", "mcp_failed", "mcp_pending", "mcp_ambient"} {
+		t.Run(mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, mode)
+			request.MCPServers = []harness.MCPServer{{Name: "knowledge_dokki", Command: "/bin/agent-host"}}
+			var observed harness.Observation
+			result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error { observed = o; return nil })
+			if err == nil || result.Status != "failed" || observed.Type != "protocol_error" || !strings.Contains(result.Error, "MCP") {
+				t.Fatalf("setup failure disappeared: result=%+v err=%v observation=%+v", result, err, observed)
+			}
+		})
+	}
+}
+
+func TestStructuredOutputComesFromNativeResult(t *testing.T) {
+	for _, mode := range []string{"structured", "normal", "structured_null"} {
+		t.Run(mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, mode)
+			request.ToolsDisabled, request.Extraction = true, true
+			request.JSONSchema = `{"type":"object"}`
+			result, err := adapter.Run(context.Background(), request, nil)
+			if mode == "structured" {
+				if err != nil || string(result.StructuredOutput) != `{"candidates":[]}` || result.Status != "completed" {
+					t.Fatalf("result=%+v err=%v", result, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), "missing structured output") || result.Status != "unknown" {
+				t.Fatalf("missing output accepted: %+v %v", result, err)
+			}
+		})
+	}
+}

@@ -1,0 +1,10 @@
+{
+  "default_agent": "default",
+  "agents": [
+    {
+      "id": "default",
+      "name": "General assistant"
+    }
+  ],
+  "group_bindings": []
+}

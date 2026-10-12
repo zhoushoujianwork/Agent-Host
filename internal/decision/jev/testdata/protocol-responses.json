@@ -1,0 +1,366 @@
+{
+  "synthetic": true,
+  "provenance": "Hand-authored public protocol regression fixtures, not recorded provider responses.",
+  "cases": [
+    {
+      "name": "choice-string-instructions",
+      "request": {
+        "questions": {
+          "admission": {
+            "type": "choice",
+            "instructions": "Classify the fictional input.",
+            "criteria": {
+              "keep": "A reusable synthetic declaration.",
+              "skip": "A temporary synthetic request."
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-choice-string-instructions",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "admission": {
+            "type": "choice",
+            "choice": "keep",
+            "probabilities": {
+              "keep": 0.87,
+              "skip": 0.13
+            },
+            "confidence": 0.9
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "choice-object-instructions",
+      "request": {
+        "questions": {
+          "admission": {
+            "type": "choice",
+            "instructions": {
+              "task": "Classify the fictional input."
+            },
+            "criteria": {
+              "keep": "A reusable synthetic declaration.",
+              "skip": "A temporary synthetic request."
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-choice-object-instructions",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "admission": {
+            "type": "choice",
+            "choice": "keep",
+            "probabilities": {
+              "keep": 0.87,
+              "skip": 0.13
+            },
+            "confidence": 0.9
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        },
+        "used_provider": "fixture-provider",
+        "used_pool": "fixture-pool"
+      }
+    },
+    {
+      "name": "choice-array-instructions",
+      "request": {
+        "questions": {
+          "admission": {
+            "type": "choice",
+            "instructions": [
+              "Classify the fictional input.",
+              "Use the supplied criteria."
+            ],
+            "criteria": {
+              "keep": "A reusable synthetic declaration.",
+              "skip": "A temporary synthetic request."
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-choice-array-instructions",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "admission": {
+            "type": "choice",
+            "choice": "keep",
+            "probabilities": {
+              "keep": 0.87,
+              "skip": 0.13
+            },
+            "confidence": 0.9
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "choice-tied-probabilities",
+      "request": {
+        "questions": {
+          "option": {
+            "type": "choice",
+            "instructions": "Choose a fictional option.",
+            "criteria": {
+              "first": null,
+              "second": null
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-choice-tied-probabilities",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "option": {
+            "type": "choice",
+            "choice": "first",
+            "probabilities": {
+              "first": 0.5,
+              "second": 0.5
+            },
+            "confidence": 0.5
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "choice-rounded-probabilities",
+      "request": {
+        "questions": {
+          "option": {
+            "type": "choice",
+            "instructions": "Choose a fictional option.",
+            "criteria": {
+              "first": "First option.",
+              "second": "Second option.",
+              "third": "Third option."
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-choice-rounded-probabilities",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "option": {
+            "type": "choice",
+            "choice": "first",
+            "probabilities": {
+              "first": 0.33,
+              "second": 0.33,
+              "third": 0.33
+            },
+            "confidence": 0.6
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "score-exact-weighted",
+      "request": {
+        "questions": {
+          "quality": {
+            "type": "score",
+            "instructions": "Score the fictional observation.",
+            "criteria": [
+              "Poor",
+              "Fair",
+              "Good"
+            ]
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-score-exact-weighted",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "quality": {
+            "type": "score",
+            "score": 1.6,
+            "probabilities": {
+              "0": 0.1,
+              "1": 0.2,
+              "2": 0.7
+            },
+            "confidence": 0.8,
+            "legend": {
+              "0": "Poor",
+              "1": "Fair",
+              "2": "Good"
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "score-rounded-weighted",
+      "request": {
+        "questions": {
+          "quality": {
+            "type": "score",
+            "instructions": "Score the fictional observation.",
+            "criteria": [
+              "Absent",
+              "Low",
+              "Medium",
+              "High"
+            ]
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-score-rounded-weighted",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "quality": {
+            "type": "score",
+            "score": 1.88,
+            "probabilities": {
+              "0": 0.11,
+              "1": 0.23,
+              "2": 0.32,
+              "3": 0.33
+            },
+            "confidence": 0.8,
+            "legend": {
+              "0": "Absent",
+              "1": "Low",
+              "2": "Medium",
+              "3": "High"
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "noul-without-criteria",
+      "request": {
+        "questions": {
+          "supported": {
+            "type": "noul",
+            "instructions": "Assess support for the fictional observation."
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-noul-without-criteria",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "supported": {
+            "type": "noul",
+            "noul": 0.72
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        }
+      }
+    },
+    {
+      "name": "multiple-types-and-noul-criteria",
+      "request": {
+        "questions": {
+          "admission": {
+            "type": "choice",
+            "instructions": "Classify the fictional input.",
+            "criteria": {
+              "keep": "A reusable synthetic declaration.",
+              "skip": "A temporary synthetic request."
+            }
+          },
+          "quality": {
+            "type": "score",
+            "instructions": "Score the fictional observation.",
+            "criteria": [
+              "Unsupported",
+              "Supported"
+            ]
+          },
+          "supported": {
+            "type": "noul",
+            "instructions": {
+              "task": "Assess support."
+            },
+            "criteria": {
+              "true": "The fictional observation is supported.",
+              "false": "The fictional observation is unsupported."
+            }
+          }
+        }
+      },
+      "response": {
+        "id": "fixture-multiple-types-and-noul-criteria",
+        "model": "fixture-protocol-model",
+        "answers": {
+          "admission": {
+            "type": "choice",
+            "choice": "skip",
+            "probabilities": {
+              "keep": 0.1,
+              "skip": 0.9
+            },
+            "confidence": 0.9
+          },
+          "quality": {
+            "type": "score",
+            "score": 0.25,
+            "probabilities": {
+              "0": 0.75,
+              "1": 0.25
+            },
+            "confidence": 0.8,
+            "legend": {
+              "0": "Unsupported",
+              "1": "Supported"
+            }
+          },
+          "supported": {
+            "type": "noul",
+            "noul": 0.25
+          }
+        },
+        "usage": {
+          "input_tokens": 12,
+          "output_tokens": 4
+        },
+        "used_provider": "fixture-provider",
+        "used_pool": "fixture-pool"
+      }
+    }
+  ]
+}

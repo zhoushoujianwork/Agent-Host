@@ -1,0 +1,280 @@
+# Agent-Host architecture
+
+Status: architecture and roadmap, with a local CLI MVP, manual-review experience
+extension, DingTalk private/group-mention channels with configurable Agent
+instances, and a Feishu meeting text channel implemented. The
+[DingTalk guide](dingtalk-channel.md) separates offline validation, the verified
+first live owner turn and remaining platform checks. The [first MVP validation](mvp-validation.md) and
+[experience design](experience-memory.md) separate implementation, test evidence,
+and remaining work. The experience extension passed its bounded synthetic
+live loop on 2026-10-10; general accuracy and scale remain unmeasured.
+The revised [memory design](experience-memory.md) removes required human
+acceptance: Jev-selected memory becomes effective automatically, with a blacklist
+for later disabling. Automatic experience publication and protection against
+equivalent re-admission are planned, not delivered by the current binary.
+The [evaluation guide](evaluation.md) introduces categorized cases and recurring
+regression checks. The [object retrieval extension](object-retrieval.md) resolves
+the two initial retrieval cases and passes the expanded 26-case recall set.
+One historical live Jev admission mismatch remains unresolved; that decision
+suite was not rerun for the retrieval change.
+
+## Goal and usage
+
+Give AI work continuity across tasks and execution engines. A user submits a
+task through a channel; the host selects an agent configuration, supplies
+relevant knowledge, supervises execution, and records the outcome for later use.
+
+The product is Agent-Host. Go is its implementation language. A harness adapter
+is one component inside the host, responsible for integration with an execution
+engine.
+
+## Core approach
+
+```mermaid
+flowchart TD
+    U[User] --> C[Channel input and delivery]
+    subgraph Host[Agent-Host]
+        C --> R[Identity-aware routing]
+        R --> A[Agent and context assembly]
+        A --> S[Task coordination and run supervision]
+        S --> B[Harness adapter]
+        B -->|Execution events and outcome| S
+        S --> E[(Task state and raw evidence)]
+        H[Built-in conversation MCP] --> E
+        S -->|Outcome and supporting evidence| M[Memory retrieval and finalization]
+        M --> K[(Durable knowledge)]
+        K --> M
+        M -->|Relevant knowledge| A
+        L[Memory blacklist] -->|Exclude admission and recall| M
+        S -->|Task result| C
+        I[System topic discovery and source intake] -.->|Future learning selection| M
+        I --> E
+    end
+    B -->|Native execution| X[Claude Code / Codex / future engines]
+    X -->|Native events| B
+    X -->|On-demand tools| Q[Dokki / Confluence / local Markdown MCP]
+    X -->|On-demand history| H
+    D[Selected daily DWS conversations] --> I
+    C -->|Delivery| U
+```
+
+The host owns business tasks, cross-session knowledge, routing, and delivery.
+Each native harness owns its model/tool execution loop, native conversation
+state, and native permission enforcement. Adapters expose the capabilities and
+limitations of each harness explicitly.
+
+The memory loop participates before and after execution: retrieve eligible
+knowledge, then retain attributed user statements and experience from observed
+tool results. The host keeps original evidence, processing proposals and durable
+memory separately. A tool-free model extracts procedures; Jev selects useful,
+supported proposals and compares existing memory. The target policy publishes
+selected memory automatically after Host validation, with no required human
+acceptance. Later disabling preserves history and blocks both recall and
+equivalent re-admission within the same scope. The current code automatically
+saves user statements but still requires `memory accept` for experience.
+Experience retains conditions and evidence strength; it is not independently
+verified truth. Execution completion, task acceptance, selection and memory
+persistence remain separate outcomes.
+The current retrieval path links requests and saved memory through source-linked
+service identities, explicit scoped aliases and bounded property/topic rules.
+SQLite object/topic indexes, current alias associations and full-text candidates
+feed applicability checks before context assembly. General entity/event
+understanding remains planned. Similarity alone does not establish applicability.
+
+Raw execution evidence and operational state are kept separate from reusable
+knowledge. Routing chooses a configuration; assembly prepares its workspace,
+instructions, knowledge, and available capabilities.
+
+The [external knowledge and everyday experience extension](knowledge-sources.md)
+defines two entry paths. Dokki and Confluence are implemented as runtime MCP tools;
+the native agent searches and reads documents when needed, without preloading
+their content. Knowledge lookups retain source receipts and are excluded from
+execution-experience publication. Optional selected daily DWS conversations feed
+an independent bounded system collector, immutable evidence and local topic
+review. Explicit acceptance exports owner-private citations without creating a
+run, sending a message or publishing memory. Conversation-derived learning is
+planned. Real selected-DM discovery passed on 2026-10-11: four messages produced
+one native topic with four original citations, reviewed and explicitly accepted
+for owner-private use. Reopening the overlap added no duplicates; a three-message
+partial window completed all four after its limits were raised. The
+acceptance report (private validation evidence)
+records no task execution, message sends or memory publication. Continuous
+polling, group noise quality and account-wide coverage remain unverified.
+The [conversation-history routes](conversation-history.md) also implement
+on-demand read-only retrieval of saved messages addressed to the Agent and its
+replies. They need no DWS identity. Each task receives only its current
+conversation, Agent, audience and project grants. DWS is not mounted as a general
+chat-reading task MCP. Topic discovery, task acceptance and memory publication
+remain distinct.
+
+The [personal-assistant proposal](personal-assistant.md) extends this foundation
+with evolving current matters, cited private recommendations and an explicit
+owner-private memory domain. It keeps temporary work state separate from reusable
+memory and uses general types with people/project/topic associations. This is
+an approved design whose [P0 release scope](release-follow-up.md#p0-contextual-assistance-and-accessible-memory)
+awaits development: matter tracking, scoped AI read access and a private
+recommendation-to-preparation loop. Personal-domain expansion and conversation
+learning follow later. Recommendation behavior is not yet delivered.
+
+The [local knowledge increment](local-knowledge.md) adds explicitly selected
+project Markdown and retained owner-private snapshots through the same on-demand
+tools. Source selection intersects project grants, the Agent's configured subset
+and optional audience grants. Default-workspace authorization lets an ordinary
+question consult project material without a manual directory hint. Source roots
+remain separate from execution cwd; retrieved notes keep provenance and do not
+automatically become learned Host memory. Its validation is tracked separately.
+
+The [CLI memory-loop proposal](cli-memory-design.md) narrows the first milestone
+to terminal chat through the native Claude CLI. It uses one local owner and one
+configured harness, without requiring external channel integration. SQLite is
+the authority for operational evidence, review candidates and versioned memory
+in separate tables, with FTS5 and rebuildable object/topic indexes. Pending/rejected candidates, quarantined memories,
+expired records and invalidated records are excluded from recall. Markdown
+export remains planned. A versioned
+event journal drives terminal text and NDJSON output. The local read-only
+[execution and memory viewer](../tools/run-viewer/README.md) reads saved events,
+database memory and archived reports. A Web interface for submitting tasks or
+changing memory remains planned.
+
+The first external channel accepts the configured owner's DingTalk private
+messages and same-enterprise group mentions using an application bot. The
+[agent instance extension](agent-instances.md) selects a default or group-bound
+role before project routing. Group members share one conversation while agent
+and audience partition native sessions and learned memory. Business instances
+use explicit native approval bypass. Owner private requests have no added Host
+permission or disclosure restrictions; group prompts judge requests and replies
+for the shared audience without adding member permission roles;
+this is not an OS isolation boundary. Ordinary CLI policy remains unchanged.
+The [conversation/input extension](channel-conversations.md) keeps each group
+or DM and shared agent/audience partition ordered through memory and reply
+completion, while different audiences use a bounded pool (default four).
+Pictures, files and callback-provided quotes remain source-linked task material;
+native Claude receives images directly and reads files with tools. No historical
+conversation or quoted media is fetched automatically. On-demand Host history
+tools query authorized saved receipts and replies across native resets. Shared
+project files
+remain shared and may conflict under concurrent execution. These additions have
+separate validation from the earlier text-only platform records.
+The [runtime assembly increment](runtime-assembly.md) adds locally registered
+projects, local CLI selection and native sessions bound to project, directory
+and shared configuration. The startup workspace remains the default. Durable message receipt,
+source-linked runs, native session binding and final reply delivery remain
+separate from task acceptance. A durable reaction outbox updates progress on
+the original message independently of native execution and final answer delivery.
+The [intelligent routing extension](smart-project-routing.md)
+implements automatic selection over registered projects and project-set execution.
+Reliable project associations select their registered environments; all other
+valid requests run in the configured agent's default workspace. An empty catalog
+skips the classifier and starts execution directly. No new Host project question
+or waiting task is created. The native assistant asks for business details when
+needed. Default execution does not expand project or knowledge access; invalid
+configuration, unavailable selected directories and provider errors still fail
+explicitly. Default-workspace handoffs and empty-catalog execution keep normal
+history, memory and experience processing. Historical unresolved runs retain
+their original skipped learning records while remaining readable in their saved
+default scope.
+Every channel task routes automatically; historical manual project pins no
+longer affect new tasks. Project registration and agent configuration stay local.
+Chat exposes only `/new`, `/status` and
+`/help` as Host controls: reset the current compatible conversation while keeping
+memory, show a safe overview, and list supported controls. Only standalone
+controls are handled; quoted and attached commands are task material. `/status`
+waits in the conversation queue. These do not forward
+native interactive commands. Earlier pending project requests remain recorded
+without replay; only their original requester may explicitly confirm or cancel them.
+Source-linked natural follow-ups can retain the latest task's project without
+fixed continuation words when its scope is unchanged.
+For a new channel message, a failed or interrupted native session is replaced
+automatically with a brief notice. Saved project memory and old execution
+evidence remain; recovery never replays the prior task.
+The recovered turn receives bounded, source-linked context from the prior task;
+short follow-ups review available conversation context before asking for a
+restatement. This context does not enlarge project or history grants.
+Other fresh native sessions receive a bounded handoff of same-scope recent user
+questions, excluding prior replies and execution results.
+Pending or failed memory finalization also remains inspectable without blocking
+a new conversation.
+Parallel project sets use a neutral cwd;
+unassociated tasks retain the configured default workspace. Local and remote project
+discovery remain planned. Earlier routing revisions passed separate automated,
+bounded native and live-DingTalk acceptance recorded in the routing guide;
+those records do not establish acceptance of the current default-execution policy.
+Historical live owner messages using the former project-switch commands verify
+project switching, native continuation, project-local reset and scoped memory
+recall in an isolated runtime using the existing bot; the
+[platform record](runtime-assembly-detail.md#live-dingtalk-acceptance-with-dws)
+keeps this separate from production state and remaining live scenarios.
+Production latency remains to be evaluated.
+The [production service](service-install.md) is installed and started through
+`make install` on macOS. Its binary, credentials, state, workspace and native
+Claude profile live under `~/.agent-host/production`, separate from development
+and temporary test state. Deployment evidence remains distinct from offline tests.
+
+The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local
+`lark-cli` profile to connect authorized meetings to the same host execution path.
+It supports fixed-meeting delivery and optional automatic entry from meeting
+invitations or permitted private cards, links and numbers. Invitation/end events
+use the CLI event connection; meeting questions remain on polling. Each meeting
+has its own public audience and cancelable runtime, while DingTalk's webhook and
+reaction behavior remain intact. Automated checks and the passing fixed-meeting
+two-turn owner acceptance are tracked in that guide. Successful automatic-entry
+acceptance, pushed meeting text and bidirectional audio remain separate work.
+
+## Initial scope and order
+
+1. Establish the Go CLI, component directories, and product boundary.
+   **Delivered.**
+2. Implement CLI chat and validate local Claude Code execution: input,
+   observable completion, failure, cancellation, and retained evidence.
+   **Implemented; test evidence is in the MVP document.**
+3. Add durable memory finalization, independent recovery, and indexed context
+   retrieval. Demonstrate source-linked reuse in a fresh conversation and
+   validate multilingual retrieval as data grows. **User-statement loop and
+   bounded, explicitly reviewed experience are implemented. The experience
+   extension passed its bounded live loop. Automatic Jev-selected experience
+   publication and a blacklist that also blocks equivalent re-admission are the
+   next memory increment; general extraction, quality and scale work remain
+   planned. Bounded service/alias/property retrieval and categorized
+   regression are implemented. The original retrieval failures remain preserved
+   as historical baselines; a live Jev admission gap remains unresolved.**
+4. Prioritize the first everyday channel: DingTalk owner private messages through
+   an application bot. **Implemented and tested offline; the owner has authorized
+   the existing-bot cutover. Production installation now
+   uses `make install`; the deployment guide records actual live evidence.**
+5. Add explicit project routing and runtime assembly. **Implemented: stable
+   project identity, real cwd, shared native configuration, scoped memory and
+   per-project compatible sessions. Validation is in the runtime assembly guide.**
+6. Add intelligent project routing. **Automatic registered-project inference,
+   project-set execution and default execution without a Host project question.
+   Earlier automated, native and live private-chat validation is preserved in the
+   [routing guide](smart-project-routing.md).
+   Local/GitHub/GitLab discovery remains planned.** Joint tasks retain scoped
+   existing knowledge; automatic new memory attribution is deferred.
+7. Add external knowledge and everyday experience: first Dokki/Confluence
+   runtime search/read tools, then bounded DWS conversation intake and reviewed
+   lessons. **Dokki/Confluence tools and optional bounded DWS collection/topic
+   review implemented; conversation learning remains planned. See the
+   [source guide](knowledge-sources.md). Knowledge tools do not eagerly populate
+   task context. Local Markdown and owner-only retained snapshots use the same
+   boundary, with acceptance tracked in the [local knowledge guide](local-knowledge.md).
+   Independent [Host history tools](conversation-history.md) supply conversation
+   recall without daily-chat collection.**
+8. Add a Codex adapter and verify cross-engine knowledge reuse. Keep native
+   histories separate. **Planned.**
+9. Expand channels and execution profiles. **Enterprise group mentions,
+   configurable default/group-bound instances, concise public replies and
+   partitioned conversation/memory are implemented. Validation is tracked in
+   the [instance guide](agent-instances-detail.md); bounded single-group round
+   trips passed separately from offline tests and installation. Cross-group,
+   alternate-instance and multiple-sender platform checks remain. Concurrent
+   conversations, input attachments and callback quotes are implemented in the
+   [conversation increment](channel-conversations.md), with their validation
+   tracked separately.**
+
+Build adapters around demonstrated engine capabilities. A general-purpose
+plugin platform, a custom model/tool loop, and transparent session migration
+between engines are outside the initial scope.
+
+See [implementation notes](architecture-detail.md) for proposed code boundaries
+and the first validation target, and [research conclusions](research.md) for the
+reasoning behind the host boundary.

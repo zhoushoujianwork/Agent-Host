@@ -1,0 +1,525 @@
+{
+  "fixture": true,
+  "provenance": "Hand-authored synthetic viewer regression data; no live execution.",
+  "date": "2000-01-01T00:00:00Z",
+  "commands": [
+    {
+      "label": "fixture-order-storage-statement",
+      "command": [
+        "chat",
+        "-m",
+        "The fictional Order service uses PostgreSQL."
+      ],
+      "run": {
+        "id": "fixture-order-storage-statement",
+        "input": "The fictional Order service uses PostgreSQL.",
+        "scope": "/synthetic/project",
+        "context": [],
+        "created_at": "2000-01-01T00:00:00Z",
+        "execution_status": "completed",
+        "memory_status": "saved",
+        "acceptance_status": "unverified",
+        "experience_status": "empty"
+      },
+      "events": [
+        {
+          "run_id": "fixture-order-storage-statement",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-order-storage-statement",
+          "seq": 2,
+          "type": "memory.query.analyzed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "query": {
+              "annotation": {
+                "version": "entity-topic-v1",
+                "objects": [
+                  {
+                    "id": "fixture-order-service",
+                    "name": "Order service",
+                    "kind": "service"
+                  }
+                ],
+                "topics": [],
+                "aliases": []
+              }
+            }
+          }
+        },
+        {
+          "run_id": "fixture-order-storage-statement",
+          "seq": 3,
+          "type": "decision.completed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "decision": {
+              "kind": "project_fact",
+              "store": true,
+              "model": "fixture-admission",
+              "details": {
+                "reason": "new_user_statement",
+                "eligibility_probability_threshold": 0.8,
+                "evaluations": [
+                  {
+                    "stage": "classify",
+                    "response": {
+                      "answers": {
+                        "eligibility": {
+                          "type": "choice",
+                          "choice": "remember",
+                          "probabilities": {
+                            "remember": 1.0,
+                            "skip": 0.0
+                          }
+                        },
+                        "memory_kind": {
+                          "type": "choice",
+                          "choice": "project_fact",
+                          "probabilities": {
+                            "project_fact": 1.0,
+                            "none": 0.0
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "run_id": "fixture-order-storage-statement",
+          "seq": 4,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "saved",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "label": "fixture-order-language-statement",
+      "command": [
+        "chat",
+        "-m",
+        "The fictional Order service uses Go."
+      ],
+      "run": {
+        "id": "fixture-order-language-statement",
+        "input": "The fictional Order service uses Go.",
+        "scope": "/synthetic/project",
+        "context": [],
+        "created_at": "2000-01-01T00:00:00Z",
+        "execution_status": "completed",
+        "memory_status": "saved",
+        "acceptance_status": "unverified",
+        "experience_status": "empty"
+      },
+      "events": [
+        {
+          "run_id": "fixture-order-language-statement",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-order-language-statement",
+          "seq": 2,
+          "type": "memory.query.analyzed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "query": {
+              "annotation": {
+                "version": "entity-topic-v1",
+                "objects": [
+                  {
+                    "id": "fixture-order-service",
+                    "name": "Order service",
+                    "kind": "service"
+                  }
+                ],
+                "topics": [],
+                "aliases": []
+              }
+            }
+          }
+        },
+        {
+          "run_id": "fixture-order-language-statement",
+          "seq": 3,
+          "type": "decision.completed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "decision": {
+              "kind": "project_fact",
+              "store": true,
+              "model": "fixture-admission",
+              "details": {
+                "reason": "new_user_statement",
+                "eligibility_probability_threshold": 0.8,
+                "evaluations": [
+                  {
+                    "stage": "classify",
+                    "response": {
+                      "answers": {
+                        "eligibility": {
+                          "type": "choice",
+                          "choice": "remember",
+                          "probabilities": {
+                            "remember": 1.0,
+                            "skip": 0.0
+                          }
+                        },
+                        "memory_kind": {
+                          "type": "choice",
+                          "choice": "project_fact",
+                          "probabilities": {
+                            "project_fact": 1.0,
+                            "none": 0.0
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "run_id": "fixture-order-language-statement",
+          "seq": 4,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "saved",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "label": "fixture-billing-inspection",
+      "command": [
+        "chat",
+        "-m",
+        "The fictional Billing service uses MySQL."
+      ],
+      "run": {
+        "id": "fixture-billing-inspection",
+        "input": "The fictional Billing service uses MySQL.",
+        "scope": "/synthetic/project",
+        "context": [],
+        "created_at": "2000-01-01T00:00:00Z",
+        "execution_status": "completed",
+        "memory_status": "unchanged",
+        "acceptance_status": "unverified",
+        "experience_status": "empty"
+      },
+      "events": [
+        {
+          "run_id": "fixture-billing-inspection",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-billing-inspection",
+          "seq": 2,
+          "type": "memory.query.analyzed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "query": {
+              "annotation": {
+                "version": "entity-topic-v1",
+                "objects": [
+                  {
+                    "id": "fixture-billing-service",
+                    "name": "Billing service",
+                    "kind": "service"
+                  }
+                ],
+                "topics": [],
+                "aliases": []
+              }
+            }
+          }
+        },
+        {
+          "run_id": "fixture-billing-inspection",
+          "seq": 4,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "label": "fixture-order-recall",
+      "command": [
+        "chat",
+        "-m",
+        "Which database and language does the fictional Order service use?"
+      ],
+      "run": {
+        "id": "fixture-order-recall",
+        "input": "Which database and language does the fictional Order service use?",
+        "scope": "/synthetic/project",
+        "context": [
+          {
+            "id": "fixture-order-storage",
+            "text": "The fictional Order service uses PostgreSQL.",
+            "scope": "/synthetic/project",
+            "kind": "project_fact",
+            "source_type": "user_statement",
+            "source_run_id": "fixture-order-storage-statement",
+            "status": "active",
+            "revision": 1,
+            "created_at": "2000-01-01T00:00:00Z"
+          },
+          {
+            "id": "fixture-order-language",
+            "text": "The fictional Order service uses Go.",
+            "scope": "/synthetic/project",
+            "kind": "project_fact",
+            "source_type": "user_statement",
+            "source_run_id": "fixture-order-language-statement",
+            "status": "active",
+            "revision": 1,
+            "created_at": "2000-01-01T00:00:00Z"
+          }
+        ],
+        "created_at": "2000-01-01T00:00:01Z",
+        "execution_status": "completed",
+        "memory_status": "unchanged",
+        "acceptance_status": "unverified",
+        "experience_status": "empty"
+      },
+      "events": [
+        {
+          "run_id": "fixture-order-recall",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-order-recall",
+          "seq": 2,
+          "type": "memory.retrieval.evaluated",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project",
+            "decisions": [
+              {
+                "memory_id": "fixture-order-storage",
+                "accepted": true,
+                "reason": "same_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              },
+              {
+                "memory_id": "fixture-order-language",
+                "accepted": true,
+                "reason": "same_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              },
+              {
+                "memory_id": "fixture-billing-storage",
+                "accepted": false,
+                "reason": "different_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "run_id": "fixture-order-recall",
+          "seq": 3,
+          "type": "memory.recalled",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "memories": [
+              {
+                "id": "fixture-order-storage",
+                "text": "The fictional Order service uses PostgreSQL.",
+                "scope": "/synthetic/project",
+                "kind": "project_fact",
+                "source_type": "user_statement",
+                "source_run_id": "fixture-order-storage-statement",
+                "status": "active",
+                "revision": 1,
+                "created_at": "2000-01-01T00:00:00Z"
+              },
+              {
+                "id": "fixture-order-language",
+                "text": "The fictional Order service uses Go.",
+                "scope": "/synthetic/project",
+                "kind": "project_fact",
+                "source_type": "user_statement",
+                "source_run_id": "fixture-order-language-statement",
+                "status": "active",
+                "revision": 1,
+                "created_at": "2000-01-01T00:00:00Z"
+              }
+            ]
+          }
+        },
+        {
+          "run_id": "fixture-order-recall",
+          "seq": 4,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "label": "fixture-billing-recall",
+      "command": [
+        "chat",
+        "-m",
+        "Which database does the fictional Billing service use?"
+      ],
+      "run": {
+        "id": "fixture-billing-recall",
+        "input": "Which database does the fictional Billing service use?",
+        "scope": "/synthetic/project",
+        "context": [
+          {
+            "id": "fixture-billing-storage",
+            "text": "The fictional Billing service uses MySQL.",
+            "scope": "/synthetic/project",
+            "kind": "project_fact",
+            "source_type": "user_statement",
+            "source_run_id": "fixture-unobserved-billing-source",
+            "status": "active",
+            "revision": 1,
+            "created_at": "2000-01-01T00:00:00Z"
+          }
+        ],
+        "created_at": "2000-01-01T00:00:01Z",
+        "execution_status": "completed",
+        "memory_status": "unchanged",
+        "acceptance_status": "unverified",
+        "experience_status": "empty"
+      },
+      "events": [
+        {
+          "run_id": "fixture-billing-recall",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-billing-recall",
+          "seq": 2,
+          "type": "memory.retrieval.evaluated",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project",
+            "decisions": [
+              {
+                "memory_id": "fixture-order-storage",
+                "accepted": false,
+                "reason": "different_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              },
+              {
+                "memory_id": "fixture-order-language",
+                "accepted": false,
+                "reason": "different_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              },
+              {
+                "memory_id": "fixture-billing-storage",
+                "accepted": true,
+                "reason": "same_object",
+                "routes": [
+                  "synthetic-object-index"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "run_id": "fixture-billing-recall",
+          "seq": 3,
+          "type": "memory.recalled",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "memories": [
+              {
+                "id": "fixture-billing-storage",
+                "text": "The fictional Billing service uses MySQL.",
+                "scope": "/synthetic/project",
+                "kind": "project_fact",
+                "source_type": "user_statement",
+                "source_run_id": "fixture-unobserved-billing-source",
+                "status": "active",
+                "revision": 1,
+                "created_at": "2000-01-01T00:00:00Z"
+              }
+            ]
+          }
+        },
+        {
+          "run_id": "fixture-billing-recall",
+          "seq": 4,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    }
+  ]
+}

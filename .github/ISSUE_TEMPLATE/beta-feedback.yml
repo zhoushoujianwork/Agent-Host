@@ -1,0 +1,63 @@
+name: Beta feedback
+description: Report a runtime or memory problem, or suggest an improvement.
+title: "[Beta] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us what you expected and what actually happened. Review attachments
+        before sharing; use fictional examples for private work. Do not attach
+        state.db, raw logs, credential files, or unreviewed run exports.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feedback category
+      options:
+        - Runtime failure
+        - Memory not saved or recalled
+        - Incorrect or unnecessary memory
+        - Inappropriate memory recall
+        - Usability or feature suggestion
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      description: Paste agent-host --version and your operating system.
+      placeholder: "0.2.0-beta.1, commit ..., macOS arm64"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: For memory feedback, describe when the memory should or should not help.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Describe the observed result, including whether it happens repeatedly.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Smallest reproduction
+      description: Share steps or a fictional example. Say if you cannot reproduce it yet.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Optional reviewed diagnostic report
+      description: Generate with agent-host feedback report, review it, then paste JSON or attach the file.
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Sharing review
+      options:
+        - label: I reviewed the text and attachments and removed private or confidential material.
+          required: true

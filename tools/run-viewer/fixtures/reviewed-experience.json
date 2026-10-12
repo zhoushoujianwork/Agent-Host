@@ -1,0 +1,187 @@
+{
+  "fixture": true,
+  "provenance": "Hand-authored synthetic viewer regression data; no live execution.",
+  "date": "2000-01-01T00:00:00Z",
+  "runs": [
+    {
+      "run_id": "fixture-repair",
+      "label": "repair"
+    },
+    {
+      "run_id": "fixture-reuse",
+      "label": "reuse",
+      "recalled": [
+        {
+          "id": "fixture-parser-procedure",
+          "text": "Check the fictional parser boundary, repair it, and run its focused test.",
+          "scope": "/synthetic/project",
+          "kind": "procedure",
+          "source_type": "reviewed_experience",
+          "status": "active",
+          "revision": 1,
+          "source_run_id": "fixture-repair",
+          "created_at": "2000-01-01T00:00:00Z"
+        }
+      ]
+    },
+    {
+      "run_id": "fixture-after-invalidation",
+      "label": "after_invalidation",
+      "recalled": []
+    }
+  ],
+  "commands": [
+    {
+      "label": "repair",
+      "arguments": [
+        "chat",
+        "-m",
+        "Repair the fictional parser."
+      ],
+      "events": [
+        {
+          "run_id": "fixture-repair",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-repair",
+          "seq": 2,
+          "type": "experience.assessed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "assessment": {
+              "eligible": true
+            }
+          }
+        },
+        {
+          "run_id": "fixture-repair",
+          "seq": 3,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "review_pending"
+          }
+        },
+        {
+          "run_id": "fixture-repair",
+          "seq": 4,
+          "type": "candidate.accepted",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "memory": {
+              "id": "fixture-parser-procedure",
+              "text": "Check the fictional parser boundary, repair it, and run its focused test.",
+              "scope": "/synthetic/project",
+              "kind": "procedure",
+              "source_type": "reviewed_experience",
+              "status": "active",
+              "revision": 1,
+              "source_run_id": "fixture-repair",
+              "created_at": "2000-01-01T00:00:00Z"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "reuse",
+      "arguments": [
+        "chat",
+        "-m",
+        "Apply the reviewed fictional parser procedure."
+      ],
+      "events": [
+        {
+          "run_id": "fixture-reuse",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-reuse",
+          "seq": 2,
+          "type": "memory.recalled",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "memories": [
+              {
+                "id": "fixture-parser-procedure",
+                "text": "Check the fictional parser boundary, repair it, and run its focused test.",
+                "scope": "/synthetic/project",
+                "kind": "procedure",
+                "source_type": "reviewed_experience",
+                "status": "active",
+                "revision": 1,
+                "source_run_id": "fixture-repair",
+                "created_at": "2000-01-01T00:00:00Z"
+              }
+            ]
+          }
+        },
+        {
+          "run_id": "fixture-reuse",
+          "seq": 3,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "label": "after_invalidation",
+      "arguments": [
+        "chat",
+        "-m",
+        "Inspect a different fictional parser."
+      ],
+      "events": [
+        {
+          "run_id": "fixture-after-invalidation",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-after-invalidation",
+          "seq": 2,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    },
+    {
+      "arguments": [
+        "memory",
+        "show",
+        "fixture-parser-procedure"
+      ],
+      "output": "{\"id\": \"fixture-parser-procedure\", \"text\": \"Check the fictional parser boundary, repair it, and run its focused test.\", \"scope\": \"/synthetic/project\", \"kind\": \"procedure\", \"source_type\": \"reviewed_experience\", \"status\": \"invalidated\", \"revision\": 2, \"source_run_id\": \"fixture-repair\", \"created_at\": \"2000-01-01T00:00:00Z\", \"review_note\": \"Synthetic parser procedure no longer applies.\"}"
+    }
+  ]
+}

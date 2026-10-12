@@ -1,0 +1,56 @@
+{
+  "fixture": true,
+  "provenance": "Hand-authored synthetic viewer regression data; no live execution.",
+  "date": "2000-01-01T00:00:00Z",
+  "runs": [
+    {
+      "run_id": "fixture-rejected-repair",
+      "label": "repair"
+    }
+  ],
+  "commands": [
+    {
+      "label": "repair",
+      "arguments": [
+        "chat",
+        "-m",
+        "Inspect an unrelated fictional parser."
+      ],
+      "events": [
+        {
+          "run_id": "fixture-rejected-repair",
+          "seq": 1,
+          "type": "run.started",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "scope": "/synthetic/project"
+          }
+        },
+        {
+          "run_id": "fixture-rejected-repair",
+          "seq": 2,
+          "type": "experience.assessed",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "assessment": {
+              "eligible": false,
+              "reason": "Synthetic observation is insufficient for a reusable procedure."
+            }
+          }
+        },
+        {
+          "run_id": "fixture-rejected-repair",
+          "seq": 3,
+          "type": "run.finished",
+          "at": "2000-01-01T00:00:00Z",
+          "data": {
+            "execution_status": "completed",
+            "memory_status": "unchanged",
+            "acceptance_status": "unverified",
+            "experience_status": "empty"
+          }
+        }
+      ]
+    }
+  ]
+}

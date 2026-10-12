@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "name": "project_notes",
+      "provider": "local_markdown",
+      "root": "/absolute/path/project",
+      "paths": ["knowledge", "workflows"],
+      "principal": "project-documentation",
+      "description": "Local project terminology and procedures; search and read relevant documents.",
+      "projects": ["default", "api"]
+    },
+    {
+      "name": "private_notes",
+      "provider": "local_markdown",
+      "root": "/absolute/private/path/notes-snapshot",
+      "paths": ["notes", "SOURCES.md"],
+      "principal": "owner-private-historical-notes",
+      "description": "Historical owner notes with source attribution and dates; consult the source manifest.",
+      "projects": ["default", "api"],
+      "audiences": ["owner"]
+    },
+    {
+      "name": "dokki",
+      "provider": "dokki",
+      "endpoint": "https://dokki.one/api/v1",
+      "credential_file": "/absolute/private/path/dokki.json",
+      "principal": "owner-dokki-account",
+      "description": "Company knowledge in Dokki; search and read relevant resources.",
+      "projects": ["default"]
+    },
+    {
+      "name": "confluence",
+      "provider": "confluence",
+      "endpoint": "https://confluence.example.com",
+      "credential_file": "/absolute/private/path/confluence.json",
+      "principal": "owner-confluence-account",
+      "description": "Company API and operations documentation in Confluence.",
+      "projects": ["default"]
+    }
+  ]
+}

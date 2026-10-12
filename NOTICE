@@ -1,0 +1,12 @@
+Agent-Host
+Copyright 2026 Agent-Host contributors.
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+The Dokki/Confluence connector adapts code from memgov, revision
+8300e2a535690b2eef2e1ff01b851bb6189942bb, under Apache License 2.0.
+Its original license and modification notices are retained in
+internal/knowledge/memgov-LICENSE, internal/knowledge/ATTRIBUTION.md,
+and the adapted source file headers.
+
+Dependencies retain their own licenses. Binary packages include their notices.

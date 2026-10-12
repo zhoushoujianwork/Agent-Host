@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Agent-Host · 记忆工作台</title>
+  <link rel="stylesheet" href="/memory.css">
+  <script src="/memory.js" defer></script>
+</head>
+<body>
+  <aside class="rail">
+    <a class="brand" href="/memory.html"><span class="brand-mark">a<span>h</span></span><span>Agent-Host<small>CONTINUITY, BY DESIGN.</small></span></a>
+    <div class="rail-label">YOUR WORKSPACE</div>
+    <nav class="rail-nav" aria-label="工作台导航">
+      <a class="active" href="/memory.html"><span>◇</span>记忆工作台<small id="nav-memory-count">—</small></a>
+      <a href="/"><span>↗</span>执行观察台<span class="nav-arrow">→</span></a>
+    </nav>
+    <div class="rail-separator"></div>
+    <div class="rail-label">OBJECTS IN CONTEXT</div>
+    <div id="object-list" class="object-list"><p class="rail-empty">正在读取对象…</p></div>
+    <div class="rail-note"><span class="orbit-symbol">◎</span><h3>让工作拥有连续性。</h3><p>每一条记忆都有来处，<br>每一次使用都有记录。</p></div>
+    <div class="rail-foot"><span class="live-dot"></span><span>本地只读视图<small id="connection-state">正在连接数据源</small></span></div>
+  </aside>
+  <main>
+    <header class="topbar"><div class="breadcrumb">工作空间<span>/</span><strong>记忆</strong></div><div class="top-actions"><span id="sync-state" class="sync-state">正在同步</span><label class="refresh-toggle"><input id="auto-refresh" type="checkbox" checked>自动刷新</label><button id="refresh" class="icon-button" title="刷新数据" aria-label="刷新数据">↻</button></div></header>
+    <div class="workspace">
+      <div id="error" class="error-banner" role="alert" hidden></div>
+      <section class="page-heading"><div><div class="eyebrow"><span class="mini-diamond"></span> MEMORY WORKSPACE</div><h1>每一条记忆，<span>都有来处。</span></h1><p>把零散的工作，连接成可追溯、可复用的上下文。</p></div><div class="source-control"><label for="source-filter">当前数据源</label><select id="source-filter" aria-label="选择记忆数据源"><option value="">正在加载…</option></select><span id="source-note" class="source-note">读取真实记录</span></div></section>
+      <div id="snapshot-notice" class="snapshot-notice" hidden></div>
+      <section id="metrics" class="metrics" aria-label="记忆概览"></section>
+      <section class="overview-grid">
+        <div class="graph-panel"><div class="panel-head"><div><div class="eyebrow">CONNECTED KNOWLEDGE</div><h2>记忆关系图</h2></div><div class="graph-legend"><span><i class="object-dot"></i>对象</span><span><i class="topic-dot"></i>主题</span><span><i class="memory-dot"></i>记忆</span></div></div><div id="graph" class="graph-canvas" aria-label="对象、主题和记忆的关系图"></div><div class="graph-foot"><span id="graph-note">点击节点，查看关联记录</span><span>SOURCE-LINKED · SCOPE-AWARE</span></div></div>
+        <div class="recall-panel"><div class="panel-head"><div><div class="eyebrow">MEMORY IN ACTION</div><h2>最近一次记忆使用</h2></div><span class="small-orbit">↗</span></div><div id="recent-recall" class="recall-body"></div></div>
+      </section>
+      <section class="library-section"><div class="library-heading"><div><h2>记忆库 <span id="library-count">—</span></h2><p>保留原始声明，追溯每一次判断与使用。</p></div><div class="library-controls"><label class="search-box"><span>⌕</span><input id="search" type="search" placeholder="搜索记忆、对象或主题" aria-label="搜索记忆"></label><select id="status-filter" aria-label="筛选记忆状态"><option value="all">全部状态</option><option value="active">可供召回</option><option value="conflicted">存在冲突</option><option value="invalidated">已失效</option><option value="expired">已到期</option></select></div></div><div id="active-filter" class="active-filter" hidden></div><div id="memory-grid" class="memory-grid" aria-live="polite"></div></section>
+      <footer><span><span class="footer-mark">◇</span> Agent-Host · 记忆是上下文，来源是依据。</span><span id="scope-note"></span></footer>
+    </div>
+  </main>
+  <dialog id="memory-detail"><div class="detail-header"><div><div class="eyebrow">MEMORY DETAIL</div><h2>记忆形成与使用</h2></div><button id="close-detail" class="icon-button" aria-label="关闭记忆详情">✕</button></div><div id="detail-body"></div></dialog>
+</body>
+</html>

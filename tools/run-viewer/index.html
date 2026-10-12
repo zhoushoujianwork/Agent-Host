@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent-Host · 执行观察台</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">a<span>h</span></span><div>Agent-Host<small>执行观察台</small></div></div>
+    <div class="nav-label">WORKSPACE / OBSERVABILITY</div>
+    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索请求、项目或编号" aria-label="搜索执行记录"></label>
+    <div class="filters"><select id="source-filter" aria-label="筛选记录来源"><option value="all">全部来源</option><option value="database">本机执行库</option><option value="report">归档实测报告</option></select><span id="record-count">—</span></div>
+    <div id="record-list" class="record-list" aria-label="执行记录列表"><div class="loading">正在加载执行记录…</div></div>
+    <div class="sidebar-foot"><span class="dot"></span><div>本地只读连接<small>原始记录不会被修改</small></div></div>
+  </aside>
+
+  <main>
+    <header class="topbar"><span>运行空间 <span class="slash">/</span> 执行记录</span><div class="sync"><a class="button quiet" href="/memory.html">◇ 记忆工作台</a><span id="sync-state">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 每 5 秒刷新</label><button id="refresh" class="button quiet">↻ 刷新</button></div></header>
+    <div id="error" class="error-banner" role="alert" hidden></div>
+    <div id="empty" class="empty" hidden><span>◇</span><h1>还没有执行记录</h1><p>运行一次 agent-host chat，或将实测报告目录传给查看器。</p></div>
+    <div id="content" hidden>
+      <div class="page-heading"><div><div class="eyebrow">EXECUTION TRACE</div><h1 id="run-title">执行详情</h1><div class="run-meta"><span id="run-id"></span><span id="run-time"></span><span id="source-badge"></span></div></div><div id="overall-status"></div></div>
+      <div id="snapshot-note" class="snapshot-note" hidden></div>
+      <div class="metrics" id="metrics"></div>
+      <div class="tabs" role="tablist" aria-label="记录详情"><button class="tab active" data-tab="overview" role="tab" aria-selected="true">核心过程</button><button class="tab" data-tab="events" role="tab" aria-selected="false">阶段事件</button><button class="tab" data-tab="tools" role="tab" aria-selected="false">工具证据</button><button class="tab" data-tab="decisions" role="tab" aria-selected="false">模型判断</button><button class="tab" data-tab="memory" role="tab" aria-selected="false">记忆流转</button><button class="tab" data-tab="raw" role="tab" aria-selected="false">原始记录</button></div>
+      <section id="panel" aria-live="polite"></section>
+      <footer><span>Agent-Host · 同一份事件记录，多种展示方式</span><span id="event-count"></span></footer>
+    </div>
+  </main>
+  <dialog id="phase-dialog"><div class="dialog-head"><div><div class="eyebrow">PHASE DETAIL</div><h2 id="phase-title"></h2></div><button id="close-dialog" class="button quiet" aria-label="关闭阶段详情">✕</button></div><div id="phase-body"></div></dialog>
+</body>
+</html>

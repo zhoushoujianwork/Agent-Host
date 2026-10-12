@@ -1,0 +1,1360 @@
+{
+  "version": 1,
+  "id": "memory-v2",
+  "description": "Frozen memory-v1 cases plus independent object, alias and topic boundary regressions. Derived annotations must come from source text, never fixture labels.",
+  "cases": [
+    {
+      "id": "recall-zh-exact",
+      "title": "Recall an explicit Chinese project fact",
+      "category": "recall.basic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The question shares the Chinese database subject with this active same-project fact.",
+      "scope": "project-a",
+      "input": "这个项目的数据库是什么？",
+      "memories": [
+        {
+          "id": "db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "这个项目的数据库使用 SQLite。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "db"
+        ]
+      }
+    },
+    {
+      "id": "recall-en-case",
+      "title": "Latin word matching ignores letter case",
+      "category": "recall.basic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The Latin token Go should match GO without requiring case-sensitive spelling.",
+      "scope": "project-a",
+      "input": "GO",
+      "memories": [
+        {
+          "id": "language",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "The backend uses Go.",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "language"
+        ]
+      }
+    },
+    {
+      "id": "recall-project-boundary",
+      "title": "Exclude another project with identical terminology",
+      "category": "recall.scope",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Workspace scope is a hard boundary even when both records match the lexical query.",
+      "scope": "project-a",
+      "input": "SQLite",
+      "memories": [
+        {
+          "id": "local-db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "This project uses SQLite.",
+          "status": "active"
+        },
+        {
+          "id": "other-db",
+          "scope": "project-b",
+          "kind": "project_fact",
+          "text": "Another project uses SQLite.",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "local-db"
+        ]
+      }
+    },
+    {
+      "id": "recall-persistent-preference",
+      "title": "Include the project preference without a lexical match",
+      "category": "recall.context",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The current assembly policy includes active in-scope preferences before lexical matches.",
+      "scope": "project-a",
+      "input": "Investigate a parser failure.",
+      "memories": [
+        {
+          "id": "language-pref",
+          "scope": "project-a",
+          "kind": "preference",
+          "text": "请始终用中文回复。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "language-pref"
+        ]
+      }
+    },
+    {
+      "id": "recall-persistent-constraint",
+      "title": "Include an enduring constraint without a lexical match",
+      "category": "recall.context",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The current assembly policy includes active in-scope constraints regardless of query wording.",
+      "scope": "project-a",
+      "input": "Investigate a parser failure.",
+      "memories": [
+        {
+          "id": "no-push",
+          "scope": "project-a",
+          "kind": "constraint",
+          "text": "本项目禁止自动推送代码。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "no-push"
+        ]
+      }
+    },
+    {
+      "id": "recall-conflicted-excluded",
+      "title": "Quarantined facts never enter context",
+      "category": "recall.lifecycle",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A matching quarantined record must remain inspectable but excluded from injected context.",
+      "scope": "project-a",
+      "input": "SQLite",
+      "memories": [
+        {
+          "id": "conflicted-db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "This project uses SQLite.",
+          "status": "conflicted"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-invalidated-excluded",
+      "title": "Invalidated facts never enter context",
+      "category": "recall.lifecycle",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Explicit invalidation withdraws the record even if its text still matches the request.",
+      "scope": "project-a",
+      "input": "SQLite",
+      "memories": [
+        {
+          "id": "obsolete-db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "This project uses SQLite.",
+          "status": "invalidated"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-unrelated-empty",
+      "title": "Return no memory when none is relevant",
+      "category": "recall.basic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The fact is not a persistent preference or constraint and has no relevant lexical overlap.",
+      "scope": "project-a",
+      "input": "Which cache stores sessions?",
+      "memories": [
+        {
+          "id": "language",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "The backend uses Go.",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-wrong-entity-gap",
+      "title": "Do not confuse two services that share a property name",
+      "category": "recall.entity",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Only the order service answers the request. This is an intentional failing baseline: broad OR lexical matching currently also recalls the billing database through the shared property word.",
+      "scope": "project-a",
+      "input": "订单服务 数据库",
+      "memories": [
+        {
+          "id": "order-db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing-db",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "order-db"
+        ]
+      }
+    },
+    {
+      "id": "recall-synonym-gap",
+      "title": "Recall a relevant fact through a Chinese synonym",
+      "category": "recall.semantic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Credentials and keys refer to the same fixture subject and rotation asks for the recorded interval. The current lexical tokenizer has no shared bigram here; the desired recall is retained as a failing semantic-retrieval baseline.",
+      "scope": "project-a",
+      "input": "凭据的轮换周期",
+      "memories": [
+        {
+          "id": "credential-rotation",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密钥每九十天更换一次。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "credential-rotation"
+        ]
+      }
+    },
+    {
+      "id": "statement-project-fact",
+      "title": "Remember one explicit stable project fact",
+      "category": "statement.durable",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The user directly asserts one durable project fact, without asking for work or quoting another source.",
+      "scope": "project-a",
+      "input": "这个项目的后端使用 Go。",
+      "memories": [],
+      "expected": {
+        "store": true,
+        "kind": "project_fact",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-preference",
+      "title": "Remember an enduring language preference",
+      "category": "statement.durable",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A clear reusable personal response-language preference is eligible.",
+      "scope": "project-a",
+      "input": "我偏好使用中文回复。",
+      "memories": [],
+      "expected": {
+        "store": true,
+        "kind": "preference",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-constraint",
+      "title": "Remember an enduring project constraint",
+      "category": "statement.durable",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The statement directly sets one constraint on future project work.",
+      "scope": "project-a",
+      "input": "本项目禁止自动推送代码。",
+      "memories": [],
+      "expected": {
+        "store": true,
+        "kind": "constraint",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-adopted-decision",
+      "title": "Remember a decision that has been adopted",
+      "category": "statement.durable",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The user reports an adopted decision, rather than an option or request to make a change.",
+      "scope": "project-a",
+      "input": "我们已经决定使用 SQLite 作为这个项目的数据库。",
+      "memories": [],
+      "expected": {
+        "store": true,
+        "kind": "decision",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-question",
+      "title": "Do not save a question as an assertion",
+      "category": "statement.exclusion",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The user asks for information and makes no durable assertion.",
+      "scope": "project-a",
+      "input": "这个项目的后端使用什么语言？",
+      "memories": [],
+      "expected": {
+        "store": false,
+        "kind": "none",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-work-request",
+      "title": "Do not turn a task request into an adopted decision",
+      "category": "statement.exclusion",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Requested future work does not establish that a migration has happened or a durable declaration is being made.",
+      "scope": "project-a",
+      "input": "帮我把这个项目的数据库改成 SQLite。",
+      "memories": [],
+      "expected": {
+        "store": false,
+        "kind": "none",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-transient-progress",
+      "title": "Do not retain temporary progress as durable memory",
+      "category": "statement.exclusion",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "This is temporary task progress and contains no reusable declaration.",
+      "scope": "project-a",
+      "input": "这轮测试还在运行，稍后再看结果。",
+      "memories": [],
+      "expected": {
+        "store": false,
+        "kind": "none",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-quoted-success",
+      "title": "Do not promote an assistant claim into user-verified success",
+      "category": "statement.provenance",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The user only attributes a success claim to an assistant; there is no directly asserted durable fact or independent outcome evidence.",
+      "scope": "project-a",
+      "input": "助手说：“生产部署已经成功了。”",
+      "memories": [],
+      "expected": {
+        "store": false,
+        "kind": "none",
+        "conflict_ids": [],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "statement-semantic-duplicate",
+      "title": "Link semantically identical user declarations",
+      "category": "statement.relations",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The subject, property and value match the active user statement despite different wording; retain source evidence without a second canonical memory.",
+      "scope": "project-a",
+      "input": "该项目后端的实现语言是 Go。",
+      "memories": [
+        {
+          "id": "language",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "这个项目的后端使用 Go。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "store": false,
+        "kind": "project_fact",
+        "conflict_ids": [],
+        "duplicate_ids": [
+          "language"
+        ]
+      }
+    },
+    {
+      "id": "statement-conflict",
+      "title": "Quarantine incompatible values for the same project property",
+      "category": "statement.relations",
+      "kind": "statement",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The same backend cannot exclusively use both Go and Rust under the same stated conditions. No chronology or newer winner is inferred.",
+      "scope": "project-a",
+      "input": "这个项目的后端只使用 Rust。",
+      "memories": [
+        {
+          "id": "language",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "这个项目的后端只使用 Go。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "store": true,
+        "kind": "project_fact",
+        "conflict_ids": [
+          "language"
+        ],
+        "duplicate_ids": []
+      }
+    },
+    {
+      "id": "experience-observed-test",
+      "title": "在同一 Go 包中验证已有解析器测试",
+      "category": "experience.support",
+      "kind": "experience",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The procedure is narrow and all demonstrated steps are present in paired read/test results. It asks only for human review and preserves the reported scope.",
+      "scope": "project-a",
+      "draft": {
+        "title": "在同一 Go 包中验证已有解析器测试",
+        "summary": "在这个本地 Go 包中，读取的 parser_test.go 声明了 TestParseEmpty；随后 go test ./... -count=1 报告该包通过。该结果仅反映这次已有测试的工具报告。",
+        "conditions": "适用于这个包已有的解析器测试检查；需保留测试范围，不能推断生产部署或所有输入均正确。",
+        "steps": [
+          "读取 parser_test.go 确认已有测试名称和断言。",
+          "执行 go test ./... -count=1，并检查退出结果及包测试报告。",
+          "记录报告通过的范围，不把它扩大为生产成功。"
+        ],
+        "evidence_ids": [
+          "read-tests",
+          "run-tests"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "read-tests",
+          "name": "Read",
+          "input": {
+            "file_path": "/fixture/project-a/parser_test.go"
+          },
+          "result": "func TestParseEmpty(t *testing.T) { if Parse(\"\") != \"\" { t.Fatal(\"unexpected value\") } }",
+          "is_error": false,
+          "call_seq": 1,
+          "result_seq": 2
+        },
+        {
+          "id": "run-tests",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1"
+          },
+          "result": "ok example.test/parser 0.005s",
+          "is_error": false,
+          "call_seq": 3,
+          "result_seq": 4
+        }
+      ],
+      "expected": {
+        "eligible": true,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "experience-failure-as-success",
+      "title": "不要把失败的测试写成通过经验",
+      "category": "experience.support",
+      "kind": "experience",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The paired result explicitly reports failure and cannot support the claim that every test passed.",
+      "scope": "project-a",
+      "draft": {
+        "title": "用 go test 确认解析器测试通过",
+        "summary": "运行 go test ./... -count=1 后所有测试通过，可按此验证本地解析器。",
+        "conditions": "适用于当前本地解析器包。",
+        "steps": [
+          "执行 go test ./... -count=1。",
+          "确认所有测试已经通过。"
+        ],
+        "evidence_ids": [
+          "failed-tests"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "failed-tests",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1"
+          },
+          "result": "Exit code 1\n--- FAIL: TestParseEmpty\nFAIL example.test/parser",
+          "is_error": true,
+          "call_seq": 1,
+          "result_seq": 2
+        }
+      ],
+      "expected": {
+        "eligible": false,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "experience-production-overclaim",
+      "title": "本地测试不能证明生产部署成功",
+      "category": "experience.support",
+      "kind": "experience",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A local test output does not show any deployment or production user outcome. The procedure overstates the cited evidence.",
+      "scope": "project-a",
+      "draft": {
+        "title": "用本地测试结果验证生产部署",
+        "summary": "本地 go test 通过，证明生产部署已经成功且所有用户都不再遇到错误。",
+        "conditions": "适用于这个解析器服务的生产环境。",
+        "steps": [
+          "执行 go test ./... -count=1。",
+          "据此确认生产部署成功并结束线上故障。"
+        ],
+        "evidence_ids": [
+          "local-test"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "local-test",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1"
+          },
+          "result": "ok example.test/parser 0.005s",
+          "is_error": false,
+          "call_seq": 1,
+          "result_seq": 2
+        }
+      ],
+      "expected": {
+        "eligible": false,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "experience-transient-progress",
+      "title": "临时进度不应成为操作经验",
+      "category": "experience.durability",
+      "kind": "experience",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A one-run queue status is temporary progress, not a concrete reusable procedure.",
+      "scope": "project-a",
+      "draft": {
+        "title": "本轮测试排队进度",
+        "summary": "本轮测试正在排队，稍后查看。",
+        "conditions": "只适用于当前这一轮任务的等待阶段。",
+        "steps": [
+          "等待这次排队完成。"
+        ],
+        "evidence_ids": [
+          "queue-check"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "queue-check",
+          "name": "Bash",
+          "input": {
+            "command": "test-status"
+          },
+          "result": "Current run is queued; no test result is available.",
+          "is_error": false,
+          "call_seq": 1,
+          "result_seq": 2
+        }
+      ],
+      "expected": {
+        "eligible": false,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "experience-observed-negative-lesson",
+      "title": "保留文件缺失时的有限失败观察",
+      "category": "experience.support",
+      "kind": "experience",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "An observed failure can support a narrow negative lesson. This draft reports the missing file and does not invent a successful read or tested repair.",
+      "scope": "project-a",
+      "draft": {
+        "title": "保留文件缺失时的有限失败观察",
+        "summary": "在该本地项目中，Read config.yaml 返回文件不存在。对同类检查，应记录缺失和读取失败，不宣称已读取配置或配置校验通过。",
+        "conditions": "仅适用于需要读取项目根目录 config.yaml、且读取工具返回文件不存在的检查。",
+        "steps": [
+          "尝试读取项目根目录 config.yaml。",
+          "若结果报告文件不存在，记录缺失并停止宣称读取或校验成功。"
+        ],
+        "evidence_ids": [
+          "missing-config"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "missing-config",
+          "name": "Read",
+          "input": {
+            "file_path": "/fixture/project-a/config.yaml"
+          },
+          "result": "Error: file does not exist: /fixture/project-a/config.yaml",
+          "is_error": true,
+          "call_seq": 1,
+          "result_seq": 2
+        }
+      ],
+      "expected": {
+        "eligible": true,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "experience-historical-support-abstention",
+      "title": "Retain the first live extraction support-gate incident",
+      "category": "experience.incident",
+      "kind": "experience",
+      "origin": {
+        "kind": "incident",
+        "reference": "Private historical validation evidence is omitted; this suite retains synthetic regression inputs."
+      },
+      "rationale": "The unchanged historical draft includes untested general character/case-folding behavior beyond the local observations, so it should not enter human review as fully evidence-supported. The original Jev answer was supported at probability 0.74, below the 0.8 policy threshold; that was abstention, not an unsupported choice. This new live case tests eligibility again without asserting a stable future score.",
+      "scope": "project-a",
+      "draft": {
+        "title": "Go: collapse Unicode whitespace in a normalizer with strings.Fields + Join instead of TrimSpace",
+        "summary": "In a small Go fixture, NormalizeOwner used strings.ToLower(strings.TrimSpace(raw)), which only trims the ends. The test failed because internal tabs, repeated spaces, and NBSP (U+00A0) were kept. The function was changed to strings.ToLower(strings.Join(strings.Fields(raw), \" \")). After that edit, `go test ./... -count=1` reported ok on two later runs. The evidence covers only the three cases in the test suite: ASCII tab/newline/space runs, em space plus NBSP runs, and an all-whitespace input.",
+        "conditions": "Applies to a Go string normalizer that must lowercase input and collapse every run of whitespace, Unicode whitespace included, into one ASCII space with no leading or trailing spaces. It also applies when the current code uses strings.TrimSpace and tests fail on internal whitespace. The demonstration is limited to the three cases in owner_test.go. It does not show how characters that unicode.IsSpace does not treat as whitespace are handled (for example U+200B), and it does not show full Unicode case folding.",
+        "steps": [
+          "Read the implementation and its test file to find the current normalization expression and the expected outputs (here: owner.go and owner_test.go).",
+          "Run `go test ./... -count=1` before editing and note which cases fail and the actual vs. wanted values. In the observed run, the outputs kept \"\\t  \" and \"  \" inside the string.",
+          "Replace `strings.ToLower(strings.TrimSpace(raw))` with `strings.ToLower(strings.Join(strings.Fields(raw), \" \"))`. strings.Fields splits on runs of whitespace and drops leading and trailing runs. Edit only the implementation file and leave the tests and go.mod alone.",
+          "Run `go test ./... -count=1` again, making sure the call is issued after the edit result has come back, and check that it reports ok.",
+          "Report the limits: a passing run covers only the existing test cases. Characters that unicode.IsSpace does not treat as whitespace are kept, and strings.ToLower does not do full case folding."
+        ],
+        "evidence_ids": [
+          "toolu_bdrk_01LqiuF2KAaCNPSF3zcAZ6LB",
+          "toolu_bdrk_01D6H1jR3UEa3FuVq7Zd25Rw",
+          "toolu_bdrk_018RZmbqsup8YZo7bqpy6p1Q",
+          "toolu_bdrk_01LvnbB1xQY9mYsAd7RWgAZt",
+          "toolu_bdrk_011srHfg1XXL6kPDVFyo3bfJ",
+          "toolu_bdrk_01KsG5zJF5JdeXn8YRrvQ59p"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "toolu_bdrk_01LqiuF2KAaCNPSF3zcAZ6LB",
+          "name": "Read",
+          "input": {
+            "file_path": "/private<isolated-root>/project/owner.go"
+          },
+          "result": "1\tpackage labels\n2\t\n3\timport \"strings\"\n4\t\n5\tfunc NormalizeOwner(raw string) string {\n6\t    return strings.ToLower(strings.TrimSpace(raw))\n7\t}\n8\t",
+          "is_error": false,
+          "call_seq": 13,
+          "result_seq": 15
+        },
+        {
+          "id": "toolu_bdrk_01D6H1jR3UEa3FuVq7Zd25Rw",
+          "name": "Read",
+          "input": {
+            "file_path": "/private<isolated-root>/project/owner_test.go"
+          },
+          "result": "1\tpackage labels\n2\t\n3\timport \"testing\"\n4\t\n5\tfunc TestNormalizeOwner(t *testing.T) {\n6\t    for _, tc := range []struct { in, want string }{\n7\t        {\"  ALPHA\\t  Squad \\n\", \"alpha squad\"},\n8\t        {\"\\u2003Blue\\u00a0\\u00a0Team\\u2003\", \"blue team\"},\n9\t        {\"  \\t\\n\", \"\"},\n10\t    } {\n11\t        if got := NormalizeOwner(tc.in); got != tc.want {\n12\t            t.Errorf(\"NormalizeOwner(%q) = %q; want %q\", tc.in, got, tc.want)\n13\t        }\n14\t    }\n15\t}\n16\t",
+          "is_error": false,
+          "call_seq": 19,
+          "result_seq": 21
+        },
+        {
+          "id": "toolu_bdrk_018RZmbqsup8YZo7bqpy6p1Q",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1",
+            "description": "Run Go tests to observe failure"
+          },
+          "result": "Exit code 1\n--- FAIL: TestNormalizeOwner (0.00s)\n    owner_test.go:12: NormalizeOwner(\"  ALPHA\\t  Squad \\n\") = \"alpha\\t  squad\"; want \"alpha squad\"\n    owner_test.go:12: NormalizeOwner(\"\\u2003Blue\\u00a0\\u00a0Team\\u2003\") = \"blue\\u00a0\\u00a0team\"; want \"blue team\"\nFAIL\nFAIL\texample.test/experience\t0.299s\nFAIL",
+          "is_error": true,
+          "call_seq": 24,
+          "result_seq": 28
+        },
+        {
+          "id": "toolu_bdrk_01LvnbB1xQY9mYsAd7RWgAZt",
+          "name": "Edit",
+          "input": {
+            "file_path": "/private<isolated-root>/project/owner.go",
+            "new_string": "    // strings.Fields splits on unicode.IsSpace, so runs of Unicode whitespace\n    // (NBSP, em space, tabs, newlines) collapse and leading/trailing runs drop.\n    return strings.ToLower(strings.Join(strings.Fields(raw), \" \"))",
+            "old_string": "    return strings.ToLower(strings.TrimSpace(raw))",
+            "replace_all": false
+          },
+          "result": "The file /private<isolated-root>/project/owner.go has been updated successfully. (file state is current in your context — no need to Read it back)",
+          "is_error": false,
+          "call_seq": 70,
+          "result_seq": 72
+        },
+        {
+          "id": "toolu_bdrk_011srHfg1XXL6kPDVFyo3bfJ",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1",
+            "description": "Re-run Go tests after fix"
+          },
+          "result": "ok  \texample.test/experience\t0.559s",
+          "is_error": false,
+          "call_seq": 75,
+          "result_seq": 79
+        },
+        {
+          "id": "toolu_bdrk_01KsG5zJF5JdeXn8YRrvQ59p",
+          "name": "Bash",
+          "input": {
+            "command": "go test ./... -count=1",
+            "description": "Re-run Go tests after confirmed edit"
+          },
+          "result": "ok  \texample.test/experience\t0.422s",
+          "is_error": false,
+          "call_seq": 144,
+          "result_seq": 148
+        }
+      ],
+      "expected": {
+        "eligible": false,
+        "kind": "procedure"
+      }
+    },
+    {
+      "id": "recall-explicit-alias",
+      "title": "Resolve a source-declared service alias",
+      "category": "recall.alias",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "An explicit alias in the same active project identifies the order service; shared database vocabulary does not make billing applicable.",
+      "scope": "project-a",
+      "input": "交易 数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称交易）的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "recall-alias-collision",
+      "title": "Do not guess an ambiguous alias",
+      "category": "recall.alias",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Two active services declare the same alias. Neither object-specific fact can be selected as an unambiguous answer; preserve ambiguity.",
+      "scope": "project-a",
+      "input": "核心 数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称核心）的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务（简称核心）的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-two-services",
+      "title": "Compare two named services without a third",
+      "category": "recall.entity",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The question names two distinct subjects. Both are needed; sharing a database property does not add the third service.",
+      "scope": "project-a",
+      "input": "订单服务和账单服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        },
+        {
+          "id": "inventory",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "库存服务的数据库使用 SQLite。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders",
+          "billing"
+        ]
+      }
+    },
+    {
+      "id": "recall-unknown-service",
+      "title": "Do not replace an unknown service with known ones",
+      "category": "recall.entity",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "No fact belongs to the explicitly named inventory service; the nearest known service is not a substitute.",
+      "scope": "project-a",
+      "input": "库存服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-longest-service-name",
+      "title": "Preserve overlapping service identities",
+      "category": "recall.entity",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The longer explicit name identifies a different service. A substring match must not merge it with the order service.",
+      "scope": "project-a",
+      "input": "历史订单服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "historical",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "历史订单服务的数据库使用 SQLite。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "historical"
+        ]
+      }
+    },
+    {
+      "id": "recall-alias-project-boundary",
+      "title": "Resolve aliases only inside the selected project",
+      "category": "recall.scope",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "An identical alias in another project is neither a candidate nor a collision within this project.",
+      "scope": "project-a",
+      "input": "交易 数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称交易）的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "foreign",
+          "scope": "project-b",
+          "kind": "project_fact",
+          "text": "账单服务（简称交易）的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "recall-generic-services",
+      "title": "A generic question can need several services",
+      "category": "recall.entity",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The question intentionally ranges over services. It must not be forced onto one arbitrary entity.",
+      "scope": "project-a",
+      "input": "各服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders",
+          "billing"
+        ]
+      }
+    },
+    {
+      "id": "recall-service-property",
+      "title": "Match the requested property on one object",
+      "category": "recall.property",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The port belongs to the same subject but does not answer the database question.",
+      "scope": "project-a",
+      "input": "订单服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "port",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的端口为 8080。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders"
+        ]
+      }
+    },
+    {
+      "id": "recall-service-overview",
+      "title": "An object-only query can recall distinct properties",
+      "category": "recall.property",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Without a requested property, both recorded properties of the named service are relevant.",
+      "scope": "project-a",
+      "input": "订单服务",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "port",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务的端口为 8080。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "orders",
+          "port"
+        ]
+      }
+    },
+    {
+      "id": "recall-credential-type-boundary",
+      "title": "Specific key rotation excludes password and physical-key schedules",
+      "category": "recall.semantic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A digital key is a specific credential type, not a password or a physical door key. Sharing a rotation interval does not equate their subjects.",
+      "scope": "project-a",
+      "input": "密钥轮换周期",
+      "memories": [
+        {
+          "id": "key",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密钥每九十天更换一次。",
+          "status": "active"
+        },
+        {
+          "id": "password",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密码每三十天更换一次。",
+          "status": "active"
+        },
+        {
+          "id": "physical",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "门锁钥匙每三年更换一次。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "key"
+        ]
+      }
+    },
+    {
+      "id": "recall-physical-key-boundary",
+      "title": "Physical key replacement excludes digital credentials",
+      "category": "recall.semantic",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Physical key replacement is not digital credential rotation despite a shared replacement word.",
+      "scope": "project-a",
+      "input": "门锁钥匙的更换周期",
+      "memories": [
+        {
+          "id": "physical",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "门锁钥匙每三年更换一次。",
+          "status": "active"
+        },
+        {
+          "id": "digital",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密钥每九十天更换一次。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "physical"
+        ]
+      }
+    },
+    {
+      "id": "recall-rotation-property",
+      "title": "A rotation question excludes credential format and length",
+      "category": "recall.property",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "The requested property is the rotation interval. Other facts about credentials do not answer it.",
+      "scope": "project-a",
+      "input": "凭据的轮换周期",
+      "memories": [
+        {
+          "id": "rotation",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密钥每九十天更换一次。",
+          "status": "active"
+        },
+        {
+          "id": "format",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密钥使用 Base64 编码。",
+          "status": "active"
+        },
+        {
+          "id": "length",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "密码长度为十二位。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "rotation"
+        ]
+      }
+    },
+    {
+      "id": "recall-withdrawn-alias",
+      "title": "Invalidated alias does not identify another service",
+      "category": "recall.alias",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "An invalidated alias declaration is unavailable as current knowledge; unrelated service facts cannot fill its place.",
+      "scope": "project-a",
+      "input": "交易服务的数据库",
+      "memories": [
+        {
+          "id": "withdrawn",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称交易服务）的数据库使用 PostgreSQL。",
+          "status": "invalidated"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": []
+      }
+    },
+    {
+      "id": "recall-alias-substring",
+      "title": "Alias substrings do not establish object identity",
+      "category": "recall.alias",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "A declared alias appearing inside a different complete service name is not an alias reference.",
+      "scope": "project-a",
+      "input": "交易记录服务的数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称交易）的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "records",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "交易记录服务的数据库使用 SQLite。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "records"
+        ]
+      }
+    },
+    {
+      "id": "recall-conflicted-alias",
+      "title": "Quarantined alias does not create a current collision",
+      "category": "recall.lifecycle",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "Only the active declaration contributes current aliases and recall candidates; the conflicted declaration is not usable.",
+      "scope": "project-a",
+      "input": "核心 数据库",
+      "memories": [
+        {
+          "id": "orders",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称核心）的数据库使用 PostgreSQL。",
+          "status": "conflicted"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务（简称核心）的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "billing"
+        ]
+      }
+    },
+    {
+      "id": "recall-stored-alias-reference",
+      "title": "Link an alias-only saved fact back to its declared object",
+      "category": "recall.alias",
+      "kind": "recall",
+      "origin": {
+        "kind": "synthetic"
+      },
+      "rationale": "An explicit active alias declaration lets a separate alias-only statement refer to the same service. The port and other service database do not answer the query.",
+      "scope": "project-a",
+      "input": "订单服务的数据库",
+      "memories": [
+        {
+          "id": "identity",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "订单服务（简称交易）的端口为 8080。",
+          "status": "active"
+        },
+        {
+          "id": "database",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "交易的数据库使用 PostgreSQL。",
+          "status": "active"
+        },
+        {
+          "id": "billing",
+          "scope": "project-a",
+          "kind": "project_fact",
+          "text": "账单服务的数据库使用 MySQL。",
+          "status": "active"
+        }
+      ],
+      "expected": {
+        "recall_ids": [
+          "database"
+        ]
+      }
+    }
+  ]
+}

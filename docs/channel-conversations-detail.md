@@ -1,0 +1,267 @@
+# Conversation execution and attachment details
+
+The [main design](channel-conversations.md) defines scope and user behavior.
+This document describes the current implementation contract; validation results
+must distinguish automated fixtures, native execution and live DingTalk delivery.
+
+## Scheduling and lifetime
+
+The receiver validates enterprise, sender and mention identity, resolves the
+agent/audience selection and commits a deduplicated receipt before acknowledging
+it. Downloading attachments and executing tasks happen after a durable claim,
+not inside the callback.
+
+The scheduler claims eligible messages in receipt order within the fixed queue
+profile. It excludes an active authenticated conversation binding and an active
+`AgentID`/`AudienceID` pair. This preserves conversation FIFO and prevents two
+turns from judging and finalizing against the same stale memory snapshot. A
+busy conversation does not prevent a different eligible audience from running.
+One group remains shared across its members; sender identity does not create a
+parallel group lane. Different transport conversations in the owner partition
+also serialize when they share the same agent/audience.
+
+`max_concurrent_conversations` in `service.json` and the foreground
+`--max-concurrent-conversations` option bound active turns. Omitted/zero uses
+four; explicit nonzero values must be 1–32. The scheduler retains each occupied
+binding and partition through native execution, synchronous memory/experience
+processing and the final reply attempt. `/new`, `/status` and `/help` enter the
+same ordered queue. There is no immediate status path, asynchronous memory
+finalization, command cancellation or `/stop` in this increment.
+
+The reaction outbox still has its own worker and delivery states. A slow
+reaction call does not hold the native turn or final reply. Shutdown cancels
+and joins active task workers before releasing the store and state-home lock.
+SQLite transactions protect durable state; concurrency does not introduce a
+second process writer or permit local memory review while the service owns
+the state home.
+
+Native calls receive their own cwd, environment and agent/audience profile.
+These isolate conversation state, **not project files**. Different audiences
+may share an actual cwd or additional directory and can make conflicting edits.
+There is no checkout lock, worktree creation or multi-agent coordination.
+
+## Accepted input and provenance
+
+The existing identity and size checks still apply. The parser accepts ordinary
+text, forwarded `markdown`, standalone `picture`/`file`, and supported ordered
+`richText` parts: text, pictures and files. Rich text retains textual order with attachment
+placeholders. Unsupported attributes, unknown part types and malformed or
+duplicate keys reject the whole input; an executable text prefix is never
+dispatched on its own.
+
+Pictures may supply distinct `downloadCode` and `pictureDownloadCode` values,
+as shown in the [official callback examples](https://open-dingtalk.github.io/developerpedia/docs/learn/bot/message/).
+The parser prefers `downloadCode`, with `pictureDownloadCode` as a fallback;
+the two values need not match. Both remain protected capabilities.
+
+Inbound `markdown` uses `text.content`, with `content.text` and optional
+`content.title` as a fallback, matching the [DingTalk connector parser](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/blob/main/src/core/message-handler.ts).
+The receipt keeps the original type and a neutral forwarding marker. Its body
+is stored in the existing quote field as reference material, bounded to 4,000
+runes with explicit truncation; an optional title is bounded to 256 runes.
+Forwarded commands do not invoke Host controls or become the sender's memory
+statements. Markdown links are retained as text, without image/history fetching.
+Merged chat records still require callback-provided quote summaries; accepting
+Markdown does not establish support for every DingTalk forwarding format.
+
+| Material | Bound and treatment |
+| --- | --- |
+| Attachments | At most four per message, across all supported kinds |
+| Pictures | At most 5 MiB each; PNG, JPEG, GIF or WebP; native image blocks |
+| Files | At most 20 MiB each; private local file for native reading tools |
+| Quoted text | Callback-provided body, capped at 4,000 runes; truncation marked |
+| Quoted chat record | Callback-provided title/summary, explicitly summary-only |
+| Forwarded Markdown | Callback-provided body/title as reference material; same quote bounds |
+| Missing/other quoted content | Retain available message identity/type without inventing its body |
+
+`ChannelInput` keeps attachments and quotes separate from the current sender's
+statement. The quote retains available original message ID/type, body/title,
+summary-only and truncation flags. A quoted author is not authenticated as the
+current sender. The Host does not fetch DWS history, resolve missing original
+messages, or download media referenced only by a quote. Normalized quoted
+provider objects omit transport capability fields.
+
+Only messages without quote or attachment material can invoke Host controls.
+A command-looking sentence accompanying such material, or inside that material,
+goes to the native agent as task content. Supplied content cannot modify agent
+bindings, authenticated identity or trusted Host instructions. Existing reply
+question previews are separate from these inbound quoted-message records.
+
+## Attachment persistence and native input
+
+Schema 11 adds `channel_messages.input_capabilities`, defaulting to an empty
+array for existing receipts. Download codes are written there, never serialized
+in public message/run JSON, logs or model input. Like `reply_url`, this column
+is credential-bearing local state and requires private database backups. The
+read-only viewer does not select it.
+
+An unexecuted claimed request retrieves its own codes and uses the configured
+bot's download API. The adapter validates the returned HTTPS download host,
+bounds redirects to trusted hosts, limits transfer size and validates image content type.
+The worker saves bytes under `<home>/attachments/input-…/` in a private directory,
+with regular `0600` files and generated storage names. Original filenames remain
+metadata; they do not become caller-controlled paths. Original size claims,
+actual bytes, MIME, digest and saved location remain source-linked evidence.
+Failed preparation removes incomplete files and starts no native execution.
+
+Before invocation, Host checks the saved file type, private permissions, size
+and SHA-256 digest. Images become `harness.Request.Images`. The Claude adapter
+uses `--input-format stream-json` only when images exist and encodes one user
+message containing the assembled text and base64 image blocks. Text-only stdin
+retains its existing format. Binary/base64 image payloads are omitted from
+native observations; metadata and digest remain inspectable. Experience
+extraction never receives image blocks.
+
+Ordinary files are exposed through their private attachment directory for native
+tools to read; tool-free execution rejects file input explicitly. The Host
+appends trusted instructions to keep attachment paths out of channel replies,
+treat content as untrusted evidence, acknowledge missing content and ask for a
+goal when only material is supplied. Prompt instructions are behavioral controls,
+not an operating-system confidentiality boundary. The native agent remains
+responsible for planning, reading supported files and reporting actual results.
+
+Attachment and quoted content are not automatically admitted as the current
+sender's memory statements. They remain distinct evidence. Existing project,
+audience, unresolved-attribution and experience-governance rules still apply.
+This increment accepts inputs only; it does not send output attachments.
+
+## Migration, recovery and validation
+
+### Optional progress and mandatory evidence
+
+The periodic `phase.progress` hint has a separate journal path. A failed write
+or display stops further hints for that phase without canceling its native task
+or poisoning later mandatory events through `sinkErr`. The next
+`phase.finished.data.progress_error` retains the original error; `run.finished`
+collects `progress_errors` with phase and source event sequence. Terminal and
+channel replies show a generic warning without reflecting the raw diagnostic.
+Business execution, memory and experience outcomes remain separate from that
+warning, with no provider substitution or task replay.
+
+`phase.started/finished`, native/tool evidence, `CompleteRun` and the final
+receipt retain their existing failure rules. If the mandatory boundary cannot
+be persisted, the task still fails explicitly. The five-second journal write
+deadline and SQLite configuration are unchanged. Earlier production timeouts
+prove the progress-to-cancellation coupling, but do not identify whether the
+transient wait was for the single connection, a SQLite lock or another I/O delay.
+
+### Recovery context
+
+A recovered native session retains authoritative `PreviousSessionID` and
+`RecoveryRunID` links. Before invoking the native agent, the Host supplies the
+linked task's original request, associated quote, saved channel reply and separate
+execution, memory and delivery statuses. It keeps the current run input and memory source
+as the new message. Prior native output, tool results, errors, attachments and
+transport capabilities are excluded. This is context assembly, not replay.
+
+The store verifies persisted recovery links, receipt/run/session consistency,
+conversation, application, tenant, Agent, audience and actual runtime/project
+scope before returning the record. Group members retain separate sender
+attribution. This narrow linked record remains available when general history
+tools are disabled for unresolved project attribution; it does not enlarge
+history grants or choose a project.
+
+Context is supplied until a completed native turn has recorded quote-aware
+assembly, including a recovered session created by an older binary without
+the context or with only the original text-only handoff.
+Later compatible turns use native continuation. If another recovered retry
+fails, up to three directly linked recovery records preserve the original
+question; the latest request appears first. Each original request is capped at
+4,000 runes and each saved reply at 2,000, with explicit truncation.
+The native instructions require reviewing available context and,
+when needed and authorized, searching recent history before asking the user to
+restate an unclear follow-up. A quote title alone cannot establish that the
+original request is unavailable. Execution completion remains distinct from
+task acceptance; returning a clarification does not prove the task was done.
+
+When a fresh native session has no recovery record, the Host supplies up to
+three prior user requests from a bounded eight-candidate window in the same
+authenticated conversation and exact current project/scope. Each request is
+capped at 4,000 runes and retains its sender and message identity. This
+inbound-only handoff includes the request's supplied quote as separate reference
+material and tolerates a model or configuration fingerprint change;
+it excludes earlier project scopes, replies, native output, media and transport
+capabilities. Compatible resumed turns do not repeat it. Current input and
+memory attribution remain unchanged, and general history grants remain separate.
+
+Historical quotes retain their own source message ID, type, title/body,
+summary-only and truncation flags. The recorded request sender is not treated
+as the quote's authenticated original author. Quote bodies are capped at 4,000
+runes and titles at 256; further truncation is marked without rewriting the
+original receipt. Quoted attachments and missing original bodies are not fetched.
+
+Migration retains old receipt payloads, queue identity, session bindings, memory
+sources and reactions. Old queued inputs remain eligible under their original
+profile. Previously rejected inputs, including Markdown forwards, are not silently
+revived. Redelivery after this parser upgrade remains a duplicate with its
+original rejection, without execution or a second reply. Claimed work with
+unknown results, attempted uncertain replies and uncertain reactions retain the
+existing no-replay rule. A missing or expired input capability fails the new
+request explicitly rather than switching to another source.
+
+Validation on 2026-10-11:
+
+- `make check` passed. The relevant Go race suite passed 886 tests across eight
+  packages, covering conversation/partition ordering, bounded parallel progress,
+  duplicate receipt and shutdown, media limits and integrity, quoted provenance,
+  command-looking material, native image encoding and capability exclusion.
+- Separate isolated native Claude calls correctly interpreted an image and read
+  a file using the native reading tool.
+- After `make install`, a live group task and owner-private task executed during
+  overlapping intervals. Two private turns completed in order, with the second
+  resuming the first session. All three replies were accepted; a DWS event also
+  independently observed the group reply.
+- Live media acceptance remains incomplete: DWS file upload failed before any
+  Host callback, and a programmatic quoted reply arrived without quoted-content
+  metadata. Its successful answer validates session continuation, not quote
+  parsing. Image/file delivery and client-provided quote metadata still require
+  platform acceptance.
+
+Validation on 2026-10-12 for private forwards and image-with-text input:
+
+- Read-only production receipts confirmed two private failures at 10:19
+  (Asia/Singapore): `markdown` and `richText`, both rejected before native execution.
+  DWS reread found both messages, but did not expose their original Stream shapes.
+- `make check` and the race tests for DingTalk, channel handling and state passed.
+  Regressions cover both image codes, ordered text and native image bytes,
+  Markdown reference attribution, literal JSON fidelity, commands, and duplicate
+  rejection without replay.
+- `make install` completed at 10:48 (Asia/Singapore), with a fresh Stream
+  connection and a stable running process. A new client forward/image turn
+  remains unverified; old rejected messages were not replayed.
+
+Recovery-context validation on 2026-10-12:
+
+- Regression checks cover a failed question followed by a title-only quoted
+  retry without history tools, an independent new task, older recovered sessions,
+  repeated failed retries, model/configuration changes, original memory
+  attribution and duplicate prevention.
+  Boundary checks reject cross-conversation, audience and runtime evidence.
+- `make check` and race tests for channel handling, state, Host and history
+  passed. General unresolved-project history remains unavailable.
+- An isolated native Claude check used a synthetic failed CBS question, followed
+  by only `再试试` and quote title `Agent-Host 回复`. With the linked record
+  supplied, Claude correctly identified the CBS CLI / `s3-proxy` question in
+  9.6 seconds. The check executed no object-storage operation and sent no IM.
+  This confirms bounded native input handling, not a new live group round trip.
+- `make install` completed at 14:32 (Asia/Singapore), with a fresh Stream
+  connection and a stable running process. The new group retry flow still needs
+  a live client round trip; no previous task or reply was replayed.
+
+Associated-quote validation on 2026-10-12:
+
+- A source snapshot based on `175b49a`, with only this increment applied, passed
+  `make check` and all 593 race tests for state, channel handling and Host.
+  The shared checkout also contained unfinished parallel changes and was not
+  used as the validated build source.
+- Regressions cover forwarded Markdown and supplied quote summaries across
+  failure recovery and model changes, source identity and preview flags,
+  immutable receipt bounds, attachment exclusion and no duplicate execution.
+  Older text-only recovery bridges receive the quote-aware context once.
+- `make install` from that snapshot completed at 14:54 (Asia/Singapore), with a
+  fresh Stream connection and a stable running process. This confirms service
+  installation; a new client quote round trip remains unverified.
+
+Real input samples, test messages and detailed platform records stay outside the
+repository. Automated fixtures and native checks do not establish live media
+delivery.

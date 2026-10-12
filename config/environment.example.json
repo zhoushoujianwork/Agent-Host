@@ -1,0 +1,5 @@
+{
+  "TYPESAFE_API_KEY": "YOUR_TYPESAFE_API_KEY",
+  "ANTHROPIC_BASE_URL": "https://your-anthropic-compatible-gateway.example",
+  "ANTHROPIC_AUTH_TOKEN": "YOUR_NATIVE_GATEWAY_TOKEN"
+}

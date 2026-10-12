@@ -1,0 +1,20 @@
+{
+  "dws_executable": "/absolute/path/to/dws",
+  "profile": "corp-id:user-id",
+  "interval_seconds": 300,
+  "initial_window_hours": 24,
+  "reconciliation_window_hours": 6,
+  "retention_days": 30,
+  "page_limit": 10,
+  "max_messages": 200,
+  "timeout_seconds": 60,
+  "model": "sonnet",
+  "sources": [
+    {
+      "conversation_id": "verified-private-conversation-id",
+      "type": "dm",
+      "peer_open_dingtalk_id": "verified-peer-openDingTalkId",
+      "project_id": "registered-project-id"
+    }
+  ]
+}
