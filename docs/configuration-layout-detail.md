@@ -23,7 +23,7 @@
 
 固定配置文件为 `host.json` 和可选 `agents.json`。组件文件为
 `channels.<id>.json` 和 `plugins.<id>.json`。首期 ID 分别为
-`dingtalk`、`feishu`；`email`、`dingtalk-workspace`、`knowledge`。
+`dingtalk`、`feishu`；`email`、`knowledge`。
 文件名决定组件类型和稳定实例标识，不重复设置可冲突的 `type` 或 `id`。
 首期每种组件一个实例，多邮箱放在 Email 的账号列表中。
 
@@ -44,17 +44,55 @@ JSON 重复字段、未知字段、非法路径等沿用现有严格读取方式
 | `host.json` | 公共执行 defaults、命名 execution profiles、工作台、并发策略 |
 | `agents.json` | 现有角色、项目许可、知识源子集、可选插件子集及指令引用 |
 | `channels.<id>.json` | enabled、可选 execution profile、协议 settings、渠道 Agent 绑定 |
+| `channels.dingtalk.json` | settings.bot 与 settings.dws 两个独立可选配置 |
 | `plugins.email.json` | enabled、access、settings 中的邮箱 accounts 和 provider 参数 |
-| `plugins.dingtalk-workspace.json` | enabled、access、settings 中的 profile、services 和账号设置 |
 | `plugins.knowledge.json` | enabled、access、settings 中现有 sources 声明 |
 
 公共 profile 避免重复模型配置；渠道可选择不同 profile，迁移时保留各自实际值，
 不能用公共 defaults 覆盖当前不同 provider。凭证通过配置文件引用，不通过命令行
-携带私密值。由 Host 推导的插件状态路径替代需要用户填写的 state directory。
+携带私密值。由 Host 推导的插件及渠道子功能状态路径替代需要用户填写的 state directory。
+
+## 钉钉渠道可选功能
+
+`settings.bot` 保存机器人身份、凭证引用与消息接入参数；`settings.dws` 保存
+profile、services、账号设置及业务能力授权。各项存在时必须显式填写布尔
+`enabled`。下例只表示启用结构，业务参数需补全后才能运行：
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "settings": {
+    "dws": {
+      "enabled": true
+    }
+  }
+}
+```
+
+| bot | dws | 行为 |
+| --- | --- | --- |
+| 开启 | 缺省或关闭 | 仅机器人消息接入与回复，无 DWS 初始化或工具 |
+| 缺省或关闭 | 开启 | 仅 DWS 业务能力，无机器人连接、消息回调或 reaction worker |
+| 开启 | 开启 | 两项分别检查并加载，保留各自身份和授权 |
+| 缺省或关闭 | 缺省或关闭 | 渠道总开关开启时报无有效功能；关闭时不启动 |
+
+缺省与关闭分支不校验对应业务凭证、不构造 client、不创建功能状态目录、
+不注册 MCP、不启动事件连接或采集任务。只启用 DWS 不依赖机器人 app secret
+或 bot owner 配置，业务身份来自 DWS 自身授权；只启用机器人不要求 DWS 登录态。
+渠道内部组合 bot 与 DWS 适配器，不把 DWS 注册为顶层插件。
+DWS 状态统一在 `ROOT/channels/dingtalk/dws`，任务 workspace 保持独立。
+现有 `dingtalk-workspace` CLI 子命令和底层包名称可保留，不决定配置归属。
+
+DWS-only 允许渠道 worker 作为能力提供方运行，不伪造入站消息或启动机器人任务
+循环。能力挂载沿用既有 owner 和工具策略；本期不因该配置自动向飞书开放 DWS。
+
+## 通用插件配置
 
 插件统一外壳为 `version`、`enabled`、`access`、`settings`。`access.channels`
-为显式允许的渠道列表，`access.audiences` 为允许的 audience；Email 与钉钉业务
-工具只支持 owner，不能通过填写群 audience 放宽。首期启用插件必须声明 access。
+为显式允许的渠道列表，`access.audiences` 为允许的 audience；Email 只支持 owner，
+不能通过填写群 audience 放宽。渠道内 DWS 也保留现有 owner 限制。
+首期启用插件必须声明 access。
 Agent 插件子集只能缩小授权，省略时继承 eligible plugins；不增加 per-Agent
 邮箱账号子集。本期配置作用于 service workers，普通 CLI 的显式工具参数保留。
 
@@ -67,14 +105,15 @@ ID、账本和未知发送状态，不能通过目录迁移重新发送邮件。
 新增 plugin access 与其取交集。远程知识凭证在配置凭证目录，本地材料在
 `knowledge/` 或外部项目目录。禁用 knowledge 只取消工具，不删除材料。
 历史话题采集继续由 Host collector 管理，其选择配置归入 `host.json`，引用
-已启用的钉钉业务插件及现有 source selectors；不伪装成聊天渠道或自动学习插件。
+已启用的 `channels.dingtalk.json` 中 DWS 及现有 source selectors；不要求 bot
+开启。声明的 DWS 依赖未启用时明确报错；未启用的采集功能不初始化。
 
 ## 内置注册与生命周期
 
 建立小型 Go 内置注册表，注册已实现的 channel factories 和 plugin factories。
 插件 factory 负责解码和校验自身 settings、声明依赖及能力、生成任务 MCP binding。
 公共加载器负责发现、enabled、路径、生命周期和加载状态。避免在各渠道中分别
-维护 Email、知识、钉钉工具启用分支。
+维护 Email、知识启用分支。钉钉 factory 只装配已启用的 bot/DWS 子功能。
 
 加载顺序：扫描配置 → 解析启用项 → 检查身份、依赖和完整配置 → 获得运行锁
 → 准备目录 → 启动必要服务及渠道 worker → 工作台展示。
@@ -110,7 +149,7 @@ worker 异常退出时 supervisor 停止相关运行，不降级、不自动重�
 | `dingtalk/{state,native,logs}` | `channels/dingtalk/{state,native,logs}` |
 | `runtime/{state,workspace,native,logs}` | `channels/feishu/{state,workspace,native,logs}` |
 | `dingtalk/workspace` 中任务文件 | `channels/dingtalk/workspace` |
-| 同目录中业务登录态及 `host-operations.db` | `plugins/dingtalk-workspace/` |
+| 同目录中业务登录态及 `host-operations.db` | `channels/dingtalk/dws/` |
 | `email/` | 配置拆至 `config/`，账本和生成令牌移至 `plugins/email/` |
 | `dingtalk/knowledge/owner` | `knowledge/owner` |
 
@@ -129,6 +168,8 @@ scope 映射。旧 native sessions 保留历史，新 cwd 建立新绑定。映�
 ## 验证重点
 
 - 有效/禁用配置、未知名称、版本、重复字段、权限和路径错误；禁用项无连接。
+- bot-only、DWS-only、两项开启、缺省/关闭及总开关组合；未启用子功能无初始化，
+  不检查其凭证、不创建状态目录、不构造 client、不挂载工具或运行后台任务。
 - 双渠道不同 execution profile，统一 Email 插件及渠道与 owner/群权限过滤。
 - 插件缺失依赖、凭证失败、服务异常退出和停止清理；没有隐式重放。
 - 两渠道共享邮件操作 ID 并发去重，unknown/pending send 不重复发送。
