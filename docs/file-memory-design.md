@@ -29,11 +29,14 @@ Claude Code 等原生执行引擎负责执行。渠道接入、任务路由和�
 | 历史版本、禁用记录 | 同一记忆目录内的文件，用于纠正、追溯和防止重新启用 |
 | 运行记录与证据 | 现有渠道状态数据库及关联文件，保留任务和来源身份 |
 | 检索索引 | Host 管理的 SQLite 派生索引，能从知识文件重建 |
-| 外部资料 | 现有 `knowledge/` 和数据源插件，按需搜索与读取 |
+| 外部资料 | 由数据源插件管理，原文按配置引用，持久快照放所属插件目录 |
 
 配置仍统一放 `.agent-host/config/`，新增知识沉淀放 `.agent-host/memory/`。
 沉淀 Skill 的正文保存在 `memory/domains/<domain-id>/skills/<skill-id>/revisions/<revision>/SKILL.md`。
 手写 Skill 与 Agent/用户原文放 `config/`，任务上下文视图放 `cache/workspaces/`。
+`config/` 为用户输入，运行期只读；新方案取消顶层 `knowledge/`。
+数据源留存快照放 `datasource/plugins/<plugin>/sources/<source-id>/snapshots/`，
+既有原文无需复制，旧快照目录在实施时显式迁移。
 渠道目录保留渠道运行数据，workspace 保存任务文件与产物。
 文件存放在同一个根目录，不代表钉钉、飞书、不同 Agent 或群聊自动共享记忆。
 首期保留现有项目、Agent、audience 和默认渠道范围；跨渠道共享单独授权与验证。

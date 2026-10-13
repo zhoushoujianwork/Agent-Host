@@ -36,7 +36,7 @@ Host 超过此数量会直接报错。这是实现限制，不是 SQLite 容量�
 │       └── drafts/                   # 待校验修改，不参与有效召回
 ├── cache/memory/                     # 可删除的检索索引
 ├── cache/workspaces/<context-id>/    # 本次任务上下文视图与原生 Skill 包
-├── knowledge/                       # 原始资料与有来源的快照
+├── datasource/plugins/<plugin>/sources/<source-id>/snapshots/ # 持久来源资料
 └── channels/<channel>/state/         # 现有运行数据库与来源证据
 ```
 
@@ -56,6 +56,9 @@ Skill 保留触发描述、前提、步骤、观察到的失败方法、验证�
 原始日志、凭证和未经验证的助手结论不进入 Skill 正文。
 Skill 默认只含指令与引用；首期不生成 scripts、hooks、工具权限或 MCP 配置。
 外部引用失效时显示证据不可用，不能继续声称已核验；文件复制不保证证据可移植。
+config 是运行期只读的用户输入；本流程生成的条目、元数据、策略、草案和视图
+均写入 memory 或 cache，不能反向写 config。数据源原文和留存快照由所属插件管理，
+新布局不另设 knowledge 根目录，旧快照的映射与显式迁移见 workspace 详细稿。
 
 ## 发布、修改与并发
 

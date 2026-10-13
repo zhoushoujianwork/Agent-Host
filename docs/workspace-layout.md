@@ -10,6 +10,10 @@
 配置定义启用、角色与授权；记忆保存学习结果；workspace 提供当前任务实际需要的
 上下文。私人资料按用户和使用范围装配，不因为同一个 Agent 进入群聊就一起带入。
 
+`config/` 只保存用户维护的输入，Host 运行时只读。自动生成的用户偏好与 Skill
+写入 `memory/`；资料快照写入所属数据源目录；索引与上下文视图写入 `cache/`。
+新布局取消顶层 `knowledge/`，本地原文继续由数据源配置引用，不要求搬动。
+
 参考 [OpenClaw 的 workspace 文件约定](https://docs.openclaw.ai/concepts/agent-workspace)，
 采用 `AGENTS.md`、`SOUL.md`、`IDENTITY.md`、`USER.md` 和 `MEMORY.md` 的可读形式。
 其当前工具说明归入 `AGENTS.md` 的 Tools 章节，本方案沿用该方式。
@@ -39,14 +43,15 @@
 │   ├── current.json                 # 当前生效版本清单
 │   ├── scope.json                   # 范围映射
 │   └── drafts/                      # 待校验修改
-├── knowledge/                       # 外部资料与有来源快照
 ├── channels/<channel>/
 │   ├── state/                       # 任务、会话、证据与投递状态
 │   ├── workspace/                   # 当前渠道默认任务目录
 │   ├── native/                      # 原生引擎会话与配置状态
 │   ├── logs/
 │   └── dws/                         # 仅钉钉启用 DWS 时使用
-├── datasource/plugins/<plugin>/     # 数据源插件运行状态
+├── datasource/plugins/<plugin>/     # 数据源插件运行数据
+│   ├── sources/<source-id>/         # 来源实例的持久数据与快照（按需创建）
+│   └── ...                         # 插件自己的令牌、账本等
 ├── cache/
 │   ├── memory/                      # 可重建检索索引
 │   └── workspaces/<context-id>/      # 本次任务的上下文文件与原生 Skill 包
@@ -58,6 +63,11 @@
 具体正文在 `<skill-id>/revisions/<revision>/SKILL.md`，Host 展示名称、来源和当前版本。
 用户自己配置的 Skill 放 `config/skills/`；最终给原生引擎使用的包在 `cache/workspaces/`。
 三者分别是学习结果、配置输入和可重建装配产物。
+
+外部资料由数据源插件提供；其留存快照放
+`datasource/plugins/<plugin>/sources/<source-id>/snapshots/`。
+快照是有来源的持久资料，不能像缓存一样删除。已部署的旧 `knowledge/` 在实施时
+核对来源与授权后迁移；本次设计不搬动实际文件。
 
 项目任务继续使用项目真实目录。渠道默认 workspace 不存账号状态或一整套私人记忆；
 Host 上下文视图独立存放，不把 `USER.md` 或 Skill 复制进项目代码库。
@@ -80,7 +90,8 @@ workspace 的 `USER.md` 是两者经过筛选后的视图。当前请求优先�
 首期不在群聊装配个人 USER 文件，也不从显示名称自动关联不同平台的用户。
 
 workspace 的 `MEMORY.md`、`USER.md` 和 `skills/` 每次任务由 Host 生成，
-用户通过原文或 Host 的记忆修改入口维护内容。缓存修改不能成为新记忆或配置。
+用户通过原文或 Host 的记忆修改入口维护内容。Host 不把这些生成文件写回 `config/`。
+缓存修改不能成为新记忆或配置。
 视图中出现某份文件不代表拥有额外工具或操作权限。
 
 ## 本期取舍与实施顺序

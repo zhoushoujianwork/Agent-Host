@@ -4,6 +4,8 @@
 将数据源接入统一命名为 `datasource.plugins.*`，替代原有的 `plugins.email.json`
 和 `plugins.knowledge.json`。现行服务通过这些文件名加载四种内置数据源。
 实现约定见[详细稿](datasource-plugins-design-detail.md)。
+后续[目录设计](workspace-layout.md)取消顶层 knowledge：外部原文仍按配置引用，
+留存快照归入所属数据源插件的 sources 目录。该路径调整尚未实施，下面保留现行布局。
 
 ## 目标和使用方式
 
@@ -33,7 +35,7 @@
 │   ├── dokki/
 │   ├── confluence/
 │   └── email/
-└── knowledge/                      # 可选的文档存放位置，不是另一套存储系统
+└── knowledge/                      # 当前旧资料位置，后续显式迁入所属数据源目录
 ```
 
 只有需要持久运行数据的插件才创建状态目录。本地文档直接引用配置的原始目录，

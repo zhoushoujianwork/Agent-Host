@@ -36,7 +36,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 ├── datasource/plugins/                        # 按插件隔离的运行数据
 │   ├── email/                      # 操作账本、授权令牌等
 │   └── ...                         # 其他插件需要的运行状态
-├── knowledge/                      # 知识材料，按归属组织
+├── knowledge/                      # 当前部署的旧资料位置；新方案将迁入数据源目录
 │   └── owner/snapshots/<快照名>/
 ├── cli-state/                      # 普通终端聊天的现有状态
 └── backups/                        # 迁移备份和旧部署材料
@@ -90,6 +90,8 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 该方案尚未迁移或启用，下面仍描述当前部署行为。
 [workspace 目录方案](workspace-layout.md)补充 Agent 指令、用户 `USER.md`、手写 Skill
 与任务上下文视图的归属；新增路径同样尚未生效。
+新方案约定 config 为运行期只读的用户输入，生成内容写入 memory、cache 或所属
+数据源运行目录；取消顶层 knowledge，并显式迁移已有快照与配置引用。
 
 `knowledge/` 保存有来源的知识材料，由 `datasource.plugins.local-documents.json` 声明读取范围。
 项目已有文档留在项目目录，通过知识源配置引用。私人快照可以供多个渠道引用，
