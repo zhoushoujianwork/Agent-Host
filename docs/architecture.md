@@ -293,7 +293,8 @@ plugin platform, a custom model/tool loop, and transparent session migration
 between engines are outside the initial scope.
 
 The [email capability proposal](email-plugin.md) adds Gmail and 163 accounts
-through Host-selected MCP registration, with provider behavior behind email
+through one registered email MCP server. AI discovers managed accounts and
+selects an account ID for read/send tools, with provider behavior behind email
 adapters. Account integration and live mailbox validation remain planned.
 
 See [implementation notes](architecture-detail.md) for proposed code boundaries

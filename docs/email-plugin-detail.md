@@ -11,23 +11,30 @@ and implementation order are defined in the [main proposal](email-plugin.md).
 Reuse this registration path without putting Gmail or IMAP behavior inside the
 harness adapter, or turning email operations into knowledge-source writes.
 
-Propose `internal/email` for account selection, normalized tools and provider
+Propose `internal/email` for the account registry, normalized tools and provider
 adapters, plus CLI setup/check/serve wiring. Command names and exact configuration
 schema should be finalized during implementation; none are runnable today.
 Compose email registrations with existing knowledge/history/context servers:
 the current knowledge resolver resets its MCP list, so simply appending before
 that resolver would lose the email servers.
 
-Start with one pinned stdio instance per selected account, named from a stable
-account ID. Each exposes the same normalized tools, with no arbitrary account or
-credential override in tool arguments. Multiple accounts of the same provider
-remain independent. Host supplies an account/tool catalog; the native AI can
-query multiple instances and combine results while retaining individual coverage.
+Register one stdio server named `email` for the enabled Agent/audience. Its
+`list_accounts` tool returns the managed account catalog visible to that context.
+AI chooses an account using the user's request and this catalog, then supplies
+`account_id` to every mailbox operation. Host performs no task-based account
+selection or provider-specific tool mounting. Two 163 accounts use different IDs
+in the same catalog; they do not need separate MCP instances.
+
+Resolve `account_id` against the registry on every call. Reject unknown, disabled
+or unavailable accounts explicitly; never fall back to another sender. Tool
+arguments cannot override credentials or provider endpoints. A mail reference
+must belong to the supplied account. An explicit user account choice takes
+precedence; ask only when the sending account remains ambiguous.
 
 Account records contain a stable ID, display name, provider, expected mailbox
 identity, credential reference, selected Agent instances and audience policy.
 Owner-private mail is independent of project routing unless explicitly limited.
-Pin account identity, policy and credential reference/version into runtime
+Bind the catalog policy and configuration version into runtime
 compatibility; ordinary OAuth access-token refresh should not rotate sessions.
 Revalidate revocation and binding at calls. Tool-free extraction gets no email MCP.
 
@@ -37,16 +44,17 @@ MCP mount prevents arbitrary filesystem access by that same process identity.
 
 ## Provider boundaries
 
-- Gmail: use OAuth and Gmail API message/attachment endpoints. Initial scope is
-  `gmail.readonly`; metadata-only scope cannot read bodies. Search and read are
-  separate calls. A future provider-draft feature needs broader permission;
+- Gmail: use OAuth and Gmail API message/attachment and send endpoints. Initial
+  scopes are `gmail.readonly` and `gmail.send`; metadata-only scope cannot read
+  bodies. Search and read are separate calls. A future provider-draft feature
+  needs broader permission;
   `gmail.compose` also authorizes sending, so draft-only exposure must be enforced
   in the tool implementation, not inferred from OAuth.
 - 163: use TLS IMAP with a client authorization password. Validate the actual
   account's advertised capabilities and settings during onboarding. Personal
   and enterprise services must not share assumed endpoints. Use read-only mailbox
-  selection and body peek operations to avoid setting the Seen flag. SMTP is
-  unnecessary for the first increment.
+  selection and body peek operations to avoid setting the Seen flag. Use TLS SMTP
+  for sending and preserve reply headers for replies.
 - Normalize common sender, recipient, date, subject and unread filters. Do not
   pretend Gmail query syntax or thread semantics are portable to IMAP. Unsupported
   filters fail explicitly or are reported as bounded local filtering with coverage.
@@ -59,10 +67,23 @@ Exact 163 account endpoints and capabilities remain live-validation work.
 
 ## Tool surface and evidence
 
-Initial proposed operations: account information, folder/label listing, message
-search, message read and attachment read/download. Account information reports
-supported operations, not secret configuration. Tool listing performs no mailbox
-reads. Reply preparation uses native text generation and requires no write tool.
+Proposed tools (names and schemas are not implemented yet):
+
+| Tool | Purpose |
+| --- | --- |
+| `list_accounts()` | Return account IDs, addresses, providers, enabled operations and last checked connection status/time; no secrets or mailbox reads. |
+| `list_folders(account_id)` | List that account's folders or labels. |
+| `search_messages(account_id, filters, cursor)` | Search one account with explicit pagination and coverage. |
+| `read_message(account_id, message_id)` | Read the selected message without marking it read. |
+| `read_attachment(account_id, message_id, attachment_id)` | Retrieve a bounded, source-linked attachment. |
+| `send_message(account_id, to, subject, body, attachments)` | Send from the selected account and retain the operation receipt. |
+| `reply_message(account_id, message_id, to, body, attachments)` | Reply using the original message's reply headers and explicit recipients. |
+
+Tool discovery performs no mailbox reads. Cached connection status must be marked
+as cached or unchecked; it is not proof a later call will succeed. For a combined
+search, AI calls each relevant account and reports per-account results/failures.
+Send/reply arguments will also carry an operation ID for duplicate handling.
+Reply-all must use the intended recipient set, not silently expand a reply.
 
 Return account ID, provider, stable message reference, original headers, observed
 time, pagination and coverage with each result. Gmail IDs remain account-bound.
@@ -86,16 +107,19 @@ diagnostics. Distinguish authentication failure, throttling, unsupported operati
 stale reference, empty result and incomplete search. One failed account must not
 be presented as a successful search over all accounts.
 
-## Later writes and validation
+## Sending and validation
 
-Future sending binds an authorized request to the exact account, recipients,
+Sending binds an authorized request to the exact account, recipients,
 subject, body and attachments. Record intent and provider receipt durably. A
 timeout after submission is an unknown outcome, not proof of failure; do not
 automatically replay a send. SMTP acceptance is not proof of recipient delivery.
 
-Implementation checks should cover per-account registration and revocation,
+Implementation checks should cover account discovery, explicit account routing,
+unknown IDs, cross-account message references, registration and revocation,
 owner/group assembly, preserved existing MCP servers, Gmail token refresh,
 IMAP UID invalidation, unread-state preservation, MIME and attachment bounds,
-partial multi-account failure and secret redaction. Run `make check` before the
+partial multi-account failure, reply headers, send receipts, duplicate-operation
+handling, unknown send outcomes and secret redaction. Run `make check` before the
 implementation commit. Real acceptance uses bounded search/read on every selected
-account and a native AI request; no outgoing test mail is implied by read access.
+account and a native AI request. Live sending/reply acceptance needs an explicitly
+authorized test recipient and content; read access alone does not authorize it.
