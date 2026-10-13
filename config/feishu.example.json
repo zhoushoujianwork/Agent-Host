@@ -1,0 +1,12 @@
+{
+  "profile": "YOUR_PROFILE",
+  "app_id": "cli_YOURAPPLICATIONID",
+  "bot_open_id": "ou_YOURBOTOPENID",
+  "tenant_id": "YOUR_FEISHU_TENANT_ID",
+  "owner_open_id": "ou_YOUROWNEROPENID",
+  "im_chat": true,
+  "im_reactions": false,
+  "auto_join": false,
+  "allowed_sender_open_ids": ["ou_YOUROWNEROPENID"],
+  "poll_interval_seconds": 5
+}

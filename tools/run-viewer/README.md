@@ -11,6 +11,12 @@ results remain separate.
 
 ## Start
 
+The installed macOS service starts its own production workbench automatically
+and opens the execution page in the default browser. Its URL is recorded in
+`~/.agent-host/production/logs/service.stderr.log`; it stops with the service.
+See [service installation](../../docs/service-install.md) for headless startup.
+The commands below start a separate viewer for local development or inspection.
+
 Requires Python 3.10+ and a modern browser, without additional packages.
 From the project root:
 

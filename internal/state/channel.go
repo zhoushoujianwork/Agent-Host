@@ -36,6 +36,9 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 		return false, errors.New("channel message text exceeds 16 KiB")
 	}
 	if m.ReplyTarget == nil {
+		if m.Channel == ReplyTargetFeishu || m.Channel == ReplyTargetFeishuMeeting {
+			return false, errors.New("Feishu message requires an API reply target")
+		}
 		if strings.TrimSpace(replyURL) == "" {
 			return false, errors.New("channel message reply URL is required")
 		}
@@ -43,12 +46,11 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 			return false, errors.New("channel reply expiration is required")
 		}
 	} else {
-		target := m.ReplyTarget
-		if target.Kind != ReplyTargetFeishuMeeting || m.Channel != target.Kind || target.ID == "" || target.ID != m.ConversationID || strings.TrimSpace(target.UUID) == "" || len(target.UUID) > 128 {
+		if !channelAPIReplyTargetValid(m) {
 			return false, errors.New("channel API reply target is invalid")
 		}
-		if replyURL != "" || !m.ReplyExpiresAt.IsZero() || !m.DisableReactions || m.ConversationType != "2" {
-			return false, errors.New("meeting reply requires a shared conversation without webhook expiry or reactions")
+		if replyURL != "" {
+			return false, errors.New("channel API reply cannot include a webhook")
 		}
 	}
 	if m.ReceivedAt.IsZero() {
@@ -95,7 +97,9 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 			if conversationType(old.ConversationType) != conversationType(m.ConversationType) || old.ID != m.ID || old.Channel != m.Channel || old.AccountID != m.AccountID || old.TenantID != m.TenantID || old.MessageID != m.MessageID || old.ConversationID != m.ConversationID || old.SenderID != m.SenderID || old.MessageType != m.MessageType {
 				return errors.New("channel message identity or content collision")
 			}
-			if (old.ReplyTarget == nil) != (m.ReplyTarget == nil) || old.ReplyTarget != nil && *old.ReplyTarget != *m.ReplyTarget || old.DisableReactions != m.DisableReactions {
+			// A configuration upgrade may enable IM feedback, but redelivery
+			// keeps the original receipt's policy and never backfills its outbox.
+			if (old.ReplyTarget == nil) != (m.ReplyTarget == nil) || old.ReplyTarget != nil && *old.ReplyTarget != *m.ReplyTarget || old.DisableReactions != m.DisableReactions && m.Channel != ReplyTargetFeishu {
 				return errors.New("channel reply destination or feedback capability collision")
 			}
 			forwardedMarkdown := old.MessageType == "markdown" && strings.TrimSpace(m.Text) != "" && m.Input != nil && m.Input.Quote != nil && m.Input.Quote.MessageType == "markdown" && strings.TrimSpace(m.Input.Quote.Body) != ""
@@ -131,6 +135,25 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 		return queueChannelReaction(ctx, tx, m, "received")
 	})
 	return inserted && err == nil, wrap("enqueue channel message", err)
+}
+
+// Both receipt admission and history access require the same credential-free
+// destination contract. API text channels cannot acquire webhook or media powers.
+func channelAPIReplyTargetValid(m ChannelMessage) bool {
+	target := m.ReplyTarget
+	if target == nil || target.Kind != m.Channel || target.ID == "" || target.ID != m.ConversationID || strings.TrimSpace(target.UUID) == "" || len(target.UUID) > 128 ||
+		!m.ReplyExpiresAt.IsZero() || m.MessageType != "text" || m.Input != nil || strings.TrimSpace(m.AgentID) == "" || strings.TrimSpace(m.AudienceID) == "" {
+		return false
+	}
+	switch target.Kind {
+	case ReplyTargetFeishu:
+		return (m.ConversationType == "1" || m.ConversationType == "2" && m.AudienceID != OwnerAudienceID) &&
+			strings.HasPrefix(m.MessageID, "om_") && len(m.MessageID) > len("om_") && target.MessageID == m.MessageID && len(target.UUID) <= 50
+	case ReplyTargetFeishuMeeting:
+		return m.DisableReactions && m.ConversationType == "2" && m.AudienceID != OwnerAudienceID && target.MessageID == ""
+	default:
+		return false
+	}
 }
 
 func readChannelMessage(ctx context.Context, q rowQuerier, id string) (ChannelMessage, error) {

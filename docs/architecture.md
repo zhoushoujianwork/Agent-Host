@@ -3,6 +3,9 @@
 Status: architecture and roadmap, with a local CLI MVP, manual-review experience
 extension, DingTalk private/group-mention channels with configurable Agent
 instances, and a Feishu meeting text channel implemented. The
+[Feishu IM increment](feishu-channel.md) adds owner private and group-mention
+text; its assembled checks and one private greeting/reply passed. Group and
+multi-turn IM acceptance remain pending. The
 [DingTalk guide](dingtalk-channel.md) separates offline validation, the verified
 first live owner turn and remaining platform checks. The [first MVP validation](mvp-validation.md) and
 [experience design](experience-memory.md) separate implementation, test evidence,
@@ -110,11 +113,12 @@ remain distinct.
 The [personal-assistant proposal](personal-assistant.md) extends this foundation
 with evolving current matters, cited private recommendations and an explicit
 owner-private memory domain. It keeps temporary work state separate from reusable
-memory and uses general types with people/project/topic associations. This is
-an approved design whose [P0 release scope](release-follow-up.md#p0-contextual-assistance-and-accessible-memory)
-awaits development: matter tracking, scoped AI read access and a private
+memory and uses general types with people/project/topic associations. The
+implemented [P0 release scope](release-follow-up.md#p0-contextual-assistance-and-accessible-memory)
+adds matter tracking, scoped AI read access and a private
 recommendation-to-preparation loop. Personal-domain expansion and conversation
-learning follow later. Recommendation behavior is not yet delivered.
+learning follow later. The [validation notes](personal-assistant-detail.md#p0-validation)
+separate bounded native and selected-source evidence from unmeasured general quality.
 
 The [local knowledge increment](local-knowledge.md) adds explicitly selected
 project Markdown and retained owner-private snapshots through the same on-demand
@@ -216,9 +220,22 @@ It supports fixed-meeting delivery and optional automatic entry from meeting
 invitations or permitted private cards, links and numbers. Invitation/end events
 use the CLI event connection; meeting questions remain on polling. Each meeting
 has its own public audience and cancelable runtime, while DingTalk's webhook and
-reaction behavior remain intact. Automated checks and the passing fixed-meeting
-two-turn owner acceptance are tracked in that guide. Successful automatic-entry
-acceptance, pushed meeting text and bidirectional audio remain separate work.
+reaction behavior remain intact. Automated checks, the passing fixed-meeting
+two-turn owner acceptance and a later private-entry rejoin/fresh reply are
+tracked in that guide. Other lifecycle acceptance cases, pushed meeting text
+and bidirectional audio remain separate work.
+The [combined Feishu text channel](feishu-channel.md) shares one event connection
+and one Host worker across owner private text, same-tenant group @mentions and
+optional meetings. Owner DMs use owner context; each group and meeting keeps its
+own public audience and authorized history. An IM-only configuration performs
+no meeting reads. The new IM path's validation is recorded separately from the
+meeting evidence.
+
+The [issue #1 plan](release-follow-up.md#issue-1-delivery-plan) proposes derived
+native skills from eligible execution procedures and explicit per-person reply
+preferences. Both remain planned. They reuse scoped, source-linked memory and
+depend on the publication/blacklist increment; native skill execution remains
+inside the harness, and profile data cannot broaden identity or audience grants.
 
 ## Initial scope and order
 
@@ -274,6 +291,10 @@ acceptance, pushed meeting text and bidirectional audio remain separate work.
 Build adapters around demonstrated engine capabilities. A general-purpose
 plugin platform, a custom model/tool loop, and transparent session migration
 between engines are outside the initial scope.
+
+The [email capability proposal](email-plugin.md) adds Gmail and 163 accounts
+through Host-selected MCP registration, with provider behavior behind email
+adapters. Account integration and live mailbox validation remain planned.
 
 See [implementation notes](architecture-detail.md) for proposed code boundaries
 and the first validation target, and [research conclusions](research.md) for the

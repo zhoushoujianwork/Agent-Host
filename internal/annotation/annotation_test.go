@@ -30,6 +30,24 @@ func TestSourceSpansAndStableScopedIdentities(t *testing.T) {
 	}
 }
 
+func TestStatusTokenDoesNotHideSeparateAuthenticationToken(t *testing.T) {
+	for _, text := range []string{"readiness success token", "liveness token", "SUCCESS TOKENS"} {
+		a := Extract("app", text)
+		if hasCredentialTopic(topicSet(a)) {
+			t.Fatal("status marker treated as credential", text, a)
+		}
+	}
+	a := Extract("app", "readiness success token and the authentication bearer token")
+	if !contains(credentialTypes(topicSet(a)), "credential.type.token") {
+		t.Fatal("status-token exception erased separate bearer credential", a)
+	}
+	for _, span := range allSpans(a) {
+		if span.Text != "token" || span.Start == 0 || !strings.Contains("readiness success token and the authentication bearer token"[span.Start-7:span.Start], "bearer") {
+			t.Fatal("credential span does not identify actual bearer token", span)
+		}
+	}
+}
+
 func TestExplicitServicesAliasesAndUnknowns(t *testing.T) {
 	orders := Extract("a", "订单服务（简称交易）的数据库为 PostgreSQL。")
 	billing := Extract("a", "账单服务（别名结算）的数据库为 MySQL。")

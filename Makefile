@@ -21,7 +21,7 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  package Package a reviewed public export for native macOS (requires VERSION=...)' \
+		'  package Package a clean committed checkout for native macOS (requires VERSION=...)' \
 		'  install Build, install and start the macOS production user service' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \

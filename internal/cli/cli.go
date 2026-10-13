@@ -49,6 +49,9 @@ Usage:
   agent-host dingtalk serve --config PATH [options]
   agent-host dingtalk check --config PATH [options]
   agent-host dingtalk status [options]
+  agent-host feishu serve --config PATH [options]
+  agent-host feishu check --config PATH [options]
+  agent-host feishu status [--home PATH]
   agent-host feishu-meeting serve --config PATH [options]
   agent-host feishu-meeting check --config PATH [options]
   agent-host feishu-meeting status [--home PATH]
@@ -60,6 +63,7 @@ Usage:
   agent-host service run --root ABSOLUTE_PATH
   agent-host knowledge check --config ABSOLUTE_PATH
   agent-host discovery --help
+  agent-host assistance --help
 
 Options (place before positional IDs/queries):
   --home PATH           Host state directory (default ~/.agent-host)
@@ -96,6 +100,9 @@ type options struct {
 	knowledgeNames                                                                     []string
 	knowledgeConfig                                                                    string
 	discoveryConfig                                                                    string
+	contextPolicy, contextExecutable                                                   string
+	suggestionRevision                                                                 int
+	reviewAt                                                                           string
 	historyEnabled                                                                     bool
 	historyExecutable                                                                  string
 	knowledgeSources                                                                   []knowledge.ResolvedSource
@@ -175,6 +182,11 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.expiresAt, "expires-at", "", "Experience expiration (RFC3339)")
 	fs.IntVar(&o.maxConcurrentConversations, "max-concurrent-conversations", 4, "Maximum simultaneous channel conversations (1-32)")
 	fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "Per-turn timeout")
+	if strings.HasPrefix(name, "assistance ") {
+		fs.StringVar(&o.discoveryConfig, "config", "", "Private selected-source discovery configuration")
+		fs.IntVar(&o.suggestionRevision, "revision", 0, "Expected suggestion revision from the private list")
+		fs.StringVar(&o.reviewAt, "until", "", "Postponement review time (RFC3339)")
+	}
 	if strings.HasPrefix(name, "dingtalk ") {
 		fs.StringVar(&o.dingtalkConfig, "config", "", "DingTalk owner-DM JSON configuration")
 	}
@@ -312,7 +324,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if args[0] == "dingtalk" {
 		return runDingTalk(ctx, args[1:], out, errout)
 	}
-	if args[0] == "feishu-meeting" {
+	if args[0] == "feishu-meeting" || args[0] == "feishu" {
 		return runFeishuMeeting(ctx, args[1:], out, errout)
 	}
 	if args[0] == "service" {
@@ -326,6 +338,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "discovery" {
 		return runDiscovery(ctx, args[1:], out, errout)
+	}
+	if args[0] == "context-mcp" {
+		return runContextMCP(ctx, args[1:], in, out, errout)
+	}
+	if args[0] == "assistance" {
+		return runAssistance(ctx, args[1:], out, errout)
 	}
 	command := args[0]
 	args = args[1:]

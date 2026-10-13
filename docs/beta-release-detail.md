@@ -5,14 +5,16 @@ has its own [record](release-daily-use.md).
 
 ## Distribution
 
-Run `make package VERSION=0.2.0-beta.1` in the reviewed public export to prepare
+Run `make package VERSION=YOUR_VERSION` in the clean, reviewed development checkout to prepare
 a local macOS archive from a clean Git commit. The version is explicit, with
 embedded build revision and dirty
 state, a manifest and archive SHA-256. Packaged files come from the public
 allowlist; production credentials, state, logs and validation backups are excluded.
-Publication and tags are separate from packaging. `tools/release/export_public.py`
-prepares a new source snapshot without private validation reports or original
-Git history; review and commit that snapshot before packaging or publication.
+Publication and tags are separate from packaging. Development now continues
+directly on the public repository's Git history; local development and GitHub
+share the same commits. Follow the [development guide](development.md). The
+legacy `tools/release/export_public.py` remains available for historical export
+review, but normal updates no longer create a separate source snapshot.
 
 The archive contains the native binary, configuration examples, installation
 and viewer tools, user guides, LICENSE and dependency notices. It requires the

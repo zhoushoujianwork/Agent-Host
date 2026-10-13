@@ -1,9 +1,10 @@
 # Personal assistance, contextual recommendations and memory
 
-Status: design approved; P0 is ready for development in the
-[release follow-up](release-follow-up.md#p0-contextual-assistance-and-accessible-memory),
-2026-10-12. Implementation has not started. [Research and technical notes](personal-assistant-detail.md)
-record primary sources, current code, the P0 acceptance boundary and later scope.
+Status: P0 implemented on 2026-10-12: changing matters, scoped AI access to
+existing memory and original evidence, and owner-selected preparation.
+[Implementation and validation](personal-assistant-detail.md#p0-implementation)
+separate automated checks, native-model acceptance and the selected-source pilot.
+Personal-domain memory and conversation learning remain P1.
 
 ## Recommendation
 
@@ -84,7 +85,7 @@ discoverable read-only tools; distinguish a current status, a reusable lesson
 and a source report in the results. Retrieval must preserve scope, freshness and
 citations, including in a fresh native conversation.
 
-## P0: ready for development
+## Current P0
 
 1. **Distinguish and maintain context.** Extend selected, project-mapped DWS
    conversations into evolving current matters. Keep evidence, matters, existing
@@ -102,7 +103,15 @@ P0 acceptance requires a fresh conversation to answer what remains open and
 retrieve a relevant saved lesson with its sources, then complete a selected
 preparation task. New progress must update the matter and suppress stale or
 duplicate suggestions. Evidence, inferred status and durable knowledge must stay
-distinguishable throughout. This is planned acceptance, not a delivered result.
+distinguishable throughout. The validation record distinguishes bounded
+acceptance from general quality.
+
+Use `assistance refresh` to collect and reconcile an explicitly selected project
+source, then `assistance suggestions` to inspect private choices. Select one with
+`assistance prepare`; postpone, dismiss and resolve remain separate controls.
+Owner chat in one registered project can retrieve saved memory on demand; pass
+`--discovery-config` to include the selected conversation matters. No record IDs
+are needed in ordinary questions. See the [command guide](personal-assistant-detail.md#commands).
 
 ## Later increments
 
@@ -130,8 +139,8 @@ memory research support separating context, attention and memory lifecycle;
 the [research notes](personal-assistant-detail.md#research-findings) explain the
 evidence and its limits.
 
-Agent-Host already has selected-source DWS intake, cited topic proposals and
-private evidence export. Evolving matters, recommendations, personal-domain
-recall and conversation-derived memory remain planned. Success should mean
+Agent-Host retains selected-source DWS intake, cited topic proposals and private
+evidence export, and now adds evolving matters and preparation suggestions.
+Personal-domain recall and conversation-derived memory remain planned. Success should mean
 useful suggestions with inspectable evidence, few stale or repeated interruptions,
 and correct later reuse—not the number of messages collected or memories saved.

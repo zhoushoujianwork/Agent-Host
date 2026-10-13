@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-const Version = "entity-topic-v1"
+const Version = "entity-topic-v2"
 
 type Span struct {
 	Text   string `json:"text"`
@@ -497,7 +497,16 @@ func extractTopics(a *Annotation, text string, start, end int) {
 		{"certificate", []string{"证书", "certificate", "certificates"}},
 		{"", []string{"凭据", "credential", "credentials"}},
 	} {
-		if loc := matchTerm(clause, entry.terms); loc != nil {
+		matches := matchTerms(clause, entry.terms)
+		var loc []int
+		for _, candidate := range matches {
+			if entry.kind == "token" && statusToken(clause, candidate[0], candidate[1]) {
+				continue
+			}
+			loc = candidate
+			break
+		}
+		if loc != nil {
 			credential = true
 			if loc[0] < first {
 				first = loc[0]
@@ -528,6 +537,18 @@ func extractTopics(a *Annotation, text string, start, end int) {
 			add("credential.rotation.period", first, last)
 		}
 	}
+}
+
+// A named success/readiness/liveness status token is a response marker, not
+// an authentication credential. Other tokens in the same clause still retain
+// their credential type; this exception cannot erase a bearer/access token.
+func statusToken(clause string, start, end int) bool {
+	for _, span := range matchTerms(clause, []string{"success token", "success tokens", "readiness token", "readiness tokens", "liveness token", "liveness tokens", "成功标记", "就绪标记"}) {
+		if start >= span[0] && end <= span[1] {
+			return true
+		}
+	}
+	return false
 }
 
 func matchTerm(text string, terms []string) []int {

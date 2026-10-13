@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"agent-host/internal/channel"
+	"agent-host/internal/channel/feishu"
 	"agent-host/internal/channel/feishumeeting"
 	"agent-host/internal/event"
 	"agent-host/internal/routing"
@@ -22,14 +23,23 @@ import (
 	"agent-host/internal/terminal"
 )
 
-const feishuMeetingUsage = `Feishu meeting text channel through an existing lark-cli profile.
+const feishuMeetingUsage = `Feishu private/group and meeting text through an existing lark-cli profile.
+
+  agent-host feishu check --config PATH [execution options]
+  agent-host feishu serve --config PATH [execution options]
+  agent-host feishu status [--home PATH]
 
   agent-host feishu-meeting check --config PATH [execution options]
   agent-host feishu-meeting serve --config PATH [execution options]
   agent-host feishu-meeting status [--home PATH]
 
 Configuration is private JSON: profile, app_id, bot_open_id, meeting_id,
-tenant_id, allowed_sender_open_ids, poll_interval_seconds (at least 5), auto_join.
+tenant_id, allowed_sender_open_ids, poll_interval_seconds (at least 5), auto_join,
+im_chat, im_reactions and owner_open_id. im_chat enables owner private text and same-tenant
+group text with a verified bot mention, on the same event connection and worker pool.
+im_reactions enables four progress reactions on original private/group messages.
+It requires the published bot scope im:message.reactions:write_only (or im:message).
+Meeting chat has no IM reaction target and keeps reactions disabled.
 Without auto_join, join the bot with lark-cli before starting this receiver.
 With auto_join, meeting_id is optional; an existing meeting is verified before use.
 Allowlisted meeting invitations and direct meeting cards/links/numbers join automatically.
@@ -60,6 +70,9 @@ type feishuMeetingConfigFile struct {
 	AllowedSenderOpenIDs []string `json:"allowed_sender_open_ids"`
 	PollIntervalSeconds  int64    `json:"poll_interval_seconds"`
 	AutoJoin             bool     `json:"auto_join,omitempty"`
+	IMChat               bool     `json:"im_chat,omitempty"`
+	IMReactions          bool     `json:"im_reactions,omitempty"`
+	OwnerOpenID          string   `json:"owner_open_id,omitempty"`
 }
 
 func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
@@ -74,8 +87,16 @@ func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
 		return feishumeeting.Config{}, errors.New("Feishu poll_interval_seconds must be at least 5 and fit a duration")
 	}
 	cfg := feishumeeting.Config{Profile: c.Profile, AppID: c.AppID, BotOpenID: c.BotOpenID, MeetingID: c.MeetingID, TenantID: c.TenantID,
-		AllowedSenderOpenIDs: c.AllowedSenderOpenIDs, PollInterval: time.Duration(c.PollIntervalSeconds) * time.Second, AutoJoin: c.AutoJoin}
-	return cfg, cfg.Validate()
+		AllowedSenderOpenIDs: c.AllowedSenderOpenIDs, PollInterval: time.Duration(c.PollIntervalSeconds) * time.Second, AutoJoin: c.AutoJoin, IMChat: c.IMChat, IMReactions: c.IMReactions, OwnerOpenID: c.OwnerOpenID}
+	if err := cfg.Validate(); err != nil {
+		return feishumeeting.Config{}, err
+	}
+	if cfg.IMChat {
+		if err := feishuIMConfig(cfg).Validate(); err != nil {
+			return feishumeeting.Config{}, err
+		}
+	}
+	return cfg, nil
 }
 
 func (c agentCatalog) selectMeetingAgent(account string, m channel.Message) (channel.AgentSelection, error) {
@@ -123,7 +144,7 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		}
 		filtered := make([]state.ChannelMessage, 0, len(messages))
 		for _, m := range messages {
-			if m.Channel == state.ReplyTargetFeishuMeeting {
+			if m.Channel == state.ReplyTargetFeishuMeeting || m.Channel == state.ReplyTargetFeishu {
 				filtered = append(filtered, m)
 			}
 		}
@@ -176,7 +197,16 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		} else if err := resolveKnowledge(&o); err != nil {
 			return err
 		}
-		return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "transport": "feishu_meeting_cli_poll", "scope": "allowlisted_addressed_meeting_text", "agents": len(agents.Agents), "model": o.model, "jev_provider": client.Provider(), "jev_model": client.Model(), "platform_verified": false, "native_auth_verified": false, "voice_supported": false, "auto_join_enabled": cfg.AutoJoin})
+		transport, scope := "feishu_meeting_cli_poll", "allowlisted_addressed_meeting_text"
+		if cfg.IMChat {
+			transport, scope = "feishu_cli_events_and_meeting_poll", "owner_private_and_bot_mentioned_group_text"
+			if cfg.AutoJoin || cfg.MeetingID != "" {
+				scope += "_and_allowlisted_addressed_meeting_text"
+			} else {
+				transport = "feishu_cli_events"
+			}
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "transport": transport, "scope": scope, "agents": len(agents.Agents), "model": o.model, "jev_provider": client.Provider(), "jev_model": client.Model(), "platform_verified": false, "native_auth_verified": false, "voice_supported": false, "auto_join_enabled": cfg.AutoJoin, "im_chat_enabled": cfg.IMChat, "im_reactions_enabled": cfg.IMReactions})
 	}
 	release, err := state.Acquire(o.home)
 	if err != nil {
@@ -212,10 +242,21 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	if cfg.AutoJoin {
 		profile = channel.Key("feishu-meeting-auto-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
 	}
-	service := &channel.Service{Channel: state.ReplyTargetFeishuMeeting, DisableReactions: true, TextReplier: feishumeeting.Replier{Config: cfg},
+	channelKind := state.ReplyTargetFeishuMeeting
+	if cfg.IMChat {
+		channelKind = state.ReplyTargetFeishu
+		profile = channel.Key("feishu-channel-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.OwnerOpenID, fmt.Sprint(cfg.AutoJoin), cfg.MeetingID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
+	}
+	service := &channel.Service{Channel: channelKind, DisableReactions: !cfg.IMReactions, TextReplier: feishumeeting.Replier{Config: cfg},
 		Store: store, Host: composeHost(store, o, client, sink), Router: routing.New(client), ClientID: cfg.AppID,
 		Scope: o.scope, Profile: profile, Timeout: o.timeout, MaxConcurrentConversations: o.maxConcurrentConversations, Observe: observe}
+	if cfg.IMReactions {
+		service.APIReactor = feishu.Reactor{Config: feishuIMConfig(cfg)}
+	}
 	service.SelectMessageAgent = func(ctx context.Context, m channel.Message) (channel.AgentSelection, error) {
+		if m.ReplyTarget.Kind == state.ReplyTargetFeishu {
+			return agents.selectFeishuAgent(cfg.AppID, m)
+		}
 		return agents.selectMeetingAgent(cfg.AppID, m)
 	}
 	service.ResolveAgent = func(ctx context.Context, m state.ChannelMessage) (*channel.Service, error) {
@@ -224,7 +265,7 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	if err := service.Validate(); err != nil {
 		return err
 	}
-	if cfg.AutoJoin {
+	if cfg.AutoJoin || cfg.IMChat {
 		return serveFeishuAutomaticEntry(ctx, cfg, o.home, service, sink, observe)
 	}
 	receiver := feishumeeting.Receiver{Config: cfg, ProgressPath: filepath.Join(o.home, "feishu-meeting", channel.Key(cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID)+".json")}

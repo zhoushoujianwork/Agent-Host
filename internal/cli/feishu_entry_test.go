@@ -124,6 +124,34 @@ func TestCanceledMeetingTurnCannotSendUsingAReplacementLifetime(t *testing.T) {
 	}
 }
 
+func TestCanceledMeetingCompositeReplierKeepsPrivateIMAndReplacementUsable(t *testing.T) {
+	im, meeting := &countingMeetingReplier{}, &countingMeetingReplier{}
+	parent := &channel.Service{TextReplier: feishuTextReplier{IM: im, Meeting: meeting}}
+	oldLifetime, endOld := context.WithCancel(t.Context())
+	defer endOld()
+	oldTurn := bindMeetingLifetime(parent, oldLifetime)
+	endOld()
+	meetingTarget := state.ChannelReplyTarget{Kind: state.ReplyTargetFeishuMeeting, ID: "700000000000000001", UUID: "old-turn"}
+	status, err := oldTurn.TextReplier.ReplyText(context.Background(), meetingTarget, "old finalization")
+	if status != feishumeeting.Failed || !errors.Is(err, context.Canceled) || im.calls != 0 || meeting.calls != 0 {
+		t.Fatal("canceled meeting finalization reached a shared transport", status, err, im.calls, meeting.calls)
+	}
+	imTarget := state.ChannelReplyTarget{Kind: state.ReplyTargetFeishu, ID: "oc_private", MessageID: "om_request", UUID: "private-turn"}
+	status, err = parent.TextReplier.ReplyText(t.Context(), imTarget, "private answer")
+	if status != feishumeeting.Accepted || err != nil || im.calls != 1 || meeting.calls != 0 {
+		t.Fatal("ending a meeting disabled or redirected ordinary IM", status, err, im.calls, meeting.calls)
+	}
+	newLifetime, endNew := context.WithCancel(t.Context())
+	defer endNew()
+	newTurn := bindMeetingLifetime(parent, newLifetime)
+	// A replacement uses the same platform meeting ID, but only its fresh lifetime.
+	meetingTarget.UUID = "replacement-turn"
+	status, err = newTurn.TextReplier.ReplyText(t.Context(), meetingTarget, "fresh meeting answer")
+	if status != feishumeeting.Accepted || err != nil || im.calls != 1 || meeting.calls != 1 {
+		t.Fatal("old cancellation disabled or redirected the replacement meeting", status, err, im.calls, meeting.calls)
+	}
+}
+
 func (h waitingMeetingHost) Session(context.Context, string) (state.Session, error) {
 	return state.Session{ID: "synthetic-session"}, nil
 }

@@ -18,6 +18,8 @@ import time
 
 LABEL = "com.agent-host.production"
 CONNECT_TIMEOUT = 35
+VIEWER_FILES = ("server.py", "memory_view.py", "index.html", "app.js", "style.css",
+                "memory.html", "memory.js", "memory.css")
 
 
 def private_directory(path):
@@ -122,7 +124,8 @@ def launch_description(root):
     root = Path(root)
     return {
         "Label": LABEL,
-        "ProgramArguments": [str(root / "bin/agent-host"), "service", "run", "--root", str(root)],
+        "ProgramArguments": [str(root / "bin/agent-host"), "service", "run", "--root", str(root),
+                             "--viewer-python", sys.executable],
         "WorkingDirectory": str(root / "workspace"),
         "RunAtLoad": True,
         "KeepAlive": {"SuccessfulExit": False},
@@ -187,7 +190,7 @@ def install(binary, root, launch_agents, run=command):
         raise ValueError("installation requires an absolute root and an executable binary")
     private_directory(root.parent)
     private_directory(root)
-    for name in ("bin", "config", "state", "workspace", "native", "logs"):
+    for name in ("bin", "config", "state", "workspace", "native", "logs", "viewer"):
         private_directory(root / name)
     required = [root / "config" / name for name in ("service.json", "environment.json", "dingtalk.json")]
     if any(not path.exists() for path in required):
@@ -215,6 +218,11 @@ def install(binary, root, launch_agents, run=command):
         installed = root / "bin/agent-host"
         validate_target(installed)
         validate_target(root / "installation.json")
+        viewer_source = Path(__file__).resolve().parent.parent / "run-viewer"
+        viewer_assets = {name: (viewer_source / name).read_bytes() for name in VIEWER_FILES}
+        for name in viewer_assets:
+            validate_target(root / "viewer" / name)
+        private_log(root / "logs/viewer.log")
         launch_agents = Path(launch_agents)
         if launch_agents.is_symlink():
             raise ValueError("LaunchAgents directory must not be a symlink")
@@ -229,6 +237,8 @@ def install(binary, root, launch_agents, run=command):
         # Take the boundary after the old writer has stopped. Historical
         # connected events must never prove a new installation is running.
         offset = stdout.stat().st_size
+        for name, content in viewer_assets.items():
+            atomic_write(root / "viewer" / name, content)
         os.replace(candidate, installed)
         atomic_write(plist, plistlib.dumps(launch_description(root)))
         enabled = run(["/bin/launchctl", "enable", target])

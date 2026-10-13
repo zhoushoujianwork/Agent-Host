@@ -183,8 +183,7 @@ func historyCurrent(ctx context.Context, tx *sql.Tx, messageID string) (historyA
 }
 
 func historyIdentityValid(m ChannelMessage) bool {
-	supported := m.Channel == "dingtalk" || m.Channel == ReplyTargetFeishuMeeting && m.ReplyTarget != nil &&
-		m.ReplyTarget.Kind == ReplyTargetFeishuMeeting && m.ReplyTarget.ID == m.ConversationID && m.ReplyTarget.UUID != "" && m.DisableReactions && m.ConversationType == "2"
+	supported := m.Channel == "dingtalk" && m.ReplyTarget == nil || channelAPIReplyTargetValid(m)
 	if !supported || m.AccountID == "" || m.TenantID == "" || m.ConversationID == "" || m.MessageID == "" || m.SenderID == "" || m.Binding == "" || m.Scope == "" || m.ReceivedAt.IsZero() {
 		return false
 	}

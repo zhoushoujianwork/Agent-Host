@@ -12,6 +12,7 @@ import (
 )
 
 type SourceReport struct {
+	MatterError         string    `json:"matter_error,omitempty"`
 	SourceID            string    `json:"source_id"`
 	Complete            bool      `json:"complete"`
 	Partial             bool      `json:"partial"`
@@ -33,11 +34,23 @@ type Report struct {
 	Sources []SourceReport `json:"sources"`
 }
 type Collector struct {
+	matters interface {
+		Reconcile(context.Context, state.DiscoverySource, []state.DiscoveryEvidence) error
+	}
 	store     *state.Store
 	config    Config
 	provider  Provider
 	extractor Extractor
 	now       func() time.Time
+}
+
+// WithMatters attaches the Host's owner-private P0 processing to complete
+// collection windows. Topic review retains its original export-only semantics.
+func (c *Collector) WithMatters(p interface {
+	Reconcile(context.Context, state.DiscoverySource, []state.DiscoveryEvidence) error
+}) *Collector {
+	c.matters = p
+	return c
 }
 
 func NewCollector(store *state.Store, cfg Config, provider Provider, extractor Extractor) *Collector {
@@ -132,6 +145,19 @@ func (c *Collector) Collect(ctx context.Context) (Report, error) {
 					return out, err
 				}
 				report.AddedTopics = added
+			}
+			if c.matters != nil {
+				current, err := c.store.DiscoverySource(ctx, source.ID)
+				if err != nil {
+					return out, err
+				}
+				matterCtx, cancel := context.WithTimeout(ctx, time.Duration(c.config.TimeoutSeconds)*time.Second)
+				err = c.matters.Reconcile(matterCtx, current, evidence)
+				cancel()
+				if err != nil {
+					report.MatterError = err.Error()
+					failures = append(failures, fmt.Errorf("source %s matter reconciliation: %w", source.ID, err))
+				}
 			}
 		}
 		out.Sources = append(out.Sources, report)

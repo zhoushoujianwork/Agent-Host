@@ -70,6 +70,41 @@ func backfillAnnotations(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// Current-schema upgrades rebuild derived annotations by partition. Source
+// memory/evidence payloads and revisions remain untouched, including when the
+// metadata version changes without another database schema change.
+func migrateCurrentAnnotations(ctx context.Context, tx *sql.Tx) error {
+	var stale int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM memories m LEFT JOIN memory_annotations a ON a.memory_id=m.id WHERE a.version IS NULL OR a.version!=?`, annotation.Version).Scan(&stale); err != nil {
+		return err
+	}
+	if stale == 0 {
+		return nil
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT payload FROM memories ORDER BY rowid")
+	if err != nil {
+		return err
+	}
+	memories, scanErr := scanMemories(rows)
+	if err = errors.Join(scanErr, rows.Close()); err != nil {
+		return err
+	}
+	type partition struct{ scope, agent, audience string }
+	partitions := map[partition]bool{}
+	for _, m := range memories {
+		if err := rawAnnotation(ctx, tx, m); err != nil {
+			return err
+		}
+		partitions[partition{m.Scope, m.AgentID, m.AudienceID}] = true
+	}
+	for p := range partitions {
+		if err := rebuildTerms(ctx, tx, p.scope, p.agent, p.audience); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func persistAnnotation(ctx context.Context, tx *sql.Tx, m Memory) error {
 	if err := rawAnnotation(ctx, tx, m); err != nil {
 		return err

@@ -21,15 +21,17 @@ import (
 const serviceUsage = `Managed channel runtime (DingTalk by default).
 
   agent-host service check --root ABSOLUTE_PATH
-  agent-host service run --root ABSOLUTE_PATH
+  agent-host service run --root ABSOLUTE_PATH [--no-browser]
 
 The installer prepares private config, state, workspace and native directories.
 Configuration comes from ROOT/config/service.json, environment.json and
-dingtalk.json, or feishu-meeting.json when service.json sets channel to
-feishu-meeting, plus the optional private agents_config file. Native Claude
+dingtalk.json, feishu.json for channel feishu, or feishu-meeting.json for
+channel feishu-meeting, plus the optional private agents_config file. Native Claude
 profiles are isolated by agent and audience under ROOT/native.
 check validates local files and configuration without connecting, executing
 Claude, or creating host state. It does not verify platform or model credentials.
+run starts the installed read-only workbench and opens the default browser.
+Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
@@ -82,6 +84,12 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	fs.SetOutput(errout)
 	var root string
 	fs.StringVar(&root, "root", "", "Absolute managed runtime directory")
+	var noBrowser bool
+	var viewerPython string
+	if command == "run" {
+		fs.BoolVar(&noBrowser, "no-browser", false, "Do not open the default browser")
+		fs.StringVar(&viewerPython, "viewer-python", "python3", "Python 3.10+ executable for the workbench")
+	}
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -89,16 +97,24 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 		return err
 	}
 	if len(fs.Args()) != 0 {
-		return errors.New("service commands accept --root only")
+		return errors.New("service commands do not accept positional arguments")
 	}
 	layout, config, environment, err := loadService(root)
 	if err != nil {
 		return err
 	}
+	if command == "run" {
+		stop, err := startServiceWorkbench(ctx, layout, viewerPython, !noBrowser, errout, openWorkbenchURL)
+		if err != nil {
+			fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
+		} else {
+			defer stop()
+		}
+	}
 	return withServiceEnvironment(layout.Native, environment, func() error {
 		channelArgs := config.arguments(layout, "serve")
 		run := runDingTalk
-		if config.Channel == "feishu-meeting" {
+		if config.Channel == "feishu-meeting" || config.Channel == "feishu" {
 			run = runFeishuMeeting
 		}
 		if command == "run" {
@@ -160,8 +176,12 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 	if _, err := claude.NativeStreamEnvironment(environment); err != nil {
 		return layout, config, nil, fmt.Errorf("service native stream configuration: %w", err)
 	}
-	if config.Channel == "feishu-meeting" {
-		if _, err := loadFeishuMeetingConfig(filepath.Join(layout.Config, "feishu-meeting.json")); err != nil {
+	if config.Channel == "feishu-meeting" || config.Channel == "feishu" {
+		filename := "feishu-meeting.json"
+		if config.Channel == "feishu" {
+			filename = "feishu.json"
+		}
+		if _, err := loadFeishuMeetingConfig(filepath.Join(layout.Config, filename)); err != nil {
 			return layout, config, nil, err
 		}
 		return layout, config, environment, nil
@@ -180,10 +200,10 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
-	if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu-meeting" {
-		return errors.New("service channel must be dingtalk or feishu-meeting")
+	if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu-meeting" && c.Channel != "feishu" {
+		return errors.New("service channel must be dingtalk, feishu or feishu-meeting")
 	}
-	if c.Channel == "feishu-meeting" && c.DiscoveryConfig != "" {
+	if (c.Channel == "feishu-meeting" || c.Channel == "feishu") && c.DiscoveryConfig != "" {
 		return errors.New("Feishu meeting service does not collect DingTalk discovery conversations")
 	}
 	if c.AgentsConfig != "" && (!filepath.IsAbs(c.AgentsConfig) || filepath.Clean(c.AgentsConfig) != c.AgentsConfig || strings.ContainsAny(c.AgentsConfig, "\x00\r\n")) {
@@ -231,6 +251,8 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	filename := "dingtalk.json"
 	if c.Channel == "feishu-meeting" {
 		filename = "feishu-meeting.json"
+	} else if c.Channel == "feishu" {
+		filename = "feishu.json"
 	}
 	args := []string{command, "--config", filepath.Join(layout.Config, filename), "--home", layout.State,
 		"--workspace", layout.Workspace, "--claude", c.Claude, "--model", c.Model,

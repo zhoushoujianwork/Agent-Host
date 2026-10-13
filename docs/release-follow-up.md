@@ -15,11 +15,11 @@ See the [follow-up notes](release-follow-up-detail.md) for validation boundaries
 
 ## P0: contextual assistance and accessible memory
 
-**Design approved; ready for development. Implementation has not started.**
-This is a core memory increment in the release backlog; no release version or
-date is assigned. The [main design](personal-assistant.md#p0-ready-for-development)
-owns scope; [acceptance notes](release-follow-up-detail.md#p0-acceptance) define
-what must be demonstrated before marking it delivered.
+**P0 implemented on 2026-10-12; validation is recorded separately below.**
+This core memory increment has no assigned release version or production rollout
+date. The [main guide](personal-assistant.md#current-p0) owns scope;
+[acceptance notes](release-follow-up-detail.md#p0-acceptance) distinguish bounded
+validation from remaining quality and scale work.
 
 - Distinguish source evidence, evolving current matters, existing durable memory
   and recommendations, with their own lifecycle and source links.
@@ -42,6 +42,34 @@ statements already save automatically; execution experience still requires
 This remains separately validated: P0 can retrieve existing eligible memory
 before it ships, while P1 conversation learning requires the publication and
 blacklist policy to be in place.
+
+## Issue #1 delivery plan
+
+Reviewed [issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1) on
+2026-10-13: one open issue and no open PRs were returned. It proposes
+[experience as skills](experience-skills.md) and
+[per-person reply preferences](person-profiles.md). Both remain planned.
+The repository already has attributed memory, scoped history and assistance;
+the proposed layers build on those foundations.
+
+| Order | Deliverable | Completion gate |
+| --- | --- | --- |
+| 1 | Automatic experience publication and blacklist | Save, fresh-task reuse, disable and equivalent re-admission protection without mandatory `memory accept` |
+| 2 | Scoped procedure skills for Claude | Native discovery/use, source inspection, scope isolation and withdrawal in subsequent tasks |
+| 3 | Owner-private explicit reply preferences | Opt-in, fresh-conversation use, current-request override, correction and disable |
+| 4 | Explicit identity links and group-member preferences | Source visibility preserved; alternating members keep distinct preferences; no private profile enters shared history |
+
+Begin development with order 1 as a separately reviewable change. It closes an
+existing memory-policy gap and supplies the lifecycle needed by both proposals.
+Skill export and owner preferences can then ship independently; neither requires
+Codex, inferred habits, user-defined schedules or public skill publishing.
+Group preference work follows real non-owner channel acceptance.
+
+Existing reliability checks remain active: the historical Jev admission failure,
+database wait diagnosis, and Feishu group/multi-turn/reaction platform acceptance
+are not resolved by planning this issue. No release date is assigned. The
+[planning notes](release-follow-up-detail.md#issue-1-planning-baseline) record
+the evidence and separate design completion from feature acceptance.
 
 ## Deferred ideas
 

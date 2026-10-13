@@ -237,7 +237,7 @@ func (s *Store) SaveDiscoveryCollection(ctx context.Context, source DiscoverySou
 			return err
 		}
 		for _, e := range evidence {
-			if e.SourceID != source.ID || e.Profile != source.Profile || e.TenantID != source.TenantID || e.PrincipalID != source.PrincipalID || e.ConversationID != source.ConversationID || e.ProjectID != source.ProjectID || e.MessageID == "" || e.AuthorID == "" || e.CreatedAt.IsZero() || e.CreatedAt.Before(collection.From) || !e.CreatedAt.Before(collection.To) || len(e.Text) > 32768 || e.Availability != "available" {
+			if e.SourceID != source.ID || e.Profile != source.Profile || e.TenantID != source.TenantID || e.PrincipalID != source.PrincipalID || e.ConversationID != source.ConversationID || e.ProjectID != source.ProjectID || e.MessageID == "" || e.AuthorID == "" || e.CreatedAt.IsZero() || e.CreatedAt.Before(collection.From) || !e.CreatedAt.Before(collection.To) || len(e.Text) > 32768 || e.Availability != "available" && e.Availability != "withdrawn" {
 				return errors.New("discovery evidence does not match collection source/window")
 			}
 			check := PrepareDiscoveryEvidence(e)
@@ -566,7 +566,7 @@ func (s *Store) PruneDiscoveryCache(ctx context.Context, before time.Time) error
 		if _, err := tx.ExecContext(ctx, "DELETE FROM discovery_current WHERE evidence_id IN (SELECT id FROM discovery_evidence WHERE julianday(observed_at)<julianday(?))", before.UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM discovery_evidence WHERE julianday(observed_at)<julianday(?) AND id NOT IN (SELECT evidence_id FROM discovery_topic_evidence)", before.UTC().Format(time.RFC3339Nano)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM discovery_evidence WHERE julianday(observed_at)<julianday(?) AND id NOT IN (SELECT evidence_id FROM discovery_topic_evidence) AND id NOT IN (SELECT evidence_id FROM matter_evidence)", before.UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, "DELETE FROM discovery_collections WHERE julianday(created_at)<julianday(?)", before.UTC().Format(time.RFC3339Nano))

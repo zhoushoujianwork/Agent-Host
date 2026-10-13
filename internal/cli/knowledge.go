@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"agent-host/internal/assistance"
 	"agent-host/internal/harness"
 	"agent-host/internal/knowledge"
 )
@@ -79,11 +80,27 @@ func runKnowledge(ctx context.Context, args []string, in io.Reader, out, errout 
 }
 
 func resolveKnowledge(o *options) error {
+	o.contextPolicy, o.contextExecutable = "", ""
 	o.knowledgeSources = nil
 	o.mcpServers = nil
 	o.knowledgeHints = nil
 	if o.noTools {
 		return nil
+	}
+	if o.audienceID == "" || o.audienceID == "owner" {
+		policy, err := assistance.ConfigurationPolicy(o.discoveryConfig)
+		if err != nil {
+			return err
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		o.contextExecutable, err = filepath.EvalSymlinks(executable)
+		if err != nil {
+			return err
+		}
+		o.contextPolicy = policy
 	}
 	selected, err := selectKnowledgeForOptions(*o)
 	if err != nil {

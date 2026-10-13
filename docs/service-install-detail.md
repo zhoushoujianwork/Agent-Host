@@ -106,6 +106,31 @@ and old pending records are never automatically replayed. Default execution
 does not mount additional projects or sources. Configuration, selected-directory
 and provider failures remain explicit errors.
 
+## Startup workbench
+
+The installer copies the eight runtime viewer assets into `ROOT/viewer` with
+owner-only permissions. The LaunchAgent passes the installer's Python executable
+through `--viewer-python`, so startup does not rely on checkout files or a shell's
+Python search path. `service check` does not launch a viewer or browser.
+
+After local configuration validation, `service run` starts that viewer before
+loading managed provider credentials, with `--home ROOT/state`, no archived
+report import, and a free loopback port. It waits up to five seconds for the
+viewer URL, prints execution and memory URLs on stderr, then uses macOS `open`
+to request the default browser. `--no-browser` suppresses that request while
+leaving observation available. Ordinary channel reconnects do not reopen tabs.
+
+Service cancellation stops and reaps the viewer child. Viewer startup or browser
+failures are reported separately without stopping channel execution; viewer
+runtime errors remain in `ROOT/logs/viewer.log`. The service's structured event
+journal remains separate. No authentication, remote listener, task submission or
+memory mutation is added to this owner-local read-only view.
+
+Regression tests start the installed viewer assets against isolated schema-13
+state, verify both pages and the memory API, check default/disabled/failed browser
+requests, and prove that cancellation closes the listener. Installer checks
+verify asset preservation and private permissions before launch.
+
 ## Response-instruction configuration
 
 `CLAUDE_CONFIG_DIR` separates native settings and sessions, but Claude can still

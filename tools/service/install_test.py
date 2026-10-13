@@ -99,7 +99,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_plist_uses_installed_runtime_and_has_no_credentials(self):
         description = INSTALLER.launch_description(self.root)
-        self.assertEqual(description["ProgramArguments"], [str(self.root / "bin/agent-host"), "service", "run", "--root", str(self.root)])
+        self.assertEqual(description["ProgramArguments"], [str(self.root / "bin/agent-host"), "service", "run", "--root", str(self.root), "--viewer-python", INSTALLER.sys.executable])
         self.assertEqual(description["WorkingDirectory"], str(self.root / "workspace"))
         self.assertEqual(description["StandardOutPath"], str(self.root / "logs/service.ndjson"))
         self.assertEqual(description["StandardErrorPath"], str(self.root / "logs/service.stderr.log"))
@@ -139,7 +139,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
 
     def test_symlink_install_targets_are_rejected_before_service_stop(self):
-        cases = ("binary", "launch_agents", "plist", "receipt")
+        cases = ("binary", "launch_agents", "plist", "receipt", "viewer")
         for kind in cases:
             with self.subTest(kind=kind):
                 target = self.base / ("external-" + kind)
@@ -155,9 +155,13 @@ class InstallerTests(unittest.TestCase):
                     self.launch_agents.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(b"untouched")
                     link = self.launch_agents / (INSTALLER.LABEL + ".plist")
-                else:
+                elif kind == "receipt":
                     target.write_bytes(b"untouched")
                     link = self.root / "installation.json"
+                else:
+                    (self.root / "viewer").mkdir(exist_ok=True)
+                    target.write_bytes(b"untouched")
+                    link = self.root / "viewer/server.py"
                 link.symlink_to(target)
                 try:
                     with mock.patch.object(INSTALLER, "stop_existing") as stop:
@@ -185,6 +189,10 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(receipt["platform_round_trip_verified"])
         self.assertEqual((self.root / "bin/agent-host").read_bytes(), self.binary.read_bytes())
         self.assertEqual(stat.S_IMODE((self.root / "bin/agent-host").stat().st_mode), 0o700)
+        for name in INSTALLER.VIEWER_FILES:
+            installed_viewer = self.root / "viewer" / name
+            self.assertEqual(installed_viewer.read_bytes(), (Path(__file__).parent.parent / "run-viewer" / name).read_bytes())
+            self.assertEqual(stat.S_IMODE(installed_viewer.stat().st_mode), 0o600)
         for directory in ("state", "native", "workspace"):
             self.assertEqual((self.root / directory / "existing").read_bytes(), b"production-evidence")
         self.assertFalse((self.root / "state/state.db").exists())

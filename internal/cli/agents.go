@@ -294,6 +294,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	if provider == "" {
 		provider = "dingtalk"
 	}
+	if provider == state.ReplyTargetFeishu && message.Channel == state.ReplyTargetFeishuMeeting {
+		provider = message.Channel
+	}
 	id, audience := message.AgentID, message.AudienceID
 	if id == "" && audience == "" && message.ConversationType != "2" {
 		id, audience = "default", "owner"

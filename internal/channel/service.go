@@ -32,6 +32,13 @@ type Reactor interface {
 	RemoveReaction(context.Context, string, string, string) error
 }
 
+// APIReactor returns explicit delivery evidence for APIs that delete by a
+// provider-issued reaction ID rather than by the displayed label.
+type APIReactor interface {
+	AddReaction(context.Context, state.ChannelReplyTarget, string) (providerID, status string, err error)
+	RemoveReaction(context.Context, state.ChannelReplyTarget, string) (status string, err error)
+}
+
 type AgentSelection struct {
 	AgentID    string
 	AudienceID string
@@ -58,6 +65,7 @@ type Service struct {
 	Projects        func(context.Context) ([]state.Project, error)
 	Replier         Replier
 	Reactor         Reactor
+	APIReactor      APIReactor
 	ClientID        string
 	Scope           string
 	Profile         string
@@ -85,9 +93,13 @@ func (s *Service) Validate() error {
 		if s.Replier == nil || s.Reactor == nil || s.DisableReactions {
 			return errors.New("DingTalk service requires its reply and reaction adapters")
 		}
+	case state.ReplyTargetFeishu:
+		if s.TextReplier == nil || !s.DisableReactions && s.APIReactor == nil {
+			return errors.New("Feishu service requires a text reply adapter and an API reaction adapter when feedback is enabled")
+		}
 	case state.ReplyTargetFeishuMeeting:
 		if s.TextReplier == nil || !s.DisableReactions {
-			return errors.New("meeting service requires a text reply adapter and disabled reactions")
+			return errors.New("Feishu service requires a text reply adapter and disabled reactions")
 		}
 	default:
 		return errors.New("unsupported channel service")
@@ -264,6 +276,9 @@ func (s *Service) process(ctx context.Context, m state.ChannelMessage) error {
 		if child.Reactor == nil {
 			child.Reactor = s.Reactor
 		}
+		if child.APIReactor == nil {
+			child.APIReactor = s.APIReactor
+		}
 		if child.Observe == nil {
 			child.Observe = s.Observe
 		}
@@ -316,7 +331,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 		if !handled {
 			var notice string
 			run, notice, runErr = s.runMessage(turnCtx, m)
-			reply = resultTextWithNotice(run, runErr, notice, dingtalk.MaxReplyBytes-len(groupReplyPrefix(m)))
+			reply = resultTextWithNotice(run, runErr, notice, replyBodyBudget(m))
 			if run.ID == "" && runErr == nil {
 				stored, err := s.Store.ChannelMessage(turnCtx, m.ID)
 				if err != nil {
@@ -345,7 +360,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	}
 	message := replyForMessage(m, reply)
 	if m.ReplyTarget != nil {
-		message.Text = meetingReplyText(reply)
+		message.Text = apiReplyText(reply, replyBodyBudget(m))
 	}
 	if err := s.Store.PrepareChannelReply(finishCtx, m.ID, message.Text); err != nil {
 		return fmt.Errorf("prepare channel reply: %w", err)
@@ -354,7 +369,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	var sendErr error
 	if m.ReplyTarget != nil {
 		if s.TextReplier == nil {
-			delivery, sendErr = "failed", errors.New("meeting text reply adapter is unavailable")
+			delivery, sendErr = "failed", errors.New("channel text reply adapter is unavailable")
 		} else {
 			delivery, sendErr = s.TextReplier.ReplyText(finishCtx, *m.ReplyTarget, message.Text)
 		}

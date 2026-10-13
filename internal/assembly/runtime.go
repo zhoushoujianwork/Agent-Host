@@ -36,6 +36,7 @@ type Configuration struct {
 	HostInstructions             string
 	KnowledgeFingerprint         string
 	ConversationHistoryPolicy    string `json:",omitempty"`
+	ContextPolicy                string `json:",omitempty"`
 	Binary, Model, NativeProfile string
 	ToolsDisabled                bool
 	AllowedTools                 []string

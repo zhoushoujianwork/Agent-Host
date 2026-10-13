@@ -14,6 +14,7 @@ import (
 
 	"agent-host/internal/annotation"
 	"agent-host/internal/assembly"
+	"agent-host/internal/assistance"
 	"agent-host/internal/event"
 	"agent-host/internal/experience"
 	"agent-host/internal/harness"
@@ -24,6 +25,9 @@ import (
 )
 
 type Config struct {
+	ContextHome           string
+	ContextExecutable     string
+	ContextConfig         string
 	AgentID               string
 	AudienceID            string
 	NativeProfile         string
@@ -263,7 +267,7 @@ func (j *journal) phaseWithTicks(parent context.Context, name, component, model 
 }
 
 func (h *Host) Run(ctx context.Context, s state.Session, input string) (state.Run, error) {
-	return h.run(ctx, s, input, "")
+	return h.run(ctx, s, input, "", nil)
 }
 
 // RunChannel preserves the ordinary host loop while atomically linking its run
@@ -272,10 +276,10 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 	if messageID == "" {
 		return state.Run{}, errors.New("channel message ID is required")
 	}
-	return h.run(ctx, s, input, messageID)
+	return h.run(ctx, s, input, messageID, nil)
 }
 
-func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string) (state.Run, error) {
+func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource) (state.Run, error) {
 	h = h.partitioned()
 	resume, err := h.Store.SessionHasRun(ctx, s.ID)
 	if err != nil {
@@ -290,7 +294,14 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		return state.Run{}, errors.New("session does not match the assembled runtime")
 	}
 	r := state.Run{AgentID: s.AgentID, AudienceID: s.AudienceID, Projects: append([]state.ProjectRef(nil), s.Projects...), AdditionalDirectories: append([]string(nil), s.AdditionalDirectories...), Supplements: append([]state.UserSupplement(nil), h.Config.Supplements...), ID: ID(), SessionID: s.ID, Scope: s.Scope, ProjectID: s.ProjectID, ProjectName: s.ProjectName, Workspace: s.Workspace, RuntimeFingerprint: s.RuntimeFingerprint, Input: input, Agent: "local-claude", RequestedModel: h.Config.Model, NativeSessionID: s.NativeSessionID, ExecutionStatus: "running", MemoryStatus: "blocked", AcceptanceStatus: "unverified", CreatedAt: time.Now().UTC()}
-	if channelMessageID == "" {
+	r.Preparation = preparation
+	if preparation != nil {
+		var sources []string
+		sources, err = assistance.SelectedSources(ctx, h.Store, h.Config.ContextConfig, s.ProjectID)
+		if err == nil {
+			err = h.Store.CreatePreparationRun(ctx, r, sources)
+		}
+	} else if channelMessageID == "" {
 		err = h.Store.CreateRun(ctx, r)
 	} else {
 		err = h.Store.CreateChannelRun(ctx, r, channelMessageID)
@@ -370,6 +381,13 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	if err != nil {
 		return h.failBeforeExecution(j, err)
 	}
+	if r.Preparation != nil {
+		context, err := h.preparationContext(ctx, r)
+		if err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+		material = context + material
+	}
 	recoveryContext, recovery, err := h.channelRecoveryContext(ctx, r)
 	if err != nil {
 		return h.failBeforeExecution(j, fmt.Errorf("assemble linked conversation recovery: %w", err))
@@ -399,6 +417,17 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	var result harness.Result
 	mcpServers := append([]harness.MCPServer(nil), h.Config.MCPServers...)
 	instructions := h.Config.HostInstructions
+	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && r.ProjectID != "" && len(r.Projects) == 1 && (r.Source == nil || r.Source.ConversationType != "2") {
+		binding, err := assistance.Resolve(ctx, h.Config.ContextHome, h.Config.ContextConfig, r.ID)
+		if err != nil {
+			return h.failBeforeExecution(j, fmt.Errorf("assemble owner context: %w", err))
+		}
+		mcpServers = append(mcpServers, binding.Server(h.Config.ContextExecutable))
+		instructions += "\n\n" + assistance.Instructions
+		if err := j.emit(event.Event{Type: "context.assembled", Phase: "execute", Component: "assembly.context", Status: "completed", Message: "configured scoped read-only matters, memory and citations", Data: map[string]any{"binding_fingerprint": binding.Fingerprint, "selected_sources": len(binding.Sources)}}); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
 	if channelMessageID != "" && h.Config.HistoryHome != "" && !h.Config.ToolsDisabled {
 		binding, err := history.Resolve(h.Config.HistoryHome, channelMessageID)
 		if err != nil {

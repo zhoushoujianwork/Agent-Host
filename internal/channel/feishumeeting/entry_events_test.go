@@ -348,12 +348,15 @@ func TestEntryReceiverPreservesBurstOrderingAndStopsOnHandlerFailure(t *testing.
 }
 
 func TestEntryReceiverRejectsOversizedMalformedAndFailedStreams(t *testing.T) {
+	passive := string(entryFixture(t, "im.message.reaction.created_v1", map[string]any{}))
 	for name, script := range map[string]string{
-		"oversized stdout": "printf '%s\\n' " + entryShellQuote(strings.Repeat("x", entryMaxLine+1)) + "\nread ignored",
-		"oversized stderr": "printf '%s\\n' " + entryShellQuote(strings.Repeat("x", 32*1024+1)) + " >&2\nread ignored",
-		"malformed JSON":   "printf '%s\\n' '{invalid-secret-value}'\nread ignored",
-		"SDK error":        "printf '%s\\n' '[SDK Error] private-secret-value' >&2\nread ignored",
-		"exit failure":     "exit 71",
+		"oversized stdout":          "printf '%s\\n' " + entryShellQuote(strings.Repeat("x", entryMaxLine+1)) + "\nread ignored",
+		"oversized stderr":          "printf '%s\\n' " + entryShellQuote(strings.Repeat("x", 32*1024+1)) + " >&2\nread ignored",
+		"malformed JSON":            "printf '%s\\n' '{invalid-secret-value}'\nread ignored",
+		"SDK error":                 "printf '%s\\n' '[SDK Error] private-secret-value' >&2\nread ignored",
+		"passive wrong app":         "printf '%s\\n' " + entryShellQuote(strings.Replace(passive, `"app_id":"cli_test"`, `"app_id":"cli_other"`, 1)) + "\nread ignored",
+		"passive malformed payload": "printf '%s\\n' " + entryShellQuote(strings.Replace(passive, `"event":{}`, `"event":null`, 1)) + "\nread ignored",
+		"exit failure":              "exit 71",
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -363,5 +366,223 @@ func TestEntryReceiverRejectsOversizedMalformedAndFailedStreams(t *testing.T) {
 				t.Fatalf("stream failure not safely surfaced: %v", err)
 			}
 		})
+	}
+}
+
+func TestEntryReceiverPassiveEventsKeepIMStreamAliveWithoutDispatch(t *testing.T) {
+	passiveTypes := []string{
+		"vc.bot.meeting_activity_v1",
+		"im.chat.member.bot.added_v1", "im.chat.member.bot.deleted_v1",
+		"im.message.message_read_v1",
+		"im.message.reaction.created_v1", "im.message.reaction.deleted_v1",
+		"drive.notice.comment_add_v1",
+		"vc.meeting.participant_meeting_ended_v1", "vc.note.generated_v1", "minutes.minute.generated_v1",
+	}
+	cfg := fixtureConfig()
+	cfg.AutoJoin, cfg.IMChat, cfg.OwnerOpenID = true, true, "ou_alice"
+	argsPath := filepath.Join(t.TempDir(), "args")
+	var script strings.Builder
+	fmt.Fprintf(&script, "printf '%%s\\n' \"$@\" > %s\n", entryShellQuote(argsPath))
+	for i, kind := range passiveTypes {
+		// Even an auxiliary payload resembling a request is never task input.
+		body := imEntryFixture("text", `{"text":"123456789"}`)
+		for key, value := range invitedEntryFixture() {
+			body[key] = value
+		}
+		raw := strings.Replace(string(entryFixture(t, kind, body)), "event-one", fmt.Sprintf("passive-%d", i), 1)
+		fmt.Fprintf(&script, "printf '%%s\\n' %s\n", entryShellQuote(raw))
+	}
+	question := entryFixture(t, "im.message.receive_v1", imEntryFixture("text", `{"text":"What is the next step?"}`))
+	fmt.Fprintf(&script, "printf '%%s\\n' %s\nread ignored\n", entryShellQuote(string(question)))
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entryCalls, imCalls, ready := 0, 0, 0
+	r := EntryReceiver{Config: cfg, Binary: entryScript(t, script.String()), HandleIM: func(_ context.Context, raw []byte) error {
+		imCalls++
+		if string(raw) != string(question) {
+			t.Error("passive event reached IM handler")
+		}
+		cancel()
+		return nil
+	}}
+	err := r.Run(ctx, func(context.Context, EntryEvent) error { entryCalls++; return nil }, func(kind, _ string) error {
+		if kind == "connected" {
+			ready++
+		}
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) || entryCalls != 0 || imCalls != 1 || ready != 1 {
+		t.Fatalf("passive events interrupted or dispatched work: entry=%d im=%d ready=%d err=%v", entryCalls, imCalls, ready, err)
+	}
+	args, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := strings.Split(strings.TrimSpace(string(args)), "\n")
+	if len(argv) != 8 || !reflect.DeepEqual(argv[:7], []string{"--profile", cfg.Profile, "event", "+subscribe", "--as", "bot", "--event-types"}) {
+		t.Fatalf("subscription command changed: %q", argv)
+	}
+	registered := strings.Split(argv[7], ",")
+	want := append([]string{"vc.bot.meeting_invited_v1", "vc.bot.meeting_ended_v1", "im.message.receive_v1"}, passiveTypes...)
+	if len(registered) != len(want) {
+		t.Fatalf("subscriber registered %d event types; want %d", len(registered), len(want))
+	}
+	for _, kind := range want {
+		count := 0
+		for _, got := range registered {
+			if got == kind {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("subscriber must register %s exactly once; got %d", kind, count)
+		}
+	}
+}
+
+func TestEntryPassiveEventsRequireAuthenticatedObjectEnvelopes(t *testing.T) {
+	for _, kind := range []string{
+		"vc.bot.meeting_activity_v1",
+		"im.chat.member.bot.added_v1", "im.chat.member.bot.deleted_v1",
+		"im.message.message_read_v1", "im.message.reaction.created_v1", "im.message.reaction.deleted_v1",
+		"drive.notice.comment_add_v1", "vc.meeting.participant_meeting_ended_v1", "vc.note.generated_v1", "minutes.minute.generated_v1",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			valid := string(entryFixture(t, kind, map[string]any{}))
+			for name, raw := range map[string]string{
+				"schema":    strings.Replace(valid, `"schema":"2.0"`, `"schema":"1.0"`, 1),
+				"app":       strings.Replace(valid, `"app_id":"cli_test"`, `"app_id":"cli_other"`, 1),
+				"tenant":    strings.Replace(valid, `"tenant_key":"tenant-real-fixture"`, `"tenant_key":"another"`, 1),
+				"event id":  strings.Replace(valid, `"event_id":"event-one"`, `"event_id":""`, 1),
+				"timestamp": strings.Replace(valid, `"create_time":"1791777600123"`, `"create_time":true`, 1),
+				"null":      strings.Replace(valid, `"event":{}`, `"event":null`, 1),
+				"array":     strings.Replace(valid, `"event":{}`, `"event":[]`, 1),
+				"string":    strings.Replace(valid, `"event":{}`, `"event":"private-secret-value"`, 1),
+				"missing":   strings.Replace(valid, `"event":{},`, "", 1),
+			} {
+				t.Run(name, func(t *testing.T) {
+					e, err := (EntryReceiver{Config: fixtureConfig()}).parseEntry([]byte(raw))
+					if err == nil || e != (EntryEvent{}) || strings.Contains(err.Error(), "private-secret-value") {
+						t.Fatalf("invalid passive event was not safely rejected: event=%+v err=%v", e, err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEntryReceiverDispatchesMeetingEntryBeforeOrdinaryIM(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.AutoJoin, cfg.IMChat, cfg.OwnerOpenID = true, true, "ou_alice"
+	frames := []struct {
+		id, kind string
+		body     any
+	}{
+		{"invite", "vc.bot.meeting_invited_v1", invitedEntryFixture()},
+		{"number", "im.message.receive_v1", imEntryFixture("text", `{"text":"123456789"}`)},
+		{"card", "im.message.receive_v1", imEntryFixture("video_chat", `{"meet_number":"123456789","end_time":null}`)},
+		{"question", "im.message.receive_v1", imEntryFixture("text", `{"text":"What is the next step?"}`)},
+		{"activity", "vc.bot.meeting_activity_v1", map[string]any{}},
+		{"end", "vc.bot.meeting_ended_v1", map[string]any{"meeting": map[string]any{"id": "700000000000000001"}}},
+	}
+	var script strings.Builder
+	var question []byte
+	for _, frame := range frames {
+		raw := strings.Replace(string(entryFixture(t, frame.kind, frame.body)), "event-one", frame.id, 1)
+		fmt.Fprintf(&script, "printf '%%s\\n' %s\n", entryShellQuote(raw))
+		if frame.id == "question" {
+			question = []byte(raw)
+		}
+	}
+	script.WriteString("read ignored\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var dispatched []string
+	var imFrames [][]byte
+	r := EntryReceiver{Config: cfg, Binary: entryScript(t, script.String()), HandleIM: func(_ context.Context, raw []byte) error {
+		dispatched = append(dispatched, "im")
+		imFrames = append(imFrames, append([]byte(nil), raw...))
+		return nil
+	}}
+	err := r.Run(ctx, func(_ context.Context, event EntryEvent) error {
+		dispatched = append(dispatched, event.Kind+":"+event.ID)
+		if event.Kind == EntryEnd {
+			cancel()
+		}
+		return nil
+	}, func(string, string) error { return nil })
+	want := []string{"invite:invite", "message:number", "message:card", "im", "end:end"}
+	if !errors.Is(err, context.Canceled) || !reflect.DeepEqual(dispatched, want) {
+		t.Fatalf("entry precedence or stream ordering changed: %v, err=%v", dispatched, err)
+	}
+	if len(imFrames) != 1 || string(imFrames[0]) != string(question) {
+		t.Fatal("ordinary IM must reach its handler exactly once with its original envelope")
+	}
+}
+
+func TestEntryReceiverWithoutAutoJoinDispatchesPrivateNumberToIM(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.AutoJoin, cfg.IMChat, cfg.OwnerOpenID = false, true, "ou_alice"
+	raw := entryFixture(t, "im.message.receive_v1", imEntryFixture("text", `{"text":"123456789"}`))
+	script := "printf '%s\\n' " + entryShellQuote(string(raw)) + "\nread ignored\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entryCalls, imCalls := 0, 0
+	var received []byte
+	r := EntryReceiver{Config: cfg, Binary: entryScript(t, script), HandleIM: func(_ context.Context, frame []byte) error {
+		imCalls++
+		received = append([]byte(nil), frame...)
+		cancel()
+		return nil
+	}}
+	err := r.Run(ctx, func(context.Context, EntryEvent) error {
+		entryCalls++
+		return nil
+	}, func(string, string) error { return nil })
+	if !errors.Is(err, context.Canceled) || entryCalls != 0 || imCalls != 1 || string(received) != string(raw) {
+		t.Fatalf("disabled auto-join consumed numeric IM: entries=%d im=%d err=%v", entryCalls, imCalls, err)
+	}
+}
+
+func TestEntryReceiverIMHandlerFailureStopsAndReapsWithoutLeaking(t *testing.T) {
+	cfg := fixtureConfig()
+	cfg.IMChat, cfg.OwnerOpenID = true, "ou_alice"
+	pidPath := filepath.Join(t.TempDir(), "pid")
+	raw := string(entryFixture(t, "im.message.receive_v1", imEntryFixture("text", `{"text":"private-source-content"}`)))
+	script := "printf '%s' \"$$\" > " + entryShellQuote(pidPath) + "\nprintf '%s\\n' " + entryShellQuote(raw) + " " + entryShellQuote(strings.Replace(raw, "event-one", "event-two", 1)) + "\nread ignored\n"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entryCalls, imCalls := 0, 0
+	var observations []string
+	privateError := errors.New("private-source-content token=private-handler-token")
+	r := EntryReceiver{Config: cfg, Binary: entryScript(t, script), HandleIM: func(context.Context, []byte) error {
+		imCalls++
+		return privateError
+	}}
+	err := r.Run(ctx, func(context.Context, EntryEvent) error {
+		entryCalls++
+		return nil
+	}, func(_, message string) error {
+		observations = append(observations, message)
+		return nil
+	})
+	if err == nil || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, privateError) || err.Error() != "Feishu IM event could not be durably handled; subscription stopped" || entryCalls != 0 || imCalls != 1 {
+		t.Fatalf("IM persistence failure did not stop intake safely: entries=%d im=%d err=%v", entryCalls, imCalls, err)
+	}
+	for _, marker := range []string{"private-source-content", "private-handler-token"} {
+		if strings.Contains(err.Error()+strings.Join(observations, " "), marker) {
+			t.Fatal("private IM failure details escaped into public diagnostics")
+		}
+	}
+	pidRaw, err := os.ReadFile(pidPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pid int
+	if _, err := fmt.Sscan(string(pidRaw), &pid); err != nil || pid <= 0 {
+		t.Fatalf("subscriber PID unavailable: %v", err)
+	}
+	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("failed IM subscriber was not reaped: %v", err)
 	}
 }

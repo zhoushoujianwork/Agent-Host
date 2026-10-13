@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
@@ -169,5 +168,5 @@ func (s *Service) confirmProject(ctx context.Context, confirmation state.Channel
 	if err := s.Store.FinishChannelMessage(finishCtx, original.ID, status, cause); err != nil {
 		return "原请求结果无法确认，请在本机检查记录；任务没有重做。", err
 	}
-	return resultTextWithNotice(run, runErr, notice, dingtalk.MaxReplyBytes-len(groupReplyPrefix(confirmation))), runErr
+	return resultTextWithNotice(run, runErr, notice, replyBodyBudget(confirmation)), runErr
 }

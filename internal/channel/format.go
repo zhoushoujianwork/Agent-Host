@@ -56,6 +56,13 @@ func groupReplyPrefix(m state.ChannelMessage) string {
 	return "@" + m.SenderID + "\n\n> **回复：** " + quote + "\n\n"
 }
 
+func replyBodyBudget(m state.ChannelMessage) int {
+	if m.ReplyTarget != nil && m.ReplyTarget.Kind == state.ReplyTargetFeishu {
+		return dingtalk.MaxReplyBytes - len("[AI] ")
+	}
+	return dingtalk.MaxReplyBytes - len(groupReplyPrefix(m))
+}
+
 // Do not automatically repeat obvious local paths or credential assignments
 // from the question. This bounded preview is not a general secret detector.
 var privateQuestionField = regexp.MustCompile(`(?i)(^|[\s\x60"'(=：:])(?:/[\pL\pN_.-]+/|~/|[a-z]:\\)|(?:token|password|passwd|secret|api[_-]?key|authorization|密码|密钥|令牌|凭据)\s*[:=：]|\bBearer\s+\S+|-----BEGIN [A-Z ]*PRIVATE KEY-----`)

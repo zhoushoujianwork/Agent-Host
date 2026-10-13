@@ -21,9 +21,12 @@ const (
 	EntryInvite  = "invite"
 	EntryMessage = "message"
 	EntryEnd     = "end"
-	// The app already subscribes to meeting_activity. Register it so the SDK
-	// can acknowledge it; meeting text still comes through the polling receiver.
-	entryTypes   = "vc.bot.meeting_invited_v1,vc.bot.meeting_ended_v1,vc.bot.meeting_activity_v1,im.message.receive_v1"
+	// Register the app's published auxiliary events on the same subscription.
+	// The SDK otherwise rejects them before our authenticated passive handling.
+	entryTypes = "vc.bot.meeting_invited_v1,vc.bot.meeting_ended_v1,vc.bot.meeting_activity_v1,im.message.receive_v1," +
+		"im.chat.member.bot.added_v1,im.chat.member.bot.deleted_v1,im.message.message_read_v1," +
+		"im.message.reaction.created_v1,im.message.reaction.deleted_v1,drive.notice.comment_add_v1," +
+		"vc.meeting.participant_meeting_ended_v1,vc.note.generated_v1,minutes.minute.generated_v1"
 	entryMaxLine = 256 * 1024
 )
 
@@ -37,6 +40,9 @@ type EntryEvent struct {
 type EntryReceiver struct {
 	Config Config
 	Binary string
+	// HandleIM durably admits ordinary IM after meeting entry has first refusal.
+	// It shares this authenticated subscription and must not execute the model.
+	HandleIM func(context.Context, []byte) error
 }
 
 type entryLine struct {
@@ -189,9 +195,20 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 			if err := ready(); err != nil {
 				return err
 			}
+			if r.HandleIM != nil && !r.Config.AutoJoin && event.Kind == EntryMessage {
+				event.Kind = ""
+			}
 			if event.Kind != "" {
 				if err := handle(ctx, event); err != nil {
 					return errors.New("Feishu entry event could not be durably handled; subscription stopped")
+				}
+			} else if r.HandleIM != nil {
+				var envelope entryEnvelope
+				// parseEntry already authenticated and validated this full frame.
+				if json.Unmarshal(line.text, &envelope) == nil && envelope.Header.Type == "im.message.receive_v1" {
+					if err := r.HandleIM(ctx, line.text); err != nil {
+						return errors.New("Feishu IM event could not be durably handled; subscription stopped")
+					}
 				}
 			}
 		}
@@ -236,10 +253,15 @@ func (r EntryReceiver) parseEntry(raw []byte) (EntryEvent, error) {
 	}
 	result := EntryEvent{ID: h.ID, At: at}
 	switch h.Type {
-	case "vc.bot.meeting_activity_v1":
-		var activity map[string]json.RawMessage
-		if entryJSON(envelope.Event, &activity) != nil {
-			return EntryEvent{}, errors.New("Feishu meeting activity payload is invalid")
+	case "vc.bot.meeting_activity_v1",
+		"im.chat.member.bot.added_v1", "im.chat.member.bot.deleted_v1", "im.message.message_read_v1",
+		"im.message.reaction.created_v1", "im.message.reaction.deleted_v1", "drive.notice.comment_add_v1",
+		"vc.meeting.participant_meeting_ended_v1", "vc.note.generated_v1", "minutes.minute.generated_v1":
+		// Auxiliary events acknowledge delivery only. Their content cannot create
+		// tasks, change meeting lifecycle, or drive reaction feedback.
+		var payload map[string]json.RawMessage
+		if entryJSON(envelope.Event, &payload) != nil {
+			return EntryEvent{}, errors.New("Feishu auxiliary event payload is invalid")
 		}
 		return EntryEvent{}, nil
 	case "vc.bot.meeting_invited_v1":

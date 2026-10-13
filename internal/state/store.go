@@ -153,7 +153,7 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 		return fail(fmt.Errorf("unsupported state schema %d", version))
 	}
 	if readOnly {
-		compatibleProjects := projectInspection && (version == 7 || version == 8 || version == 9 || version == 10 || version == 11)
+		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
 		if version != SchemaVersion && !compatibleProjects {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
@@ -252,8 +252,17 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 					return err
 				}
 			}
-
-			return nil
+			if version < 13 {
+				if _, err := tx.Exec(schemaAssistanceV13); err != nil {
+					return err
+				}
+			}
+			if version < 14 {
+				if _, err := tx.Exec(schemaChannelReactionV14); err != nil {
+					return err
+				}
+			}
+			return migrateCurrentAnnotations(context.Background(), tx)
 		}); err != nil {
 			_, restoreErr := db.Exec("PRAGMA foreign_keys=ON")
 			return fail(errors.Join(fmt.Errorf("migrate state schema including FTS5: %w", err), restoreErr))

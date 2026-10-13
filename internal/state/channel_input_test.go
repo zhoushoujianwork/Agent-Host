@@ -437,6 +437,14 @@ func TestChannelInputMigrationFromV11PreservesCapabilitiesAndSourceEvidence(t *t
 						record[i] = bytes.Clone(raw)
 					}
 				}
+				// V14 adds only an empty provider receipt to old reactions.
+				// Compare every original column and reject invented evidence.
+				if table == "channel_reactions" && columns[len(columns)-1] == "provider_reaction_id" {
+					if record[len(record)-1] != "" {
+						t.Fatal("migration invented a provider reaction ID")
+					}
+					record = record[:len(record)-1]
+				}
 				records = append(records, record)
 			}
 			if err := errors.Join(rows.Err(), rows.Close()); err != nil {

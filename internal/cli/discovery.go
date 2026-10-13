@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"agent-host/internal/assistance"
 	"agent-host/internal/discovery"
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/state"
@@ -213,7 +214,8 @@ func composeDiscovery(ctx context.Context, store *state.Store, config discovery.
 	if err != nil {
 		return nil, err
 	}
-	return discovery.NewCollector(store, config, discovery.NewDWSProvider(config), discovery.NewExtractor(claude.New(resolved), config.Model)), nil
+	runner := claude.New(resolved)
+	return discovery.NewCollector(store, config, discovery.NewDWSProvider(config), discovery.NewExtractor(runner, config.Model)).WithMatters(&assistance.Processor{Store: store, Runner: runner, Model: config.Model}), nil
 }
 
 func checkDiscoveryConfig(ctx context.Context, path, home string) (runErr error) {

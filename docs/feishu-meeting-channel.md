@@ -1,24 +1,28 @@
 # Feishu meeting text channel
 
 Status: fixed-meeting text chat passed its two-turn live acceptance on
-2026-10-12. Opt-in automatic entry passed repository checks; successful live
-automatic entry is still pending. [Implementation details](feishu-meeting-channel-detail.md)
-record both validation stages and the recovery boundaries.
+2026-10-12. Opt-in automatic entry also passed a live private-entry rejoin and
+fresh meeting question/reply on source `4f8e024`. [Implementation details](feishu-meeting-channel-detail.md)
+record these bounded observations and the remaining lifecycle checks. The
+[combined Feishu guide](feishu-channel.md) adds ordinary private and group text,
+whose live acceptance is tracked separately.
 
 ## Goal and use
 
 Host a visible Feishu meeting bot through Agent-Host. After the bot joins, an
-allowed user types `AI: question` or `AI：question` in meeting chat and receives
-the final text answer there. Follow-ups share that meeting's conversation;
-different meetings have separate context and memory.
+allowed user types `AI: question` or `AI：question` in meeting chat, without an
+@mention, and receives the final text answer there. Follow-ups share that
+meeting's conversation; different meetings have separate context and memory.
 Text replies include the actual model and measured execution time when available.
 
 With `auto_join: true`, an allowed user can invite the bot inside a meeting or
 send it a meeting card, supported meeting link or nine-digit meeting number in
 private chat. The host joins, checks that the bot is present, then starts the
-existing meeting-text receiver. Ordinary private messages do not become model
-chat. Entry controls use official CLI event delivery; meeting questions still
-use polling at an interval of at least five seconds.
+existing meeting-text receiver. In this meeting-only configuration, ordinary
+private messages do not become model chat; the separate `im_chat` opt-in enables
+the [combined text channel](feishu-channel.md). Entry controls use official CLI
+event delivery; meeting questions still use polling at an interval of at least
+five seconds.
 
 Feishu credentials stay in the selected `lark-cli` profile. Agent-Host supplies
 routing, context and durable execution; the existing native Claude harness

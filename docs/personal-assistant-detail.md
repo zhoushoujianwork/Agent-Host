@@ -1,11 +1,117 @@
 # Personal assistance: research and technical notes
 
 Reviewed: 2026-10-12. The [main design](personal-assistant.md) governs scope and
-implementation order. The approved P0 is ready for development in the
-[release backlog](release-follow-up.md#p0-contextual-assistance-and-accessible-memory).
-This is documentation research and planning, not implementation or live product
-acceptance. Schemas, command names and numerical ranking thresholds are left to
-the implementation increments.
+implementation order. P0 is implemented in the
+[release record](release-follow-up.md#p0-contextual-assistance-and-accessible-memory).
+Implementation and bounded acceptance are described below; research and later
+personal-memory proposals retain their own evidence boundaries.
+
+## P0 implementation
+
+`internal/discovery` still collects exactly configured sources under one fixed
+personal DWS profile and preserves topic review/export semantics. Complete
+windows also invoke `internal/assistance.Processor`: an isolated, tool-free
+native call reconciles questions and commitments against current snapshots and
+prior matter identities. It executes no task and publishes no memory.
+Explicit cancellation, withdrawal or replacement closes the requested matter
+without claiming successful execution, and suppresses stale preparation choices.
+Superseded source prose is scrubbed before model input; missing/withdrawn
+citations exclude dependent observations. Upstream edit/deletion detection is
+limited to what the provider reports, never inferred from a missing message.
+
+SQLite schema v13 adds jobs, matters, revisions, pinned citations and suggestions
+in separate tables. Source digests and expected revisions reject stale analysis.
+Each matter has one stable preparation suggestion. Failed/cancelled analysis
+records a retryable job using an independent finalization deadline. Immutable
+citations stay inspectable, but expired current cache pointers cannot become
+active input again. The execution viewer accepts v13 without exposing these
+private tables.
+
+Owner-only single-project tasks receive `host_context` MCP unless tools are
+disabled. Its binding derives Agent, audience, project, scope and lifetime from
+the saved running task. Selected-source config intersects that project and is
+revalidated per call; selection also affects native session compatibility.
+Default-workspace, multi-project and shared-group tasks do not get this surface.
+
+| Read tool | Contract |
+| --- | --- |
+| `search_context` | Matter/memory navigation snippets with role, scope, revision, time and source coverage. Memory retains existing applicability checks; matter subject/open-item matches outrank incidental summary mentions. |
+| `read_context` | Current matter or eligible memory revision. Memory includes original supporting evidence within 8 KiB; larger evidence remains a separate read. |
+| `read_context_evidence` | Original available matter citations or memory's attributed user input/selected tool observations; the same scope, revision and eligibility checks apply. Matter citations support offset/limit pagination. |
+| `list_private_suggestions` | Current choices with reasons, matter citations and explicit local selection fields. Reading cannot select an action. |
+
+Search accepts 256 query bytes and 20 records per kind; snippets are 80 Unicode
+characters, not source citations. Analysis requires the complete retained set
+within 200 snapshots/128 KiB and at most 100 matters per source. Encoded MCP
+responses are capped at 64 KiB; excessive source content fails explicitly.
+Context reads are excluded from execution-experience extraction. Existing
+memory admission and the separate publication/blacklist increment retain their
+own semantics and validation.
+
+The extractor policy is `owner-project-context-v2`; an unchanged evidence digest
+is reused only under the same policy. This lets policy corrections reconcile
+retained real sources again without manufacturing new messages. Memory annotation
+v2 separately fixes the readiness "success token"/authentication-token ambiguity;
+derived metadata upgrades preserve source memory and revisions.
+
+Suggestions require an open, available matter, successful reconciliation of
+complete collection, coverage caught up through collection time and collection
+within 24 hours. This conservative freshness bound is not an urgency prediction.
+Partial, failed, missing and stale coverage is visible; silence does not prove a
+blocker. Postpone sets a review time; dismissal persists across refresh; owner
+resolution remains distinct from the model's observed outcome. None alters memory.
+
+Preparation fixes the action to a cited brief/checklist, supplies source content
+as data and enters ordinary Host/native execution and existing finalization.
+Claiming a suggestion revision and creating its business run are one transaction.
+Repeated selection or restart cannot replay it; its linked run stays inspectable.
+Preparation does not authorize messages or operational changes. An executed
+suggestion can still be resolved.
+
+### Commands
+
+Use a registered project and owner-private discovery config. `--home` selects
+state; normal chat model/provider options apply to preparation. Inspection and
+feedback require no model credentials. Stop a managed service before standalone
+mutations of its state.
+
+```sh
+agent-host assistance refresh --home "$host_home" --project app --config "$discovery_config"
+agent-host assistance suggestions --home "$host_home" --project app --config "$discovery_config"
+agent-host assistance prepare --home "$host_home" --project app --config "$discovery_config" --revision N SUGGESTION_ID
+agent-host assistance postpone --home "$host_home" --project app --config "$discovery_config" --revision N --until RFC3339 SUGGESTION_ID
+agent-host assistance dismiss --home "$host_home" --project app --config "$discovery_config" --revision N SUGGESTION_ID
+agent-host assistance resolve --home "$host_home" --project app --config "$discovery_config" --revision N SUGGESTION_ID
+agent-host chat --home "$host_home" --project app --discovery-config "$discovery_config" -m 'What remains open and what guidance is already saved?'
+```
+
+Use the actual revision from the list or `assistance suggestion`; stale feedback
+or selection fails. `assistance matters` lists matters, `assistance show` reads
+original citations, and `assistance search` accepts a lexical query. A managed
+DingTalk service reuses its existing `discovery_config` collector and owner-task
+configuration. P0 does not select new sources or alter production configuration.
+
+### P0 validation
+
+Automated checks cover stable identities/progress, interleaved issues, corrected
+and withdrawn sources before model input, partial/failed coverage, feedback,
+read-only access and atomic preparation/recovery without replay. Native and
+selected-source acceptance are recorded separately in `experiments/assistance`;
+raw messages and model answers stay in private state outside Git.
+
+On 2026-10-12, `make check` passed. Real native English/Chinese fresh sessions
+recovered source-only saved values and read original citations, then completed
+chosen preparation and blocked replay. Native progress and requester cancellation
+updated stable matters and suppressed stale suggestions. The real selected-DWS
+pilot retained 12 messages and four matters, with source reads in a fresh native
+conversation. Review ended with two reported resolutions, one closed cancelled
+request, one conflicting report and zero active suggestions.
+
+The [acceptance reports](../experiments/assistance/README.md) keep synthetic/native
+and real-source evidence separate. An earlier 48-hour/99-message probe timed out
+in native analysis despite complete intake; it is not passing acceptance.
+The successful three-hour pilot does not establish wide-window performance,
+account-wide recall, upstream deletion coverage or long-term usefulness.
 
 ## Research findings
 

@@ -81,38 +81,39 @@ type Memory struct {
 }
 
 type Run struct {
-	AgentID               string           `json:"agent_id,omitempty"`
-	AudienceID            string           `json:"audience_id,omitempty"`
-	ID                    string           `json:"id"`
-	SessionID             string           `json:"session_id"`
-	Scope                 string           `json:"scope"`
-	Input                 string           `json:"input"`
-	Agent                 string           `json:"agent"`
-	RequestedModel        string           `json:"requested_model"`
-	Model                 string           `json:"model,omitempty"`
-	NativeSessionID       string           `json:"native_session_id"`
-	ExecutionStatus       string           `json:"execution_status"`
-	MemoryStatus          string           `json:"memory_status"`
-	MemoryAttribution     string           `json:"memory_attribution,omitempty"` // unresolved pauses automatic writeback
-	AcceptanceStatus      string           `json:"acceptance_status"`
-	Output                string           `json:"output"`
-	Error                 string           `json:"error,omitempty"`
-	MemoryError           string           `json:"memory_error,omitempty"`
-	Context               []Memory         `json:"context"`
-	Decision              json.RawMessage  `json:"decision,omitempty"`
-	CreatedAt             time.Time        `json:"created_at"`
-	Events                []event.Event    `json:"events,omitempty"`
-	ExperienceStatus      string           `json:"experience_status,omitempty"`
-	ExperienceError       string           `json:"experience_error,omitempty"`
-	ExperienceDecision    json.RawMessage  `json:"experience_decision,omitempty"`
-	Source                *RunSource       `json:"source,omitempty"`
-	ProjectID             string           `json:"project_id,omitempty"`
-	ProjectName           string           `json:"project_name,omitempty"`
-	Workspace             string           `json:"workspace,omitempty"`
-	RuntimeFingerprint    string           `json:"runtime_fingerprint,omitempty"`
-	Projects              []ProjectRef     `json:"projects,omitempty"`
-	AdditionalDirectories []string         `json:"additional_directories,omitempty"`
-	Supplements           []UserSupplement `json:"supplements,omitempty"`
+	Preparation           *PreparationSource `json:"preparation,omitempty"`
+	AgentID               string             `json:"agent_id,omitempty"`
+	AudienceID            string             `json:"audience_id,omitempty"`
+	ID                    string             `json:"id"`
+	SessionID             string             `json:"session_id"`
+	Scope                 string             `json:"scope"`
+	Input                 string             `json:"input"`
+	Agent                 string             `json:"agent"`
+	RequestedModel        string             `json:"requested_model"`
+	Model                 string             `json:"model,omitempty"`
+	NativeSessionID       string             `json:"native_session_id"`
+	ExecutionStatus       string             `json:"execution_status"`
+	MemoryStatus          string             `json:"memory_status"`
+	MemoryAttribution     string             `json:"memory_attribution,omitempty"` // unresolved pauses automatic writeback
+	AcceptanceStatus      string             `json:"acceptance_status"`
+	Output                string             `json:"output"`
+	Error                 string             `json:"error,omitempty"`
+	MemoryError           string             `json:"memory_error,omitempty"`
+	Context               []Memory           `json:"context"`
+	Decision              json.RawMessage    `json:"decision,omitempty"`
+	CreatedAt             time.Time          `json:"created_at"`
+	Events                []event.Event      `json:"events,omitempty"`
+	ExperienceStatus      string             `json:"experience_status,omitempty"`
+	ExperienceError       string             `json:"experience_error,omitempty"`
+	ExperienceDecision    json.RawMessage    `json:"experience_decision,omitempty"`
+	Source                *RunSource         `json:"source,omitempty"`
+	ProjectID             string             `json:"project_id,omitempty"`
+	ProjectName           string             `json:"project_name,omitempty"`
+	Workspace             string             `json:"workspace,omitempty"`
+	RuntimeFingerprint    string             `json:"runtime_fingerprint,omitempty"`
+	Projects              []ProjectRef       `json:"projects,omitempty"`
+	AdditionalDirectories []string           `json:"additional_directories,omitempty"`
+	Supplements           []UserSupplement   `json:"supplements,omitempty"`
 }
 
 // AutomaticMemorySkipReason keeps execution independent from whether its
@@ -153,12 +154,16 @@ type RunSource struct {
 // ChannelReplyTarget identifies a credential-free API destination. Credentials
 // remain in the configured channel adapter; UUID fixes the delivery identity.
 type ChannelReplyTarget struct {
-	Kind string `json:"kind"`
-	ID   string `json:"id"`
-	UUID string `json:"uuid"`
+	Kind      string `json:"kind"`
+	ID        string `json:"id"`
+	UUID      string `json:"uuid"`
+	MessageID string `json:"message_id,omitempty"`
 }
 
-const ReplyTargetFeishuMeeting = "feishu-meeting"
+const (
+	ReplyTargetFeishu        = "feishu"
+	ReplyTargetFeishuMeeting = "feishu-meeting"
+)
 
 // ChannelMessage is safe to inspect without disclosing its private reply URL.
 // Execution and delivery have independent status fields.
@@ -207,19 +212,20 @@ type ChannelMessage struct {
 // ChannelReaction records one independently delivered message-stage marker.
 // Active means an accepted marker has not been confirmed removed.
 type ChannelReaction struct {
-	ID               int64     `json:"id"`
-	ChannelMessageID string    `json:"channel_message_id"`
-	Stage            string    `json:"stage"`
-	Label            string    `json:"label"`
-	Status           string    `json:"status"`
-	Error            string    `json:"error,omitempty"`
-	Active           bool      `json:"active"`
-	RemovalStatus    string    `json:"removal_status"`
-	RemovalError     string    `json:"removal_error,omitempty"`
-	SourceRunID      string    `json:"source_run_id,omitempty"`
-	SourceEventSeq   int64     `json:"source_event_seq,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                 int64     `json:"id"`
+	ChannelMessageID   string    `json:"channel_message_id"`
+	Stage              string    `json:"stage"`
+	Label              string    `json:"label"`
+	ProviderReactionID string    `json:"provider_reaction_id,omitempty"`
+	Status             string    `json:"status"`
+	Error              string    `json:"error,omitempty"`
+	Active             bool      `json:"active"`
+	RemovalStatus      string    `json:"removal_status"`
+	RemovalError       string    `json:"removal_error,omitempty"`
+	SourceRunID        string    `json:"source_run_id,omitempty"`
+	SourceEventSeq     int64     `json:"source_event_seq,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // ToolEvidence binds a native call to its observed result in the run journal.

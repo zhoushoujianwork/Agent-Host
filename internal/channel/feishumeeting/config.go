@@ -21,6 +21,9 @@ type Config struct {
 	AllowedSenderOpenIDs []string      `json:"allowed_sender_open_ids"`
 	PollInterval         time.Duration `json:"-"`
 	AutoJoin             bool          `json:"auto_join,omitempty"`
+	IMChat               bool          `json:"im_chat,omitempty"`
+	IMReactions          bool          `json:"im_reactions,omitempty"`
+	OwnerOpenID          string        `json:"owner_open_id,omitempty"`
 }
 
 var (
@@ -31,8 +34,14 @@ var (
 )
 
 func (c Config) Validate() error {
-	if !profileName.MatchString(c.Profile) || !appID.MatchString(c.AppID) || !openID.MatchString(c.BotOpenID) || (!meetingID.MatchString(c.MeetingID) && !(c.AutoJoin && c.MeetingID == "")) {
-		return errors.New("Feishu meeting requires an explicit profile, app ID, bot open ID, and a long meeting ID unless auto_join is enabled")
+	if c.IMReactions && !c.IMChat {
+		return errors.New("Feishu im_reactions requires im_chat")
+	}
+	if !profileName.MatchString(c.Profile) || !appID.MatchString(c.AppID) || !openID.MatchString(c.BotOpenID) || (!meetingID.MatchString(c.MeetingID) && !((c.AutoJoin || c.IMChat) && c.MeetingID == "")) {
+		return errors.New("Feishu requires an explicit profile, app ID, bot open ID, and a long meeting ID unless auto_join or im_chat is enabled")
+	}
+	if c.IMChat && (!openID.MatchString(c.OwnerOpenID) || c.OwnerOpenID == c.BotOpenID) || c.OwnerOpenID != "" && !openID.MatchString(c.OwnerOpenID) {
+		return errors.New("Feishu IM chat requires an explicit human owner Open ID")
 	}
 	if strings.TrimSpace(c.TenantID) != c.TenantID || c.TenantID == "" || len(c.TenantID) > 256 || strings.ContainsAny(c.TenantID, "\x00\r\n") {
 		return errors.New("Feishu meeting requires its actual tenant identifier")

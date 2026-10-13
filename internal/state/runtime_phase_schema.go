@@ -1,6 +1,11 @@
 package state
 
-const SchemaVersion = 12
+const SchemaVersion = 14
+
+const schemaChannelReactionV14 = `
+ALTER TABLE channel_reactions ADD COLUMN provider_reaction_id TEXT NOT NULL DEFAULT '';
+PRAGMA user_version=14;
+`
 
 // Occurrence zero preserves singleton stages. Repeatable phase transitions use
 // their durable event sequence, keeping history and delivery attempts distinct.

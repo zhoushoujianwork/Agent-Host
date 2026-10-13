@@ -2,6 +2,9 @@
 
 The [main guide](feishu-meeting-channel.md) governs user-facing scope. A named
 local CLI profile supplies optional automatic entry and meeting text polling.
+The [combined Feishu increment](feishu-channel-detail.md) shares this entry
+connection with opt-in owner private and group @mention text; the descriptions
+below of ignored ordinary IM apply when `im_chat` is disabled.
 
 ## Ownership
 
@@ -369,18 +372,39 @@ restart with the installed npm CLI confirmed the old service, wrapper and
 native subscriber all exited; the replacement reached a fresh SDK connection
 and `channel.connected` without `--force` or manual orphan cleanup. A real
 private `video_chat` event established the card fields documented above. These
-observations do not establish a successful automatic join or a subsequent model
-conversation; that platform acceptance remains pending.
+observations alone did not establish a successful automatic join or a subsequent
+model conversation; the later bounded acceptance below supplies that evidence.
 An authorized private entry request later retained an unknown acknowledgement,
 while an independent read-only roster check found the bot present. The original
 join response was not retained, so its exact rejection remains unproven; that
 uncertain attempt was not replayed. Join validation now follows the SDK's
 meeting-ID contract and still requires independent configured-bot presence.
 
-Pending automatic-entry acceptance includes an authorized in-meeting invitation,
-private card and number/link request, duplicate admission, seed/restart
-membership verification, scoped meeting-end/removal cleanup and a fresh
-meeting question/reply. Larger traffic, multiple-sender use and new long-term
+On source `4f8e024`, a later live private-entry request rejoined the selected
+meeting and completed a fresh owner turn on 2026-10-12. Times below are UTC+08:
+
+| Time | Observation |
+| --- | --- |
+| 18:08:35 | Authorized private entry request received |
+| 18:08:37 | Join attempt started |
+| 18:08:41 | Meeting polling connected and entry became active after presence verification |
+| 18:10:33 | Owner sent a fresh `AI:` meeting question |
+| 18:10:36 | The question was durably received and processing started |
+| 18:10:43–18:10:44 | Native execution completed, then Feishu accepted the reply |
+
+Independent read-only inspection matched the configured meeting and bot,
+verified the owner's eligible text item and durable progress, and found one
+completed receipt with an accepted reply and no error. The preceding owner
+meeting message was before startup and correctly remained part of the baseline.
+The inspection read metadata and aggregate counts without publishing participant
+content. Platform acceptance does not itself prove the recipient read the reply.
+This is meeting-chat evidence, not ordinary-IM chat acceptance.
+
+Remaining automatic-entry platform cases include an authorized in-meeting
+invitation, each supported private entry form, duplicate admission,
+seed/restart presence recovery and scoped meeting-end/removal cleanup. The
+observed private re-entry and fresh meeting reply do not establish every one of
+those lifecycle paths. Larger traffic, multiple-sender use and new long-term
 memory remain separately unmeasured. Raw platform receipts, source IDs and
 provider credentials stay in the private runtime; only aggregate results belong
 in this guide. Meeting-text push transport and audio remain outside this

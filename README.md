@@ -65,6 +65,12 @@ an optional separate system DWS collector for selected daily conversations.
 DWS topics support local review and owner-private evidence export; acceptance
 starts no task and publishes no memory. Conversation-derived learning remains
 planned. Native and selected-source acceptance are tracked separately.
+The [personal-assistance P0](docs/personal-assistant.md) maintains changing
+questions and commitments from those selected sources, adds owner-only on-demand
+AI retrieval of matters, eligible memory and original citations, and provides
+private suggestions with explicit preparation selection and feedback.
+`agent-host assistance --help` documents the local surface. This reuses existing
+memory publication; personal-domain memory and automatic chat learning are later work.
 Enterprise group mentions and default/group-bound agent instances are implemented.
 The [conversation and attachment increment](docs/channel-conversations.md) adds
 per-conversation ordering with bounded parallel audiences, picture/file inputs
@@ -73,11 +79,13 @@ tracked separately from earlier text-only acceptance.
 Local/GitHub/GitLab project discovery, per-project execution profiles, Codex, general
 entity extraction, vector retrieval and a Web interface for chat or memory changes remain planned.
 
-The [Feishu meeting text channel](docs/feishu-meeting-channel.md) connects one
-explicit meeting through a local `lark-cli` profile to the existing host/harness
-path. Its two-turn owner acceptance passed on 2026-10-12 with both text replies
-accepted by Feishu. The guide tracks those results separately from the installed
-DingTalk service. Meeting audio remains future work.
+The [Feishu text channel](docs/feishu-channel.md) adds owner private questions and
+same-tenant group @mentions through one local `lark-cli` connection, sharing the
+Host worker with optional meeting entry. Ordinary-IM checks and live acceptance
+are tracked separately from the [meeting text channel](docs/feishu-meeting-channel.md),
+whose two-turn conversation and later private-entry rejoin/fresh reply passed
+bounded live checks on 2026-10-12. Group and meeting audiences remain separate
+from owner-private context. Meeting audio remains future work.
 
 The [evaluation guide](docs/evaluation.md) defines categorized examples and the
 workflow for retaining daily incidents as regression cases. `agent-host eval`
@@ -156,9 +164,9 @@ conflicts, NDJSON output, and event replay. See the
 [experience guide](docs/experience-memory.md) for review and expiration.
 The [DingTalk guide](docs/dingtalk-channel.md) covers local configuration checks,
 foreground serving and status inspection. Use the
-[Feishu meeting guide](docs/feishu-meeting-channel.md) for the separate
-`feishu-meeting check`, `serve` and `status` workflow. Use the
-[production installation guide](docs/service-install.md) for `make install` and
+[Feishu guide](docs/feishu-channel.md) for the separate
+`feishu check`, `serve` and `status` workflow; `feishu-meeting` remains an alias.
+Use the [production installation guide](docs/service-install.md) for `make install` and
 the separate runtime under `~/.agent-host/production`.
 The [agent instance guide](docs/agent-instances.md) explains enterprise group
 mentions, default and group-bound roles, and separate group conversations and
@@ -175,8 +183,10 @@ make build
 ./bin/agent-host --help
 ```
 
-The local module is `agent-host`; choose a canonical import path when a remote
-repository is selected. Tests use real temporary SQLite databases, synthetic
+Develop directly in this public repository; local `main` tracks `origin/main`
+and uses the same commits. The [development guide](docs/development.md) explains
+private runtime data and source versus versioned releases. The Go module remains
+`agent-host`. Tests use real temporary SQLite databases, synthetic
 native subprocesses, and HTTP fixtures. The [live MVP experiment](experiments/mvp/README.md)
 records actual provider observations separately.
 
@@ -208,8 +218,10 @@ records actual provider observations separately.
   ordered conversations, bounded concurrency, picture/file inputs and quotes.
 - [DingTalk channel](docs/dingtalk-channel.md): the first external
   channel, offline validation, configuration and live rollout boundaries.
-- [Feishu meeting text channel](docs/feishu-meeting-channel.md): named-profile
-  foreground polling, explicitly addressed text, meeting context and voice prerequisites.
+- [Feishu text channel](docs/feishu-channel.md): owner private questions, group
+  @mentions, shared runtime and separate audience histories.
+- [Feishu meeting text channel](docs/feishu-meeting-channel.md): optional automatic
+  entry, foreground polling, addressed meeting text and voice prerequisites.
 - [Reviewed execution experience](docs/experience-memory.md): the current experience MVP and
   its review workflow and live validation.
 - [Object-aware memory retrieval](docs/object-retrieval.md): shared read/write

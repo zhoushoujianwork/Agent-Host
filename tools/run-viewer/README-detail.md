@@ -148,7 +148,7 @@ aggregates all per-scope retrieval decisions instead of keeping the first event.
 Recorded project roots, extra directories and user supplements are displayed
 without replacing historical data with today's project registration.
 
-`memory_view.py` reads memory payloads and, for schema v3–v12, their separate
+`memory_view.py` reads memory payloads and, for schema v3–v13, their separate
 stored `memory_annotations`. Missing required annotations fail explicitly.
 Legacy v1/v2 rows retain absent metadata; the viewer does not migrate or extract
 new identities. Memory reads and related runs/events use one read-only database

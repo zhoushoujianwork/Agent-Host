@@ -78,6 +78,14 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(viewer.Catalog(missing, self.reports).index()["records"], [])
         self.assertFalse(missing.exists())
 
+    def test_disabled_reports_reads_only_current_database(self):
+        conn = self.database()
+        (self.reports / "unrelated.json").write_text('{"not":"a valid report"}')
+        catalog = viewer.Catalog(self.home, None)
+        self.assertEqual(catalog.archives(), {})
+        self.assertEqual(catalog.index()["database_count"], 1)
+        conn.close()
+
     def test_v1_does_not_migrate_or_require_candidates(self):
         conn = self.database(1)
         self.assertEqual(self.catalog.record("db:first")["candidates"], [])
@@ -257,26 +265,37 @@ class CatalogTests(unittest.TestCase):
         conn.execute("UPDATE runs SET payload=? WHERE id='first'", (json.dumps(run),))
         conn.execute("CREATE TABLE channel_messages(id TEXT,reply_url TEXT,input_capabilities TEXT)")
         conn.execute("INSERT INTO channel_messages VALUES('message-1','synthetic-private-reply-capability','synthetic-private-input-capability')")
+        conn.execute("CREATE TABLE channel_reactions(id INTEGER,channel_message_id TEXT,provider_reaction_id TEXT)")
+        conn.execute("INSERT INTO channel_reactions VALUES(1,'message-1','synthetic-private-provider-reaction-id')")
         conn.execute("CREATE TABLE discovery_fixture(payload TEXT)")
         conn.execute("INSERT INTO discovery_fixture VALUES('synthetic-private-discovery-cache')")
         conn.execute("INSERT INTO candidates VALUES('candidate-1','first',?)",
                      (json.dumps({"id": "candidate-1", "status": "pending"}),))
         conn.commit()
         # The v10 memory partition columns are additive to this fixture. The
-        # viewer must not inspect private tables to read run evidence in v12.
+        # viewer must not inspect private tables to read run evidence, including
+        # the provider reaction ID added in v14.
         conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'default'")
         conn.execute("ALTER TABLE memories ADD COLUMN audience_id TEXT NOT NULL DEFAULT 'owner'")
         conn.commit()
-        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
             with self.subTest(version=version):
                 conn.execute(f"PRAGMA user_version={version}")
                 before = hashlib.sha256((self.home / "state.db").read_bytes()).hexdigest()
+                index = self.catalog.index()
+                self.assertEqual(index["database_count"], 1)
                 detail = self.catalog.record("db:first")
                 self.assertEqual(detail["run"]["source"], run["source"])
                 self.assertEqual(detail["candidates"][0]["id"], "candidate-1")
                 for private in ("synthetic-private-reply-capability", "synthetic-private-input-capability",
-                                "synthetic-private-discovery-cache"):
+                                "synthetic-private-discovery-cache", "synthetic-private-provider-reaction-id"):
+                    self.assertNotIn(private, json.dumps(index))
                     self.assertNotIn(private, json.dumps(detail))
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], version)
+                readonly = self.catalog.connection()
+                with self.assertRaises(sqlite3.OperationalError):
+                    readonly.execute("UPDATE channel_reactions SET provider_reaction_id='changed'")
+                readonly.close()
                 self.assertEqual(hashlib.sha256((self.home / "state.db").read_bytes()).hexdigest(), before)
         conn.close()
 

@@ -27,7 +27,16 @@ rows; a user statement cannot claim experience provenance through them.
 
 ## Representation and rules
 
-The rule version is `entity-topic-v1`. An annotation retains object mentions,
+The current rule version is `entity-topic-v2`. The P0 native acceptance exposed
+that a readiness "success token" was incorrectly filtered as an authentication
+credential. V2 excludes specifically named success/readiness/liveness response
+tokens from credential classification, while a separate bearer/access token
+retains its type. Writable startup rebuilds outdated annotations/indexes by
+Agent/audience partition without rewriting source memory or revisions.
+The original retrieval evidence below remains historical; P0 checks this new
+case and real fresh-session recall separately.
+
+An annotation retains object mentions,
 explicit aliases and topics, each with source text, UTF-8 byte offsets and a
 method. Object IDs derive from project scope, object kind and canonical spelling.
 They do not merge identities based on fuzzy similarity. Topic-to-object links

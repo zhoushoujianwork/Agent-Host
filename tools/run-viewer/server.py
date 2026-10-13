@@ -165,7 +165,7 @@ class Catalog:
         if workspace and project:
             raise ValueError("--project and --workspace are mutually exclusive")
         self.database = Path(home).expanduser().resolve() / "state.db"
-        self.reports = Path(reports).expanduser().resolve()
+        self.reports = Path(reports).expanduser().resolve() if reports is not None else None
         self.workspace = str(Path(workspace).expanduser().resolve()) if workspace else None
         self.project = project
         self.agent, self.audience = agent, audience
@@ -180,7 +180,7 @@ class Catalog:
 
     def schema_version(self, conn):
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12):
+        if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
             raise ValueError(f"unsupported state schema: {version}")
         return version
 
@@ -202,6 +202,8 @@ class Catalog:
         return result
 
     def archives(self):
+        if self.reports is None:
+            return {}
         records = {}
         for path in sorted(self.reports.glob("*.json")):
             if path.stat().st_size > MAX_REPORT_BYTES:
@@ -346,6 +348,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, default=Path.home() / ".agent-host")
     parser.add_argument("--reports", type=Path, default=ROOT / "experiments/experience/results")
+    parser.add_argument("--no-reports", action="store_true", help="Read only current database state, without archived reports")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--workspace", help="Limit database records to this workspace's registered project or legacy scope")
     selection.add_argument("--project", help="Limit database records to this registered project ID")
@@ -353,7 +356,7 @@ def main():
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
-    catalog = Catalog(args.home, args.reports, args.workspace, args.project, args.agent, args.audience)
+    catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience)
     try:
         if catalog.database.exists():
             conn = catalog.connection()

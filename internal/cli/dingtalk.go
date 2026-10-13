@@ -140,6 +140,9 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	if o.historyEnabled && !o.noTools {
 		h.Config.HistoryHome, h.Config.HistoryExecutable = o.home, o.historyExecutable
 	}
+	if o.contextExecutable != "" && !o.noTools {
+		h.Config.ContextHome, h.Config.ContextExecutable, h.Config.ContextConfig = o.home, o.contextExecutable, o.discoveryConfig
+	}
 	return h
 }
 

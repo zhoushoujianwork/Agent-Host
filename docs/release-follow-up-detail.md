@@ -5,14 +5,14 @@ historical test results stay in the [release record](release-daily-use-detail.md
 
 ## P0 acceptance
 
-Status: approved design, awaiting development. Scope is defined in the
-[personal-assistant design](personal-assistant.md#p0-ready-for-development);
-[technical notes](personal-assistant-detail.md#p0-boundary-and-ai-access) explain
-the proposed read path. No P0 implementation or acceptance result is claimed.
+Status: P0 implemented. Scope is defined in the
+[personal-assistant guide](personal-assistant.md#current-p0);
+[implementation and validation](personal-assistant-detail.md#p0-implementation)
+record the read path, source/action boundaries and bounded acceptance.
 
 Use one owner, one registered project and selected DWS conversations. Preserve
 existing topic export, history access and memory publication semantics. The
-release entry is complete only after demonstrating:
+release acceptance gates are:
 
 1. **Evolving state.** Related evidence updates the same matter across collection
    and restart; interleaved issues remain separate. Partial coverage and silence
@@ -40,11 +40,47 @@ do not invent a numerical quality target before the pilot. Run `make check` and
 review the implementation diff before accepting the increment. Documentation
 checks alone do not satisfy these runtime gates.
 
+The [P0 acceptance record](../experiments/assistance/README.md) now records
+passing fresh-native retrieval/preparation and a bounded real selected-source
+pilot separately. It also retains the failed wide-window probe and unmeasured
+general quality/scale boundaries; production rollout is not claimed.
+
 P0 does not require a new personal memory domain, automatic conversation-derived
 publication, stronger equivalent-re-admission protection, group recommendations,
 proactive delivery or specialist memory stores. The separate automatic-experience
 increment retains its existing priority and validation; P1 depends on that
 publication/blacklist policy, while P0 only consumes eligible existing records.
+
+## Issue #1 planning baseline
+
+The [delivery plan](release-follow-up.md#issue-1-delivery-plan) is based on a
+2026-10-13 ClawFlow read of all issues and open PRs for
+`zhoushoujianwork/Agent-Host`: only open issue #1 was returned, and the open PR
+list was empty. An all-state related-experience search also returned only #1.
+The local checkout had no Git remote; the configured ClawFlow repository and
+the issue's returned URL identify the reviewed project. No remote issue fields,
+comments, labels or PRs were changed by this planning work.
+
+The issue's Hermes comparison is motivation, not independently verified runtime
+evidence. Planning uses the current local architecture and code: procedure memory
+has conditions, steps and citations; there is no generated-skill request field;
+authenticated senders are already attributed; groups share native conversations.
+The two linked proposals narrow open questions into independently deliverable
+increments, with broader profiling deferred.
+
+The design-doc portion of #1 has local proposals and linked details. Runtime
+skill export, profile learning and their evaluation cases remain unimplemented;
+documentation checks do not complete those issue checkboxes. The automatic
+publication/blacklist prerequisite retains its own acceptance loop and historical
+manual-review evidence. Track implementation slices separately when development
+starts; keep #1 as the umbrella until both proposals pass their distinct gates.
+
+Native skill mounting is grounded in official Claude documentation, with an
+installed-version integration probe still required. Profile privacy planning
+accounts for persistent shared native history, rather than relying solely on
+filtering the current prompt. See
+[skill implementation notes](experience-skills-detail.md) and
+[profile implementation notes](person-profiles-detail.md) for those boundaries.
 
 ## Real non-owner group acceptance
 

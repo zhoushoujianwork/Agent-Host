@@ -69,7 +69,7 @@ Optional `discovery_config` supplies a private file with selected DWS conversati
 a fixed profile and registered project mappings; omission disables collection.
 It runs independently and supports local topic review/export. See the
 [history/discovery guide](conversation-history.md) before enabling it.
-This upgrade adds schema 12 tables; keep a private pre-upgrade SQLite backup.
+The current binary uses schema 13; keep a private pre-upgrade SQLite backup.
 An older binary rollback also needs its matching database backup.
 
 Directories must be owner-only (`0700`); credential/configuration files must be
@@ -87,6 +87,13 @@ upgrade or restart it. Temporary DingTalk connection loss reconnects while
 running tasks continue. Unexpected process failures restart with a 30-second
 launchd throttle; errors remain in the local log. Interrupted native work is
 never automatically replayed.
+
+Each service start also launches the read-only workbench and opens its execution
+page in your system's default browser. Inspect the execution chain, tool evidence
+and memory decisions there; **记忆工作台** opens the saved-memory view. The workbench
+reads this production runtime, refreshes every five seconds and stops with the
+service. Its local URL is printed in `logs/service.stderr.log`. For manual
+headless startup, add `--no-browser` to `agent-host service run --root ...`.
 
 Choose the native model and authentication available to your account in private
 service/environment configuration. A gateway is optional; use only your own

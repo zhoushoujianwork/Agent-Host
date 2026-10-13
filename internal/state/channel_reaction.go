@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/event"
@@ -18,7 +20,7 @@ var reactionLabels = map[string]string{
 	"replying": "发送回复",
 }
 
-const reactionColumns = "id,channel_message_id,stage,label,status,error,active,removal_status,removal_error,source_run_id,source_event_seq,created_at,updated_at"
+const reactionColumns = "id,channel_message_id,stage,label,status,error,active,removal_status,removal_error,source_run_id,source_event_seq,created_at,updated_at,provider_reaction_id"
 const reactionTimeFormat = "2006-01-02T15:04:05.000000000Z"
 
 // queueChannelReaction participates in the message transition transaction.
@@ -148,7 +150,7 @@ type reactionScanner interface{ Scan(...any) error }
 func scanChannelReaction(row reactionScanner) (ChannelReaction, error) {
 	var r ChannelReaction
 	var created, updated string
-	if err := row.Scan(&r.ID, &r.ChannelMessageID, &r.Stage, &r.Label, &r.Status, &r.Error, &r.Active, &r.RemovalStatus, &r.RemovalError, &r.SourceRunID, &r.SourceEventSeq, &created, &updated); err != nil {
+	if err := row.Scan(&r.ID, &r.ChannelMessageID, &r.Stage, &r.Label, &r.Status, &r.Error, &r.Active, &r.RemovalStatus, &r.RemovalError, &r.SourceRunID, &r.SourceEventSeq, &created, &updated, &r.ProviderReactionID); err != nil {
 		return r, err
 	}
 	var err error
@@ -262,24 +264,60 @@ func (s *Store) FinishChannelReactionRemoval(ctx context.Context, id int64, stat
 // FinishChannelReaction preserves transport acceptance separately from task
 // truth. Failed or uncertain attempts cannot return to the ready queue.
 func (s *Store) FinishChannelReaction(ctx context.Context, id int64, status, errorText string) error {
+	return s.finishChannelReaction(ctx, id, "", status, errorText, false)
+}
+
+// FinishChannelAPIReaction atomically binds accepted delivery to the provider's
+// original ID. Unknown attempts retain no guessed capability and cannot retry.
+func (s *Store) FinishChannelAPIReaction(ctx context.Context, id int64, providerID, status, errorText string) error {
+	if status == "accepted" && !ValidProviderReactionID(providerID) || status != "accepted" && providerID != "" {
+		return errors.New("API reaction acceptance requires a valid provider ID; other outcomes cannot include one")
+	}
+	return s.finishChannelReaction(ctx, id, providerID, status, errorText, true)
+}
+
+// ValidProviderReactionID bounds opaque provider evidence without guessing its
+// encoding or deriving an ID from the message, label, or request UUID.
+func ValidProviderReactionID(id string) bool {
+	return id != "" && len(id) <= 1024 && utf8.ValidString(id) && strings.TrimSpace(id) == id && strings.IndexFunc(id, unicode.IsControl) < 0
+}
+
+func (s *Store) finishChannelReaction(ctx context.Context, id int64, providerID, status, errorText string, api bool) error {
 	if status != "accepted" && status != "failed" && status != "unknown" {
 		return fmt.Errorf("invalid channel reaction terminal status %q", status)
 	}
 	if status == "accepted" && errorText != "" || status != "accepted" && strings.TrimSpace(errorText) == "" {
 		return errors.New("channel reaction failure or unknown outcome requires an error; acceptance cannot include an error")
 	}
-	result, err := s.db.ExecContext(ctx, "UPDATE channel_reactions SET status=?,error=?,active=?,updated_at=? WHERE id=? AND status='sending'", status, errorText, status == "accepted", time.Now().UTC().Format(reactionTimeFormat), id)
-	if err != nil {
-		return wrap("finish channel reaction", err)
-	}
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if count != 1 {
-		return errors.New("only sending channel reactions can finish")
-	}
-	return nil
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		var messageID string
+		if err := tx.QueryRowContext(ctx, "SELECT channel_message_id FROM channel_reactions WHERE id=?", id).Scan(&messageID); err != nil {
+			return err
+		}
+		m, err := readChannelMessage(ctx, tx, messageID)
+		if err != nil {
+			return err
+		}
+		if api {
+			if m.Channel != ReplyTargetFeishu || m.DisableReactions || !channelAPIReplyTargetValid(m) {
+				return errors.New("API reactions require an enabled Feishu IM receipt")
+			}
+		} else if m.ReplyTarget != nil {
+			return errors.New("API reaction outcomes require provider-aware finalization")
+		}
+		result, err := tx.ExecContext(ctx, "UPDATE channel_reactions SET status=?,error=?,active=?,provider_reaction_id=?,updated_at=? WHERE id=? AND status='sending'", status, errorText, status == "accepted", providerID, time.Now().UTC().Format(reactionTimeFormat), id)
+		if err != nil {
+			return wrap("finish channel reaction", err)
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count != 1 {
+			return errors.New("only sending channel reactions can finish")
+		}
+		return nil
+	})
 }
 
 // recoverChannelReactions runs after message recovery, in its transaction.
