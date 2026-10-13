@@ -1,4 +1,4 @@
-// Package mcpstdio supplies the bounded internal read-only MCP transport.
+// Package mcpstdio supplies the bounded internal MCP transport.
 package mcpstdio
 
 import (
@@ -128,7 +128,7 @@ func Serve(ctx context.Context, name string, catalog []Tool, call func(context.C
 				break
 			}
 			if Decode(rpc.Params, &params) != nil || !enabled[params.Name] {
-				failure = "read-only tool is not enabled"
+				failure = "tool is not enabled"
 				break
 			}
 			value, err := call(ctx, params.Name, params.Arguments)
@@ -138,12 +138,12 @@ func Serve(ctx context.Context, name string, catalog []Tool, call func(context.C
 			}
 			body, err := json.Marshal(value)
 			if err != nil {
-				return errors.New("read-only result could not be encoded")
+				return errors.New("tool result could not be encoded")
 			}
 			result = map[string]any{"content": []any{map[string]any{"type": "text", "text": string(body)}}, "structuredContent": value, "isError": false}
 			encoded, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": rpc.ID, "result": result})
 			if err != nil || len(encoded)+1 > 64<<10 {
-				result = toolError("encoded read-only result exceeds 64 KiB; request a smaller limit or neighbor window")
+				result = toolError("encoded tool result exceeds 64 KiB; request a smaller limit or neighbor window")
 			}
 		default:
 			code, failure = -32601, "method not found"
@@ -157,7 +157,7 @@ func Serve(ctx context.Context, name string, catalog []Tool, call func(context.C
 		}
 	}
 	if reader.Err() != nil {
-		return errors.New("read-only MCP input failed")
+		return errors.New("MCP input failed")
 	}
 	return nil
 }

@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT_FILES = {
-    ".gitignore", ".gitattributes", "AGENTS.md", "README.md", "Makefile",
+    ".gitignore", ".gitattributes", "AGENTS.md", "README.md", "README-detail.md", "Makefile",
     "go.mod", "go.sum", "LICENSE", "NOTICE",
 }
 ROOT_DIRECTORIES = {".github", "cmd", "internal", "docs", "evals", "examples", "experiments", "tools"}

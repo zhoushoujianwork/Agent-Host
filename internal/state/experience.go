@@ -175,7 +175,7 @@ func ExecutionExperienceEvidence(evidence []ToolEvidence) []ToolEvidence {
 }
 
 func executionExperienceEligible(e ToolEvidence) bool {
-	return e.Name != "ToolSearch" && !strings.HasPrefix(e.Name, "mcp__knowledge_") && !strings.HasPrefix(e.Name, "mcp__conversation_history__") && !strings.HasPrefix(e.Name, "mcp__host_context__")
+	return e.Name != "ToolSearch" && !strings.HasPrefix(e.Name, "mcp__email__") && !strings.HasPrefix(e.Name, "mcp__knowledge_") && !strings.HasPrefix(e.Name, "mcp__conversation_history__") && !strings.HasPrefix(e.Name, "mcp__host_context__")
 }
 
 // EvidenceEntities derives project/file identities only from typed native tool

@@ -84,6 +84,7 @@ func resolveKnowledge(o *options) error {
 	o.knowledgeSources = nil
 	o.mcpServers = nil
 	o.knowledgeHints = nil
+	o.emailFingerprint = ""
 	if o.noTools {
 		return nil
 	}
@@ -101,6 +102,9 @@ func resolveKnowledge(o *options) error {
 			return err
 		}
 		o.contextPolicy = policy
+	}
+	if err := resolveEmail(o); err != nil {
+		return err
 	}
 	selected, err := selectKnowledgeForOptions(*o)
 	if err != nil {

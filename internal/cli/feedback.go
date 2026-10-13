@@ -72,13 +72,13 @@ func runFeedback(ctx context.Context, args []string, out, errout io.Writer) erro
 	if len(args) == 0 || args[0] != "report" {
 		return errors.New("feedback requires report")
 	}
-	home, err := os.UserHomeDir()
+	cwd, err := os.Getwd()
 	if err != nil {
 		return errors.New("feedback report could not locate the default home")
 	}
 	flags := flag.NewFlagSet("feedback report", flag.ContinueOnError)
 	flags.SetOutput(errout)
-	stateHome := flags.String("home", filepath.Join(home, ".agent-host"), "existing Host state directory")
+	stateHome := flags.String("home", filepath.Join(cwd, ".agent-host", "cli-state"), "existing Host state directory")
 	runID := flags.String("run", "", "optional run to inspect locally")
 	output := flags.String("output", "", "new local report file; existing files are never replaced")
 	agent := flags.String("agent", state.DefaultAgentID, "logical Agent instance")

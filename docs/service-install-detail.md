@@ -1,9 +1,75 @@
-# Production service implementation details
+# Runtime implementation and migration details
 
-The [main guide](service-install.md) defines usage and scope. Installation is a
-macOS user service for DingTalk owner private messages and enterprise group
-mentions. Linux installation and remote approval dialogs remain outside this
-increment.
+The [main guide](service-install.md) defines the current project-local workflow.
+The old system installation instructions below are retained as historical
+reference for prior evidence; `make install` is no longer a Make target.
+
+## Project-local runtime
+
+`make run` builds the checkout binary and invokes `tools/service/run.py` with
+`.agent-host/runtime` by default. `RUNTIME_ROOT` selects another explicit root;
+`RUN_ARGS=--no-browser` suppresses browser launch. The runner copies the tracked
+viewer assets into the private runtime, runs `service check`, then relays the
+service's stdout/stderr to both the terminal and a private append-only log.
+It writes `service.pid` while running and forwards SIGINT/SIGTERM to the child.
+The Host owns graceful channel, native execution and viewer shutdown. No launchd
+registration, startup-at-login, automatic crash restart or shell daemon is added.
+The legacy installer remains available for historical release tooling, but is
+not part of the checkout's `make run` workflow.
+
+| Project-local path | Purpose |
+| --- | --- |
+| `bin/agent-host` | Binary built from the checkout |
+| `.agent-host/runtime/config` | Current Feishu service/provider/channel configuration |
+| `.agent-host/runtime/state` | Feishu task/history/memory database and input artifacts |
+| `.agent-host/runtime/native` | Dedicated native profiles and sessions |
+| `.agent-host/runtime/workspace` | Default task workspace |
+| `.agent-host/runtime/logs` | Service and viewer logs |
+| `.agent-host/runtime/viewer` | Private copy of viewer assets |
+| `.agent-host/email` | Shared mailbox registry, private credentials and operation ledger |
+| `.agent-host/dingtalk` | Preserved optional DingTalk runtime |
+| `.agent-host/legacy-home` | Preserved remaining former home-directory data and evidence |
+| `.agent-host/cli-state` | Default state for ordinary local CLI invocations |
+
+The existing root `.gitignore` rule excludes the complete `.agent-host/` tree.
+The runner requires current-user ownership and private regular files, rejects
+symlink runtime paths, and does not write credential values to commands. It uses
+the Python interpreter running the wrapper for the viewer unless overridden.
+
+On 2026-10-13, the prior email deployment mismatch was traced to two separate
+services: DingTalk production had email configured, while the Feishu lab still
+used an older binary, no email registry and `no_tools: true`. An actual Host CLI
+turn using the Feishu model/provider configuration completed the owner's original
+mailbox query with email tools. No outgoing mail or test channel message was sent.
+
+The later project-local migration stopped both old services, unloaded and disabled
+`com.agent-host.production`, removed its LaunchAgent plist and moved the former
+home `.agent-host` tree into the ignored project area. Feishu, DingTalk and email
+subtrees became the paths listed above. Absolute live configuration references
+were updated; immutable historical evidence retains original recorded paths.
+Stopped Feishu and DingTalk database SHA-256 values matched before and after the
+move. The remaining legacy files and former plist were preserved locally for
+rollback; no state database was initialized in their place. Changed workspace
+paths start new native sessions. Historical unregistered workspace scopes remain
+recorded under their original paths; registered projects keep their stable scopes.
+
+Forward migration and rollback must stop writers first. Rollback restores private
+configuration references and the corresponding preserved runtime; do not run both
+versions concurrently against one state directory. Restoring the archived plist
+is an explicit operator action, not automatic fallback.
+
+Validation covers runner preflight, private viewer preparation, retained state,
+visible log relay, duplicate-run rejection, signal propagation and child cleanup.
+`make check` passed after the change. Real `make run` startup on 2026-10-13
+produced fresh meeting-entry and Feishu channel connections plus a loopback
+workbench URL. A separate Host CLI turn with the migrated runtime configuration
+completed the original mailbox query; successful paired results were observed
+for `mcp__email__list_accounts` and `mcp__email__search_messages`. No outgoing mail
+or new test channel message was sent. These receipts are stored privately under
+`.agent-host/runtime/evidence/project-run-mail`; they do not establish a new
+Feishu user-message round trip.
+
+## Legacy system installation reference
 
 ## Layout and configuration
 

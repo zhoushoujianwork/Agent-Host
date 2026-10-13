@@ -1,248 +1,107 @@
 # Agent-Host
 
-A memory-aware host for AI work, implemented in Go.
+Give AI work continuity across conversations and projects.
+Agent-Host connects your requests, workspaces, knowledge and mailboxes to
+Claude Code, while keeping task history and reusable memory locally.
 
-Agent-Host connects workspaces and user requests to native agent harnesses.
-The host owns cross-session memory and execution evidence; the native harness
-owns its model/tool loop and permissions.
-
-Clone, build and run using the [source setup guide](docs/beta-release.md) with your own accounts and local
-memory. Use the [feedback guide](docs/feedback.md) to generate a reviewed local
-diagnostic summary and report runtime or memory problems. Licensed under
-[Apache License 2.0](LICENSE); dependency notices remain separate.
-
-## Intro video
+## Introduction video
 
 https://github.com/user-attachments/assets/aa3b84c9-e689-4231-bff3-a8575509ba76
 
-Play the 80-second introduction above, or [download the MP4](docs/media/agent-host-intro.mp4) (MP4,
-1080p, 6.3 MB, Chinese on-screen text, synthesized music, no narration). It
-covers the problem, architecture, reviewed memory loop, DingTalk channel,
-automatic project routing, on-demand knowledge sources, getting started, and
-what remains planned. Example conversations and terminal output in the video
-are illustrative and labeled as such.
+[Download the introduction (MP4)](docs/media/agent-host-intro.mp4).
+Examples in the video are illustrative; current support is listed below.
 
-## Current status
+## What it does
 
-The local CLI implements native Claude execution, live phase/text events,
-SQLite evidence and scoped memory, Jev decisions, and independent memory retry.
-The experience MVP adds [reviewed execution experience](docs/experience-memory.md):
-record native tool results, propose reusable procedures, review them, then recall
-accepted records in a fresh task. Attributed user statements remain a separate
-source type. Neither source type independently verifies external outcomes.
-The [first MVP validation](docs/mvp-validation.md) records the earlier live
-user-statement loop. The [experience validation](docs/experience-memory-detail.md#validation-status-and-limits)
-records a passing real edit/test, review, fresh-session reuse and invalidation loop.
-The [object retrieval extension](docs/object-retrieval.md) adds source-linked
-service names, explicit aliases and bounded property matching to both chat and
-memory search. The first [DingTalk channel](docs/dingtalk-channel.md) implements
-owner private messages through an application bot, durable receipt and
-one final reply, and original-message progress reactions. Its adapter and host path are tested offline; the
-[production service](docs/service-install.md) has completed its first live owner
-DM through platform-accepted reply. Broader live acceptance remains open.
-The local read-only [execution and memory viewer](tools/run-viewer/README.md)
-renders saved traces, memory provenance, object/topic links and recall observations.
-The [project routing and runtime assembly](docs/runtime-assembly.md) select
-registered directories, scoped knowledge and separate native sessions.
-The [intelligent routing extension](docs/smart-project-routing.md) adds automatic
-project recognition and project sets. Reliable associations select registered
-projects; other requests run in the agent's default workspace, including with an
-empty catalog. The native agent asks for task details when needed.
-Joint tasks can access selected project directories and existing scoped memory;
-automatic new memory and experience attribution for those tasks is deferred.
-Requests without a reliable project match keep normal default-workspace history
-and memory processing, whether or not the catalog is empty. Historical unresolved
-runs retain their skipped learning records and remain readable in that scope.
-Projects within an agent share its Claude configuration; native auto memory is disabled.
-The [knowledge-source integration](docs/knowledge-sources.md) mounts selected
-Dokki/Confluence read-only MCP tools for runtime search and page reading. The
-[local knowledge increment](docs/local-knowledge.md) adds selected Markdown
-documents and owner-only retained snapshots through the same tool boundary,
-with separate acceptance. No document is fetched before an agent tool call.
-The [conversation-history routes](docs/conversation-history.md) add automatic
-read-only search/read over saved DingTalk Agent interactions, without DWS, and
-an optional separate system DWS collector for selected daily conversations.
-DWS topics support local review and owner-private evidence export; acceptance
-starts no task and publishes no memory. Conversation-derived learning remains
-planned. Native and selected-source acceptance are tracked separately.
-The [personal-assistance P0](docs/personal-assistant.md) maintains changing
-questions and commitments from those selected sources, adds owner-only on-demand
-AI retrieval of matters, eligible memory and original citations, and provides
-private suggestions with explicit preparation selection and feedback.
-`agent-host assistance --help` documents the local surface. This reuses existing
-memory publication; personal-domain memory and automatic chat learning are later work.
-Enterprise group mentions and default/group-bound agent instances are implemented.
-The [conversation and attachment increment](docs/channel-conversations.md) adds
-per-conversation ordering with bounded parallel audiences, picture/file inputs
-and callback-provided quotes. Its automated, native and platform validation are
-tracked separately from earlier text-only acceptance.
-Local/GitHub/GitLab project discovery, per-project execution profiles, Codex, general
-entity extraction, vector retrieval and a Web interface for chat or memory changes remain planned.
+- **Chat where you work:** CLI, DingTalk and Feishu private messages, group
+  @mentions, and optional Feishu meeting text.
+- **Work across projects:** route requests to registered workspaces and continue
+  compatible conversations with their project context.
+- **Remember useful context:** reuse saved project facts and accepted execution
+  lessons; look up earlier Agent conversations when needed.
+- **Read your sources:** search configured Dokki, Confluence and local Markdown
+  documents on demand, keeping their source references.
+- **Operate managed email:** AI lists configured Gmail/163 accounts, selects an
+  account, then searches, reads, sends or replies through one email MCP.
+- **See what happened:** inspect execution steps, tool results and memory in
+  the local workbench or terminal logs.
 
-The [Feishu text channel](docs/feishu-channel.md) adds owner private questions and
-same-tenant group @mentions through one local `lark-cli` connection, sharing the
-Host worker with optional meeting entry. Ordinary-IM checks and live acceptance
-are tracked separately from the [meeting text channel](docs/feishu-meeting-channel.md),
-whose two-turn conversation and later private-entry rejoin/fresh reply passed
-bounded live checks on 2026-10-12. Group and meeting audiences remain separate
-from owner-private context. Meeting audio remains future work.
+Claude Code is the current execution engine. Email requires your own account
+setup; 163 reads have been tested live. Gmail onboarding and real send/reply
+acceptance remain separate checks. Execution lessons currently require
+`memory accept`; Codex execution and meeting audio are planned.
 
-The [evaluation guide](docs/evaluation.md) defines categorized examples and the
-workflow for retaining daily incidents as regression cases. `agent-host eval`
-checks saved-memory retrieval separately from live Jev decisions. The expanded
-42-case suite preserves the original labels and adds retrieval counterexamples.
-On the same 26 recall cases, the old path passed 13 and the object-aware path
-passed all 26. The historical live Jev run remains 15/16; its withheld negative
-lesson is unresolved, and the live decision suite was not rerun for this change.
+## Plugin and integration support
 
-## Use
+Built-in capabilities use MCP tools or channel adapters:
 
-Distribution is source-only. Clone the repository and compile locally:
+| Integration | Current support |
+| --- | --- |
+| Email MCP | Gmail and personal 163 accounts; AI lists accounts and selects one for each read/send operation. |
+| Knowledge MCP | Dokki, Confluence and selected local Markdown sources; search and read on demand. |
+| Host MCP tools | Scoped conversation history, eligible memory, current matters and private suggestions. |
+| Channel adapters | CLI, DingTalk, Feishu chat and optional Feishu meeting text. |
+
+Accounts and source credentials require local configuration. Arbitrary third-party
+MCP registration, a public plugin SDK and a plugin marketplace are not delivered.
+Claude-native skills/plugins belong to the selected harness profile; Host does
+not install or manage them. See [support details](README-detail.md#plugin-and-integration-boundaries).
+
+## Start
+
+Distributed as source: clone this repository and build locally with your own credentials.
+
+Requires Go 1.26+, Make and Claude Code. Configure your Claude/Jev credentials
+and channel settings using the [runtime setup guide](docs/service-install.md).
 
 ```sh
-git clone https://github.com/zhoushoujianwork/Agent-Host.git
-cd Agent-Host
-make build
-./bin/agent-host --version
+make run
 ```
 
-Requires Go 1.26+, Make, and Claude Code. Runtime supports macOS/Linux and local
-filesystems. Configure `TYPESAFE_API_KEY` securely in the environment; Claude
-uses its native authentication and settings.
+The channel service runs in the foreground, prints its workbench URL and logs
+to the terminal. Ctrl-C stops it. Private configuration, credentials and state
+live in the Git-ignored `.agent-host/` directory.
+
+For a terminal conversation, supply your configured Jev credentials and run:
 
 ```sh
 make build
+./bin/agent-host chat -m 'Inspect this project and explain how to run it.'
+```
+
+## Try asking
+
+Send these requests privately to your configured bot, or use CLI chat:
+
+| Task | Example request |
+| --- | --- |
+| Project work | “Find why the billing tests fail and fix the problem.” |
+| Recall | “What did we decide about the deployment last time?” |
+| Knowledge | “Find the deployment guide and cite the relevant source.” |
+| Email | “Show the three latest emails in my 163 account and summarize the newest one.” |
+| Email reply | “Use my Gmail account to reply to this message with the text below.” |
+
+CLI examples with explicit project or mailbox configuration:
+
+```sh
 ./bin/agent-host project add --id api --workspace /absolute/path/api
-./bin/agent-host project add --id web --workspace /absolute/path/web
-./bin/agent-host project update --id api --description 'Customer billing API' --alias billing
-./bin/agent-host project list
-./bin/agent-host chat --project api --model sonnet
-./bin/agent-host chat --project api --project web -m 'Compare the two registered projects.'
-./bin/agent-host chat --model sonnet -m 'This project uses Go.'
-./bin/agent-host chat --format json -m 'Which language does this project use?'
-./bin/agent-host memory search 'project'
-./bin/agent-host run show RUN_ID
-./bin/agent-host run retry-memory RUN_ID
-./bin/agent-host memory candidates --status pending
-./bin/agent-host memory candidate CANDIDATE_ID
-./bin/agent-host memory accept --note 'Reviewed the cited tool results' CANDIDATE_ID
-./bin/agent-host memory reject --reason 'The evidence does not support this lesson' CANDIDATE_ID
-./bin/agent-host memory invalidate --reason 'This procedure is obsolete' MEMORY_ID
-./bin/agent-host run retry-experience RUN_ID
-./bin/agent-host eval --suite evals/memory-v2.json
-./bin/agent-host eval --suite evals/memory-v2.json --mode live
+./bin/agent-host chat --project api -m 'Review the API error handling.'
+./bin/agent-host chat --email-config "$PWD/.agent-host/email/accounts.json" \
+  -m 'List my managed mailboxes and show the latest three emails in my 163 account.'
 ```
 
-Ordinary CLI and channel replies lead with a concise, conversational answer while
-keeping essential facts, actions and caveats. Routine replies aim for 2–4 short
-sentences or up to three compact bullets; more detail remains available when
-requested or needed. Answers that use external sources link to the actual pages
-consulted. This guidance also applies with `--no-tools`; structured memory extraction keeps
-its separate output requirements.
+The email command assumes an account registry you have configured. In channel
+chat, `/new` starts a fresh conversation, `/status` shows its status, and `/help`
+lists controls. Saved Host memory remains available after `/new`.
 
-Jev uses the official TypeSafe API by default with `TYPESAFE_API_KEY`.
-`--jev-provider custom --jev-endpoint URL` selects your own System One gateway
-and reads `JEV_API_KEY`. There is no automatic provider fallback.
-State is stored in `~/.agent-host`; `--home` isolates a test installation.
-Registered projects have stable memory scopes independent of their directories.
-Use `--project ID`, or an exact registered current directory/`--workspace` match.
-Unregistered directories retain their existing directory-based scopes.
-Explicit `--project` and `--workspace` are mutually exclusive. Chat accepts
-repeated `--project` options; joint work uses `~/workspace` unless `--primary-project ID` selects one of its
-projects. The configured default for ordinary work and its memory stay unchanged.
-In DingTalk, describe requests directly: every task automatically routes within
-the configured agent's project catalog when a reliable association exists, and
-otherwise runs in its default workspace. No project setup or Host project
-question blocks a new task. Existing waiting requests remain available only for
-their original requester's explicit confirmation or cancellation. `/new`, `/status` and `/help`
-are the only Host conversation controls; project and agent settings remain local.
-These standalone controls share the conversation queue; quoted or attached
-commands are material, not controls. They do not forward native interactive
-commands. Put CLI options before
-positional IDs/queries. `--no-tools` explicitly disables native tools,
-MCP, custom hooks and skill commands for controlled tests (managed policy still applies); normal execution retains
-native permissions. Configured channel/Agent instances use `bypassPermissions`
-with behavioral disclosure rules; this does not provide filesystem isolation. Optional
-`--allowed-tools` takes explicit native tool permission patterns, as repeated
-options or a comma-separated list. It cannot be combined with `--no-tools`.
-Experience extraction always runs separately with tools disabled. Native
-Claude 2.1.223 was exercised; older versions may lack the extraction flags.
+## More
 
-See [CLI and event details](docs/mvp-validation-detail.md) for resumed sessions,
-conflicts, NDJSON output, and event replay. See the
-[experience guide](docs/experience-memory.md) for review and expiration.
-The [DingTalk guide](docs/dingtalk-channel.md) covers local configuration checks,
-foreground serving and status inspection. Use the
-[Feishu guide](docs/feishu-channel.md) for the separate
-`feishu check`, `serve` and `status` workflow; `feishu-meeting` remains an alias.
-Use the [production installation guide](docs/service-install.md) for `make install` and
-the separate runtime under `~/.agent-host/production`.
-The [agent instance guide](docs/agent-instances.md) explains enterprise group
-mentions, default and group-bound roles, and separate group conversations and
-memory. Local `--agent ID --audience ID` selects the run/memory partition.
-The retrieval registry is bounded to 200 eligible memories per scope; native
-chat retains its separate 100-memory Jev comparison limit. These bounds are not
-production memory capacity claims.
-
-## Development
+[Runtime setup](docs/service-install.md) · [Email setup](docs/email-plugin.md) ·
+[Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·
+[Feedback](docs/feedback.md)
 
 ```sh
 make check
-make build
-./bin/agent-host --help
 ```
 
-Develop directly in this public repository; local `main` tracks `origin/main`
-and uses the same commits. The [development guide](docs/development.md) explains
-private runtime data and source-only distribution. The Go module remains
-`agent-host`. Tests use real temporary SQLite databases, synthetic
-native subprocesses, and HTTP fixtures. The [live MVP experiment](experiments/mvp/README.md)
-records actual provider observations separately.
-
-## Design and research
-
-- [Source setup](docs/beta-release.md) and [feedback](docs/feedback.md):
-  installation, explicit diagnostic sharing and issue-based feedback.
-- [Release record: everyday reliability](docs/release-daily-use.md): delivered
-  continuity, audience prompts, failure recovery and public runtime footers.
-- [Release follow-up](docs/release-follow-up.md): remaining platform checks,
-  daily-use observation, database diagnosis and deferred increments.
-- [Agent conversation history and topic discovery](docs/conversation-history.md):
-  built-in history tools for Agent interactions and an optional system
-  DWS discovery path with local topic review.
-- [External knowledge and everyday experience](docs/knowledge-sources.md): implemented
-  Dokki/Confluence runtime MCP tools, selected DWS topic discovery and deferred
-  conversation learning.
-- [Local project knowledge and retained notes](docs/local-knowledge.md): explicit
-  Markdown sources, audience grants and provenance-preserving private snapshots.
-- [Project routing and runtime assembly](docs/runtime-assembly.md): local project
-  registration, automatic DingTalk routing, native cwd and compatible conversations.
-- [Intelligent project routing](docs/smart-project-routing.md): registered-project
-  inference, project sets, default execution and future discovery boundaries.
-- [Production service installation](docs/service-install.md): one-command macOS
-  installation/startup, private runtime configuration and development isolation.
-- [Agent instances and group mentions](docs/agent-instances.md): configurable
-  responsibilities, private/public output and audience-partitioned memory.
-- [Conversation execution and attachments](docs/channel-conversations.md):
-  ordered conversations, bounded concurrency, picture/file inputs and quotes.
-- [DingTalk channel](docs/dingtalk-channel.md): the first external
-  channel, offline validation, configuration and live rollout boundaries.
-- [Feishu text channel](docs/feishu-channel.md): owner private questions, group
-  @mentions, shared runtime and separate audience histories.
-- [Feishu meeting text channel](docs/feishu-meeting-channel.md): optional automatic
-  entry, foreground polling, addressed meeting text and voice prerequisites.
-- [Reviewed execution experience](docs/experience-memory.md): the current experience MVP and
-  its review workflow and live validation.
-- [Object-aware memory retrieval](docs/object-retrieval.md): shared read/write
-  annotations, scoped aliases, property filtering and bounded validation.
-- [Memory evaluation and regression](docs/evaluation.md): categorized fixtures,
-  incident capture, deterministic checks and separate live Jev observations.
-- [First MVP scope and validation](docs/mvp-validation.md): the earlier
-  user-statement loop and retained experiment results.
-- [Architecture](docs/architecture.md) and [details](docs/architecture-detail.md):
-  ownership and component boundaries.
-- [CLI memory roadmap](docs/cli-memory-design.md): broader planned entity,
-  extraction, retrieval, and recovery work beyond the narrow MVP.
-- [Research conclusions](docs/research.md): product positioning and evidence.
-- [Jev baseline evaluation](docs/jev-evaluation.md): historical synthetic gateway
-  measurements, including classification errors and limitations.
+[Apache License 2.0](LICENSE) · [Third-party notices](NOTICE)

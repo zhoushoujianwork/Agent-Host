@@ -21,29 +21,29 @@ make build
 ./bin/agent-host chat --model YOUR_MODEL --no-tools -m 'Calculate 17 times 19.'
 ```
 
-State defaults to `~/.agent-host`. Use `--home /absolute/private/test-state`
+Ordinary CLI state defaults to `.agent-host/cli-state` in the invocation directory. Use `--home /absolute/private/test-state`
 to keep an isolated trial. Repeated chat uses native continuation and saved
 memory; original evidence remains local. Inspect it with the
 [local viewer](../tools/run-viewer/README.md).
 
-## Add your own DingTalk bot on macOS
+## Add your own channel bot
 
 Prepare your private configuration from the included `config/*.example.json`,
 using your own Claude executable, model, Jev key, enterprise application and
-owner identity. Follow the [installation guide](service-install.md); do not copy
+owner identity. Follow the [project-local runtime guide](service-install.md); do not copy
 another tester's configuration, credentials or database.
 
-Build and install from your checkout:
+Build and run in the foreground from your checkout:
 
 ```sh
-make install
+make run
 ```
 
 Send a private request or @mention your bot in an enterprise group. Groups
 share an audience and use system-prompt judgment; native tools retain their
-configured access. The installation guide explains stopping and upgrading the
-service. The managed service installer supports macOS; the CLI can be built
-from source on macOS/Linux.
+configured access. The runtime guide explains project-local configuration, visible logs and
+Ctrl-C shutdown. DingTalk and Feishu are supported; each needs its own channel
+configuration. Building and local execution support macOS/Linux.
 
 When something fails or memory seems wrong, submit a [reviewed feedback report](feedback.md).
 The project uses [Apache License 2.0](../LICENSE), with retained third-party notices.
