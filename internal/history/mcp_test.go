@@ -172,3 +172,20 @@ func TestHistoryMCPEnforcesEncodedOutputLimit(t *testing.T) {
 		t.Fatal("oversized encoded history escaped output bound", len(responses[1]["result"]), string(responses[1]["result"]))
 	}
 }
+
+func TestReadRejectsPlatformQuoteIDWithActionableError(t *testing.T) {
+	home, binding := historyFixture(t, 1, true)
+	store, err := state.Open(home, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	_, err = call(t.Context(), store, binding.receipt, "read_conversation_history", json.RawMessage(`{"reference":"msgSP6lAI7rQsjfw8hIxgZfmA=="}`))
+	if err == nil || !strings.Contains(err.Error(), "search_conversation_history") || strings.Contains(err.Error(), "bounds") {
+		t.Fatal("platform quote ID must explain the reference mismatch", err)
+	}
+	result, err := call(t.Context(), store, binding.receipt, "read_conversation_history", json.RawMessage(`{"reference":"host-history:receipt-0"}`))
+	if err != nil || len(result.Turns) != 1 {
+		t.Fatal("search references must remain readable", result, err)
+	}
+}

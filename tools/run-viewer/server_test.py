@@ -52,6 +52,45 @@ class CatalogTests(unittest.TestCase):
         write_run(conn, "first")
         return conn
 
+    def test_unified_channels_preserve_colliding_ids_and_memory_links(self):
+        first = self.database()
+        event = {"type": "tool.called", "data": {"key": "unaltered-tool-input"}}
+        first.execute("INSERT INTO events VALUES(?,?,?)", ("first", 1, json.dumps(event)))
+        memory = {"id": "same-memory", "text": "saved statement", "scope": "/test/project",
+                  "source_run_id": "first", "status": "active"}
+        first.execute("INSERT INTO memories VALUES(?,?,?)", (memory["id"], memory["scope"], json.dumps(memory)))
+        first.commit()
+        first.close()
+        other = self.root / "other"
+        other.mkdir()
+        import shutil
+        shutil.copyfile(self.home / "state.db", other / "state.db")
+        unified = viewer.MultiCatalog([f"dingtalk={self.home}", f"feishu={other}"])
+        index = unified.index()
+        self.assertEqual(index["database_count"], 2)
+        self.assertEqual({row["key"] for row in index["records"]}, {"dingtalk:db:first", "feishu:db:first"})
+        for channel in ("dingtalk", "feishu"):
+            detail = unified.record(channel + ":db:first")
+            self.assertEqual(detail["events"], [event])
+            self.assertEqual(detail["source"]["channel"], channel)
+            self.assertEqual(detail["run"]["id"], "first")
+        memories = unified.memories()
+        self.assertEqual(memories["database_total"], 2)
+        self.assertEqual({item["key"] for item in memories["memories"]},
+                         {"dingtalk:db:same-memory", "feishu:db:same-memory"})
+        for item in memories["memories"]:
+            self.assertEqual(unified.record(item["origin_run"]["key"])["source"], item["source"])
+        with self.assertRaises(KeyError):
+            unified.record("unknown:db:first")
+        with self.assertRaises(ValueError):
+            viewer.MultiCatalog([f"dingtalk={self.home}", f"dingtalk={other}"])
+        broken = viewer.MultiCatalog([f"dingtalk={self.home}", f"broken={other}"])
+        conn = sqlite3.connect(other / "state.db")
+        conn.execute("PRAGMA user_version=999")
+        conn.close()
+        with self.assertRaises(ValueError):
+            broken.index()
+
     def test_read_only_snapshot_and_new_records(self):
         conn = self.database()
         event = {"run_id": "first", "seq": 1, "type": "run.started", "phase": "request"}

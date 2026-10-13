@@ -17,7 +17,11 @@ import (
 
 // The observer has a separate log and inherits no managed provider credentials.
 // Its lifetime follows the service; an observer failure does not replay work.
-func startServiceWorkbench(ctx context.Context, layout serviceLayout, python string, browser bool, notice io.Writer, openURL func(context.Context, string) error) (func(), error) {
+func startServiceWorkbench(ctx context.Context, layout serviceLayout, python string, port int, browser bool, notice io.Writer, openURL func(context.Context, string) error) (func(), error) {
+	return startServiceWorkbenchSources(ctx, layout, python, port, browser, notice, openURL, nil)
+}
+
+func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, python string, port int, browser bool, notice io.Writer, openURL func(context.Context, string) error, sources []configuredChannel) (func(), error) {
 	script := filepath.Join(layout.Root, "viewer", "server.py")
 	if _, err := privateServicePath(script, false); err != nil {
 		return nil, errors.New("installed viewer is missing or invalid; rerun make run")
@@ -38,7 +42,11 @@ func startServiceWorkbench(ctx context.Context, layout serviceLayout, python str
 		return nil, errors.New("cannot open private viewer log")
 	}
 	childCtx, cancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(childCtx, python, "-B", script, "--home", layout.State, "--no-reports", "--port", "0")
+	args := []string{"-B", script, "--home", layout.State, "--no-reports", "--port", fmt.Sprint(port)}
+	for _, source := range sources {
+		args = append(args, "--channel-home", source.Name+"="+filepath.Join(source.Root, "state"))
+	}
+	cmd := exec.CommandContext(childCtx, python, args...)
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		provider := false

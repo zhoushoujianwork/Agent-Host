@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -61,7 +62,7 @@ func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
 				}
 				return nil
 			}
-			stop, err := startServiceWorkbench(ctx, layout, python, mode != "no-browser", &notice, opener)
+			stop, err := startServiceWorkbench(ctx, layout, python, 0, mode != "no-browser", &notice, opener)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -103,7 +104,7 @@ func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
 
 func TestServiceWorkbenchMissingInstallation(t *testing.T) {
 	layout, _ := newServiceFixture(t)
-	_, err := startServiceWorkbench(t.Context(), layout, "python3", true, io.Discard, func(context.Context, string) error {
+	_, err := startServiceWorkbench(t.Context(), layout, "python3", 0, true, io.Discard, func(context.Context, string) error {
 		t.Fatal("missing viewer opened a browser")
 		return nil
 	})
@@ -119,11 +120,63 @@ func TestServiceWorkbenchRejectsNonlocalURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "synthetic-inherited-provider-secret")
-	_, err := startServiceWorkbench(t.Context(), layout, "python3", true, io.Discard, func(context.Context, string) error {
+	_, err := startServiceWorkbench(t.Context(), layout, "python3", 0, true, io.Discard, func(context.Context, string) error {
 		t.Fatal("invalid URL opened a browser")
 		return nil
 	})
 	if err == nil || !strings.Contains(err.Error(), "loopback URL") {
 		t.Fatal("untrusted startup URL should not open a browser", err)
+	}
+}
+
+func TestServiceWorkbenchFixedPortAcrossRestarts(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	layout := workbenchFixture(t)
+	peer := workbenchFixture(t)
+	sources := []configuredChannel{{"dingtalk", layout.Root}, {"feishu", peer.Root}}
+	var prior string
+	for range 2 {
+		var notice bytes.Buffer
+		stop, err := startServiceWorkbenchSources(t.Context(), layout, python, port, false, &notice, nil, sources)
+		if err != nil {
+			t.Fatal(err)
+		}
+		address := strings.Fields(notice.String())[2]
+		response, err := http.Get(address + "api/records")
+		if err != nil {
+			stop()
+			t.Fatal(err)
+		}
+		var index struct {
+			Channels []string `json:"channels"`
+		}
+		decodeErr := json.NewDecoder(response.Body).Decode(&index)
+		response.Body.Close()
+		stop()
+		if decodeErr != nil || len(index.Channels) != 2 {
+			t.Fatal("shared workbench omitted a channel", index, decodeErr)
+		}
+		if response.StatusCode != http.StatusOK || prior != "" && address != prior {
+			t.Fatal("fixed workbench URL changed or failed", prior, address, response.StatusCode)
+		}
+		prior = address
+	}
+}
+
+func TestServiceWorkbenchRejectsInvalidPort(t *testing.T) {
+	for _, port := range []string{"0", "-1", "65536"} {
+		err := runService(t.Context(), []string{"run", "--viewer-port", port}, io.Discard, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "viewer-port") {
+			t.Fatal("invalid port accepted", port, err)
+		}
 	}
 }

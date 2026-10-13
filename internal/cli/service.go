@@ -37,6 +37,7 @@ profiles are isolated by agent and audience under ROOT/native.
 check validates local files and configuration without connecting, executing
 Claude, or creating host state. It does not verify platform or model credentials.
 run starts the installed read-only workbench and opens the default browser.
+Use --viewer-port to change the fixed default port 8765.
 Use --no-browser to keep the workbench available without opening a browser.
 `
 
@@ -97,7 +98,11 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	var noBrowser bool
 	var viewerPython string
 	var viewerSource string
+	var viewerPort int
+	var noWorkbench bool
 	if command == "run" {
+		fs.IntVar(&viewerPort, "viewer-port", 8765, "Fixed loopback port for the unified workbench")
+		fs.BoolVar(&noWorkbench, "no-workbench", false, "Internal worker mode: use the supervisor workbench")
 		fs.BoolVar(&noBrowser, "no-browser", false, "Do not open the default browser")
 		fs.StringVar(&viewerPython, "viewer-python", "python3", "Python 3.10+ executable for the workbench")
 		fs.StringVar(&viewerSource, "viewer-source", "", "Tracked workbench assets; enables managed startup and runtime locking")
@@ -111,15 +116,18 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	if len(fs.Args()) != 0 {
 		return errors.New("service commands do not accept positional arguments")
 	}
+	if command == "run" && (viewerPort < 1 || viewerPort > 65535) {
+		return errors.New("viewer-port must be between 1 and 65535")
+	}
 	if channelsDirectory != "" || viewerSource != "" {
-		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, noBrowser, out, errout)
+		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, out, errout)
 	}
 	layout, config, environment, err := loadService(root)
 	if err != nil {
 		return err
 	}
-	if command == "run" {
-		stop, err := startServiceWorkbench(ctx, layout, viewerPython, !noBrowser, errout, openWorkbenchURL)
+	if command == "run" && !noWorkbench {
+		stop, err := startServiceWorkbench(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL)
 		if err != nil {
 			fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
 		} else {

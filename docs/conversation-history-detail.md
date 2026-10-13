@@ -31,6 +31,11 @@ Native resets do not delete evidence. A stable history-policy marker enters
 runtime compatibility; per-turn receipt IDs and snapshot boundaries do not
 rotate otherwise compatible native sessions.
 
+Reads require the `host-history:` reference returned by search. A raw DingTalk
+quote message ID receives an explicit reference error, rather than a misleading
+pagination-bounds error. Search may recover an admitted original; it cannot
+retrieve an unadmitted interactive card or invent its missing body.
+
 Input, quotes and saved `ChannelMessage.ReplyText` retain separate attribution.
 Raw `Run.Output` is not the channel reply. Receipt, execution and delivery
 statuses remain distinct; `accepted` means platform acceptance, not that the

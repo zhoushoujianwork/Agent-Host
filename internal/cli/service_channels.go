@@ -162,7 +162,7 @@ func (w synchronizedChannelOutput) Write(p []byte) (int, error) {
 	return w.w.Write(p)
 }
 
-func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, noBrowser bool, out, errout io.Writer) error {
+func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser bool, out, errout io.Writer) error {
 	channels, err := discoverServiceChannels(directory, fallback)
 	if err != nil {
 		return err
@@ -201,6 +201,16 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 	if err != nil {
 		return err
 	}
+	layout, _, _, err := loadService(channels[0].Root)
+	if err != nil {
+		return err
+	}
+	stop, err := startServiceWorkbenchSources(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL, channels)
+	if err != nil {
+		fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
+	} else {
+		defer stop()
+	}
 	return superviseChannelProcesses(ctx, channels, binary, viewerPython, noBrowser, out, errout)
 }
 
@@ -237,7 +247,7 @@ func superviseChannelProcesses(ctx context.Context, channels []configuredChannel
 		if err != nil {
 			return err
 		}
-		args := []string{"service", "run", "--root", channel.Root, "--viewer-python", viewerPython}
+		args := []string{"service", "run", "--root", channel.Root, "--viewer-python", viewerPython, "--no-workbench"}
 		if noBrowser {
 			args = append(args, "--no-browser")
 		}

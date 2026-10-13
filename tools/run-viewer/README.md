@@ -11,11 +11,13 @@ results remain separate.
 
 ## Start
 
-The installed macOS service starts its own production workbench automatically
-and opens the execution page in the default browser. Its URL is recorded in
-`~/.agent-host/production/logs/service.stderr.log`; it stops with the service.
-See [service installation](../../docs/service-install.md) for headless startup.
-The commands below start a separate viewer for local development or inspection.
+`make run` starts one shared workbench at `http://127.0.0.1:8765/` and opens it
+in the default browser. It displays all enabled channels, with source labels and
+separate execution/memory identities. `RUN_ARGS='--viewer-port 9000'` overrides
+the fixed default. The workbench stops with the supervisor. See
+[project-local startup](../../docs/service-install.md) for headless startup.
+The commands below start a separate viewer for local inspection; use a different
+port when the managed workbench is already running.
 
 Requires Python 3.10+ and a modern browser, without additional packages.
 From the project root:
@@ -28,7 +30,7 @@ Run `make` or `make help` to list project commands, viewer options, and startup
 examples.
 
 Open the printed loopback URL (default `http://127.0.0.1:8765`). The viewer
-automatically loads `~/.agent-host/state.db` and the saved experience reports
+automatically loads `.agent-host/runtime/state/state.db` and the saved experience reports
 in `experiments/experience/results`. Click a record in the sidebar, then click
 a phase or switch between events, tools, judgments, memory, and raw data.
 The page refreshes every five seconds while visible; the checkbox pauses it.
@@ -74,7 +76,7 @@ Archived reports are explicitly historical snapshots. Their original completion
 receipt may say `review_pending` even when later events show acceptance; a
 published memory may subsequently be invalidated. The page preserves both
 observations. Live database records reflect the current stored state.
-State schemas 1–12 are readable without migration. Historical records without
+State schemas 1–14 are readable without migration. Historical records without
 instance and audience fields belong to `default` / `owner`. Older runs display their saved
 directory scope when a separate working directory was not recorded. DingTalk run provenance is
 available in raw run data, including saved attachment metadata and callback

@@ -59,6 +59,7 @@ async function refresh() {
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     const unchanged = JSON.stringify(data) === JSON.stringify(state.data);
     state.data = data;
+    if (!state.source && data.channels) state.source = "all";
     if (!state.source) state.source = data.sources.find((s) => s.kind === "database" && s.memory_count)?.id
       || data.sources.find((s) => s.memory_count)?.id || "all";
     if (state.source !== "all" && !data.sources.some((s) => s.id === state.source)) {
@@ -66,7 +67,7 @@ async function refresh() {
     }
     $("source-filter").replaceChildren();
     for (const source of [{id: "all", name: "全部数据源"}, ...data.sources]) {
-      const option = dom("option", "", source.kind === "database" ? "本机记忆库" : source.name);
+      const option = dom("option", "", source.name);
       option.value = source.id; $("source-filter").append(option);
     }
     $("source-filter").value = state.source;

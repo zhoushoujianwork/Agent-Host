@@ -18,7 +18,11 @@ The CLI validates all enabled runtimes and acquires their exclusive `run.lock`
 locks before connecting. It copies tracked viewer assets with private atomic
 replacement, then starts one Go worker process per runtime. Child processes
 isolate process-wide provider environment variables and native profiles.
-Each workbench selects a free loopback port. Workers relay stdout/stderr to the
+The supervisor starts one workbench for all enabled channels at fixed loopback
+port 8765 (`--viewer-port` overrides it). Workers use `--no-workbench` and do not
+start separate Web processes. The workbench reads each channel's state separately
+and qualifies displayed record/memory links with its registration name.
+Workers relay stdout/stderr to the
 terminal and their private append-only logs, and record `service.pid`.
 The supervisor forwards cancellation with SIGTERM, waits for cleanup, removes
 its worker PID files, and releases locks. Unexpected worker exit fails the
@@ -208,7 +212,7 @@ Python search path. `service check` does not launch a viewer or browser.
 
 After local configuration validation, `service run` starts that viewer before
 loading managed provider credentials, with `--home ROOT/state`, no archived
-report import, and a free loopback port. It waits up to five seconds for the
+report import, and the configured fixed loopback port. It waits up to five seconds for the
 viewer URL, prints execution and memory URLs on stderr, then uses macOS `open`
 to request the default browser. `--no-browser` suppresses that request while
 leaving observation available. Ordinary channel reconnects do not reopen tabs.
@@ -633,3 +637,27 @@ installation receipt (private validation evidence)
 and [native-source acceptance](../experiments/knowledge/README.md) record separate
 evidence: no new DingTalk knowledge-question round trip is claimed. DWS
 conversation intake and learning remain disabled.
+
+
+## History-reference diagnosis and fixed workbench ports (2026-10-13)
+
+The live DingTalk turns at 14:38–14:39 Singapore time completed execution and
+reply delivery. The second callback contained an `interactiveCard` quote's
+platform message ID and type, without body text. Its three history reads used
+the platform ID, which the Host incorrectly reported as invalid read bounds.
+History search succeeded; the quoted original was absent from admitted history.
+The reference error and tool guidance now identify this mismatch explicitly.
+No external card retrieval or business-ticket completion is claimed.
+
+The shared service workbench now uses fixed port 8765, with a CLI override.
+Regression checks exercise restart URL stability, distinct source links for
+colliding run/memory IDs, preserved raw tool evidence, invalid port configuration,
+platform-ID rejection and continued reads of valid Host references.
+
+
+After restart, the shared live API returned 54 runs (47 DingTalk, seven Feishu),
+with readable details from both sources and two DingTalk memory records.
+Execution and memory pages returned HTTP 200. Both channel connections emitted
+fresh readiness events at 14:47 Singapore time. One viewer process listened on
+8765, and both workers used the supervisor workbench. `make check` passed;
+no task replay or outbound test message was performed.

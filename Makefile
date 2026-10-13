@@ -44,6 +44,7 @@ help:
 		'  --project ID      Filter database runs and memory by stable project ID' \
 		'' \
 		'Run options: RUNTIME_ROOT=/absolute/runtime RUN_ARGS=--no-browser' \
+		'  --viewer-port PORT Shared workbench port (default: 8765)'  \
 		'Examples:' \
 		'  make viewer' \
 		"  make viewer VIEWER_ARGS='--home /path/to/isolated-home --port 0'" \

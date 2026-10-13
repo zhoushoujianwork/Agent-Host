@@ -16,10 +16,16 @@ make run
 
 The command builds `bin/agent-host` and invokes its Go CLI directly. The CLI
 checks all enabled configurations, prepares workbench files, and supervises the
-channel workers in the foreground. Each channel keeps its own state, logs, model
-environment and workbench. Logs appear in the terminal and each runtime's
-`logs/service.ndjson`. Ctrl-C stops all workers and workbenches.
+channel workers in the foreground. Each channel keeps its own state, logs and model
+environment. One shared workbench displays all enabled channels. Logs appear in the terminal and each runtime's
+`logs/service.ndjson`. Ctrl-C stops all workers and the shared workbench.
 Running `make run` again picks up configuration and code changes.
+
+The shared workbench stays at `http://127.0.0.1:8765/` across restarts.
+It combines enabled channels' execution records and memory with clear source
+labels. To choose another fixed port, use
+`make run RUN_ARGS='--viewer-port 9000'`. If occupied, the workbench reports
+failure instead of switching ports; the channels still start.
 
 To avoid opening a browser:
 

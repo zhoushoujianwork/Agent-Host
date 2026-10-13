@@ -293,6 +293,69 @@ class Catalog:
             conn.close()
 
 
+class MultiCatalog:
+    """Combine channel projections without merging their underlying state."""
+
+    def __init__(self, sources, agent="default", audience="owner"):
+        self.catalogs = {}
+        self.agent, self.audience = agent, audience
+        for source in sources:
+            name, separator, home = source.partition("=")
+            if not separator or not name or not home or name in self.catalogs:
+                raise ValueError("--channel-home requires a unique NAME=PATH")
+            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience)
+
+    @staticmethod
+    def qualify(value, channel):
+        # Change projection links only; stored IDs and evidence stay intact.
+        if isinstance(value, list):
+            return [MultiCatalog.qualify(item, channel) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = dict(value)
+        for key in ("records", "memories", "sources", "recalls", "uses", "origin_run", "source"):
+            if key in result:
+                result[key] = MultiCatalog.qualify(result[key], channel)
+        for key in ("key", "annotation_record_key"):
+            if isinstance(result.get(key), str):
+                result[key] = channel + ":" + result[key]
+        if result.get("kind") in ("database", "report") and "id" in result:
+            result["id"] = channel + ":" + result["id"]
+            result["name"] = channel + " · " + result.get("name", "")
+            result["channel"] = channel
+        return result
+
+    def index(self):
+        indexes = [self.qualify(catalog.index(), name) for name, catalog in self.catalogs.items()]
+        rows = [row for index in indexes for row in index["records"]]
+        rows.sort(key=lambda row: row["created_at"], reverse=True)
+        return {"records": rows, "database_present": any(index["database_present"] for index in indexes),
+                "database_count": sum(index["database_count"] for index in indexes),
+                "database_limit": RUN_LIMIT * len(indexes), "channels": list(self.catalogs),
+                "agent_id": self.agent, "audience_id": self.audience,
+                "default_key": next((row["key"] for row in rows if row["execution_status"] == "running"),
+                                    rows[0]["key"] if rows else None)}
+
+    def record(self, key):
+        channel, separator, reference = key.partition(":")
+        if not separator or channel not in self.catalogs:
+            raise KeyError("record channel not found")
+        return self.qualify(self.catalogs[channel].record(reference), channel)
+
+    def memories(self):
+        catalogs = [self.qualify(memory_catalog(catalog), name) for name, catalog in self.catalogs.items()]
+        result = {key: [item for catalog in catalogs for item in catalog[key]]
+                  for key in ("memories", "sources", "recalls")}
+        result["memories"].sort(key=lambda item: item["memory"].get("created_at", ""), reverse=True)
+        result["recalls"].sort(key=lambda item: item.get("created_at") or "", reverse=True)
+        result.update({key: sum(catalog[key] for catalog in catalogs)
+                       for key in ("database_total", "database_runs_total", "observed_total", "memory_limit")})
+        result.update(database_present=any(catalog["database_present"] for catalog in catalogs),
+                      truncated=any(catalog["truncated"] for catalog in catalogs),
+                      agent_id=self.agent, audience_id=self.audience, channels=list(self.catalogs))
+        return result
+
+
 class Handler(BaseHTTPRequestHandler):
     def send(self, status, data, content_type="application/json; charset=utf-8"):
         body = json.dumps(data, ensure_ascii=False).encode() if isinstance(data, dict) else data
@@ -314,7 +377,7 @@ class Handler(BaseHTTPRequestHandler):
             if target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
             elif target.path == "/api/memories":
-                self.send(200, memory_catalog(self.server.catalog))
+                self.send(200, self.server.catalog.memories() if isinstance(self.server.catalog, MultiCatalog) else memory_catalog(self.server.catalog))
             elif target.path == "/api/record":
                 keys = parse_qs(target.query).get("key", [])
                 if len(keys) != 1:
@@ -347,6 +410,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--home", type=Path, default=Path.cwd() / ".agent-host" / "runtime" / "state")
+    parser.add_argument("--channel-home", action="append", default=[], help="Unified channel source NAME=PATH; repeat for each enabled channel")
     parser.add_argument("--reports", type=Path, default=ROOT / "experiments/experience/results")
     parser.add_argument("--no-reports", action="store_true", help="Read only current database state, without archived reports")
     selection = parser.add_mutually_exclusive_group()
@@ -356,16 +420,15 @@ def main():
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
-    catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience)
     try:
-        if catalog.database.exists():
-            conn = catalog.connection()
-            try:
-                catalog.filter_context(conn)
-            finally:
-                conn.close()
+        if args.channel_home:
+            if args.workspace or args.project or not args.no_reports:
+                parser.error("--channel-home requires --no-reports and no project/workspace filter")
+            catalog = MultiCatalog(args.channel_home, args.agent, args.audience)
+            catalog.index()
         else:
-            catalog.filter_context()
+            catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience)
+            catalog.index()
     except (OSError, ValueError, sqlite3.Error) as error:
         parser.error(str(error))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)

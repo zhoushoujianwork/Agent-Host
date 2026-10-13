@@ -19,7 +19,7 @@ No request can select an arbitrary file or change the configured source paths.
 
 SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
 request. No host startup, recovery, migrations, native process, or model API is
-invoked. Schema versions 1–10 are supported; v1 has no candidate table.
+invoked. Schema versions 1–14 are supported; v1 has no candidate table.
 The additive v3 retrieval indexes, v4 channel tables and v5/v6 reaction outbox do not change the
 queried run/candidate payloads. Run provenance is retained in raw data; the
 viewer never reads channel reply capabilities or the channel inbox.
@@ -198,3 +198,16 @@ workspace isolation, missing metadata errors, current/archived distinction,
 duplicate-ID source separation, retained invalidation, decision attribution, explicit bounds, and
 loopback/read-only HTTP behavior. Browser checks cover filtering, graph links,
 memory details, trace navigation and responsive layout.
+
+
+## Shared channel workbench
+
+The Go service supervisor starts one viewer with repeated
+`--channel-home NAME=STATE_PATH` arguments and `--no-reports`. It owns the viewer
+lifetime; channel workers do not start viewers. The fixed default port is 8765.
+Execution and memory projections combine sources while qualifying their UI keys
+with channel names. Stored run/memory IDs, raw events and tool inputs remain
+unchanged. Memory origin, usage and annotation links return to their source's
+execution record, including when two databases contain identical IDs.
+Each source retains the existing Agent/audience partition. A source read failure
+fails the combined request explicitly rather than silently omitting a channel.

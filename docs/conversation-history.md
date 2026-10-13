@@ -21,7 +21,10 @@ when, and whether the saved reply was accepted for delivery.
 History needs no DWS login. It covers conversations addressed to Agent-Host,
 including saved formatted replies and delivery failures. Unaddressed group
 traffic and ordinary conversations with colleagues enter only the separately
-configured DWS route. Attachment bodies are not searched or downloaded.
+configured DWS route. Attachment bodies are not searched or downloaded. A quoted DingTalk card ID
+is not a saved Host history reference. Cards without callback text cannot be
+reconstructed from Host history unless their original content was admitted;
+provide the ticket link, number or text in that case.
 
 ## Core decisions
 

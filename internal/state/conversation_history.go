@@ -538,7 +538,10 @@ func (s *Store) SearchConversationHistory(ctx context.Context, binding Conversat
 
 func (s *Store) ReadConversationHistory(ctx context.Context, binding ConversationHistoryBinding, query ConversationHistoryRead) (ConversationHistoryResult, error) {
 	var result ConversationHistoryResult
-	if !strings.HasPrefix(query.Reference, "host-history:") || len(query.Reference) > 512 || query.Before < 0 || query.Before > 3 || query.After < 0 || query.After > 3 || query.Offset < 0 || query.Limit < 1 || query.Limit > 2048 || query.Offset > 0 && (query.ExpectedDigest == "" || query.Before != 0 || query.After != 0) {
+	if !strings.HasPrefix(query.Reference, "host-history:") || len(query.Reference) > 512 {
+		return result, errors.New("history read requires a host-history: reference returned by search_conversation_history; DingTalk quote message IDs are not Host history references. Search once for an admitted turn; if absent, the quoted source is unavailable through Host history")
+	}
+	if query.Before < 0 || query.Before > 3 || query.After < 0 || query.After > 3 || query.Offset < 0 || query.Limit < 1 || query.Limit > 2048 || query.Offset > 0 && (query.ExpectedDigest == "" || query.Before != 0 || query.After != 0) {
 		return result, errors.New("invalid history read bounds; continuation requires an unchanged digest and no neighbors")
 	}
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

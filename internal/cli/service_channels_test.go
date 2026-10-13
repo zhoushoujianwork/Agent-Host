@@ -147,7 +147,7 @@ func TestChannelsPreflightRejectsInvalidPeerBeforeAnyProcess(t *testing.T) {
 	writeBotJSON(t, filepath.Join(directory, "channel-one.json"), map[string]any{"enabled": true, "runtime_root": valid.Root})
 	writeBotJSON(t, filepath.Join(directory, "two.json"), map[string]any{"enabled": true, "runtime_root": invalid.Root})
 	os.Remove(filepath.Join(invalid.Config, "environment.json"))
-	err := runConfiguredChannels(context.Background(), "run", directory, "", "/absent/viewer", "python3", true, io.Discard, io.Discard)
+	err := runConfiguredChannels(context.Background(), "run", directory, "", "/absent/viewer", "python3", 8765, true, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("invalid enabled peer accepted")
 	}
@@ -172,7 +172,7 @@ func TestChannelSupervisorConcurrentStartupShutdownAndFailure(t *testing.T) {
 		t.Run(map[bool]string{false: "cancel", true: "peer failure"}[crash], func(t *testing.T) {
 			directory := channelDirectoryFixture(t)
 			binary := filepath.Join(directory, "fixture-host")
-			script := "#!/bin/sh\nroot=$4\ntrap 'exit 0' TERM INT\necho ready\nwhile true; do\n if [ -f \"$root/crash\" ]; then exit 7; fi\n sleep 0.05\ndone\n"
+			script := "#!/bin/sh\nroot=$4\ntrap 'exit 0' TERM INT\ncase \"$*\" in *--no-workbench*) ;; *) exit 8 ;; esac\necho ready\nwhile true; do\n if [ -f \"$root/crash\" ]; then exit 7; fi\n sleep 0.05\ndone\n"
 			if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
