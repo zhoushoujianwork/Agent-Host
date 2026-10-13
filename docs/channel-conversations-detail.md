@@ -72,6 +72,8 @@ Markdown does not establish support for every DingTalk forwarding format.
 | Quoted text | Callback-provided body, capped at 4,000 runes; truncation marked |
 | Quoted chat record | Callback-provided title/summary, explicitly summary-only |
 | Forwarded Markdown | Callback-provided body/title as reference material; same quote bounds |
+| Interactive card quote | Callback `cardContent` TEXT nodes, supplied title/text and HTTP(S) action link; marked as a preview, without remote fetching |
+| Quoted Markdown / rich text | Callback text fields, with media capabilities excluded |
 | Missing/other quoted content | Retain available message identity/type without inventing its body |
 
 `ChannelInput` keeps attachments and quotes separate from the current sender's
@@ -265,3 +267,41 @@ Associated-quote validation on 2026-10-12:
 Real input samples, test messages and detailed platform records stay outside the
 repository. Automated fixtures and native checks do not establish live media
 delivery.
+
+
+## Interactive-card quote parsing (2026-10-13)
+
+Previously `parseQuote` recognized only text and chat-record summaries. It kept
+an `interactiveCard` message ID/type but discarded its supplied content.
+An empty normalized receipt therefore did not establish an empty raw callback.
+The parser now handles object/stringified content and extracts visible TEXT
+values from `cardContent` LIST/RICHTEXT children in order. Optional title/text
+and `biz_custom_action_url` are retained as callback-provided source material.
+Top-level supplied preview fields are also supported. These previews remain
+`summary_only`; no full approval record or original author is authenticated.
+Markdown/rich-text references retain callback text without downloading media.
+
+Card traversal stops at depth 16 or 1,024 nodes and retains at most 4,000 body
+characters and 256 title characters, marking truncation. Only explicit TEXT
+values and documented preview fields become text. Media/download/webhook fields
+remain redacted. Raw platform IDs still cannot be read as Host history references.
+
+Regression checks use the [reported live callback shape](https://github.com/soimy/openclaw-channel-dingtalk/issues/598)
+and exercise private/group quotes, encoded content, ignored image metadata,
+text/link fallbacks, Unicode bounds and deep trees. An assembled channel check
+verifies that the preview reaches the native prompt and saved run evidence while
+the current sender's request remains separate. Older receipts cannot be reconstructed because raw callbacks were not retained.
+The owner resent the same card after deployment; its new quote body contained
+the visible approval fields, the native reply accurately restated them, and
+DingTalk accepted delivery. This validates that specific quoted card, not every
+card schema or approval execution. Detailed receipt evidence remains in the
+ignored runtime area.
+
+
+`make check` passed after the correction. The updated runtime was rebuilt and
+restarted; DingTalk and Feishu emitted fresh connection/readiness events at
+14:59:58 Singapore time, and the shared workbench returned HTTP 200 on port 8765.
+No earlier task was replayed. The owner-card acceptance at 15:00 Singapore time
+then passed independently of offline checks: callback preview extraction, native
+reading and final reply delivery all completed. Approval processing and machine
+changes were not part of this validation.

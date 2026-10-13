@@ -2,6 +2,7 @@ package dingtalk
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 )
 
@@ -18,9 +19,13 @@ type MessageQuote struct {
 }
 
 type quotedCallback struct {
-	MsgID   string          `json:"msgId"`
-	MsgType string          `json:"msgType"`
-	Content json.RawMessage `json:"content"`
+	MsgID       string          `json:"msgId"`
+	MsgType     string          `json:"msgType"`
+	Content     json.RawMessage `json:"content"`
+	Title       json.RawMessage `json:"title"`
+	Text        json.RawMessage `json:"text"`
+	CardContent json.RawMessage `json:"cardContent"`
+	ActionURL   json.RawMessage `json:"biz_custom_action_url"`
 }
 
 const maxQuoteRunes = 4000
@@ -89,7 +94,8 @@ func parseQuote(originalID string, isReply bool, quoted *quotedCallback) *Messag
 		// Literal JSON in a text message stays literal unless it has a known
 		// provider shape. Redaction below also covers JSON within that literal.
 		if strings.EqualFold(quoted.MsgType, "text") && (object["text"] != nil || object["content"] != nil) ||
-			strings.EqualFold(quoted.MsgType, "chatRecord") && (object["title"] != nil || object["summary"] != nil) {
+			strings.EqualFold(quoted.MsgType, "chatRecord") && (object["title"] != nil || object["summary"] != nil) ||
+			strings.EqualFold(quoted.MsgType, "interactiveCard") || strings.EqualFold(quoted.MsgType, "markdown") || strings.EqualFold(quoted.MsgType, "richText") {
 			content = json.RawMessage(encoded)
 		}
 	}
@@ -108,6 +114,34 @@ func parseQuote(originalID string, isReply bool, quoted *quotedCallback) *Messag
 		} else {
 			_ = json.Unmarshal(content, &out.Body)
 		}
+	case "markdown":
+		var object struct {
+			Title string `json:"title"`
+			Text  string `json:"text"`
+		}
+		if json.Unmarshal(content, &object) == nil {
+			out.Title, out.Body = object.Title, object.Text
+		}
+	case "richtext":
+		var object struct {
+			Parts []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"richText"`
+		}
+		if json.Unmarshal(content, &object) == nil {
+			var parts []string
+			for _, part := range object.Parts {
+				if part.Type == "" || strings.EqualFold(part.Type, "text") {
+					parts = append(parts, part.Text)
+				}
+			}
+			out.Body = strings.Join(parts, "")
+		}
+	case "interactivecard":
+		out.SummaryOnly = true
+		out.Body, out.Title, truncated = parseCardQuote(content, quoted)
+		out.Truncated = out.Truncated || truncated
 	case "chatrecord":
 		out.SummaryOnly = true
 		var object struct {
@@ -123,6 +157,104 @@ func parseQuote(originalID string, isReply bool, quoted *quotedCallback) *Messag
 	out.Title, truncated = boundedQuote(out.Title, maxQuoteTitleRunes)
 	out.Truncated = out.Truncated || truncated
 	return out
+}
+
+// Card callbacks carry a visible preview, not a guaranteed full ticket body.
+// Extract documented text nodes only; metadata and media capabilities are not text.
+func parseCardQuote(content json.RawMessage, quoted *quotedCallback) (string, string, bool) {
+	var object struct {
+		Title       string          `json:"title"`
+		Text        string          `json:"text"`
+		CardContent json.RawMessage `json:"cardContent"`
+		ActionURL   string          `json:"biz_custom_action_url"`
+	}
+	_ = json.Unmarshal(content, &object)
+	if len(object.CardContent) == 0 {
+		object.CardContent = redactQuotedCapabilities(quoted.CardContent)
+	}
+	if object.Title == "" {
+		object.Title = cleanQuoteField(quoted.Title)
+	}
+	if object.Text == "" {
+		object.Text = cleanQuoteField(quoted.Text)
+	}
+	if object.ActionURL == "" {
+		object.ActionURL, _ = contentString(quoted.ActionURL)
+	}
+	var tree any
+	_ = json.Unmarshal(object.CardContent, &tree)
+	parts, characters, nodes := []string{}, 0, 0
+	truncated := false
+	appendText := func(text string) {
+		if strings.TrimSpace(text) == "" {
+			return
+		}
+		remaining := maxQuoteRunes - characters
+		if len(parts) > 0 {
+			remaining--
+		}
+		if remaining <= 0 {
+			truncated = true
+			return
+		}
+		runes := []rune(text)
+		if len(runes) > remaining {
+			runes = runes[:remaining]
+			truncated = true
+		}
+		if len(parts) > 0 {
+			characters++
+		}
+		parts = append(parts, string(runes))
+		characters += len(runes)
+	}
+	var walk func(any, int)
+	walk = func(value any, depth int) {
+		if depth > 16 || nodes >= 1024 {
+			truncated = true
+			return
+		}
+		nodes++
+		switch item := value.(type) {
+		case []any:
+			for index, child := range item {
+				walk(child, depth+1)
+				if nodes >= 1024 {
+					truncated = truncated || index+1 < len(item)
+					break
+				}
+			}
+		case string:
+			truncated = truncated || item == "[nested content omitted]"
+		case map[string]any:
+			kind, _ := item["elementType"].(string)
+			if strings.EqualFold(kind, "TEXT") {
+				text, _ := item["value"].(string)
+				if text == "[nested content omitted]" {
+					truncated = true
+				} else {
+					appendText(text)
+				}
+			}
+			if children, ok := item["children"]; ok {
+				walk(children, depth+1)
+			}
+		}
+	}
+	walk(tree, 0)
+	if len(parts) == 0 {
+		appendText(object.Text)
+	}
+	if u, err := url.Parse(object.ActionURL); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Hostname() != "" && u.User == nil {
+		appendText(object.ActionURL)
+	}
+	return strings.Join(parts, "\n"), object.Title, truncated
+}
+
+func cleanQuoteField(raw json.RawMessage) string {
+	var cleaned string
+	_ = json.Unmarshal(redactQuotedCapabilities(raw), &cleaned)
+	return cleaned
 }
 
 func boundedQuote(text string, limit int) (string, bool) {

@@ -173,3 +173,72 @@ func TestParseQuoteIDFallbackAndTitleBounds(t *testing.T) {
 		t.Fatalf("ID-only quote lost: %+v %v", e.Quote, err)
 	}
 }
+
+func TestInteractiveCardQuoteExtractsCallbackPreview(t *testing.T) {
+	// A reported live callback nests TEXT values under LIST/RICHTEXT children.
+	tree := []any{map[string]any{"elementType": "LIST", "children": []any{
+		map[string]any{"elementType": "RICHTEXT", "children": []any{
+			map[string]any{"elementType": "TEXT", "value": "Approval request"},
+			map[string]any{"elementType": "TEXT", "value": "Machine: buildhub-01"},
+			map[string]any{"elementType": "IMAGE", "value": "MEDIA_SECRET", "downloadCode": "DOWNLOAD_SECRET"},
+		}},
+	}}}
+	object := map[string]any{"cardContent": tree, "title": "Ticket preview", "downloadCode": "DOWNLOAD_SECRET"}
+	encoded, _ := json.Marshal(object)
+	for _, content := range []any{object, string(encoded)} {
+		for _, conversation := range []string{"1", "2"} {
+			raw := callbackPayload(t, func(m map[string]any) {
+				m["conversationType"], m["isInAtList"] = conversation, true
+				m["text"] = map[string]any{"content": "Explain this ticket", "isReplyMsg": true,
+					"repliedMsg": map[string]any{"msgType": "interactiveCard", "msgId": "card-id", "content": content}}
+			})
+			message, err := Parse(raw, testConfig, testNow)
+			if err != nil || message.Quote == nil || message.Quote.Body != "Approval request\nMachine: buildhub-01" || message.Quote.Title != "Ticket preview" || !message.Quote.SummaryOnly || message.Text != "Explain this ticket" || len(message.Attachments) != 0 {
+				t.Fatalf("card preview lost provenance or content: %+v %v", message, err)
+			}
+		}
+	}
+}
+
+func TestCardQuoteTextLinkFallbackAndBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		quoted      *quotedCallback
+		body, title string
+		truncated   bool
+	}{
+		{"text and link", &quotedCallback{MsgType: "interactiveCard", Content: json.RawMessage(`{"text":"Ticket 123","title":"Approval","biz_custom_action_url":"https://example.test/ticket/123","downloadUrl":"SECRET"}`)}, "Ticket 123\nhttps://example.test/ticket/123", "Approval", false},
+		{"top-level preview", &quotedCallback{MsgType: "interactiveCard", Text: json.RawMessage(`"Ticket 123"`), Title: json.RawMessage(`"Approval"`), ActionURL: json.RawMessage(`"https://example.test/ticket/123"`)}, "Ticket 123\nhttps://example.test/ticket/123", "Approval", false},
+		{"metadata is not body", &quotedCallback{MsgType: "interactiveCard", Content: json.RawMessage(`{"cardContent":[{"elementType":"IMAGE","value":"SECRET"}],"downloadCode":"SECRET","url":"https://example.test/secret"}`)}, "", "", false},
+		{"unsafe link omitted", &quotedCallback{MsgType: "interactiveCard", ActionURL: json.RawMessage(`"javascript:alert(1)"`)}, "", "", false},
+		{"large unicode body", &quotedCallback{MsgType: "interactiveCard", Text: json.RawMessage(`"` + strings.Repeat("字", maxQuoteRunes+20) + `"`)}, strings.Repeat("字", maxQuoteRunes), "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quote := parseQuote("card-id", true, tc.quoted)
+			if quote.Body != tc.body || quote.Title != tc.title || quote.Truncated != tc.truncated || !quote.SummaryOnly {
+				t.Fatalf("unexpected card projection: %+v", quote)
+			}
+		})
+	}
+	var tree any = map[string]any{"elementType": "TEXT", "value": "Too deep"}
+	for range 20 {
+		tree = map[string]any{"elementType": "LIST", "children": []any{tree}}
+	}
+	raw, _ := json.Marshal(map[string]any{"cardContent": tree})
+	quote := parseQuote("card-id", true, &quotedCallback{MsgType: "interactiveCard", Content: raw})
+	if !quote.Truncated || quote.Body != "" {
+		t.Fatal("deep card traversal was not bounded", quote)
+	}
+}
+
+func TestQuotedMarkdownAndRichTextAreReferenceText(t *testing.T) {
+	for kind, content := range map[string]string{
+		"markdown": `{"text":"# Quoted note","title":"Note"}`,
+		"richText": `{"richText":[{"type":"text","text":"Quoted note"},{"type":"picture","downloadCode":"SECRET"}]}`,
+	} {
+		quote := parseQuote("original", true, &quotedCallback{MsgType: kind, Content: json.RawMessage(content)})
+		if !strings.Contains(quote.Body, "Quoted note") || strings.Contains(quote.Body, "SECRET") {
+			t.Fatal("quoted text was dropped or media capability retained", quote)
+		}
+	}
+}

@@ -642,9 +642,12 @@ conversation intake and learning remain disabled.
 ## History-reference diagnosis and fixed workbench ports (2026-10-13)
 
 The live DingTalk turns at 14:38–14:39 Singapore time completed execution and
-reply delivery. The second callback contained an `interactiveCard` quote's
-platform message ID and type, without body text. Its three history reads used
-the platform ID, which the Host incorrectly reported as invalid read bounds.
+reply delivery. The second normalized receipt contained an `interactiveCard`
+quote's platform message ID and type, without body text. Later inspection found the
+parser discarded this message type; absence in the receipt did not prove
+absence in the raw callback. See the
+[card parsing correction](channel-conversations-detail.md#interactive-card-quote-parsing-2026-10-13).
+Its three history reads used the platform ID, which the Host incorrectly reported as invalid read bounds.
 History search succeeded; the quoted original was absent from admitted history.
 The reference error and tool guidance now identify this mismatch explicitly.
 No external card retrieval or business-ticket completion is claimed.

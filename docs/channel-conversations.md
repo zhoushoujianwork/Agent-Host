@@ -19,8 +19,9 @@ to be recorded successfully.
 Send text, pictures, files, image-with-text messages, or forwarded Markdown.
 One message can contain up to four attachments: each image up to 5 MiB and each file up to
 20 MiB. Claude receives images as native image inputs and reads ordinary files
-with its tools. Quoted message text or a chat-record summary is used only when
-the callback supplies it; missing original content is not fetched automatically.
+with its tools. Quoted text, a chat-record summary, or an interactive-card
+preview (text, title and action link) is used when the callback supplies it.
+Missing original content is not fetched automatically.
 Forwarded Markdown is supplied as reference material, with long bodies marked
 as truncated. Links in forwarded content do not automatically download images.
 

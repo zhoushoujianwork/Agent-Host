@@ -353,3 +353,27 @@ func TestSupportedForwardedMarkdownRequiresParsedReferenceContent(t *testing.T) 
 		})
 	}
 }
+
+func TestInteractiveCardPreviewReachesNativePromptAndSavedHistory(t *testing.T) {
+	f := newServiceFixture(t)
+	const request = "Explain the referenced ticket."
+	const title = "Approval preview"
+	const body = "Ticket 123: BuildHub machine request"
+	input := inputCallback(t, f, "card-quote", "text", request, nil, map[string]any{
+		"msgType": "interactiveCard", "msgId": "original-card", "content": map[string]any{
+			"title": title, "cardContent": []any{map[string]string{"elementType": "TEXT", "value": body}},
+			"downloadCode": "QUOTE_SECRET"}})
+	message := f.process(t, input)
+	run := f.run(t, message)
+	if message.Status != "completed" || run.Input != request || run.Source == nil || run.Source.Input == nil || run.Source.Input.Quote == nil {
+		t.Fatal("card reference failed to execute or persist", message, run)
+	}
+	quote := run.Source.Input.Quote
+	if quote.Body != body || quote.Title != title || !quote.SummaryOnly || quote.MessageID != "original-card" {
+		t.Fatal("saved card preview lost source or completeness", quote)
+	}
+	prompt := f.runner.snapshot()[0].Prompt
+	if !strings.Contains(prompt, body) || !strings.Contains(prompt, title) || strings.Contains(prompt, "QUOTE_SECRET") {
+		t.Fatal("card preview did not reach native execution safely")
+	}
+}
