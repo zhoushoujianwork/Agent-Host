@@ -24,7 +24,7 @@
       "name": "dokki",
       "provider": "dokki",
       "endpoint": "https://dokki.one/api/v1",
-      "credential_file": "/absolute/private/path/dokki.json",
+      "credential_file": "/absolute/private/path/credential-dokki.json",
       "principal": "owner-dokki-account",
       "description": "Company knowledge in Dokki; search and read relevant resources.",
       "projects": ["default"]
@@ -33,7 +33,7 @@
       "name": "confluence",
       "provider": "confluence",
       "endpoint": "https://confluence.example.com",
-      "credential_file": "/absolute/private/path/confluence.json",
+      "credential_file": "/absolute/private/path/credential-confluence.json",
       "principal": "owner-confluence-account",
       "description": "Company API and operations documentation in Confluence.",
       "projects": ["default"]

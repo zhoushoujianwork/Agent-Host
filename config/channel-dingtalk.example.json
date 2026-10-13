@@ -1,7 +1,7 @@
 {
   "client_id": "YOUR_APPLICATION_CLIENT_ID",
   "robot_code": "YOUR_APPLICATION_ROBOT_CODE",
-  "client_secret_file": "/absolute/path/to/private/dingtalk-client-secret",
+  "client_secret_file": "/absolute/path/to/private/credential-dingtalk.secret",
   "corp_id": "YOUR_ENTERPRISE_ID",
   "owner_user_id": "YOUR_OWNER_USER_ID"
 }

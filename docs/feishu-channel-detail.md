@@ -6,7 +6,7 @@ polling and meeting-delivery contract.
 
 ## Configuration and runtime
 
-The [example](../config/feishu.example.json) adds IM fields to the existing
+The [example](../config/channel-feishu.example.json) adds IM fields to the existing
 meeting configuration:
 
 | Field | Meaning |

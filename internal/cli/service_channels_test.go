@@ -28,13 +28,25 @@ func TestChannelsDiscoverEnabledAndSkipDisabledMissingRuntime(t *testing.T) {
 	directory := channelDirectoryFixture(t)
 	one, _ := newServiceFixture(t)
 	two, _ := newServiceFixture(t)
-	writeBotJSON(t, filepath.Join(directory, "feishu.json"), map[string]any{"enabled": true, "runtime_root": one.Root})
+	writeBotJSON(t, filepath.Join(directory, "channel-feishu.json"), map[string]any{"enabled": true, "runtime_root": one.Root})
 	relative, _ := filepath.Rel(directory, two.Root)
-	writeBotJSON(t, filepath.Join(directory, "dingtalk.json"), map[string]any{"enabled": true, "runtime_root": relative})
-	writeBotJSON(t, filepath.Join(directory, "disabled.json"), map[string]any{"enabled": false, "runtime_root": "/absent/disabled-runtime"})
+	writeBotJSON(t, filepath.Join(directory, "channel-dingtalk.json"), map[string]any{"enabled": true, "runtime_root": relative})
+	writeBotJSON(t, filepath.Join(directory, "channel-disabled.json"), map[string]any{"enabled": false, "runtime_root": "/absent/disabled-runtime"})
+	// A non-channel configuration must never be decoded as a registration.
+	os.WriteFile(filepath.Join(directory, "data-knowledge.json"), []byte(`{"sources":[]}`), 0600)
+	os.WriteFile(filepath.Join(directory, "component-agents.json"), []byte(`{"agents":[]}`), 0600)
 	channels, err := discoverServiceChannels(directory, "")
 	if err != nil || len(channels) != 2 || channels[0].Root != two.Root || channels[1].Root != one.Root {
 		t.Fatalf("discovery: %+v %v", channels, err)
+	}
+}
+
+func TestChannelsRejectUnclassifiedRegistrationFilename(t *testing.T) {
+	directory := channelDirectoryFixture(t)
+	layout, _ := newServiceFixture(t)
+	writeBotJSON(t, filepath.Join(directory, "feishu.json"), map[string]any{"enabled": true, "runtime_root": layout.Root})
+	if _, err := discoverServiceChannels(directory, ""); err == nil || !strings.Contains(err.Error(), "channel-*.json") {
+		t.Fatal("unclassified registration accepted", err)
 	}
 }
 
@@ -48,7 +60,7 @@ func TestChannelsRejectAmbiguousInvalidAndRedirectedConfiguration(t *testing.T) 
 		`{"enabled":false,"runtime_root":"/tmp"}`,
 	} {
 		directory := channelDirectoryFixture(t)
-		os.WriteFile(filepath.Join(directory, "channel.json"), []byte(raw), 0600)
+		os.WriteFile(filepath.Join(directory, "channel-test.json"), []byte(raw), 0600)
 		if _, err := discoverServiceChannels(directory, "/fallback"); err == nil {
 			t.Fatal("invalid or empty channel set used fallback", raw)
 		}
@@ -56,7 +68,7 @@ func TestChannelsRejectAmbiguousInvalidAndRedirectedConfiguration(t *testing.T) 
 	directory := channelDirectoryFixture(t)
 	layout, _ := newServiceFixture(t)
 	for _, name := range []string{"one", "two"} {
-		writeBotJSON(t, filepath.Join(directory, name+".json"), map[string]any{"enabled": true, "runtime_root": layout.Root})
+		writeBotJSON(t, filepath.Join(directory, "channel-"+name+".json"), map[string]any{"enabled": true, "runtime_root": layout.Root})
 	}
 	if _, err := discoverServiceChannels(directory, ""); err == nil {
 		t.Fatal("duplicate runtime accepted")
@@ -66,7 +78,7 @@ func TestChannelsRejectAmbiguousInvalidAndRedirectedConfiguration(t *testing.T) 
 	if _, err := discoverServiceChannels(alias, ""); err == nil {
 		t.Fatal("symlink directory accepted")
 	}
-	if err := os.Chmod(filepath.Join(directory, "one.json"), 0644); err != nil {
+	if err := os.Chmod(filepath.Join(directory, "channel-one.json"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := discoverServiceChannels(directory, ""); err == nil {
@@ -84,7 +96,7 @@ func TestChannelsMissingDirectoryPreservesLegacyRoot(t *testing.T) {
 func TestChannelsCheckDoesNotConnectOrWriteRuntimeState(t *testing.T) {
 	directory := channelDirectoryFixture(t)
 	layout, _ := newServiceFixture(t)
-	writeBotJSON(t, filepath.Join(directory, "channel.json"), map[string]any{"enabled": true, "runtime_root": layout.Root})
+	writeBotJSON(t, filepath.Join(directory, "channel-test.json"), map[string]any{"enabled": true, "runtime_root": layout.Root})
 	if err := Run(context.Background(), []string{"service", "check", "--channels-dir", directory}, nil, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +144,7 @@ func TestChannelsPreflightRejectsInvalidPeerBeforeAnyProcess(t *testing.T) {
 	directory := channelDirectoryFixture(t)
 	valid, _ := newServiceFixture(t)
 	invalid, _ := newServiceFixture(t)
-	writeBotJSON(t, filepath.Join(directory, "one.json"), map[string]any{"enabled": true, "runtime_root": valid.Root})
+	writeBotJSON(t, filepath.Join(directory, "channel-one.json"), map[string]any{"enabled": true, "runtime_root": valid.Root})
 	writeBotJSON(t, filepath.Join(directory, "two.json"), map[string]any{"enabled": true, "runtime_root": invalid.Root})
 	os.Remove(filepath.Join(invalid.Config, "environment.json"))
 	err := runConfiguredChannels(context.Background(), "run", directory, "", "/absent/viewer", "python3", true, io.Discard, io.Discard)

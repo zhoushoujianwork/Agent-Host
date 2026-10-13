@@ -112,7 +112,7 @@ test `--home` and a different bot when production is running.
 
 1. Choose an existing application bot or create one with Stream reception
    enabled. Copy the
-   [example configuration](../config/dingtalk.example.json) into a private local
+   [example configuration](../config/channel-dingtalk.example.json) into a private local
    configuration file and fill in the application, robot code, enterprise, and
    owner IDs. `robot_code` is explicit; it is not inferred from the application ID.
 2. Put the application secret in a separate regular file with mode `0600` or

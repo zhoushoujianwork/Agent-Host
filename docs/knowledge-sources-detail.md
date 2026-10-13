@@ -40,7 +40,7 @@ candidate publication. Original calls/results remain in the run journal.
 
 ## Configuration and runtime assembly
 
-The version-1 JSON [example](../config/knowledge.example.json) contains source
+The version-1 JSON [example](../config/data-knowledge.example.json) contains source
 names, `provider`, `endpoint`, optional Dokki-only `source_url_base`, `credential_file`,
 `principal`, `description` and explicit `projects`. Files must be regular,
 current-user-owned, deny group/other access, and use absolute paths. Unknown or

@@ -31,7 +31,7 @@ controls are interpreted by the Host; `/status` waits behind earlier turns.
 ## Configuration and behavior
 
 The operator maintains a private `agents.json` (start from the
-[example](../config/agents.example.json)), referenced by `agents_config`
+[example](../config/component-agents.example.json)), referenced by `agents_config`
 in the service configuration. It defines a default agent, named agents and group
 bindings. Changes take effect after restart; `service check` validates them
 locally. The Host command interface has no project-setting, instance-configuration

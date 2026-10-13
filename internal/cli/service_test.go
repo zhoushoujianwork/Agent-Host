@@ -324,3 +324,34 @@ func TestServiceCustomJevGatewayArguments(t *testing.T) {
 		t.Fatal(args)
 	}
 }
+
+func TestServiceCanonicalConfigurationNamesAndAmbiguousLegacyNames(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"service.json", "component-service.json"},
+		{"environment.json", "component-environment.json"},
+		{"dingtalk.json", "channel-dingtalk.json"},
+	} {
+		t.Run(pair[1], func(t *testing.T) {
+			layout, _ := newServiceFixture(t)
+			old := filepath.Join(layout.Config, pair[0])
+			current := filepath.Join(layout.Config, pair[1])
+			if err := os.Rename(old, current); err != nil {
+				t.Fatal(err)
+			}
+			if err := Run(context.Background(), []string{"service", "check", "--root", layout.Root}, nil, io.Discard, io.Discard); err != nil {
+				t.Fatal("canonical name rejected", err)
+			}
+			raw, err := os.ReadFile(current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(old, raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+			err = Run(context.Background(), []string{"service", "check", "--root", layout.Root}, nil, io.Discard, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), "conflicting configuration files") {
+				t.Fatal("ambiguous legacy and canonical names accepted", err)
+			}
+		})
+	}
+}

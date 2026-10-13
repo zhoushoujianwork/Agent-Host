@@ -69,7 +69,7 @@ class PublicExportTests(unittest.TestCase):
             }]}),
             "internal/harness/auth.go": "package harness\n// Native authentication source is public.\n",
             "internal/harness/auth_test.go": "package harness\n",
-            "config/environment.example.json": '{"ANTHROPIC_BASE_URL": "https://example.invalid"}\n',
+            "config/component-environment.example.json": '{"ANTHROPIC_BASE_URL": "https://example.invalid"}\n',
             "experiments/history/dws_platform.py": "# Public platform adapter fixture.\n",
             "experiments/history/dws_platform_test.py": "# Public offline platform regression.\n",
             "tools/run-viewer/fixtures/public.json": '{"synthetic": true}\n',
@@ -107,7 +107,7 @@ class PublicExportTests(unittest.TestCase):
         self.assertFalse((output / ".git").exists())
         for name in hidden:
             self.assertFalse((output / name).exists(), name)
-        for name in ["Makefile", "internal/harness/auth.go", "config/environment.example.json", "experiments/history/dws_platform.py", "experiments/history/dws_platform_test.py", "tools/run-viewer/fixtures/public.json", "examples/public_example.py"]:
+        for name in ["Makefile", "internal/harness/auth.go", "config/component-environment.example.json", "experiments/history/dws_platform.py", "experiments/history/dws_platform_test.py", "tools/run-viewer/fixtures/public.json", "examples/public_example.py"]:
             self.assertEqual((output / name).read_bytes(), (source / name).read_bytes(), name)
         for path in output.rglob("*"):
             if path.is_file():

@@ -47,7 +47,7 @@ Automatic entry also needs the invitation/end events and private-message event
 enabled. The [details](feishu-meeting-channel-detail.md#entry-events-and-platform-configuration)
 list their exact names and permissions.
 
-Copy [the automatic-entry example](../config/feishu-meeting-auto.example.json)
+Copy [the automatic-entry example](../config/channel-feishu-meeting-auto.example.json)
 into a private file with mode `0600`. Fill in the profile, application ID, bot
 Open ID, actual tenant ID and permitted human Open IDs. Leave `meeting_id`
 absent to wait for invitations. Prepare native Claude authentication and the
@@ -67,7 +67,7 @@ ready, then send `AI: 请帮我整理本次讨论的待办。` in meeting chat. 
 visible to all participants. `AI: /new`, `AI: /status` and `AI: /help` use the
 existing Host controls.
 
-To keep manual entry, use [the fixed-meeting example](../config/feishu-meeting.example.json)
+To keep manual entry, use [the fixed-meeting example](../config/channel-feishu-meeting.example.json)
 with a long `meeting_id` and omit `auto_join`. Join explicitly before serving.
 When automatic entry has a `meeting_id`, it is an already-joined seed: the host
 verifies it and starts polling without issuing another join.

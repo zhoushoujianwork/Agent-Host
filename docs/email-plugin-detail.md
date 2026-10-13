@@ -158,15 +158,15 @@ profile address before accessing messages or sending; it refreshes access tokens
 on demand without rotating the native session. No credentials enter MCP arguments.
 
 ```sh
-agent-host email check --config /absolute/private/accounts.json
-agent-host email check --config /absolute/private/accounts.json --account personal-163 --live
-agent-host chat --email-config /absolute/private/accounts.json -m 'List my managed mailboxes.'
+agent-host email check --config /absolute/private/data-email-accounts.json
+agent-host email check --config /absolute/private/data-email-accounts.json --account personal-163 --live
+agent-host chat --email-config /absolute/private/data-email-accounts.json -m 'List my managed mailboxes.'
 ```
 
 The local check validates the account registry only; missing credentials or
 provider access failures are reported by live checks/calls for the selected
 account. In the project-local runtime, add `email_config` with the absolute registry
-path to the private `config/service.json`, then restart `make run`.
+path to the private `config/component-service.json`, then restart `make run`.
 
 One account operation is bounded to 30 seconds. Read MIME is capped at 8 MiB,
 with at most 200 parts and body/attachment chunks of up to 12,000 bytes.
@@ -229,7 +229,7 @@ The native probe is opt-in through `AGENT_HOST_EMAIL_NATIVE_LIVE=1`, with explic
 Host binary, private service root and mailbox configuration; see the test source.
 It records successful tool names only and never sends mail.
 
-The active local registry lives in `.agent-host/email/accounts.json`; both optional
+The active local registry lives in `.agent-host/email/data-email-accounts.json`; both optional
 runtime configurations reference it. Feishu startup previously omitted the
 registry and had tools disabled. The corrected project-local configuration uses
 `no_tools: false`; Gmail remains unconfigured pending separate authorization.

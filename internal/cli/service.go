@@ -30,8 +30,8 @@ and supervises every enabled runtime. Each registration has enabled and runtime_
 Runtime paths may be relative to the registration directory. No channel directory
 preserves the legacy --root setup; an existing directory with no enabled channels fails.
 --viewer-source enables runtime locking and supervised startup for a single --root too.
-Configuration comes from ROOT/config/service.json, environment.json and
-dingtalk.json, feishu.json for channel feishu, or feishu-meeting.json for
+Configuration comes from ROOT/config/component-service.json, component-environment.json and
+channel-dingtalk.json, channel-feishu.json for channel feishu, or channel-feishu-meeting.json for
 channel feishu-meeting, plus the optional private agents_config file. Native Claude
 profiles are isolated by agent and audience under ROOT/native.
 check validates local files and configuration without connecting, executing
@@ -41,6 +41,7 @@ Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
+	channelConfigPath          string
 	EmailConfig                string   `json:"email_config,omitempty"`
 	Channel                    string   `json:"channel,omitempty"`
 	MaxConcurrentConversations int      `json:"max_concurrent_conversations,omitempty"`
@@ -168,14 +169,22 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 			return layout, config, nil, fmt.Errorf("service %s directory: %w", label, err)
 		}
 	}
-	if err := readServiceJSON(filepath.Join(layout.Config, "service.json"), &config); err != nil {
+	servicePath, err := serviceConfigurationPath(layout.Config, "component-service.json", "service.json")
+	if err != nil {
+		return layout, config, nil, err
+	}
+	if err := readServiceJSON(servicePath, &config); err != nil {
 		return layout, config, nil, fmt.Errorf("service configuration: %w", err)
 	}
 	if err := config.validate(); err != nil {
 		return layout, config, nil, err
 	}
 	var environment map[string]string
-	if err := readServiceJSON(filepath.Join(layout.Config, "environment.json"), &environment); err != nil {
+	environmentPath, err := serviceConfigurationPath(layout.Config, "component-environment.json", "environment.json")
+	if err != nil {
+		return layout, config, nil, err
+	}
+	if err := readServiceJSON(environmentPath, &environment); err != nil {
 		return layout, config, nil, fmt.Errorf("service environment: %w", err)
 	}
 	for key, value := range environment {
@@ -195,15 +204,25 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 		if config.Channel == "feishu" {
 			filename = "feishu.json"
 		}
-		if _, err := loadFeishuMeetingConfig(filepath.Join(layout.Config, filename)); err != nil {
+		path, err := serviceConfigurationPath(layout.Config, "channel-"+filename, filename)
+		if err != nil {
 			return layout, config, nil, err
 		}
+		if _, err := loadFeishuMeetingConfig(path); err != nil {
+			return layout, config, nil, err
+		}
+		config.channelConfigPath = path
 		return layout, config, environment, nil
 	}
 	var bot botConfigFile
-	if err := readServiceJSON(filepath.Join(layout.Config, "dingtalk.json"), &bot); err != nil {
+	botPath, err := serviceConfigurationPath(layout.Config, "channel-dingtalk.json", "dingtalk.json")
+	if err != nil {
+		return layout, config, nil, err
+	}
+	if err := readServiceJSON(botPath, &bot); err != nil {
 		return layout, config, nil, fmt.Errorf("service DingTalk configuration: %w", err)
 	}
+	config.channelConfigPath = botPath
 	if !filepath.IsAbs(bot.ClientSecretFile) {
 		return layout, config, nil, errors.New("service DingTalk credential path must be absolute")
 	}
@@ -271,7 +290,11 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	} else if c.Channel == "feishu" {
 		filename = "feishu.json"
 	}
-	args := []string{command, "--config", filepath.Join(layout.Config, filename), "--home", layout.State,
+	path := c.channelConfigPath
+	if path == "" {
+		path = filepath.Join(layout.Config, "channel-"+filename)
+	}
+	args := []string{command, "--config", path, "--home", layout.State,
 		"--workspace", layout.Workspace, "--claude", c.Claude, "--model", c.Model,
 		"--jev-provider", c.JevProvider, "--jev-model", c.JevModel, "--timeout", c.Timeout, "--format", "json"}
 	concurrency := c.MaxConcurrentConversations
@@ -302,6 +325,31 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		args = append(args, "--allowed-tools", rule)
 	}
 	return args
+}
+
+// Keep old runtimes readable while making new configuration names unambiguous.
+// Never silently choose between two files representing the same component.
+func serviceConfigurationPath(directory, canonical, legacy string) (string, error) {
+	current := filepath.Join(directory, canonical)
+	old := filepath.Join(directory, legacy)
+	_, currentErr := os.Lstat(current)
+	_, oldErr := os.Lstat(old)
+	if currentErr != nil && !errors.Is(currentErr, os.ErrNotExist) {
+		return "", currentErr
+	}
+	if oldErr != nil && !errors.Is(oldErr, os.ErrNotExist) {
+		return "", oldErr
+	}
+	if currentErr == nil && oldErr == nil {
+		return "", fmt.Errorf("conflicting configuration files: %s and %s", canonical, legacy)
+	}
+	if currentErr == nil {
+		return current, nil
+	}
+	if oldErr == nil {
+		return old, nil
+	}
+	return current, nil
 }
 
 func privateServicePath(path string, directory bool) (os.FileInfo, error) {

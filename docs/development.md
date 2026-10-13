@@ -12,7 +12,7 @@ repository's unrelated history.
 
 Keep real accounts, credentials, configuration, database state and execution
 reports outside Git, normally in the project's ignored `.agent-host/` tree.
-`make run` loads enabled `.agent-host/channels/*.json` registrations through the
+`make run` loads enabled `.agent-host/channels/channel-*.json` registrations through the
 Go CLI, falling back to `.agent-host/runtime` only when that directory is absent;
 ordinary CLI state uses
 `.agent-host/cli-state`. Commit configuration

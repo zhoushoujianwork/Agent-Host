@@ -129,7 +129,7 @@ can add stronger evidence without rewriting what the original discussion proved.
 
 ## Enable the implemented knowledge tools
 
-Copy the [configuration example](../config/knowledge.example.json) to a private
+Copy the [configuration example](../config/data-knowledge.example.json) to a private
 file and configure each source's endpoint, token-file path and permitted project
 IDs. `default` means an unregistered workspace; registered projects require
 their explicit IDs. Optional `audiences` further narrows access; omission keeps

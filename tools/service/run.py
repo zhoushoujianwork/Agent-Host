@@ -36,8 +36,8 @@ def prepare(root, binary, viewer_source):
     root = Path(root).absolute()
     if root.resolve() != root:
         raise ValueError("runtime root must have a canonical path without symlinks")
-    if not (root / "config/service.json").exists():
-        raise ValueError("missing runtime config/service.json; prepare private service and channel configuration using config/*.example.json")
+    if not any((root / "config" / name).exists() for name in ("component-service.json", "service.json")):
+        raise ValueError("missing runtime config/component-service.json; prepare private component and channel configuration using config/*.example.json")
     for folder in ("", "config", "state", "workspace", "native", "logs", "viewer"):
         private_directory(root / folder)
     for filename in VIEWER_FILES:

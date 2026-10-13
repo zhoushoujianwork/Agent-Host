@@ -70,7 +70,7 @@ not treat a quiet conversation as proof that work remains blocked.
 
 1. Install the updated Host for automatic DingTalk history retrieval.
 2. Select a DWS profile, specific private/group conversations and one registered
-   project for each source. Copy the [example](../config/discovery.example.json)
+   project for each source. Copy the [example](../config/data-discovery.example.json)
    to an owner-private file; validate it with `discovery check`.
 3. Run one bounded `discovery collect` and inspect coverage and topic evidence.
    Enable continuous polling with `discovery serve`, or an optional

@@ -5,7 +5,7 @@ This page keeps additional commands, configuration notes and implementation guid
 
 ## Runtime and credentials
 
-`make run` invokes the Go CLI to start all enabled `.agent-host/channels/*.json`
+`make run` invokes the Go CLI to start all enabled `.agent-host/channels/channel-*.json`
 registrations, with visible foreground logs and a workbench per runtime. Without
 a channel directory, it retains `.agent-host/runtime` as the legacy default.
 Use `make run RUN_ARGS=--no-browser` to suppress browser launch, or
@@ -19,7 +19,7 @@ or inspection. The channel runtime's state is separate from ordinary CLI state.
 Claude uses its configured native authentication. Jev uses TypeSafe by default
 with `TYPESAFE_API_KEY`; `--jev-provider custom --jev-endpoint URL` selects an
 explicit gateway and reads `JEV_API_KEY`. In the channel runtime, configure
-provider values in the private `config/environment.json`. There is no provider
+provider values in the private `config/component-environment.json`. There is no provider
 fallback. All accounts, credentials and populated runtime files belong in the
 ignored `.agent-host/` tree.
 
@@ -79,7 +79,7 @@ own; inspection of channel runs needs that channel runtime's `--home`.
 ./bin/agent-host run retry-memory RUN_ID
 ./bin/agent-host run retry-experience RUN_ID
 ./bin/agent-host eval --suite evals/memory-v2.json
-./bin/agent-host email check --config "$PWD/.agent-host/email/accounts.json"
+./bin/agent-host email check --config "$PWD/.agent-host/email/data-email-accounts.json"
 ./bin/agent-host assistance --help
 ```
 

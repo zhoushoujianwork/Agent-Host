@@ -7,7 +7,7 @@ reference for prior evidence; `make install` is no longer a Make target.
 ## Project-local runtime
 
 `make run` builds the checkout binary and invokes `agent-host service run`
-directly. The Go CLI scans `.agent-host/channels/*.json` for registrations with
+directly. The Go CLI scans `.agent-host/channels/channel-*.json` for registrations with
 `enabled: true` and a `runtime_root`, resolving relative paths against the
 registration directory. `CHANNELS_DIR` selects another registration directory;
 an explicit `RUNTIME_ROOT` bypasses scanning and selects one runtime.
@@ -33,7 +33,7 @@ not part of the checkout's `make run` workflow.
 | Project-local path | Purpose |
 | --- | --- |
 | `bin/agent-host` | Binary built from the checkout |
-| `.agent-host/channels/*.json` | Private enabled-channel registrations |
+| `.agent-host/channels/channel-*.json` | Private enabled-channel registrations |
 | `.agent-host/runtime/config` | Current Feishu service/provider/channel configuration |
 | `.agent-host/runtime/state` | Feishu task/history/memory database and input artifacts |
 | `.agent-host/runtime/native` | Dedicated native profiles and sessions |
@@ -46,6 +46,14 @@ not part of the checkout's `make run` workflow.
 | `.agent-host/cli-state` | Default state for ordinary local CLI invocations |
 
 The existing root `.gitignore` rule excludes the complete `.agent-host/` tree.
+Registrations require the `channel-` filename prefix. Other classified JSON files
+(`data-`, `component-`, `credential-`) are ignored by the channel scanner;
+unclassified JSON files fail explicitly. Runtime configuration prefers
+`component-service.json`, `component-environment.json`, and `channel-<protocol>.json`.
+Legacy names remain compatible when there is no canonical file; coexistence is
+an error rather than implicit precedence. Explicit `agents_config`,
+`knowledge_config`, `discovery_config`, and `email_config` paths use the names
+listed in the [configuration naming guide](../config/README.md).
 The CLI requires current-user ownership and private regular files, rejects
 symlink runtime paths, and does not write credential values to commands. It uses
 `python3` for the viewer unless `--viewer-python` is explicitly supplied.

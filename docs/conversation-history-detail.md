@@ -60,7 +60,7 @@ for very large retained conversations has not been measured.
 
 ## DWS configuration and operation
 
-Copy [discovery.example.json](../config/discovery.example.json) outside the
+Copy [discovery.example.json](../config/data-discovery.example.json) outside the
 checkout, replace placeholders and set mode `0600`. Configuration must be a
 regular current-user-owned private file, without symlinks, duplicate or unknown
 fields. It selects an absolute DWS executable, exact `corpId:userId` profile,

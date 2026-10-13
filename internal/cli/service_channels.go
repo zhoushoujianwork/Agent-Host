@@ -50,6 +50,15 @@ func discoverServiceChannels(directory, fallback string) ([]configuredChannel, e
 		if !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
+		if !strings.HasPrefix(entry.Name(), "channel-") {
+			if strings.HasPrefix(entry.Name(), "data-") || strings.HasPrefix(entry.Name(), "component-") || strings.HasPrefix(entry.Name(), "credential-") {
+				continue
+			}
+			return nil, errors.New("channel registration filenames must use channel-*.json")
+		}
+		if entry.Name() == "channel-.json" {
+			return nil, errors.New("channel registration requires a name after channel-")
+		}
 		var config channelRegistration
 		if err := readServiceJSON(filepath.Join(directory, entry.Name()), &config); err != nil {
 			return nil, fmt.Errorf("channel %s: %w", entry.Name(), err)
@@ -73,7 +82,7 @@ func discoverServiceChannels(directory, fallback string) ([]configuredChannel, e
 			return nil, errors.New("enabled channels must use distinct runtime roots")
 		}
 		roots[root] = true
-		channels = append(channels, configuredChannel{strings.TrimSuffix(entry.Name(), ".json"), root})
+		channels = append(channels, configuredChannel{strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "channel-"), ".json"), root})
 	}
 	if len(channels) == 0 {
 		return nil, errors.New("no enabled channel configurations")

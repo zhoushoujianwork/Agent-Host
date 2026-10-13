@@ -18,8 +18,8 @@ below of ignored ordinary IM apply when `im_chat` is disabled.
 
 ## Configuration and runtime
 
-The [fixed-meeting example](../config/feishu-meeting.example.json) and
-[automatic-entry example](../config/feishu-meeting-auto.example.json) share these fields:
+The [fixed-meeting example](../config/channel-feishu-meeting.example.json) and
+[automatic-entry example](../config/channel-feishu-meeting-auto.example.json) share these fields:
 
 | Field | Meaning |
 | --- | --- |
@@ -231,10 +231,10 @@ ROOT/
 
 Directories belong to the current user, deny group/other access, and use no
 symlinks. Configuration files are regular private files, normally mode `0600`.
-Use the existing [service example](../config/service.example.json), adding
+Use the existing [service example](../config/component-service.example.json), adding
 `"channel": "feishu-meeting"`. Its explicit native executable, model, Jev
 provider/model, timeout and tool settings remain in effect. The
-[environment example](../config/environment.example.json) shows supported
+[environment example](../config/component-environment.example.json) shows supported
 provider/native keys; put actual credentials only in the private runtime.
 Optional `agents_config` and `knowledge_config` keep their existing meaning.
 `discovery_config` is not supported for this channel.

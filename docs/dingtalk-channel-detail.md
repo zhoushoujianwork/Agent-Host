@@ -25,7 +25,7 @@ bounded scheduler, attachment download and persistence, quoted material and
 native image input. These additions retain the existing admission and delivery
 boundaries below.
 
-`config/dingtalk.example.json` contains only `client_id`, `robot_code`, `client_secret_file`,
+`config/channel-dingtalk.example.json` contains only `client_id`, `robot_code`, `client_secret_file`,
 `corp_id`, and `owner_user_id`. The secret path must be absolute and point to an
 owner-private regular file. Unknown JSON fields and invalid configuration fail
 before Stream startup. `dingtalk check` also validates the local workspace,

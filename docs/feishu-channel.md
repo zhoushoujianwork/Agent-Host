@@ -42,7 +42,7 @@ Enable the app's bot capability, publish the IM permissions and subscribe to
 [permission list](feishu-channel-detail.md#platform-configuration) separates IM
 from optional meeting permissions.
 
-Copy [the configuration example](../config/feishu.example.json) to a private
+Copy [the configuration example](../config/channel-feishu.example.json) to a private
 file, mode `0600`, and replace its placeholder identities. `im_chat: true`
 requires an explicit `owner_open_id`. Start with `auto_join: false` and no
 `meeting_id` for ordinary IM only; this mode makes no meeting API reads.
