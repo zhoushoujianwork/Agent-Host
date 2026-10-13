@@ -108,6 +108,7 @@ lists controls. Saved Host memory remains available after `/new`.
 [DingTalk workspace](docs/dingtalk-workspace.md) ·
 [Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·
 [File memory and Skill proposal](docs/file-memory-design.md) ·
+[Workspace layout proposal](docs/workspace-layout.md) ·
 [Feedback](docs/feedback.md) · [Development](docs/development.md)
 
 ```sh

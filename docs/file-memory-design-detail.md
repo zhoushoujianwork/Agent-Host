@@ -2,6 +2,7 @@
 
 配套[设计主文档](file-memory-design.md)。全部为提案；主文档决定范围。
 字段、命令名称和批处理大小在实现时按最小完整路径确定。
+完整根目录、配置原文与任务视图见[workspace 详细稿](workspace-layout-detail.md)。
 
 ## 当前基线与替代关系
 
@@ -33,7 +34,8 @@ Host 超过此数量会直接报错。这是实现限制，不是 SQLite 容量�
 │       │   └── SKILL.md              # 标准 name/description 与方法正文
 │       ├── policies/                 # 版本化禁用、恢复和纠正关系
 │       └── drafts/                   # 待校验修改，不参与有效召回
-├── cache/memory/                     # 可删除的索引、生成的原生 Skill 包
+├── cache/memory/                     # 可删除的检索索引
+├── cache/workspaces/<context-id>/    # 本次任务上下文视图与原生 Skill 包
 ├── knowledge/                       # 原始资料与有来源的快照
 └── channels/<channel>/state/         # 现有运行数据库与来源证据
 ```

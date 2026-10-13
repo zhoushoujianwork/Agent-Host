@@ -2,6 +2,7 @@
 
 状态：2026-10-13 新架构提案，尚未实现或迁移。本文约定新方案范围；
 实现细节见[详细稿](file-memory-design-detail.md)。当前服务仍使用 SQLite 记忆。
+目录与 `USER.md` 等上下文文件见[workspace 设计](workspace-layout.md)。
 本方案替代旧方案中“SQLite 记忆是权威来源、Skill 只是导出”的目标约定，
 已有执行与验证记录继续作为历史基线。
 
@@ -31,6 +32,8 @@ Claude Code 等原生执行引擎负责执行。渠道接入、任务路由和�
 | 外部资料 | 现有 `knowledge/` 和数据源插件，按需搜索与读取 |
 
 配置仍统一放 `.agent-host/config/`，新增知识沉淀放 `.agent-host/memory/`。
+沉淀 Skill 的正文保存在 `memory/domains/<domain-id>/skills/<skill-id>/revisions/<revision>/SKILL.md`。
+手写 Skill 与 Agent/用户原文放 `config/`，任务上下文视图放 `cache/workspaces/`。
 渠道目录保留渠道运行数据，workspace 保存任务文件与产物。
 文件存放在同一个根目录，不代表钉钉、飞书、不同 Agent 或群聊自动共享记忆。
 首期保留现有项目、Agent、audience 和默认渠道范围；跨渠道共享单独授权与验证。

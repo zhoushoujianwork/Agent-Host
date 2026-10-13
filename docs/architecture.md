@@ -7,6 +7,9 @@ skills to native harnesses. It supersedes the earlier database-authoritative
 memory/derived-skill target. It is not implemented; the SQLite behavior described
 below remains the delivered baseline. Its staged migration and acceptance gates
 own the next memory implementation order.
+The [workspace layout proposal](workspace-layout.md) assigns Agent instructions
+and user profiles to configuration, learned skills to memory, and scoped task
+context views to cache, while preserving execution cwd and channel state.
 
 The [datasource plugin configuration](datasource-plugins-design.md) loads local
 Markdown, Dokki, Confluence and Email from separate `datasource.plugins.*.json`
