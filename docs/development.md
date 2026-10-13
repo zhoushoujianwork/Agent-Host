@@ -11,7 +11,9 @@ normal push. Preserve the existing public history; do not force-push a private
 repository's unrelated history.
 
 Keep real accounts, credentials, configuration, database state and execution
-reports outside Git, normally under `~/.agent-host`. Commit configuration
+reports outside Git, normally in the project's ignored `.agent-host/` tree.
+`make run` uses `.agent-host/runtime`; ordinary CLI state uses
+`.agent-host/cli-state`. Commit configuration
 examples with placeholders. The ignore rules are a safeguard, not a substitute
 for reviewing files before publication. Private historical validation reports
 are kept in a local archive rather than copied into the public repository.

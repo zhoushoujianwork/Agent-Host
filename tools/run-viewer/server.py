@@ -346,7 +346,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--home", type=Path, default=Path.home() / ".agent-host")
+    parser.add_argument("--home", type=Path, default=Path.cwd() / ".agent-host" / "runtime" / "state")
     parser.add_argument("--reports", type=Path, default=ROOT / "experiments/experience/results")
     parser.add_argument("--no-reports", action="store_true", help="Read only current database state, without archived reports")
     selection = parser.add_mutually_exclusive_group()

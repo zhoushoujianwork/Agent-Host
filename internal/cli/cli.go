@@ -62,11 +62,12 @@ Usage:
   agent-host service check --root ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH
   agent-host knowledge check --config ABSOLUTE_PATH
+  agent-host email --help
   agent-host discovery --help
   agent-host assistance --help
 
 Options (place before positional IDs/queries):
-  --home PATH           Host state directory (default ~/.agent-host)
+  --home PATH           Host state directory (default .agent-host/cli-state)
   --workspace PATH      Native cwd (default current directory); matches registered projects
   --project ID          Registered project; repeat for joint chat (exclusive with --workspace)
   --primary-project ID  Primary cwd within the selected set; otherwise joint chat uses ~/workspace
@@ -75,6 +76,7 @@ Options (place before positional IDs/queries):
   --claude PATH         Native executable (default claude)
   --no-tools            Explicit tool-free Claude execution for controlled tests
   --allowed-tools LIST  Native permission allowlist; repeat or comma-separate
+  --email-config PATH  Private managed mailbox configuration
   --knowledge-config PATH  Private Dokki/Confluence source configuration
   --agents-config PATH  Private agent roles, context selections and group bindings
   --agent ID            Logical instance for chat and local state (default default)
@@ -99,6 +101,7 @@ type options struct {
 	agentsConfig, agentID, audienceID, nativeProfile, permissionMode, hostInstructions string
 	knowledgeNames                                                                     []string
 	knowledgeConfig                                                                    string
+	emailConfig, emailFingerprint                                                      string
 	discoveryConfig                                                                    string
 	contextPolicy, contextExecutable                                                   string
 	suggestionRevision                                                                 int
@@ -127,10 +130,6 @@ type options struct {
 
 func parse(name string, args []string, errout io.Writer) (options, []string, error) {
 	var o options
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return o, nil, err
-	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return o, nil, err
@@ -141,7 +140,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
-	fs.StringVar(&o.home, "home", filepath.Join(home, ".agent-host"), "Host state directory")
+	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
 	fs.Func("project", "Registered project ID; repeat for joint chat", func(value string) error {
 		o.projectIDs = append(o.projectIDs, value)
@@ -152,6 +151,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.format, "format", "text", "text or json (NDJSON)")
 	fs.StringVar(&o.model, "model", model, "Claude model")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
+	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.knowledgeConfig, "knowledge-config", "", "Private knowledge source configuration")
 	fs.StringVar(&o.discoveryConfig, "discovery-config", "", "Private DWS system topic discovery configuration")
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
@@ -258,6 +258,11 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	if o.home, err = filepath.Abs(o.home); err != nil {
 		return o, nil, err
 	}
+	if o.emailConfig != "" {
+		if o.emailConfig, err = filepath.Abs(o.emailConfig); err != nil {
+			return o, nil, err
+		}
+	}
 	if o.knowledgeConfig != "" {
 		if o.knowledgeConfig, err = filepath.Abs(o.knowledgeConfig); err != nil {
 			return o, nil, err
@@ -329,6 +334,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "service" {
 		return runService(ctx, args[1:], out, errout)
+	}
+	if args[0] == "email" {
+		return runEmail(ctx, args[1:], in, out, errout)
 	}
 	if args[0] == "knowledge" {
 		return runKnowledge(ctx, args[1:], in, out, errout)

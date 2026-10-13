@@ -1,10 +1,13 @@
-.PHONY: build package install check viewer help
+.PHONY: build run package check viewer help
 
 .DEFAULT_GOAL := help
 
 VIEWER_ARGS ?=
 VERSION ?=
 DIST_DIR ?= dist
+RUNTIME_ROOT ?= $(CURDIR)/.agent-host/runtime
+RUN_ARGS ?=
+PYTHON ?= python3
 
 build:
 	go build -ldflags "-X agent-host/internal/buildinfo.Version=$(or $(VERSION),0.2.0-dev)" -o bin/agent-host ./cmd/agent-host
@@ -13,8 +16,8 @@ build:
 package:
 	python3 -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
 
-install: build
-	python3 -B tools/service/install.py --binary bin/agent-host
+run: build
+	$(PYTHON) -B tools/service/run.py --root "$(RUNTIME_ROOT)" --binary "$(CURDIR)/bin/agent-host" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 
 help:
 	@printf '%s\n' \
@@ -22,18 +25,19 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  install Build, install and start the macOS production user service' \
+		'  run     Run the project-local channel service in the foreground' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
 		'  help    Print this usage guide (default target)' \
 		'' \
 		'Viewer options: pass through VIEWER_ARGS' \
 		'  --port PORT       Loopback port (default: 8765; 0 selects a free port)' \
-		'  --home PATH       Host data directory (default: ~/.agent-host)' \
+		'  --home PATH       Host data directory (default: .agent-host/runtime/state)' \
 		'  --reports PATH    Saved report directory (default: experiments/experience/results)' \
 		'  --workspace PATH  Filter database runs by registered or legacy workspace' \
 		'  --project ID      Filter database runs and memory by stable project ID' \
 		'' \
+		'Run options: RUNTIME_ROOT=/absolute/runtime RUN_ARGS=--no-browser' \
 		'Examples:' \
 		'  make viewer' \
 		"  make viewer VIEWER_ARGS='--home /path/to/isolated-home --port 0'" \
@@ -49,6 +53,7 @@ check:
 	go vet ./...
 	go test ./...
 	python3 -B tools/service/install_test.py
+	python3 -B tools/service/run_test.py
 	python3 -B tools/release/package_test.py
 	python3 -B tools/release/export_public_test.py
 	python3 -B tools/run-viewer/server_test.py

@@ -107,7 +107,7 @@ func TestServiceWorkbenchMissingInstallation(t *testing.T) {
 		t.Fatal("missing viewer opened a browser")
 		return nil
 	})
-	if err == nil || !strings.Contains(err.Error(), "rerun make install") {
+	if err == nil || !strings.Contains(err.Error(), "rerun make run") {
 		t.Fatal("missing observer should have an actionable error", err)
 	}
 }

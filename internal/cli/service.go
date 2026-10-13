@@ -23,7 +23,7 @@ const serviceUsage = `Managed channel runtime (DingTalk by default).
   agent-host service check --root ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
 
-The installer prepares private config, state, workspace and native directories.
+make run prepares the project-local viewer and starts the private configured runtime.
 Configuration comes from ROOT/config/service.json, environment.json and
 dingtalk.json, feishu.json for channel feishu, or feishu-meeting.json for
 channel feishu-meeting, plus the optional private agents_config file. Native Claude
@@ -35,6 +35,7 @@ Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
+	EmailConfig                string   `json:"email_config,omitempty"`
 	Channel                    string   `json:"channel,omitempty"`
 	MaxConcurrentConversations int      `json:"max_concurrent_conversations,omitempty"`
 	AgentsConfig               string   `json:"agents_config,omitempty"`
@@ -209,6 +210,9 @@ func (c serviceConfig) validate() error {
 	if c.AgentsConfig != "" && (!filepath.IsAbs(c.AgentsConfig) || filepath.Clean(c.AgentsConfig) != c.AgentsConfig || strings.ContainsAny(c.AgentsConfig, "\x00\r\n")) {
 		return errors.New("service agents_config must be a clean absolute path")
 	}
+	if c.EmailConfig != "" && (!filepath.IsAbs(c.EmailConfig) || filepath.Clean(c.EmailConfig) != c.EmailConfig || strings.ContainsAny(c.EmailConfig, "\x00\r\n")) {
+		return errors.New("service email_config must be a clean absolute path")
+	}
 	if c.KnowledgeConfig != "" && (!filepath.IsAbs(c.KnowledgeConfig) || filepath.Clean(c.KnowledgeConfig) != c.KnowledgeConfig || strings.ContainsAny(c.KnowledgeConfig, "\x00\r\n")) {
 		return errors.New("service knowledge_config must be a clean absolute path")
 	}
@@ -271,6 +275,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	}
 	if c.NoTools {
 		args = append(args, "--no-tools")
+	}
+	if c.EmailConfig != "" {
+		args = append(args, "--email-config", c.EmailConfig)
 	}
 	if c.KnowledgeConfig != "" {
 		args = append(args, "--knowledge-config", c.KnowledgeConfig)

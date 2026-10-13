@@ -209,10 +209,11 @@ recall in an isolated runtime using the existing bot; the
 [platform record](runtime-assembly-detail.md#live-dingtalk-acceptance-with-dws)
 keeps this separate from production state and remaining live scenarios.
 Production latency remains to be evaluated.
-The [production service](service-install.md) is installed and started through
-`make install` on macOS. Its binary, credentials, state, workspace and native
-Claude profile live under `~/.agent-host/production`, separate from development
-and temporary test state. Deployment evidence remains distinct from offline tests.
+The [project-local runtime](service-install.md) starts through `make run` in
+the foreground. Its credentials, state, logs, workspace and native profiles live
+under the project's ignored `.agent-host/runtime`, with the mailbox registry in
+`.agent-host/email`. The former system service was removed; historical data was
+retained in the ignored project area. Ordinary CLI uses `.agent-host/cli-state`. Deployment evidence remains distinct from offline tests.
 
 The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local
 `lark-cli` profile to connect authorized meetings to the same host execution path.
@@ -256,8 +257,8 @@ inside the harness, and profile data cannot broaden identity or audience grants.
    as historical baselines; a live Jev admission gap remains unresolved.**
 4. Prioritize the first everyday channel: DingTalk owner private messages through
    an application bot. **Implemented and tested offline; the owner has authorized
-   the existing-bot cutover. Production installation now
-   uses `make install`; the deployment guide records actual live evidence.**
+   the existing-bot cutover. Current startup uses
+   project-local `make run`; the runtime guide retains historical deployment evidence.**
 5. Add explicit project routing and runtime assembly. **Implemented: stable
    project identity, real cwd, shared native configuration, scoped memory and
    per-project compatible sessions. Validation is in the runtime assembly guide.**
@@ -292,10 +293,12 @@ Build adapters around demonstrated engine capabilities. A general-purpose
 plugin platform, a custom model/tool loop, and transparent session migration
 between engines are outside the initial scope.
 
-The [email capability proposal](email-plugin.md) adds Gmail and 163 accounts
+The [email capability](email-plugin.md) adds Gmail and 163 accounts
 through one registered email MCP server. AI discovers managed accounts and
 selects an account ID for read/send tools, with provider behavior behind email
-adapters. Account integration and live mailbox validation remain planned.
+adapters. The unified tools and provider adapters are implemented; one 163
+account passed bounded live reads. Gmail onboarding and real send/reply acceptance
+remain separate from the offline checks.
 
 See [implementation notes](architecture-detail.md) for proposed code boundaries
 and the first validation target, and [research conclusions](research.md) for the

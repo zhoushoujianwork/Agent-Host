@@ -20,7 +20,7 @@ import (
 func startServiceWorkbench(ctx context.Context, layout serviceLayout, python string, browser bool, notice io.Writer, openURL func(context.Context, string) error) (func(), error) {
 	script := filepath.Join(layout.Root, "viewer", "server.py")
 	if _, err := privateServicePath(script, false); err != nil {
-		return nil, errors.New("installed viewer is missing or invalid; rerun make install")
+		return nil, errors.New("installed viewer is missing or invalid; rerun make run")
 	}
 	if _, err := privateServicePath(filepath.Join(layout.Root, "logs"), true); err != nil {
 		return nil, errors.New("viewer logs directory must be private")

@@ -21,12 +21,12 @@ make build
 ./bin/agent-host chat --model YOUR_MODEL --no-tools -m 'Calculate 17 times 19.'
 ```
 
-State defaults to `~/.agent-host`. Use `--home /absolute/private/test-state`
+Ordinary CLI state defaults to `.agent-host/cli-state`. Use `--home /absolute/private/test-state`
 to keep an isolated trial. Repeated chat uses native continuation and saved
 memory; original evidence remains local. Inspect it with the
 [local viewer](../tools/run-viewer/README.md).
 
-## Add your own DingTalk bot on macOS
+## Run your own channel bot
 
 Prepare your private configuration from the included `config/*.example.json`,
 using your own Claude executable, model, Jev key, enterprise application and
@@ -36,7 +36,7 @@ another tester's configuration, credentials or database.
 Build and install from your checkout:
 
 ```sh
-make install
+make run
 ```
 
 Send a private request or @mention your bot in an enterprise group. Groups
