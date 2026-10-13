@@ -69,6 +69,45 @@ func acceptCandidate(t *testing.T, s *Store, id, memoryID string, conflicts, dup
 	return m
 }
 
+func TestExperienceRestructureRetainsRevisionsAndRejectsNewEvidence(t *testing.T) {
+	s, _ := testStore(t)
+	c := experienceCandidate(t, s, "structured", "/project")
+	c.Draft.Avoid = []string{"Avoid changing unrelated parser behavior."}
+	saveCandidate(t, s, c)
+	m := acceptCandidate(t, s, c.ID, "structured-memory", nil, nil)
+	if len(m.Avoid) != 1 {
+		t.Fatal("avoidance not published")
+	}
+	draft := c.Draft
+	draft.Steps = []string{"Apply the observed boundary correction.", "Run the parser test and check its output."}
+	bad := draft
+	bad.EvidenceIDs = append(append([]string(nil), draft.EvidenceIDs...), "unrecorded")
+	if _, err := s.RestructureExperience(testContext, m.ID, 1, bad, decision, "new source"); err == nil {
+		t.Fatal("new evidence admitted")
+	}
+	updated, err := s.RestructureExperience(testContext, m.ID, 1, draft, decision, "structure correction")
+	if err != nil || updated.Revision != 2 {
+		t.Fatal(updated, err)
+	}
+	var old []byte
+	if err := s.db.QueryRow("SELECT payload FROM memory_revisions WHERE memory_id=? AND revision=1", m.ID).Scan(&old); err != nil {
+		t.Fatal(err)
+	}
+	var prior Memory
+	if json.Unmarshal(old, &prior) != nil || !reflect.DeepEqual(prior.Steps, c.Draft.Steps) {
+		t.Fatal("old revision lost")
+	}
+	if _, err := s.RestructureExperience(testContext, m.ID, 1, draft, decision, "stale"); err == nil {
+		t.Fatal("stale revision overwritten")
+	}
+	if err := s.InvalidateMemory(testContext, m.ID, "disabled"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RestructureExperience(testContext, m.ID, 3, draft, decision, "revive"); err == nil {
+		t.Fatal("disabled experience revived")
+	}
+}
+
 func TestEvidenceUsesMatchedNativeToolsOnly(t *testing.T) {
 	events := []event.Event{toolEvent("edit", "Edit", "call", 1), toolEvent("edit", "Edit", "result", 2)}
 	ignored := toolEvent("extract", "Read", "call", 3)

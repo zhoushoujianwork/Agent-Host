@@ -352,3 +352,53 @@ general entity extraction, vector retrieval, an automatic conflict winner,
 broad correctness or large-memory performance. Its policy requires explicit
 review. The revised policy above replaces that gate with automatic selection
 and later disabling; generated procedures and Jev decisions can still be wrong.
+
+## Successful procedures and avoidance notes
+
+Extraction policy `reviewed-experience-extraction-v3` emits recommended successful
+`steps` and optional `avoid` notes. The latter is bounded to eight nonempty items
+of at most 2048 bytes each. Failed attempts must not become instructions to
+reproduce the failure; their observed warning and narrow integration conditions
+belong in `avoid`. Judgment policy v2 screens this distinction and includes
+avoidance notes when comparing complete procedures.
+
+Both candidates and published memories preserve these fields; `ExperienceText`
+includes an explicit `Avoid:` section for context delivery. Existing payloads
+without `avoid` remain readable without a schema migration. New extraction does
+not silently rewrite older adopted records.
+
+The local owner can explicitly restructure an active reviewed procedure.
+`Host.RestructureExperience` uses only that memory's existing evidence IDs from
+its source run, invokes tool-free extraction, requires one lesson, and reassesses
+its usefulness and support. Observed tool failures require an avoidance note.
+Extraction and assessment outcomes remain in the source journal. A revision
+transaction verifies current status/revision and exact allowed source references,
+persists the new text, steps, warnings and decision audit, and rebuilds derived
+retrieval indexes. Identity, source run, original candidate and evidence IDs stay
+unchanged; old revisions remain inspectable. Disabled, expired, conflicted or
+stale records are not reactivated by this operation. The original business task
+is never rerun. This restructures content; relevance filtering is unchanged.
+
+### Live procedure restructuring (2026-10-13)
+
+The adopted owner-private DingTalk lesson was reorganized through the running
+Host from revision 1 to active revision 2. The new version contains four
+successful steps (resolve the recipient, send with the verified openDingTalkId,
+retain the pending task ID, query final send status) and a separate warning
+against the observed rejected userId destination. The original accepted draft,
+revision 1, memory identity and five evidence references remain preserved.
+Tool-free extraction and the v2 usefulness/support assessment passed. An earlier
+attempt that split the lesson into two drafts was rejected without changing
+memory; restructuring now explicitly retains one complete adopted goal.
+
+Revision audits remain available in the store and workbench, but context
+assembly excludes those audit payloads from the native task prompt. Successful
+steps and avoidance notes remain in context. This validation does not establish
+improved unrelated-query exclusion; retrieval relevance remains separate.
+
+A fresh, isolated native session recalled revision 2 with its avoidance note and
+explained the four successful steps separately from mistakes to avoid. Native
+tools were disabled and the recorded run contained no tool calls. The live
+workbench displayed the successful revision and separate avoidance section;
+`make check` passed. Private validation reports and screenshots remain outside
+tracked documentation.

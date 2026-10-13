@@ -113,6 +113,57 @@ func onlyCandidate(t *testing.T, h *Host, runID string) state.Candidate {
 	return cs[0]
 }
 
+func TestRestructureExperienceReassessesOriginalEvidenceWithoutReplay(t *testing.T) {
+	h, runner, judge := experienceHost(t)
+	session, err := h.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := h.Run(t.Context(), session, "Fix the fixture decrement")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := onlyCandidate(t, h, run.ID)
+	m, err := h.AcceptExperience(t.Context(), c.ID, "adopted", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeCalls := len(runner.requests)
+	draft := procedureDraft()
+	draft.Steps = []string{"Apply the observed decrement correction.", "Run the demonstrated test command and inspect its result."}
+	draft.Avoid = []string{"Do not treat the fixture test result as production verification."}
+	h.Extractor = experienceExtractorFunc(func(_ context.Context, r state.Run, e []state.ToolEvidence, _ func(harness.Observation) error) (experience.Extraction, error) {
+		if r.ID != run.ID || len(e) != 2 {
+			t.Fatal("restructure changed evidence source", r.ID, len(e))
+		}
+		return experience.Extraction{Drafts: []state.ExperienceDraft{draft}, Model: "structure-model", Audit: json.RawMessage(`{"policy":"fixture"}`)}, nil
+	})
+	revised, err := h.RestructureExperience(t.Context(), m.ID, 1, "separate successful path and pitfalls")
+	if err != nil || revised.Revision != 2 || revised.Status != "active" || len(revised.Avoid) != 1 {
+		t.Fatal(revised, err)
+	}
+	if len(runner.requests) != nativeCalls || revised.SourceRunID != m.SourceRunID || revised.CandidateID != c.ID || !reflect.DeepEqual(revised.EvidenceIDs, m.EvidenceIDs) {
+		t.Fatal("source replayed or provenance altered")
+	}
+	original, _ := h.Store.GetCandidate(t.Context(), c.ID)
+	if !reflect.DeepEqual(original.Draft, c.Draft) {
+		t.Fatal("original adopted draft was rewritten")
+	}
+	if _, err := h.RestructureExperience(t.Context(), m.ID, 1, "stale"); err == nil {
+		t.Fatal("stale restructure accepted")
+	}
+	judge.assess = func(context.Context, state.ExperienceDraft, []state.ToolEvidence) (experience.Assessment, error) {
+		return experience.Assessment{Eligible: false}, nil
+	}
+	if _, err := h.RestructureExperience(t.Context(), m.ID, 2, "unsupported"); err == nil {
+		t.Fatal("ineligible restructure accepted")
+	}
+	current, _ := h.Store.Memory(t.Context(), m.ID)
+	if current.Revision != 2 {
+		t.Fatal("failed assessment changed memory")
+	}
+}
+
 func TestExperienceEvidenceReviewAndFreshSessionRecall(t *testing.T) {
 	h, runner, judge := experienceHost(t)
 	var observed []event.Event

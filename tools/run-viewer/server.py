@@ -224,7 +224,7 @@ class Catalog:
         conn = self.connection()
         try:
             context = self.filter_context(conn)
-            table = "memories" if action == "invalidate" else "candidates"
+            table = "memories" if action in {"invalidate", "restructure"} else "candidates"
             where, args = self.memory_filter(context, self.schema_version(conn), "m")
             row = conn.execute("SELECT m.payload FROM " + table + " m" + where + " AND m.id=?", args + (identifier,)).fetchone()
             if row is None:
@@ -487,7 +487,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("provide a bounded JSON action")
             self.connection.settimeout(10)
             value = decode(self.rfile.read(length))
-            if set(value) != {"key", "action", "note", "revision"} or not all(isinstance(value[k], str) for k in ("key", "action", "note")) or type(value["revision"]) is not int or len(value["note"]) > 2000 or len(value["key"]) > 256 or value["action"] not in {"accept", "reject", "invalidate"}:
+            if set(value) != {"key", "action", "note", "revision"} or not all(isinstance(value[k], str) for k in ("key", "action", "note")) or type(value["revision"]) is not int or len(value["note"]) > 2000 or len(value["key"]) > 256 or value["action"] not in {"accept", "reject", "invalidate", "restructure"}:
                 raise ValueError("invalid memory action")
             status, result = self.server.catalog.action(value["key"], value["action"], value["note"], value["revision"])
             self.send(status, result)

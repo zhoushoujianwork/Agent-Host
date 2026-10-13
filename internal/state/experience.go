@@ -137,10 +137,10 @@ func validateDraft(d ExperienceDraft, evidence []ToolEvidence) error {
 			return errors.New("experience title, summary and conditions must be nonempty and within byte limits")
 		}
 	}
-	if len(d.Steps) == 0 || len(d.Steps) > 12 || len(d.EvidenceIDs) == 0 || len(d.EvidenceIDs) > 32 {
+	if len(d.Steps) == 0 || len(d.Steps) > 12 || len(d.Avoid) > 8 || len(d.EvidenceIDs) == 0 || len(d.EvidenceIDs) > 32 {
 		return errors.New("experience exceeds title, step or evidence limits")
 	}
-	for _, step := range d.Steps {
+	for _, step := range append(append([]string(nil), d.Steps...), d.Avoid...) {
 		if strings.TrimSpace(step) == "" || len(step) > 2048 {
 			return errors.New("experience step must be nonempty and at most 2048 bytes")
 		}
@@ -296,6 +296,12 @@ func ExperienceText(d ExperienceDraft) string {
 	fmt.Fprintf(&b, "%s\n%s\nApplicable when: %s\n", d.Title, d.Summary, d.Conditions)
 	for i, step := range d.Steps {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, step)
+	}
+	if len(d.Avoid) > 0 {
+		b.WriteString("Avoid:\n")
+		for _, warning := range d.Avoid {
+			fmt.Fprintf(&b, "- %s\n", warning)
+		}
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -560,6 +566,7 @@ func (s *Store) AcceptCandidate(ctx context.Context, id string, accept Candidate
 			}
 		} else {
 			m := Memory{AgentID: candidate.AgentID, AudienceID: candidate.AudienceID, ID: accept.MemoryID, Scope: candidate.Scope, Kind: "procedure", Text: ExperienceText(candidate.Draft), Status: "active", Revision: 1, SourceRunID: candidate.RunID, CreatedAt: now, SourceType: "reviewed_experience", CandidateID: candidate.ID, Conditions: candidate.Draft.Conditions, Steps: append([]string(nil), candidate.Draft.Steps...), Entities: append([]string(nil), candidate.Entities...), EvidenceIDs: append([]string(nil), candidate.Draft.EvidenceIDs...), ExpiresAt: accept.ExpiresAt, ReviewNote: accept.Note}
+			m.Avoid = append([]string(nil), candidate.Draft.Avoid...)
 			if run.Source != nil {
 				m.SenderID = run.Source.SenderID
 			}
@@ -651,6 +658,50 @@ func (s *Store) RejectCandidate(ctx context.Context, id, note string) error {
 
 func (s *Store) InvalidateMemory(ctx context.Context, id, note string) error {
 	return s.InvalidateMemoryRevision(ctx, id, note, 0)
+}
+
+// RestructureExperience preserves identity and source evidence, with an atomic
+// revision check. The original candidate and prior memory revisions stay intact.
+func (s *Store) RestructureExperience(ctx context.Context, id string, revision int, draft ExperienceDraft, decision json.RawMessage, note string) (Memory, error) {
+	var revised Memory
+	if revision < 1 || !json.Valid(decision) || strings.TrimSpace(note) == "" {
+		return revised, errors.New("experience restructuring requires a revision, decision and note")
+	}
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
+		m, err := s.readMemory(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if m.Revision != revision || !recallEligible(m, time.Now()) || m.Kind != "procedure" || m.SourceType != "reviewed_experience" {
+			return errors.New("experience changed or is not active; refresh before restructuring")
+		}
+		evidence, err := readEvidence(ctx, tx, m.SourceRunID)
+		if err != nil {
+			return err
+		}
+		if err := validateDraft(draft, evidence); err != nil {
+			return err
+		}
+		original := map[string]bool{}
+		for _, ref := range m.EvidenceIDs {
+			original[ref] = true
+		}
+		for _, ref := range draft.EvidenceIDs {
+			if !original[ref] {
+				return errors.New("restructuring cannot add a new evidence source")
+			}
+		}
+		m.Text, m.Conditions = ExperienceText(draft), draft.Conditions
+		m.Steps, m.Avoid = append([]string(nil), draft.Steps...), append([]string(nil), draft.Avoid...)
+		m.Revision++
+		m.ReviewNote, m.RevisionDecision = note, append(json.RawMessage(nil), decision...)
+		if err := persistMemory(ctx, tx, m, false); err != nil {
+			return err
+		}
+		revised = m
+		return nil
+	})
+	return revised, err
 }
 
 // InvalidateMemoryRevision rejects stale workbench actions atomically with the write.

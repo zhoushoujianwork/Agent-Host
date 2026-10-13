@@ -106,6 +106,50 @@ func TestExtractionRejectsInvalidOutputAndReferences(t *testing.T) {
 	}
 }
 
+func TestExtractionKeepsSuccessfulStepsSeparateFromAvoidance(t *testing.T) {
+	d := fixtureDraft()
+	d.Avoid = []string{"Do not infer universal production correctness from this passing fixture test."}
+	x := NewExtractor(runnerFunc(func(_ context.Context, req harness.Request, _ func(harness.Observation) error) (harness.Result, error) {
+		if !strings.Contains(req.Prompt, "Never instruct the reader to reproduce a failed attempt") || !strings.Contains(req.Prompt, "separate avoid array") {
+			t.Fatal("successful path and avoidance policy missing")
+		}
+		return successfulResult(draftJSON(t, []state.ExperienceDraft{d})), nil
+	}), "test")
+	out, err := x.Extract(context.Background(), fixtureRun(), fixtureEvidence(), nil)
+	if err != nil || len(out.Drafts) != 1 || len(out.Drafts[0].Avoid) != 1 {
+		t.Fatal(out, err)
+	}
+	if !strings.Contains(state.ExperienceText(out.Drafts[0]), "\nAvoid:\n- ") {
+		t.Fatal("avoidance disappeared from searchable/context text")
+	}
+	for _, bad := range [][]string{{""}, {strings.Repeat("x", 2049)}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"}} {
+		d.Avoid = bad
+		if err := ValidateDraft(d, fixtureEvidence()); err == nil {
+			t.Fatal("unbounded avoidance accepted")
+		}
+	}
+}
+
+func TestRestructuringPreservesOneCompleteAdoptedGoal(t *testing.T) {
+	d := fixtureDraft()
+	m := state.Memory{ID: "adopted", Text: "Test the corrected fixture and inspect its result", Scope: fixtureRun().Scope, SourceRunID: fixtureRun().ID}
+	x := NewExtractor(runnerFunc(func(_ context.Context, req harness.Request, _ func(harness.Observation) error) (harness.Result, error) {
+		if !req.ToolsDisabled || !strings.Contains(req.Prompt, "exactly one already-adopted procedure") || !strings.Contains(req.Prompt, "adopted_procedure_context_only") || !strings.Contains(req.JSONSchema, `"minItems":1,"maxItems":1`) {
+			t.Fatal("complete adopted goal or isolated schema missing")
+		}
+		return successfulResult(draftJSON(t, []state.ExperienceDraft{d})), nil
+	}), "test")
+	if out, err := x.Restructure(context.Background(), m, fixtureRun(), fixtureEvidence()); err != nil || len(out.Drafts) != 1 {
+		t.Fatal(out, err)
+	}
+	bad := NewExtractor(runnerFunc(func(context.Context, harness.Request, func(harness.Observation) error) (harness.Result, error) {
+		return successfulResult(draftJSON(t, []state.ExperienceDraft{d, d})), nil
+	}), "test")
+	if _, err := bad.Restructure(context.Background(), m, fixtureRun(), fixtureEvidence()); err == nil {
+		t.Fatal("split procedure accepted")
+	}
+}
+
 func TestExtractionNoLessonAndNoEvidenceAreValid(t *testing.T) {
 	calls := 0
 	x := NewExtractor(runnerFunc(func(context.Context, harness.Request, func(harness.Observation) error) (harness.Result, error) {
@@ -181,7 +225,7 @@ func TestExtractionV2PolicyKeepsAssistantExplanationsAsUntrustedSource(t *testin
 		Policy string `json:"policy_version"`
 		Prompt string `json:"prompt"`
 	}
-	if err := json.Unmarshal(out.Audit, &audit); err != nil || audit.Policy != "reviewed-experience-extraction-v2" || !strings.Contains(audit.Prompt, run.Output) {
+	if err := json.Unmarshal(out.Audit, &audit); err != nil || audit.Policy != "reviewed-experience-extraction-v3" || !strings.Contains(audit.Prompt, run.Output) {
 		t.Fatalf("versioned exact prompt audit missing: %+v %v", audit, err)
 	}
 }

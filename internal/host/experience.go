@@ -228,3 +228,89 @@ func (h *Host) AcceptExperience(ctx context.Context, id, note string, expires *t
 	})
 	return m, err
 }
+
+// RestructureExperience edits organization only, using the adopted lesson's
+// recorded source subset. It never runs the source task or adds source evidence.
+func (h *Host) RestructureExperience(ctx context.Context, id string, revision int, note string) (state.Memory, error) {
+	h = h.partitioned()
+	m, err := h.Store.Memory(ctx, id)
+	if err != nil {
+		return state.Memory{}, err
+	}
+	if m.Scope != h.Config.Scope || m.Revision != revision || m.Status != "active" || m.Kind != "procedure" || m.SourceType != "reviewed_experience" {
+		return state.Memory{}, errors.New("experience changed or is outside the active scope")
+	}
+	if h.Extractor == nil || h.Judge == nil {
+		return state.Memory{}, errors.New("experience extraction and judgment are required")
+	}
+	run, err := h.Store.Run(ctx, m.SourceRunID)
+	if err != nil {
+		return state.Memory{}, err
+	}
+	all, err := h.Store.ToolEvidence(ctx, m.SourceRunID)
+	if err != nil {
+		return state.Memory{}, err
+	}
+	evidence := make([]state.ToolEvidence, 0, len(m.EvidenceIDs))
+	for _, ref := range m.EvidenceIDs {
+		for _, item := range all {
+			if item.ID == ref {
+				evidence = append(evidence, item)
+				break
+			}
+		}
+	}
+	if len(evidence) != len(m.EvidenceIDs) {
+		return state.Memory{}, errors.New("adopted experience source evidence is incomplete")
+	}
+	var extraction experience.Extraction
+	if organizer, ok := h.Extractor.(experience.Restructurer); ok {
+		extraction, err = organizer.Restructure(ctx, m, run, evidence)
+	} else {
+		extraction, err = h.Extractor.Extract(ctx, run, evidence, nil)
+	}
+	j := &journal{h: h, run: run, start: time.Now()}
+	status := "completed"
+	if err != nil {
+		status = "failed"
+	}
+	if emitErr := j.emit(event.Event{Type: "experience.restructure.extracted", Phase: "structure", Component: "memory.extractor", Status: status, Data: map[string]any{"memory_id": id, "source_revision": revision, "extraction": extraction}}); emitErr != nil {
+		return state.Memory{}, errors.Join(err, emitErr)
+	}
+	if err != nil {
+		return state.Memory{}, err
+	}
+	if len(extraction.Drafts) != 1 {
+		return state.Memory{}, errors.New("restructuring requires exactly one evidence-backed lesson")
+	}
+	draft := extraction.Drafts[0]
+	failed := false
+	for _, item := range evidence {
+		failed = failed || item.IsError
+	}
+	if failed && len(draft.Avoid) == 0 {
+		return state.Memory{}, errors.New("restructured lesson omitted observed failure avoidance")
+	}
+	assessment, err := h.Judge.Assess(ctx, draft, evidence)
+	status = "completed"
+	if err != nil {
+		status = "failed"
+	}
+	if emitErr := j.emit(event.Event{Type: "experience.restructure.assessed", Phase: "structure", Component: "memory.jev", Status: status, Data: map[string]any{"memory_id": id, "source_revision": revision, "draft": draft, "assessment": assessment}}); emitErr != nil {
+		return state.Memory{}, errors.Join(err, emitErr)
+	}
+	if err != nil {
+		return state.Memory{}, err
+	}
+	if !assessment.Eligible {
+		return state.Memory{}, errors.New("restructured experience did not pass usefulness and evidence screening")
+	}
+	audit, err := json.Marshal(map[string]any{"policy": "experience-structure-v1", "source_revision": revision, "draft": draft, "extraction": extraction, "assessment": assessment})
+	if err != nil {
+		return state.Memory{}, err
+	}
+	if strings.TrimSpace(note) == "" {
+		note = "Separated successful steps from observed pitfalls using original evidence"
+	}
+	return h.Store.RestructureExperience(ctx, id, revision, draft, audit, note)
+}

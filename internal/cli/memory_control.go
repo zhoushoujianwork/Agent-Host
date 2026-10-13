@@ -20,9 +20,10 @@ import (
 // The managed Host remains the sole database writer. The browser projection
 // connects through an owner-private socket and never receives model credentials.
 type memoryControl struct {
-	store   *state.Store
-	publish func(context.Context, state.Candidate, string) (state.Memory, error)
-	mu      sync.Mutex
+	store       *state.Store
+	publish     func(context.Context, state.Candidate, string) (state.Memory, error)
+	restructure func(context.Context, state.Memory, string) (state.Memory, error)
+	mu          sync.Mutex
 }
 
 type memoryAction struct {
@@ -55,11 +56,11 @@ func (m *memoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(400, errors.New("provide a bounded owner memory action"))
 		return
 	}
-	if a.Action != "accept" && a.Action != "reject" && a.Action != "invalidate" {
+	if a.Action != "accept" && a.Action != "reject" && a.Action != "invalidate" && a.Action != "restructure" {
 		fail(400, errors.New("unknown memory action"))
 		return
 	}
-	if a.Action != "accept" && strings.TrimSpace(a.Note) == "" {
+	if (a.Action == "reject" || a.Action == "invalidate") && strings.TrimSpace(a.Note) == "" {
 		fail(400, errors.New("provide a reason for rejection or disabling"))
 		return
 	}
@@ -70,14 +71,25 @@ func (m *memoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s := m.store.WithPartition(a.Agent, "owner")
 	var result any
 	var err error
-	if a.Action == "invalidate" {
+	if a.Action == "invalidate" || a.Action == "restructure" {
 		if a.Revision < 1 {
 			fail(400, errors.New("provide the displayed memory revision"))
 			return
 		}
-		err = s.InvalidateMemoryRevision(ctx, a.ID, a.Note, a.Revision)
-		if err == nil {
-			result, err = s.Memory(ctx, a.ID)
+		if a.Action == "restructure" {
+			var current state.Memory
+			current, err = s.Memory(ctx, a.ID)
+			if err == nil && (current.Revision != a.Revision || m.restructure == nil) {
+				err = errors.New("experience changed or restructuring is unavailable")
+			}
+			if err == nil {
+				result, err = m.restructure(ctx, current, a.Note)
+			}
+		} else {
+			err = s.InvalidateMemoryRevision(ctx, a.ID, a.Note, a.Revision)
+			if err == nil {
+				result, err = s.Memory(ctx, a.ID)
+			}
 		}
 	} else {
 		var c state.Candidate
@@ -154,5 +166,9 @@ func startManagedMemoryControl(ctx context.Context, store *state.Store, o option
 		selected := o
 		selected.agentID, selected.audienceID, selected.scope = c.AgentID, "owner", c.Scope
 		return composeHost(store, selected, client, nil).AcceptExperience(ctx, c.ID, note, nil)
+	}, restructure: func(ctx context.Context, m state.Memory, note string) (state.Memory, error) {
+		selected := o
+		selected.agentID, selected.audienceID, selected.scope = m.AgentID, "owner", m.Scope
+		return composeHost(store, selected, client, nil).RestructureExperience(ctx, m.ID, m.Revision, note)
 	}})
 }

@@ -248,6 +248,7 @@ function renderCandidates() {
 function actionControls(body, item, candidate) {
   const actions = candidate ? item.candidate.status === "pending" ? ["accept", "reject"] : []
     : ["active", "conflicted"].includes(item.memory.status) ? ["invalidate"] : [];
+  if (!candidate && item.memory.status === "active" && item.memory.source_type === "reviewed_experience" && item.memory.kind === "procedure") actions.unshift("restructure");
   if (!actions.length) return;
   const box = section(body, "管理此记录");
   if (!item.can_manage || !state.data.mutation_token) {
@@ -259,11 +260,11 @@ function actionControls(body, item, candidate) {
   const controls = dom("div", "memory-actions"), result = dom("p", "detail-note"); result.setAttribute("role", "status");
   box.append(label, note, controls, result);
   for (const action of actions) {
-    const button = dom("button", `action-button ${action === "accept" ? "primary" : ""}`, {accept: "发布原稿", reject: "不采用", invalidate: "停用记忆"}[action]);
+    const button = dom("button", `action-button ${action === "accept" ? "primary" : ""}`, {accept: "发布原稿", reject: "不采用", invalidate: "停用记忆", restructure: "整理步骤与避免事项"}[action]);
     controls.append(button);
     button.addEventListener("click", async () => {
       if (state.mutating) return;
-      if (action !== "accept" && !note.value.trim()) {result.textContent = "请填写处理原因。"; note.focus(); return;}
+      if (["reject", "invalidate"].includes(action) && !note.value.trim()) {result.textContent = "请填写处理原因。"; note.focus(); return;}
       state.mutating = true; controls.querySelectorAll("button").forEach((b) => b.disabled = true); $("close-detail").disabled = true;
       result.textContent = "正在处理，请稍候…";
       try {
@@ -271,7 +272,7 @@ function actionControls(body, item, candidate) {
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
         $("action-notice").hidden = false;
-        $("action-notice").textContent = action === "accept" ? `经验已发布 · ${statuses[data.result.status] || data.result.status}` : action === "reject" ? "草稿已标记为不采用，来源证据保留。" : "记忆已停用，原文与历史保留。";
+        $("action-notice").textContent = action === "restructure" ? `经验已整理 · R${data.result.revision} · 原始草稿与旧版本保留。` : action === "accept" ? `经验已发布 · ${statuses[data.result.status] || data.result.status}` : action === "reject" ? "草稿已标记为不采用，来源证据保留。" : "记忆已停用，原文与历史保留。";
         $("memory-detail").close(); state.selected = null; state.candidate = null;
         state.mutating = false;
         await refresh();
@@ -287,6 +288,7 @@ function renderCandidateDetail(item) {
   body.append(tag(candidateStatuses[c.status] || c.status), dom("h3", "detail-statement", c.draft.title), dom("p", "", c.draft.summary));
   const steps = section(body, "适用条件与原始步骤"); steps.append(dom("p", "", c.draft.conditions));
   const sequence = dom("ol"); list(c.draft.steps).forEach((step) => sequence.append(dom("li", "", step))); steps.append(sequence);
+  renderAvoid(body, c.draft.avoid);
   const evidence = section(body, "来源与筛选记录");
   kv(evidence, [["数据源", item.source.name], ["草稿 ID", c.id], ["记忆范围", c.scope], ["提取模型", c.model], ["引用工具结果", list(c.draft.evidence_ids).length], ["处理说明", c.review_note || "未处理"]]);
   const assessment = c.assessment || {}, audit = assessment.audit || {};
@@ -319,7 +321,13 @@ function renderDetail(item) {
   const body = $("detail-body"); body.replaceChildren();
   const memory = item.memory, decision = item.decision;
   const tags = dom("div", "detail-tags"); tags.append(tag(kinds[memory.kind] || memory.kind, kindClass[memory.kind]), tag(statuses[status(item)] || status(item)), tag(item.snapshot ? "归档观察" : "当前记录"));
-  body.append(tags, dom("p", "detail-statement", memory.text));
+  body.append(tags, dom("p", "detail-statement", memory.kind === "procedure" ? memory.text.split("\nApplicable when:")[0] : memory.text));
+  if (memory.kind === "procedure") {
+    const procedure = section(body, "适用条件与执行步骤"); procedure.append(dom("p", "", memory.conditions));
+    const sequence = dom("ol"); list(memory.steps).forEach((step) => sequence.append(dom("li", "", step))); procedure.append(sequence);
+    renderAvoid(body, memory.avoid);
+    if (memory.revision_decision) procedure.append(dom("p", "detail-note", `此版本从 R${memory.revision_decision.source_revision} 整理而来，重新检查了原始证据；旧版本与原始草稿保留。`));
+  }
   const flow = section(body, "形成与使用记录");
   const injected = item.uses.filter((use) => use.status === "injected");
   const lifecycle = dom("div", "lifecycle");
@@ -362,6 +370,12 @@ function renderDetail(item) {
   const raw = dom("details"); raw.append(dom("summary", "", "查看记忆及派生标注原始数据"), dom("pre", "", JSON.stringify({memory, annotation: item.annotation, annotation_origin: item.annotation_origin}, null, 2))); provenance.append(raw);
   body.append(dom("p", "detail-note", "来源为用户声明，或人工接受的经验。记忆状态和模型概率不构成对内容的独立真实性验证。"));
   actionControls(body, item, false);
+}
+
+function renderAvoid(body, items) {
+  if (!list(items).length) return;
+  const warning = section(body, "避免事项"), sequence = dom("ul");
+  items.forEach((item) => sequence.append(dom("li", "", item))); warning.append(sequence);
 }
 
 $("source-filter").addEventListener("change", () => {state.source = $("source-filter").value; state.object = null; state.topic = null; state.selected = null; state.candidate = null; $("memory-detail").close(); render();});

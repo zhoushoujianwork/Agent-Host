@@ -130,3 +130,9 @@ already-processed drafts are rejected; failures remain visible. Refresh after
 an interrupted action to inspect its outcome before trying again. Automatic
 refresh pauses while a detail dialog is open so it does not erase your input.
 The page neither runs business tasks nor independently verifies their claims.
+
+An adopted procedural memory also provides **整理步骤与避免事项**. It uses the
+original recorded tool results to separate the successful path from observed
+pitfalls, checks the revised lesson, and saves a new version. The original
+draft, older versions and source evidence remain unchanged. Review the resulting
+steps and **避免事项** in the memory detail. This operation does not rerun the task.

@@ -148,7 +148,7 @@ memory-model accuracy.
 
 Each managed channel Host opens `state/memory-control.sock` with mode `0600`
 after acquiring its existing runtime writer lock. Python retains read-only
-SQLite connections and forwards only `accept`, `reject` or `invalidate` to the
+SQLite connections and forwards only `accept`, `reject`, `invalidate` or `restructure` to the
 selected source's socket. The source/channel-qualified record key resolves to
 an existing row in the configured project, Agent and owner partition; paths,
 model settings and credentials never come from browser requests. Offline
@@ -250,3 +250,10 @@ unchanged. Memory origin, usage and annotation links return to their source's
 execution record, including when two databases contain identical IDs.
 Each source retains the existing Agent/audience partition. A source read failure
 fails the combined request explicitly rather than silently omitting a channel.
+
+The `restructure` action is available only for active reviewed procedures and
+requires the displayed revision. It delegates to `Host.RestructureExperience`
+and the atomic revision operation documented in
+[experience details](../../docs/experience-memory-detail.md#successful-procedures-and-avoidance-notes).
+The page renders successful steps separately from avoidance notes and preserves
+the prior version and extraction/assessment audit.

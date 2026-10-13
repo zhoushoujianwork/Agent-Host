@@ -23,6 +23,11 @@ memory. Original requests and tool results remain inspectable. Proposals help
 the system decide what to keep; they are processing records, not a human inbox.
 Only effective, applicable memory enters a task's context.
 
+Procedural lessons keep the successful path in ordered steps and observed
+failed approaches in a separate avoidance list. The workbench can reorganize
+an adopted lesson from its original tool evidence, saving a new revision after
+Jev screening while preserving the original draft and prior versions.
+
 ## Core approach
 
 ```mermaid
