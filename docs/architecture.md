@@ -1,5 +1,10 @@
 # Agent-Host architecture
 
+The [configuration and plugin startup proposal](configuration-layout.md) centralizes
+editable configuration, separates channel/plugin runtime data and loads enabled
+built-in capabilities at startup. This layout and loader are planned; the runtime
+described below remains the delivered behavior.
+
 Status: architecture and roadmap, with a local CLI MVP, manual-review experience
 extension, DingTalk private/group-mention channels with configurable Agent
 instances, and a Feishu meeting text channel implemented. The

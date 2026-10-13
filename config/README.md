@@ -1,5 +1,10 @@
 # Configuration names
 
+The proposed [unified configuration and plugin startup](../docs/configuration-layout.md)
+uses `.agent-host/config/channels.<name>.json` and `plugins.<name>.json` with
+explicit enablement. It is not implemented yet; the names and loading rules below
+describe the current runtime.
+
 Host configuration filenames identify the component that owns them. Keep
 populated files and credentials under the ignored `.agent-host/` directory.
 Use the examples in this directory as templates, removing `.example` locally.
