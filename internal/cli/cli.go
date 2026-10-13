@@ -103,6 +103,8 @@ type options struct {
 	agentsConfig, agentID, audienceID, nativeProfile, permissionMode, hostInstructions string
 	knowledgeNames                                                                     []string
 	knowledgeConfig                                                                    string
+	knowledgeConfigs                                                                   []string
+	knowledgeChannel                                                                   string
 	emailConfig, emailFingerprint                                                      string
 	disableDingTalkWorkspace                                                           bool
 	dingtalkWorkspaceConfig, dingtalkWorkspaceFingerprint                              string
@@ -162,7 +164,12 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
-	fs.StringVar(&o.knowledgeConfig, "knowledge-config", "", "Private knowledge source configuration")
+	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
+		o.knowledgeConfig = path
+		o.knowledgeConfigs = append(o.knowledgeConfigs, path)
+		return nil
+	})
+	fs.StringVar(&o.knowledgeChannel, "knowledge-channel", "", "Managed channel grant for datasource selection")
 	fs.StringVar(&o.discoveryConfig, "discovery-config", "", "Private DWS system topic discovery configuration")
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
 	fs.StringVar(&o.agentID, "agent", "default", "Logical agent instance for local state selection")
@@ -275,6 +282,12 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	if o.knowledgeConfig != "" {
 		if o.knowledgeConfig, err = filepath.Abs(o.knowledgeConfig); err != nil {
+			return o, nil, err
+		}
+	}
+	for i, path := range o.knowledgeConfigs {
+		o.knowledgeConfigs[i], err = filepath.Abs(path)
+		if err != nil {
 			return o, nil, err
 		}
 	}

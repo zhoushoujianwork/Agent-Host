@@ -23,17 +23,19 @@ import (
 const ConnectorVersion = "knowledge-v3:local-markdown:audiences"
 
 type Source struct {
-	Name           string   `json:"name"`
-	Provider       string   `json:"provider"`
-	Endpoint       string   `json:"endpoint,omitempty"`
-	SourceURLBase  string   `json:"source_url_base,omitempty"`
-	CredentialFile string   `json:"credential_file,omitempty"`
-	Root           string   `json:"root,omitempty"`
-	Paths          []string `json:"paths,omitempty"`
-	Principal      string   `json:"principal"`
-	Description    string   `json:"description"`
-	Projects       []string `json:"projects"`
-	Audiences      []string `json:"audiences,omitempty"`
+	ConfigPath        string   `json:"-"`
+	AccessFingerprint string   `json:"-"`
+	Name              string   `json:"name"`
+	Provider          string   `json:"provider"`
+	Endpoint          string   `json:"endpoint,omitempty"`
+	SourceURLBase     string   `json:"source_url_base,omitempty"`
+	CredentialFile    string   `json:"credential_file,omitempty"`
+	Root              string   `json:"root,omitempty"`
+	Paths             []string `json:"paths,omitempty"`
+	Principal         string   `json:"principal"`
+	Description       string   `json:"description"`
+	Projects          []string `json:"projects"`
+	Audiences         []string `json:"audiences,omitempty"`
 }
 
 type Configuration struct {
@@ -42,6 +44,7 @@ type Configuration struct {
 }
 
 type ResolvedSource struct {
+	ConfigPath  string `json:"-"`
 	Source      Source `json:"source"`
 	Fingerprint string `json:"fingerprint"`
 	Credential  string `json:"-"`
@@ -82,10 +85,34 @@ func Load(path string) (Configuration, error) {
 	if err != nil {
 		return c, err
 	}
-	if err := decodeStrict(raw, &c); err != nil || c.Version != 1 || c.Sources == nil || len(c.Sources) > 32 {
+	pluginID := componentconfig.DataSourceID(path)
+	if pluginID != "" {
+		provider, known := componentconfig.DataSources[pluginID]
+		if !known || provider == "" {
+			return c, errors.New("unknown document datasource plugin")
+		}
+		var settings struct {
+			Sources []Source `json:"sources"`
+		}
+		if err := decodeStrict(raw, &settings); err != nil || settings.Sources == nil {
+			return c, errors.New("document datasource requires sources")
+		}
+		c.Version = 1
+		c.Sources = settings.Sources
+		for i := range c.Sources {
+			if !identifier.MatchString(c.Sources[i].Name) || c.Sources[i].Provider != "" {
+				return c, errors.New("datasource sources require local names and must not repeat provider")
+			}
+			c.Sources[i].Provider = provider
+			c.Sources[i].Name = pluginID + ":" + c.Sources[i].Name
+		}
+	} else if err := decodeStrict(raw, &c); err != nil || c.Version != 1 || c.Sources == nil || len(c.Sources) > 32 {
 		return c, errors.New("knowledge configuration requires version 1 and up to 32 sources using documented fields")
 	}
-	if filepath.Base(path) == "plugins.knowledge.json" {
+	if len(c.Sources) > 32 {
+		return c, errors.New("datasource exceeds 32 sources")
+	}
+	if filepath.Base(path) == "plugins.knowledge.json" || pluginID != "" {
 		envelope, e := componentconfig.Decode(original)
 		if e != nil {
 			return c, e
@@ -94,7 +121,10 @@ func Load(path string) (Configuration, error) {
 			return c, errors.New("knowledge plugin requires audience access")
 		}
 		var sources []Source
+		accessRaw, _ := json.Marshal(envelope.Access)
+		accessHash := sha256.Sum256(accessRaw)
 		for _, source := range c.Sources {
+			source.AccessFingerprint = hex.EncodeToString(accessHash[:])
 			source.Root = componentconfig.Resolve(path, source.Root)
 			source.CredentialFile = componentconfig.Resolve(path, source.CredentialFile)
 			if source.Audiences == nil {
@@ -119,7 +149,7 @@ func Load(path string) (Configuration, error) {
 	}
 	seen := map[string]bool{}
 	for _, s := range c.Sources {
-		if !identifier.MatchString(s.Name) || seen[s.Name] {
+		if !validSourceName(s.Name) || pluginID == "" && !identifier.MatchString(s.Name) || seen[s.Name] {
 			return c, errors.New("knowledge source names must be unique lowercase identifiers")
 		}
 		seen[s.Name] = true
@@ -127,11 +157,29 @@ func Load(path string) (Configuration, error) {
 			return c, err
 		}
 	}
+	for i := range c.Sources {
+		c.Sources[i].ConfigPath = path
+	}
 	return c, nil
 }
 
+func validSourceName(name string) bool {
+	parts := strings.Split(name, ":")
+	if len(parts) == 1 {
+		return identifier.MatchString(name)
+	}
+	if len(parts) != 2 || !identifier.MatchString(parts[1]) {
+		return false
+	}
+	provider, ok := componentconfig.DataSources[parts[0]]
+	return ok && provider != ""
+}
+
+// MountName keeps namespaced source identities valid in native MCP tool names.
+func MountName(name string) string { return "knowledge_" + strings.ReplaceAll(name, ":", "_") }
+
 func validateSource(s Source) error {
-	if !identifier.MatchString(s.Name) {
+	if !validSourceName(s.Name) {
 		return errors.New("knowledge source name must be a lowercase identifier")
 	}
 	if s.Provider == "local_markdown" {
@@ -240,9 +288,10 @@ func fingerprintSource(s Source, token string) ResolvedSource {
 		Version string
 		Source  Source
 		Token   string
-	}{ConnectorVersion, s, token})
+		Access  string
+	}{ConnectorVersion, s, token, s.AccessFingerprint})
 	digest := sha256.Sum256(payload)
-	return ResolvedSource{Source: s, Fingerprint: hex.EncodeToString(digest[:]), Credential: token}
+	return ResolvedSource{Source: s, ConfigPath: s.ConfigPath, Fingerprint: hex.EncodeToString(digest[:]), Credential: token}
 }
 
 // ResolveConfiguredSource checks exactly this declaration for local operators,

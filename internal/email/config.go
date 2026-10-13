@@ -70,11 +70,22 @@ func Load(path string) (Config, string, error) {
 	if err != nil {
 		return c, "", err
 	}
-	if mcpstdio.Decode(raw, &c) != nil {
+	if componentconfig.DataSourceID(path) == "email" {
+		var settings struct {
+			Accounts []Account `json:"accounts"`
+		}
+		if mcpstdio.Decode(raw, &settings) != nil {
+			return c, "", errors.New("email datasource settings require accounts only")
+		}
+		c.Accounts = settings.Accounts
+	} else if mcpstdio.Decode(raw, &c) != nil {
 		return c, "", errors.New("invalid email configuration")
 	}
-	if filepath.Base(path) == "plugins.email.json" {
+	if filepath.Base(path) == "plugins.email.json" || componentconfig.DataSourceID(path) == "email" {
 		c.StateDirectory = filepath.Join(componentconfig.Root(path), "plugins", "email")
+		if componentconfig.DataSourceID(path) == "email" {
+			c.StateDirectory = filepath.Join(componentconfig.Root(path), "datasource", "plugins", "email")
+		}
 		for i := range c.Accounts {
 			c.Accounts[i].CredentialFile = componentconfig.Resolve(path, c.Accounts[i].CredentialFile)
 		}

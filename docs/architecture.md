@@ -1,5 +1,9 @@
 # Agent-Host architecture
 
+The [datasource plugin configuration](datasource-plugins-design.md) loads local
+Markdown, Dokki, Confluence and Email from separate `datasource.plugins.*.json`
+files, with namespaced sources and preserved Host memory boundaries.
+
 The [configuration and plugin startup](configuration-layout.md) centralizes
 editable configuration, separates channel/plugin runtime data and loads enabled
 built-in capabilities at startup. DingTalk bot and DWS are independent channel

@@ -1,8 +1,9 @@
 # 数据源插件配置实现约定
 
-状态：待实现。[主设计](datasource-plugins-design.md)定义用户行为与实施范围。
-本稿只描述后续改动，不修改现行运行配置。当前加载器使用 `plugins.email.json`
-与 `plugins.knowledge.json`；知识 provider 为 `local_markdown`、`dokki`、`confluence`。
+状态：已实现。[主设计](datasource-plugins-design.md)定义用户行为与实施范围。
+加载器使用 `datasource.plugins.*.json`；原知识 provider 的具体实现仍由
+`internal/knowledge` 复用。旧 `plugins.email.json` 与 `plugins.knowledge.json`
+需显式迁移，默认启动不会混用两种格式。
 
 ## 类型与实例
 
@@ -28,7 +29,7 @@ provider：适配器由 plugin ID 确定，加载时补充现有内部类型。
 
 ## 本地文档配置示例
 
-以下是新结构的示例，路径及授权需要按部署填写，当前二进制尚不能加载。
+以下结构已支持，路径及授权需要按部署填写。
 
 ```json
 {
@@ -102,10 +103,12 @@ native session。资料正文变化沿用读取摘要与续读校验，不等同
 
 ## 迁移
 
-本次侧聊只产出设计。后续实施需先完成离线检查，停止写入、备份配置及必要状态，
-再进行显式迁移，不能仅把现行文件重命名后尝试启动。
+通过 `python3 -B tools/service/migrate_datasource.py --root /absolute/.agent-host`
+显式迁移。必须停止服务；运行锁未释放时拒绝执行。脚本备份配置及 Email 状态，
+拆分来源、更新 Agent 引用及工具许可，验证数据库并在失败时恢复旧配置和状态。
+旧版 `migrate_config.py` 完成更早的 runtime 规整后，还需执行此数据源迁移步骤。
 
-| 现行项 | 目标 |
+| 旧配置或状态 | 现行位置 |
 | --- | --- |
 | plugins.knowledge.json 中 local_markdown sources | datasource.plugins.local-documents.json |
 | 同文件中的 dokki sources | datasource.plugins.dokki.json |
@@ -132,3 +135,27 @@ native session。资料正文变化沿用读取摘要与续读校验，不等同
 - 现有本地笔记可检索且不导入 memories，SQLite 记忆召回行为保持。
 - 邮件账本迁移与并发去重，未知发送结果不重试；停机清理和回滚。
 - make check 和授权范围内的数据源实际调用，分别记录离线与实际验证。
+
+内部 native 挂载名称为 `knowledge_<plugin-id>_<source-name>`，例如
+`knowledge_local-documents_owner_notes`。业务来源身份仍是
+`local-documents:owner_notes`，历史短名称只在唯一匹配时兼容。
+
+## 验证记录
+
+2026-10-13 完成现有四个来源实例的配置迁移：`dokki:dokki`、
+`confluence:confluence`、`local-documents:patsnap_docs` 和
+`local-documents:owner_notes`。原始 Markdown 正文未移动或写入 memories。
+Email 共用迁移后的单一账本，渠道默认 memory_scope 未变化。
+
+迁移报告、备份和原生验证事件保存在 ignored
+`.agent-host/backups/datasource-config-20261013T105814Z/`。两边渠道数据库及
+Email ledger 的 SHA-256 在停止状态下前后一致。重新启动后钉钉 Stream、
+飞书文本和会议入口均产生新的连接事件；工作台返回 HTTP 200。
+隔离原生运行成功完成 `mcp__email__list_accounts`、`mcp__email__check_account`
+及 `mcp__knowledge_local-documents_owner_notes__search_local_markdown`。
+IMAP/SMTP 认证通过；没有读取邮件正文、发信或发送平台测试消息。
+Dokki/Confluence 新配置通过离线解析与凭证预检，未新增远程检索验收。
+
+自动化覆盖来源重名、短名称歧义、namespace MCP 绑定、owner/群权限、
+Agent 排除不可用 credential、权限 fingerprint 变化、旧格式拒绝，以及迁移
+锁定、状态保留和失败回滚。`make check GOFLAGS=-p=1` 通过。

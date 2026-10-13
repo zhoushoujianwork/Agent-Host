@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "enabled": false,
+  "access": {
+    "channels": ["dingtalk"],
+    "audiences": ["owner"]
+  },
+  "settings": {
+    "sources": [
+      {
+        "name": "company",
+        "endpoint": "https://confluence.example.invalid",
+        "credential_file": "credentials/confluence.json",
+        "principal": "owner",
+        "description": "Company Confluence pages",
+        "projects": ["default"]
+      }
+    ]
+  }
+}

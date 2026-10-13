@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"agent-host/internal/assistance"
 	"agent-host/internal/harness"
@@ -111,7 +110,7 @@ func resolveKnowledge(o *options) error {
 	if err := resolveDingTalkWorkspace(o); err != nil {
 		return err
 	}
-	if o.knowledgePluginDisabled || o.pluginNames != nil && !slices.Contains(o.pluginNames, "knowledge") {
+	if o.knowledgePluginDisabled || !knowledgePluginsEnabled(o.pluginNames) {
 		return nil
 	}
 	selected, err := selectKnowledgeForOptions(*o)
@@ -130,8 +129,14 @@ func resolveKnowledge(o *options) error {
 	if err != nil {
 		return errors.New("cannot resolve knowledge MCP executable")
 	}
+	mounts := map[string]bool{}
 	for _, r := range selected {
-		o.mcpServers = append(o.mcpServers, harness.MCPServer{Name: "knowledge_" + r.Source.Name, Command: executable, Args: []string{"knowledge", "serve", "--config", o.knowledgeConfig, "--source", r.Source.Name, "--fingerprint", r.Fingerprint}})
+		name := knowledge.MountName(r.Source.Name)
+		if mounts[name] {
+			return errors.New("knowledge instances have colliding MCP names; rename a legacy source")
+		}
+		mounts[name] = true
+		o.mcpServers = append(o.mcpServers, harness.MCPServer{Name: knowledge.MountName(r.Source.Name), Command: executable, Args: []string{"knowledge", "serve", "--config", r.ConfigPath, "--source", r.Source.Name, "--fingerprint", r.Fingerprint}})
 		hint := r.Hint()
 		for _, p := range o.projects {
 			for _, id := range r.Source.Projects {
@@ -143,7 +148,7 @@ func resolveKnowledge(o *options) error {
 		}
 		// Catalog uses the actual native tool names to avoid ambiguous instances.
 		for i, tool := range hint.Tools {
-			hint.Tools[i] = fmt.Sprintf("mcp__knowledge_%s__%s", r.Source.Name, tool)
+			hint.Tools[i] = fmt.Sprintf("mcp__%s__%s", knowledge.MountName(r.Source.Name), tool)
 		}
 		o.knowledgeHints = append(o.knowledgeHints, hint)
 	}
@@ -151,7 +156,7 @@ func resolveKnowledge(o *options) error {
 }
 
 func knowledgeValidator(o options) func() error {
-	if o.knowledgePluginDisabled || o.pluginNames != nil && !slices.Contains(o.pluginNames, "knowledge") || o.knowledgeConfig == "" || o.noTools {
+	if o.knowledgePluginDisabled || !knowledgePluginsEnabled(o.pluginNames) || len(knowledgePaths(o)) == 0 || o.noTools {
 		return nil
 	}
 	expected := knowledge.Fingerprint(o.knowledgeSources)

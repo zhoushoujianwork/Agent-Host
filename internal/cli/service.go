@@ -27,10 +27,10 @@ const serviceUsage = `Managed channel runtime (DingTalk by default).
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
   agent-host service run --channels-dir ABSOLUTE_PATH --viewer-source ABSOLUTE_PATH [--no-browser]
 
-make run loads host.json, channels.NAME.json and plugins.NAME.json from ROOT/config.
+make run loads host.json, channels.NAME.json and datasource.plugins.NAME.json from ROOT/config.
 Version 1 and explicit enabled are required; disabled components do not connect.
 DingTalk settings.bot and settings.dws are independently optional.
-Channel data lives under ROOT/channels/NAME and plugin state under ROOT/plugins/NAME.
+Channel data lives under ROOT/channels/NAME and plugin state under ROOT/datasource/plugins/NAME.
 Changes require restarting. The explicit legacy commands below remain supported.
 
 The Go CLI scans channel registrations, prepares viewers,
@@ -50,11 +50,13 @@ Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
-	DisableKnowledge           bool   `json:"-"`
-	DWSOnly                    bool   `json:"-"`
-	DisableDWS                 bool   `json:"-"`
-	DWSConfig                  string `json:"-"`
-	MemoryScope                string `json:"memory_scope,omitempty"`
+	KnowledgeConfigs           []string `json:"-"`
+	KnowledgeChannel           string   `json:"-"`
+	DisableKnowledge           bool     `json:"-"`
+	DWSOnly                    bool     `json:"-"`
+	DisableDWS                 bool     `json:"-"`
+	DWSConfig                  string   `json:"-"`
+	MemoryScope                string   `json:"memory_scope,omitempty"`
 	channelConfigPath          string
 	EmailConfig                string   `json:"email_config,omitempty"`
 	Channel                    string   `json:"channel,omitempty"`
@@ -369,6 +371,12 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	}
 	if c.KnowledgeConfig != "" {
 		args = append(args, "--knowledge-config", c.KnowledgeConfig)
+	}
+	for _, path := range c.KnowledgeConfigs {
+		args = append(args, "--knowledge-config", path)
+	}
+	if c.KnowledgeChannel != "" {
+		args = append(args, "--knowledge-channel", c.KnowledgeChannel)
 	}
 	if c.DiscoveryConfig != "" {
 		args = append(args, "--discovery-config", c.DiscoveryConfig)

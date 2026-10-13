@@ -2,7 +2,7 @@
 
 Run enabled channels and built-in capabilities with `make run`. Editable
 configuration lives in `.agent-host/config/`; channel data lives in
-`.agent-host/channels/<name>/`, plugin data in `.agent-host/plugins/<name>/`,
+`.agent-host/channels/<name>/`, plugin data in `.agent-host/datasource/plugins/<name>/`,
 and retained knowledge in `.agent-host/knowledge/`. All remain Git-ignored.
 See the [configuration guide](configuration-layout.md) and
 [implementation details](configuration-layout-detail.md).
@@ -19,8 +19,10 @@ with mode `600`. Existing installations must migrate before using the new defaul
 | `agents.json` | Optional roles, project/source selection and plugin subsets |
 | `channels.dingtalk.json` | Channel enablement and independent `settings.bot`/`settings.dws` options |
 | `channels.feishu.json` | Feishu enablement and text/meeting settings |
-| `plugins.email.json` | Mailboxes and allowed channels; owner-private only |
-| `plugins.knowledge.json` | Sources, allowed channels and audience grants |
+| `datasource.plugins.email.json` | Mailboxes and allowed channels; owner-private only |
+| `datasource.plugins.local-documents.json` | Local Markdown sources and grants |
+| `datasource.plugins.dokki.json` | Dokki sources and grants |
+| `datasource.plugins.confluence.json` | Confluence sources and grants |
 | `credentials/` | Private provider environments and referenced credentials |
 
 Component files require `version: 1` and explicit `enabled`. A missing or disabled
@@ -72,3 +74,19 @@ the relevant `--home`; migrated default memories retain the original scope:
 Legacy explicit `service --root` and `--channels-dir` entry points remain for
 unmigrated runtimes. The stopped-runtime migration and deployment evidence are
 recorded in the [details](service-install-detail.md#unified-configuration-runtime).
+
+## Data-source configuration migration
+
+Stop the current supervisor before migrating the earlier `plugins.*.json` setup:
+
+```sh
+python3 -B tools/service/migrate_datasource.py --root "$PWD/.agent-host"
+./bin/agent-host service check --config-dir "$PWD/.agent-host/config"
+make run
+```
+
+The migration backs up configuration and Email state, splits document sources by
+provider and updates Agent references and tool allow rules. It leaves documents,
+channel databases and memory scopes intact. Existing runtimes from before unified
+configuration first need `migrate_config.py`, then this datasource migration.
+See the [datasource guide](datasource-plugins-design.md).

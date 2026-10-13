@@ -13,6 +13,7 @@ import (
 	"agent-host/internal/assembly"
 	"agent-host/internal/channel"
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/event"
 	"agent-host/internal/host"
@@ -71,7 +72,7 @@ func loadAgents(path string) (agentCatalog, error) {
 			return c, errors.New("agent model must be a valid model name")
 		}
 		for _, name := range a.Plugins {
-			if name != "email" && name != "knowledge" {
+			if _, known := componentconfig.DataSources[name]; !known && name != "knowledge" {
 				return c, errors.New("agent references unknown plugin")
 			}
 		}
@@ -167,21 +168,13 @@ func (c agentCatalog) validateReferences(ctx context.Context, store *state.Store
 				return fmt.Errorf("agent %s project directory is unavailable or changed", a.ID)
 			}
 		}
-		if a.KnowledgeSources != nil && !base.knowledgePluginDisabled && (a.Plugins == nil || slices.Contains(a.Plugins, "knowledge")) {
-			known := map[string]bool{}
-			if base.knowledgeConfig != "" {
-				config, err := knowledge.Load(base.knowledgeConfig)
-				if err != nil {
-					return err
-				}
-				for _, source := range config.Sources {
-					known[source.Name] = true
-				}
+		if a.KnowledgeSources != nil && !base.knowledgePluginDisabled && knowledgePluginsEnabled(a.Plugins) {
+			sources, err := knowledge.Catalog(knowledgePaths(base), base.knowledgeChannel)
+			if err != nil {
+				return err
 			}
-			for _, name := range a.KnowledgeSources {
-				if !known[name] {
-					return fmt.Errorf("agent %s references an unavailable knowledge source", a.ID)
-				}
+			if _, err := knowledge.ResolveNames(sources, a.KnowledgeSources); err != nil {
+				return fmt.Errorf("agent %s: %w", a.ID, err)
 			}
 		}
 	}

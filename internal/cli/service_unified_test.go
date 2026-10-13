@@ -48,7 +48,7 @@ func TestUnifiedDingTalkIndependentFeatures(t *testing.T) {
 				settings["dws"] = map[string]any{"enabled": false, "invalid_business_field": true}
 			}
 			writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": settings})
-			writeBotJSON(t, filepath.Join(dir, "plugins.email.json"), map[string]any{"version": 1, "enabled": false, "settings": map[string]any{"invalid": true}})
+			writeBotJSON(t, filepath.Join(dir, "datasource.plugins.email.json"), map[string]any{"version": 1, "enabled": false, "settings": map[string]any{"invalid": true}})
 			// Stored source selections must not force a disabled knowledge plugin on.
 			writeBotJSON(t, filepath.Join(dir, "agents.json"), map[string]any{"default_agent": "default", "agents": []map[string]any{{"id": "default", "name": "Fixture", "knowledge_sources": []string{"unused"}}}})
 			var host unifiedHost
@@ -123,7 +123,7 @@ func TestUnifiedMemoryIdentitySurvivesWorkspaceChange(t *testing.T) {
 func TestUnifiedPluginsSharedAndAudienceBounded(t *testing.T) {
 	root, dir := unifiedFixture(t)
 	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"dws": map[string]any{"enabled": true, "profile": "corp:owner", "services": []string{"contact"}}}})
-	writeBotJSON(t, filepath.Join(dir, "plugins.email.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk", "feishu"}, "audiences": []string{"owner"}}, "settings": map[string]any{"accounts": []map[string]any{{"id": "one", "address": "one@163.com", "provider": "163", "credential_file": "credentials/bot.secret", "send_enabled": false}}}})
+	writeBotJSON(t, filepath.Join(dir, "datasource.plugins.email.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk", "feishu"}, "audiences": []string{"owner"}}, "settings": map[string]any{"accounts": []map[string]any{{"id": "one", "address": "one@163.com", "provider": "163", "credential_file": "credentials/bot.secret", "send_enabled": false}}}})
 	one, err := unifiedPlugin(dir, "email", "dingtalk")
 	if err != nil {
 		t.Fatal(err)
@@ -138,11 +138,11 @@ func TestUnifiedPluginsSharedAndAudienceBounded(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "knowledge", "note.md"), []byte("source"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	writeBotJSON(t, filepath.Join(dir, "plugins.knowledge.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk"}, "audiences": []string{"owner"}}, "settings": map[string]any{"version": 1, "sources": []map[string]any{{"name": "notes", "provider": "local_markdown", "root": "../knowledge", "paths": []string{"note.md"}, "principal": "owner", "description": "notes", "projects": []string{"default"}}}}})
-	if path, err := unifiedPlugin(dir, "knowledge", "feishu"); err != nil || path != "" {
+	writeBotJSON(t, filepath.Join(dir, "datasource.plugins.local-documents.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk"}, "audiences": []string{"owner"}}, "settings": map[string]any{"sources": []map[string]any{{"name": "notes", "root": "../knowledge", "paths": []string{"note.md"}, "principal": "owner", "description": "notes", "projects": []string{"default"}}}}})
+	if path, err := unifiedPlugin(dir, "local-documents", "feishu"); err != nil || path != "" {
 		t.Fatal("unauthorized channel", path, err)
 	}
-	c, err := knowledge.Load(filepath.Join(dir, "plugins.knowledge.json"))
+	c, err := knowledge.Load(filepath.Join(dir, "datasource.plugins.local-documents.json"))
 	if err != nil || len(c.Sources) != 1 || len(c.Sources[0].Audiences) != 1 || c.Sources[0].Audiences[0] != "owner" {
 		t.Fatal(c, err)
 	}

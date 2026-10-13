@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"agent-host/internal/assembly"
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/history"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/state"
@@ -128,5 +129,57 @@ func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
 	if audience == "" {
 		audience = "owner"
 	}
-	return knowledge.SelectAgentAudienceProjects(o.knowledgeConfig, ids, o.knowledgeNames, audience)
+	sources, err := knowledge.Catalog(knowledgePaths(o), o.knowledgeChannel)
+	if err != nil {
+		return nil, err
+	}
+	names, err := knowledge.ResolveNames(sources, o.knowledgeNames)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, path := range knowledgePaths(o) {
+		pluginID := componentconfig.DataSourceID(path)
+		if o.pluginNames == nil || slices.Contains(o.pluginNames, "knowledge") || slices.Contains(o.pluginNames, pluginID) {
+			paths = append(paths, path)
+		}
+	}
+	if names != nil {
+		available, err := knowledge.Catalog(paths, o.knowledgeChannel)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]string, 0, len(names))
+		for _, name := range names {
+			for _, source := range available {
+				if source.Name == name {
+					filtered = append(filtered, name)
+				}
+			}
+		}
+		names = filtered
+	}
+	return knowledge.SelectMany(paths, ids, names, audience, o.knowledgeChannel)
+}
+
+func knowledgePaths(o options) []string {
+	if o.knowledgeConfigs != nil {
+		return o.knowledgeConfigs
+	}
+	if o.knowledgeConfig != "" {
+		return []string{o.knowledgeConfig}
+	}
+	return nil
+}
+
+func knowledgePluginsEnabled(names []string) bool {
+	if names == nil || slices.Contains(names, "knowledge") {
+		return true
+	}
+	for _, id := range names {
+		if provider, known := componentconfig.DataSources[id]; known && provider != "" {
+			return true
+		}
+	}
+	return false
 }

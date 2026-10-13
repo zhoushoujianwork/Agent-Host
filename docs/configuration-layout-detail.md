@@ -1,5 +1,11 @@
 # Configuration and plugin startup details
 
+当前数据源配置和加载规则见[数据源插件详细稿](datasource-plugins-design-detail.md)，
+`datasource.plugins.*.json` 已替代初次迁移的 `plugins.email.json` 与
+`plugins.knowledge.json`。下文保留初次 unified rollout 的结构和证据，涉及旧插件
+文件名及状态路径的段落属于迁移历史；当前使用方式见[运行指南](service-install.md)。
+
+
 状态：统一布局、配置加载和现有部署迁移已实现。[主设计](configuration-layout.md)决定范围和用户行为。
 以下说明区分已实现行为与后续扩展。
 

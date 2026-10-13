@@ -1,7 +1,8 @@
 # Configuration and plugin startup
 
 状态：统一配置加载、渠道 bot/DWS 可选项和部署迁移已实现。使用方式见[运行指南](service-install.md)。
-实现约定见[详细稿](configuration-layout-detail.md)。
+实现约定见[详细稿](configuration-layout-detail.md)；数据源分类与实例规则见
+[数据源插件设计](datasource-plugins-design.md)。
 
 ## 目标和使用方式
 
@@ -24,22 +25,24 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 │   ├── agents.json                 # Agent 角色、项目和能力选择
 │   ├── channels.dingtalk.json
 │   ├── channels.feishu.json
-│   ├── plugins.email.json
-│   ├── plugins.knowledge.json
+│   ├── datasource.plugins.email.json
+│   ├── datasource.plugins.local-documents.json
+│   ├── datasource.plugins.dokki.json
+│   ├── datasource.plugins.confluence.json
 │   └── credentials/                # 配置引用的私密凭证
 ├── channels/                       # 按渠道隔离的运行数据
 │   ├── dingtalk/{state,workspace,native,logs,dws}
 │   └── feishu/{state,workspace,native,logs}
-├── plugins/                        # 按插件隔离的运行数据
+├── datasource/plugins/                        # 按插件隔离的运行数据
 │   ├── email/                      # 操作账本、授权令牌等
-│   └── knowledge/                  # 插件需要的缓存或运行状态
+│   └── ...                         # 其他插件需要的运行状态
 ├── knowledge/                      # 知识材料，按归属组织
 │   └── owner/snapshots/<快照名>/
 ├── cli-state/                      # 普通终端聊天的现有状态
 └── backups/                        # 迁移备份和旧部署材料
 ```
 
-插件的可编辑配置放 `config/plugins.<名称>.json`；`plugins/<名称>/` 保存运行时
+插件的可编辑配置放 `config/datasource.plugins.<名称>.json`；`datasource/plugins/<名称>/ 保存运行时
 产生的数据，不再放一套独立配置。凭证输入与插件生成的令牌分别归入配置凭证目录
 和插件状态目录，加载器不会扫描它们作为组件配置。
 
@@ -82,7 +85,7 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 
 ## 知识与记忆
 
-`knowledge/` 保存有来源的知识材料，由 `plugins.knowledge.json` 声明读取范围。
+`knowledge/` 保存有来源的知识材料，由 `datasource.plugins.local-documents.json` 声明读取范围。
 项目已有文档留在项目目录，通过知识源配置引用。私人快照可以供多个渠道引用，
 但仍需满足项目、Agent 与 owner 可见范围，不能因为文件共享就向群聊开放。
 

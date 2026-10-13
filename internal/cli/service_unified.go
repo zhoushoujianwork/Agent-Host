@@ -82,7 +82,12 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 		if !strings.HasSuffix(name, ".json") {
 			return nil, fmt.Errorf("unknown configuration file %s", name)
 		}
-		if name != "channels.dingtalk.json" && name != "channels.feishu.json" && name != "plugins.email.json" && name != "plugins.knowledge.json" {
+		if name == "plugins.email.json" || name == "plugins.knowledge.json" {
+			return nil, errors.New("legacy plugin configuration requires datasource migration")
+		}
+		pluginID := componentconfig.DataSourceID(name)
+		_, knownPlugin := componentconfig.DataSources[pluginID]
+		if name != "channels.dingtalk.json" && name != "channels.feishu.json" && !knownPlugin {
 			return nil, fmt.Errorf("unknown component %s", name)
 		}
 		e, err := readEnvelope(filepath.Join(directory, name))
@@ -98,7 +103,7 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 		return nil, errors.New("no enabled channel configurations")
 	}
 	// Load all enabled plugins even when no channel selects them, before connecting.
-	for _, id := range []string{"email", "knowledge"} {
+	for _, id := range datasourceIDs() {
 		if _, err := unifiedPlugin(directory, id, ""); err != nil {
 			return nil, err
 		}
@@ -112,7 +117,11 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 }
 
 func unifiedPlugin(directory, id, channel string) (string, error) {
-	path := filepath.Join(directory, "plugins."+id+".json")
+	_, known := componentconfig.DataSources[id]
+	if !known {
+		return "", errors.New("unknown datasource plugin")
+	}
+	path := filepath.Join(directory, "datasource.plugins."+id+".json")
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
@@ -165,6 +174,13 @@ func unifiedPlugin(directory, id, channel string) (string, error) {
 
 func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]string, error) {
 	directory := unifiedDirectory(root)
+	for _, name := range []string{"plugins.email.json", "plugins.knowledge.json"} {
+		if _, err := os.Lstat(filepath.Join(directory, name)); err == nil {
+			return serviceLayout{}, serviceConfig{}, nil, errors.New("legacy plugin configuration requires datasource migration")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return serviceLayout{}, serviceConfig{}, nil, err
+		}
+	}
 	layout := serviceLayout{Root: root, Config: directory, State: filepath.Join(root, "state"), Workspace: filepath.Join(root, "workspace"), Native: filepath.Join(root, "native")}
 	var zero serviceConfig
 	for _, path := range []string{root, layout.State, layout.Workspace, layout.Native} {
@@ -242,10 +258,20 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 	if c.EmailConfig, err = unifiedPlugin(directory, "email", id); err != nil {
 		return layout, c, nil, err
 	}
-	if c.KnowledgeConfig, err = unifiedPlugin(directory, "knowledge", id); err != nil {
-		return layout, c, nil, err
+	for _, pluginID := range datasourceIDs() {
+		if pluginID == "email" {
+			continue
+		}
+		path, err := unifiedPlugin(directory, pluginID, id)
+		if err != nil {
+			return layout, c, nil, err
+		}
+		if path != "" {
+			c.KnowledgeConfigs = append(c.KnowledgeConfigs, path)
+		}
 	}
-	c.DisableKnowledge = c.KnowledgeConfig == ""
+	c.KnowledgeChannel = id
+	c.DisableKnowledge = len(c.KnowledgeConfigs) == 0
 	if id == "dingtalk" {
 		var settings struct {
 			Bot json.RawMessage `json:"bot,omitempty"`
@@ -343,4 +369,13 @@ func runDWSChannel(ctx context.Context, command string, layout serviceLayout, c 
 	}
 	<-ctx.Done()
 	return nil
+}
+
+func datasourceIDs() []string {
+	ids := make([]string, 0, len(componentconfig.DataSources))
+	for id := range componentconfig.DataSources {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }

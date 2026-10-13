@@ -94,7 +94,7 @@ CLI examples with explicit project or mailbox configuration:
 ```sh
 ./bin/agent-host project add --id api --workspace /absolute/path/api
 ./bin/agent-host chat --project api -m 'Review the API error handling.'
-./bin/agent-host chat --email-config "$PWD/.agent-host/config/plugins.email.json" \
+./bin/agent-host chat --email-config "$PWD/.agent-host/config/datasource.plugins.email.json" \
   -m 'List my managed mailboxes and show the latest three emails in my 163 account.'
 ```
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"agent-host/internal/mcpstdio"
 )
@@ -21,6 +22,23 @@ type Envelope struct {
 	ExecutionProfile string          `json:"execution_profile,omitempty"`
 	Access           *Access         `json:"access,omitempty"`
 	Settings         json.RawMessage `json:"settings,omitempty"`
+}
+
+// DataSources is the built-in configuration registry. An empty provider denotes
+// the account-addressed email adapter, which has its own settings contract.
+var DataSources = map[string]string{
+	"local-documents": "local_markdown",
+	"dokki":           "dokki",
+	"confluence":      "confluence",
+	"email":           "",
+}
+
+func DataSourceID(path string) string {
+	name := filepath.Base(path)
+	if !strings.HasPrefix(name, "datasource.plugins.") || !strings.HasSuffix(name, ".json") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(name, "datasource.plugins."), ".json")
 }
 
 func Decode(raw []byte) (Envelope, error) {
@@ -39,7 +57,7 @@ func (e Envelope) Allows(channel string) bool {
 // name, so an absent/disabled DingTalk branch never falls back to legacy DWS.
 func Settings(path string, raw []byte, branch string) ([]byte, error) {
 	name := filepath.Base(path)
-	if name != "plugins.email.json" && name != "plugins.knowledge.json" && name != "channels.dingtalk.json" && name != "channels.feishu.json" {
+	if DataSourceID(path) == "" && name != "plugins.email.json" && name != "plugins.knowledge.json" && name != "channels.dingtalk.json" && name != "channels.feishu.json" {
 		return raw, nil
 	}
 	e, err := Decode(raw)
