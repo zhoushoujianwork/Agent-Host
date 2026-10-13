@@ -10,7 +10,8 @@ own the next memory implementation order.
 The [workspace layout proposal](workspace-layout.md) assigns user-maintained Agent
 instructions and profiles to read-only runtime configuration, learned knowledge
 and skills to memory, source snapshots to datasource plugin storage, and scoped
-task context views to cache. It removes the separate top-level knowledge directory
+task context views to generated Agent directories, with indexes in cache.
+It removes the separate top-level knowledge directory
 in the target layout while preserving execution cwd and channel state.
 
 The [datasource plugin configuration](datasource-plugins-design.md) loads local

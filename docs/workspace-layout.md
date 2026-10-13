@@ -11,7 +11,8 @@
 上下文。私人资料按用户和使用范围装配，不因为同一个 Agent 进入群聊就一起带入。
 
 `config/` 只保存用户维护的输入，Host 运行时只读。自动生成的用户偏好与 Skill
-写入 `memory/`；资料快照写入所属数据源目录；索引与上下文视图写入 `cache/`。
+写入 `memory/`；资料快照写入所属数据源目录；任务装配文件写入 `generated/`，
+检索索引写入 `cache/`。
 新布局取消顶层 `knowledge/`，本地原文继续由数据源配置引用，不要求搬动。
 
 参考 [OpenClaw 的 workspace 文件约定](https://docs.openclaw.ai/concepts/agent-workspace)，
@@ -29,7 +30,7 @@
 │   ├── channels.dingtalk.json
 │   ├── channels.feishu.json
 │   ├── datasource.plugins.*.json
-│   ├── agents/<agent-id>/
+│   ├── agents/<agent-id>/            # 可选，用户手写的 Agent 配置原文
 │   │   ├── AGENTS.md                 # 工作规范与工具使用约定
 │   │   ├── SOUL.md                   # 角色、风格与行为边界
 │   │   └── IDENTITY.md               # 名称与展示身份
@@ -52,17 +53,23 @@
 ├── datasource/plugins/<plugin>/     # 数据源插件运行数据
 │   ├── sources/<source-id>/         # 来源实例的持久数据与快照（按需创建）
 │   └── ...                         # 插件自己的令牌、账本等
-├── cache/
-│   ├── memory/                      # 可重建检索索引
-│   └── workspaces/<context-id>/      # 本次任务的上下文文件与原生 Skill 包
+├── generated/agents/<agent-id>/     # 系统生成，按 Agent 与任务区分
+│   └── workspaces/<context-id>/     # 装配后的指令、USER/MEMORY 和原生 Skill 包
+├── cache/memory/                    # 可重建检索索引
 ├── cli-state/                       # 终端运行状态
 └── backups/                         # 停机迁移与恢复备份
 ```
 
 **沉淀的 Skill 放在 `memory/domains/<domain-id>/skills/`。**
 具体正文在 `<skill-id>/revisions/<revision>/SKILL.md`，Host 展示名称、来源和当前版本。
-用户自己配置的 Skill 放 `config/skills/`；最终给原生引擎使用的包在 `cache/workspaces/`。
+用户自己配置的 Skill 放 `config/skills/`；最终给原生引擎使用的包在 `generated/agents/<agent-id>/workspaces/`。
 三者分别是学习结果、配置输入和可重建装配产物。
+
+`agent-id` 对应 `config/agents.json` 中用户选择的角色，例如 `default`、`business`。
+`config/agents/<agent-id>/` 是这些角色的可选手写指令目录，系统不会自动创建或
+修改其中的角色正文。只有默认 Agent 时只需维护一份，也可以不提供可选文件。
+系统装配后的 `AGENTS.md`、`SOUL.md`、`IDENTITY.md`、`USER.md`、`MEMORY.md`
+与 `skills/` 全部位于 `generated/agents/<agent-id>/workspaces/<context-id>/`。
 
 外部资料由数据源插件提供；其留存快照放
 `datasource/plugins/<plugin>/sources/<source-id>/snapshots/`。
@@ -91,7 +98,7 @@ workspace 的 `USER.md` 是两者经过筛选后的视图。当前请求优先�
 
 workspace 的 `MEMORY.md`、`USER.md` 和 `skills/` 每次任务由 Host 生成，
 用户通过原文或 Host 的记忆修改入口维护内容。Host 不把这些生成文件写回 `config/`。
-缓存修改不能成为新记忆或配置。
+generated 中的文件只是任务快照，修改它们不能成为新记忆或配置。
 视图中出现某份文件不代表拥有额外工具或操作权限。
 
 ## 本期取舍与实施顺序
@@ -105,5 +112,6 @@ workspace 的 `MEMORY.md`、`USER.md` 和 `skills/` 每次任务由 Host 生成�
 已有项目与原生引擎自己的指令和手写 Skill 保留各自机制。
 
 交付时验证：owner 私聊能使用偏好；群聊没有私人 USER 内容；项目文件未被污染；
-Skill 与事实更新后下一次任务使用新版本；删除 cache 能重建，删除 memory 则属于
+Skill 与事实更新后下一次任务使用新版本；清理无活动引用的 generated 或 cache
+都能重建，删除 memory 则属于
 知识数据丢失，必须用备份恢复。本设计阶段仅修改文档。

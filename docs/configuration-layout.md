@@ -90,7 +90,7 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 该方案尚未迁移或启用，下面仍描述当前部署行为。
 [workspace 目录方案](workspace-layout.md)补充 Agent 指令、用户 `USER.md`、手写 Skill
 与任务上下文视图的归属；新增路径同样尚未生效。
-新方案约定 config 为运行期只读的用户输入，生成内容写入 memory、cache 或所属
+新方案约定 config 为运行期只读的用户输入，生成内容写入 memory、generated、cache 或所属
 数据源运行目录；取消顶层 knowledge，并显式迁移已有快照与配置引用。
 
 `knowledge/` 保存有来源的知识材料，由 `datasource.plugins.local-documents.json` 声明读取范围。
