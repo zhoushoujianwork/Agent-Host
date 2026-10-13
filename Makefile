@@ -9,6 +9,7 @@ DIST_DIR ?= dist
 build:
 	go build -ldflags "-X agent-host/internal/buildinfo.Version=$(or $(VERSION),0.2.0-dev)" -o bin/agent-host ./cmd/agent-host
 
+# Historical local packaging utility; normal distribution uses source commits.
 package:
 	python3 -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
 
@@ -21,7 +22,6 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  package Package a clean committed checkout for native macOS (requires VERSION=...)' \
 		'  install Build, install and start the macOS production user service' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \

@@ -16,8 +16,7 @@ examples with placeholders. The ignore rules are a safeguard, not a substitute
 for reviewing files before publication. Private historical validation reports
 are kept in a local archive rather than copied into the public repository.
 
-Build with `make build`. A source push does not create a downloadable release.
-When a versioned release is requested, package a clean commit with
-`make package VERSION=YOUR_VERSION`, verify its checksum and build identity,
-then publish its tag and GitHub release assets. See the
-[beta distribution notes](beta-release-detail.md).
+Distribution is source-only. Users clone this repository and run `make build`
+locally, using their own native harness, accounts and credentials. Normal
+publication updates GitHub source commits; it does not create GitHub Releases
+or upload binary assets. See the [source setup guide](beta-release.md).

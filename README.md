@@ -6,7 +6,7 @@ Agent-Host connects workspaces and user requests to native agent harnesses.
 The host owns cross-session memory and execution evidence; the native harness
 owns its model/tool loop and permissions.
 
-Try the [independent beta](docs/beta-release.md) with your own accounts and local
+Clone, build and run using the [source setup guide](docs/beta-release.md) with your own accounts and local
 memory. Use the [feedback guide](docs/feedback.md) to generate a reviewed local
 diagnostic summary and report runtime or memory problems. Licensed under
 [Apache License 2.0](LICENSE); dependency notices remain separate.
@@ -97,6 +97,15 @@ lesson is unresolved, and the live decision suite was not rerun for this change.
 
 ## Use
 
+Distribution is source-only. Clone the repository and compile locally:
+
+```sh
+git clone https://github.com/zhoushoujianwork/Agent-Host.git
+cd Agent-Host
+make build
+./bin/agent-host --version
+```
+
 Requires Go 1.26+, Make, and Claude Code. Runtime supports macOS/Linux and local
 filesystems. Configure `TYPESAFE_API_KEY` securely in the environment; Claude
 uses its native authentication and settings.
@@ -185,14 +194,14 @@ make build
 
 Develop directly in this public repository; local `main` tracks `origin/main`
 and uses the same commits. The [development guide](docs/development.md) explains
-private runtime data and source versus versioned releases. The Go module remains
+private runtime data and source-only distribution. The Go module remains
 `agent-host`. Tests use real temporary SQLite databases, synthetic
 native subprocesses, and HTTP fixtures. The [live MVP experiment](experiments/mvp/README.md)
 records actual provider observations separately.
 
 ## Design and research
 
-- [Independent beta](docs/beta-release.md) and [feedback](docs/feedback.md):
+- [Source setup](docs/beta-release.md) and [feedback](docs/feedback.md):
   installation, explicit diagnostic sharing and issue-based feedback.
 - [Release record: everyday reliability](docs/release-daily-use.md): delivered
   continuity, audience prompts, failure recovery and public runtime footers.

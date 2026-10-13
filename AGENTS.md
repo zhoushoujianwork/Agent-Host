@@ -19,3 +19,7 @@
   affected documentation. Stage only files belonging to the current task.
 - Create a local commit after completing a development or maintenance task.
   A local commit does not authorize pushing, publishing, or creating a release.
+- Distribution is source-only: users clone this repository, compile, and run
+  locally. Publish authorized source updates through normal Git commits and
+  pushes. Do not create GitHub Releases or upload binary distribution assets
+  unless the user explicitly changes this policy.
