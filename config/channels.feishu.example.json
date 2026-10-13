@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "enabled": false,
+  "settings": {
+    "profile": "OWNER_PROFILE",
+    "app_id": "APP_ID",
+    "bot_open_id": "BOT_OPEN_ID",
+    "tenant_id": "TENANT_ID",
+    "owner_open_id": "OWNER_OPEN_ID",
+    "allowed_sender_open_ids": ["OWNER_OPEN_ID"],
+    "meeting_id": "",
+    "poll_interval_seconds": 5,
+    "auto_join": false,
+    "im_chat": true,
+    "im_reactions": true
+  }
+}

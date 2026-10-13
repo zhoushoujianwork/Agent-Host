@@ -1,100 +1,74 @@
 # Project-local runtime
 
-Run all enabled channel services from the project with `make run`. Configuration,
-credentials, state, logs and native profiles live under the ignored
-`.agent-host/` directory. The Go CLI scans `.agent-host/channels/channel-*.json` and
-starts every enabled channel together. Feishu and DingTalk can run concurrently.
-There is no system startup registration or login-time restart.
-See the [details](service-install-detail.md#project-local-runtime) for layout,
-configuration, migration evidence and the retained legacy deployment history.
+Run enabled channels and built-in capabilities with `make run`. Editable
+configuration lives in `.agent-host/config/`; channel data lives in
+`.agent-host/channels/<name>/`, plugin data in `.agent-host/plugins/<name>/`,
+and retained knowledge in `.agent-host/knowledge/`. All remain Git-ignored.
+See the [configuration guide](configuration-layout.md) and
+[implementation details](configuration-layout-detail.md).
+
+## Configure and check
+
+Use the tracked `config/*.example.json` templates, removing `.example` in the
+private configuration directory. Protect directories with mode `700` and files
+with mode `600`. Existing installations must migrate before using the new default.
+
+| File | Purpose |
+| --- | --- |
+| `host.json` | Named execution profiles and provider environment-file references |
+| `agents.json` | Optional roles, project/source selection and plugin subsets |
+| `channels.dingtalk.json` | Channel enablement and independent `settings.bot`/`settings.dws` options |
+| `channels.feishu.json` | Feishu enablement and text/meeting settings |
+| `plugins.email.json` | Mailboxes and allowed channels; owner-private only |
+| `plugins.knowledge.json` | Sources, allowed channels and audience grants |
+| `credentials/` | Private provider environments and referenced credentials |
+
+Component files require `version: 1` and explicit `enabled`. A missing or disabled
+plugin is not mounted. DingTalk bot and DWS each require their own `enabled` when
+present; an omitted/disabled branch does not initialize clients, inspect its
+credentials or run background functionality. DWS state lives in
+`channels/dingtalk/dws`, separate from the task workspace. Enabling a component
+does not authorize outgoing messages or broaden native permissions.
+
+Run the local-only preflight after changing configuration:
+
+```sh
+make build
+./bin/agent-host service check --config-dir "$PWD/.agent-host/config"
+```
+
+It checks every enabled component without platform connections, native execution
+or database creation. Unknown names, invalid configuration and missing credentials
+fail explicitly. Runtime directories are derived from component names. A channel
+can select a different execution profile; provider environments remain isolated.
 
 ## Start and observe
 
 ```sh
 make run
-```
-
-The command builds `bin/agent-host` and invokes its Go CLI directly. The CLI
-checks all enabled configurations, prepares workbench files, and supervises the
-channel workers in the foreground. Each channel keeps its own state, logs and model
-environment. One shared workbench displays all enabled channels. Logs appear in the terminal and each runtime's
-`logs/service.ndjson`. Ctrl-C stops all workers and the shared workbench.
-Running `make run` again picks up configuration and code changes.
-
-The shared workbench stays at `http://127.0.0.1:8765/` across restarts.
-It combines enabled channels' execution records and memory with clear source
-labels. The [memory workbench](../tools/run-viewer/README.md#memory-workspace)
-also lets the owner publish or reject saved experience drafts and disable
-memory while its channel Host is running. To choose another fixed port, use
-`make run RUN_ARGS='--viewer-port 9000'`. If occupied, the workbench reports
-failure instead of switching ports; the channels still start.
-
-To avoid opening a browser:
-
-```sh
 make run RUN_ARGS=--no-browser
 ```
 
-To run only one explicit runtime for diagnosis:
+The Go supervisor starts one worker per enabled channel and one shared workbench
+at `http://127.0.0.1:8765/`. It keeps source labels on records and memory. Terminal
+output is also appended to each channel's `logs/service.ndjson`. Ctrl-C stops
+workers and the workbench. Configuration changes take effect after restarting.
+Use `CONFIG_DIR` to select another `ROOT/config`; use
+`RUN_ARGS='--viewer-port 9000'` to select another workbench port.
+
+The [memory workbench](../tools/run-viewer/README.md#memory-workspace) forwards
+owner review actions to the corresponding running Host. Channel databases and
+native sessions remain independent. Plugins are mounted only for eligible tasks;
+Email shares one operation ledger across configured channels. No automatic task
+replay, crash restart or login-time service is installed.
+
+Ordinary CLI chat keeps `.agent-host/cli-state`. To inspect channel records, select
+the relevant `--home`; migrated default memories retain the original scope:
 
 ```sh
-make run RUNTIME_ROOT="$PWD/.agent-host/dingtalk"
+./bin/agent-host feishu status --home "$PWD/.agent-host/channels/feishu/state"
 ```
 
-Stop its current worker before starting the same runtime again. These commands
-do not install a system service or replay old tasks.
-
-## Configure
-
-Create one private registration file per channel, for example
-`.agent-host/channels/channel-feishu.json`:
-
-```json
-{
-  "enabled": true,
-  "runtime_root": "../runtime"
-}
-```
-
-For `.agent-host/channels/channel-dingtalk.json`, use `"runtime_root": "../dingtalk"`.
-Set `enabled` to `false` to disable a channel on the next startup. Runtime paths
-are relative to the registration directory or absolute. Only present, enabled
-registrations start workers; each must reference a complete runtime. Protect
-the directory with mode `700` and files with mode `600`. The example is
-[channel-registration.example.json](../config/channel-registration.example.json).
-
-An absent channel directory preserves the older single-runtime setup. An
-existing directory with no enabled channels fails explicitly. Invalid enabled
-runtime settings prevent startup before any channel connects. Duplicate runtime
-paths and running instances are rejected. If a worker exits unexpectedly, the
-CLI reports failure and stops its peers; it does not silently restart tasks.
-
-Configuration names distinguish their purpose: `channel-*` for channels,
-`data-*` for data sources, `component-*` for Host/Agent settings, and
-`credential-*` for authentication material. See the [naming guide](../config/README.md).
-
-Edit each runtime's `config/component-service.json` for the channel, model, provider,
-tool policy and optional source configurations. Provider values belong in
-`config/component-environment.json`; channel identity belongs in `config/channel-feishu.json` or
-`config/channel-dingtalk.json`. Agent configuration uses `component-agents.json`;
-knowledge and discovery use `data-knowledge.json` and `data-discovery.json`.
-Keep credentials and populated configuration private
-and uncommitted. New setups can use the tracked `config/*.example.json` files.
-A missing configuration fails explicitly rather than creating a fake setup.
-
-The configured email registry is `.agent-host/email/data-email-accounts.json`. AI discovers
-its enabled accounts through one MCP and chooses the account for each operation.
-Email requires `no_tools: false`; group tasks do not mount personal email.
-See the [email guide](email-plugin.md).
-
-Ordinary local CLI chat defaults to `.agent-host/cli-state` under its invocation
-directory. To inspect the channel runtime, specify its state explicitly:
-
-```sh
-./bin/agent-host feishu status --home "$PWD/.agent-host/runtime/state"
-./bin/agent-host run show --home "$PWD/.agent-host/runtime/state" --workspace "$PWD/.agent-host/runtime/workspace" RUN_ID
-```
-
-Directory access remains governed by native settings; project routing and source
-selection retain their existing boundaries. A runtime directory is not an OS
-sandbox. Current configuration changes require restarting `make run`.
+Legacy explicit `service --root` and `--channels-dir` entry points remain for
+unmigrated runtimes. The stopped-runtime migration and deployment evidence are
+recorded in the [details](service-install-detail.md#unified-configuration-runtime).

@@ -23,6 +23,9 @@ type channelRegistration struct {
 type configuredChannel struct{ Name, Root string }
 
 func discoverServiceChannels(directory, fallback string) ([]configuredChannel, error) {
+	if filepath.Base(directory) == "config" {
+		return discoverUnifiedChannels(directory)
+	}
 	if directory == "" {
 		return []configuredChannel{{"runtime", fallback}}, nil
 	}
@@ -174,6 +177,13 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 			}
 		}
 		return nil
+	}
+	if filepath.Base(directory) == "config" {
+		for _, channel := range channels {
+			if err := prepareUnifiedRuntime(channel.Root); err != nil {
+				return err
+			}
+		}
 	}
 	// Validate every enabled configuration before starting any connection.
 	var locks []*os.File

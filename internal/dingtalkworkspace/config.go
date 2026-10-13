@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/mcpstdio"
 )
 
@@ -42,8 +43,15 @@ func Load(path string) (Config, string, error) {
 	if err != nil {
 		return c, "", err
 	}
+	raw, err = componentconfig.Settings(path, raw, "dws")
+	if err != nil {
+		return c, "", err
+	}
 	if mcpstdio.Decode(raw, &c) != nil {
 		return c, "", errors.New("invalid DingTalk workspace configuration")
+	}
+	if filepath.Base(path) == "channels.dingtalk.json" {
+		c.StateDirectory = filepath.Join(componentconfig.Root(path), "channels", "dingtalk", "dws")
 	}
 	parts := strings.Split(c.Profile, ":")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || len(c.Profile) > 1024 || strings.ContainsAny(c.Profile, " \t\r\n\x00") {

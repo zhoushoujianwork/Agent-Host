@@ -27,6 +27,7 @@ type agentDefinition struct {
 	InstructionsFile string   `json:"instructions_file,omitempty"`
 	Workspace        string   `json:"workspace,omitempty"`
 	Projects         []string `json:"projects"`
+	Plugins          []string `json:"plugins,omitempty"`
 	KnowledgeSources []string `json:"knowledge_sources"`
 	Model            string   `json:"model,omitempty"`
 	role             string
@@ -68,6 +69,11 @@ func loadAgents(path string) (agentCatalog, error) {
 		}
 		if a.Model != "" && (a.Model != strings.TrimSpace(a.Model) || strings.HasPrefix(a.Model, "-") || len(a.Model) > 512 || strings.ContainsAny(a.Model, "\x00\r\n")) {
 			return c, errors.New("agent model must be a valid model name")
+		}
+		for _, name := range a.Plugins {
+			if name != "email" && name != "knowledge" {
+				return c, errors.New("agent references unknown plugin")
+			}
 		}
 		for _, values := range [][]string{a.Projects, a.KnowledgeSources} {
 			unique := map[string]bool{}
@@ -161,7 +167,7 @@ func (c agentCatalog) validateReferences(ctx context.Context, store *state.Store
 				return fmt.Errorf("agent %s project directory is unavailable or changed", a.ID)
 			}
 		}
-		if a.KnowledgeSources != nil {
+		if a.KnowledgeSources != nil && !base.knowledgePluginDisabled && (a.Plugins == nil || slices.Contains(a.Plugins, "knowledge")) {
 			known := map[string]bool{}
 			if base.knowledgeConfig != "" {
 				config, err := knowledge.Load(base.knowledgeConfig)
@@ -205,11 +211,15 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 		o.model = a.Model
 	}
 	if a.Workspace != "" {
-		o.workspace, o.defaultWorkspace, o.defaultScope = a.Workspace, a.Workspace, a.Workspace
+		o.workspace, o.defaultWorkspace = a.Workspace, a.Workspace
+		if o.defaultScope == "" {
+			o.defaultScope = a.Workspace
+		}
 		o.projectID, o.projectName, o.scope, o.primaryProject = "", "", "", ""
 		o.projectIDs, o.projects, o.additionalDirectories = nil, nil, nil
 	}
 	o.knowledgeNames = a.KnowledgeSources
+	o.pluginNames = a.Plugins
 	profile := base.nativeProfile
 	if profile == "" {
 		profile = os.Getenv("CLAUDE_CONFIG_DIR")

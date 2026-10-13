@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"agent-host/internal/assistance"
 	"agent-host/internal/harness"
@@ -110,6 +111,9 @@ func resolveKnowledge(o *options) error {
 	if err := resolveDingTalkWorkspace(o); err != nil {
 		return err
 	}
+	if o.knowledgePluginDisabled || o.pluginNames != nil && !slices.Contains(o.pluginNames, "knowledge") {
+		return nil
+	}
 	selected, err := selectKnowledgeForOptions(*o)
 	if err != nil {
 		return err
@@ -147,7 +151,7 @@ func resolveKnowledge(o *options) error {
 }
 
 func knowledgeValidator(o options) func() error {
-	if o.knowledgeConfig == "" || o.noTools {
+	if o.knowledgePluginDisabled || o.pluginNames != nil && !slices.Contains(o.pluginNames, "knowledge") || o.knowledgeConfig == "" || o.noTools {
 		return nil
 	}
 	expected := knowledge.Fingerprint(o.knowledgeSources)

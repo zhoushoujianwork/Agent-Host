@@ -1,9 +1,9 @@
 # Configuration and plugin startup details
 
-状态：待实现。[主设计](configuration-layout.md)决定范围和用户行为。
-以下约定不代表当前二进制已支持新文件名或配置结构。
+状态：统一布局、配置加载和现有部署迁移已实现。[主设计](configuration-layout.md)决定范围和用户行为。
+以下说明区分已实现行为与后续扩展。
 
-## 当前实现与差距
+## 旧实现与本次变更
 
 - `service_channels.go` 扫描 `channels/channel-*.json`，读取 `runtime_root`。
 - `service.go` 从各 runtime 的 `config/` 加载渠道、模型和来源设置。
@@ -18,7 +18,7 @@
 ## 配置发现和命名
 
 默认根目录为启动项目的 `.agent-host`，配置目录为 `ROOT/config`。
-拟增加 `service check|run --config-dir ABSOLUTE_PATH`；目录必须是根目录下的
+已增加 `service check|run --config-dir ABSOLUTE_PATH`；目录必须是根目录下的
 `config`，由其父目录确定运行根。`make run` 默认使用此入口。
 
 固定配置文件为 `host.json` 和可选 `agents.json`。组件文件为
@@ -41,7 +41,7 @@ JSON 重复字段、未知字段、非法路径等沿用现有严格读取方式
 
 | 文件 | 内容 |
 | --- | --- |
-| `host.json` | 公共执行 defaults、命名 execution profiles、工作台、并发策略 |
+| `host.json` | version、default_profile、profiles；各 profile 包含 execution 和 environment_file |
 | `agents.json` | 现有角色、项目许可、知识源子集、可选插件子集及指令引用 |
 | `channels.<id>.json` | enabled、可选 execution profile、协议 settings、渠道 Agent 绑定 |
 | `channels.dingtalk.json` | settings.bot 与 settings.dws 两个独立可选配置 |
@@ -104,16 +104,18 @@ ID、账本和未知发送状态，不能通过目录迁移重新发送邮件。
 知识 sources 的 project/audience grants 与 Agent `knowledge_sources` 保留；
 新增 plugin access 与其取交集。远程知识凭证在配置凭证目录，本地材料在
 `knowledge/` 或外部项目目录。禁用 knowledge 只取消工具，不删除材料。
-历史话题采集继续由 Host collector 管理，其选择配置归入 `host.json`，引用
+历史话题采集继续由 Host collector 管理，由 execution 的 `discovery_config` 引用
+现有选择配置，统一迁移工具遇到这类旧配置时要求显式路径映射，不自动猜测。它引用
 已启用的 `channels.dingtalk.json` 中 DWS 及现有 source selectors；不要求 bot
 开启。声明的 DWS 依赖未启用时明确报错；未启用的采集功能不初始化。
 
 ## 内置注册与生命周期
 
-建立小型 Go 内置注册表，注册已实现的 channel factories 和 plugin factories。
-插件 factory 负责解码和校验自身 settings、声明依赖及能力、生成任务 MCP binding。
-公共加载器负责发现、enabled、路径、生命周期和加载状态。避免在各渠道中分别
-维护 Email、知识启用分支。钉钉 factory 只装配已启用的 bot/DWS 子功能。
+`service_unified.go` 使用明确的内置组件目录和加载分支检查当前支持的渠道/插件。
+`componentconfig` 统一严格 envelope 和 settings 解码；各能力现有 loader 解码自身参数，
+无需生成 runtime 下的配置副本。钉钉仅装配已启用 bot/DWS；Email、知识在统一
+装配层按 channel access 选择，再由现有任务装配按 Agent/audience/project 过滤。
+新内置实现必须加入目录与装配；动态发现任意外部代码和公共 factory API 尚未实现。
 
 加载顺序：扫描配置 → 解析启用项 → 检查身份、依赖和完整配置 → 获得运行锁
 → 准备目录 → 启动必要服务及渠道 worker → 工作台展示。
@@ -158,12 +160,12 @@ worker 异常退出时 supervisor 停止相关运行，不降级、不自动重�
 运行历史、原始证据及历史路径保持不变，活动配置引用更新；验证迁移后的数据库
 保留记录，并生成前后计数和身份映射报告。
 
-默认记忆 scope 从实际 cwd 改为稳定 `channel:<id>:default`，继续叠加既有
-agent/audience 分区。注册项目仍为 `project:<id>`。迁移需事务性转换当前默认
-scope 的有效记忆、待处理候选及其索引/关联，保留版本与来源；历史失效记忆
-不重新启用，历史 run scope 不重写，依赖 run 的发布和重试路径须使用明确的
-scope 映射。旧 native sessions 保留历史，新 cwd 建立新绑定。映射和旧备份用于
-停止写入后的回滚。变更前先枚举所有按 scope 查找的关系，不能只更新 memories。
+新渠道默认记忆 scope 使用稳定的 `channel:<id>:default`，继续叠加既有
+agent/audience 分区。迁移工具在 execution.memory_scope 保存旧默认 workspace
+范围，通过 `--memory-scope` 独立于 cwd 传给执行装配。旧记忆、候选、历史 run、
+版本和关联不需要改写，注册项目仍为 `project:<id>`。将旧记忆统一转换为新 scope
+留作后续独立迁移；本次没有重新启用失效记忆。旧 native sessions 保留历史，
+新 cwd 建立新绑定。回滚须停止所有写入后恢复备份，不能让旧新版本同时运行。
 
 ## 验证重点
 
@@ -174,5 +176,54 @@ scope 映射。旧 native sessions 保留历史，新 cwd 建立新绑定。映�
 - 插件缺失依赖、凭证失败、服务异常退出和停止清理；没有隐式重放。
 - 两渠道共享邮件操作 ID 并发去重，unknown/pending send 不重复发送。
 - 知识来源权限与来源引用保留，知识读取不触发经验发布。
-- 迁移记录完整，稳定默认 scope 可召回，旧候选可接受/重试，原始证据不变。
+- 迁移数据库 SHA-256 和记录数一致，默认记忆 scope 独立于 cwd，原始证据不变。
 - `make check`、本地预检，以及获授权的双渠道和插件实际调用验证。
+
+## 已实现配置结构
+
+```json
+{
+  "version": 1,
+  "default_profile": "default",
+  "profiles": {
+    "default": {
+      "execution": {
+        "claude": "/absolute/path/claude",
+        "model": "explicit-model",
+        "jev_provider": "typesafe",
+        "jev_model": "jev-latest",
+        "timeout": "10m"
+      },
+      "environment_file": "credentials/environment.json"
+    }
+  }
+}
+```
+
+插件 settings 沿用现有 typed 配置；Email 的 state_directory 和 DWS 的
+state_directory 由加载器推导，可以省略。Knowledge settings 仍含 `version: 1`
+和 `sources`，其 plugin audience access 与每个 source audience grant 取交集。
+Agent 的可选 `plugins` 列表只能选择 email/knowledge；空列表禁用两者，省略则继承。
+工作台端口仍通过 CLI 配置，不是 host.json 字段。`check` 不创建运行目录；`run`
+预检后才准备路径。DWS-only 不连接机器人；显式启用采集时运行 collector，否则
+保持能力可用状态并等待关闭，CLI 可用同一渠道配置按需调用 DWS。
+
+## 2026-10-13 迁移与启动验证
+
+停止旧 supervisor 后，迁移工具持有旧 runtime 的运行锁，备份旧配置与数据。
+两份 Host 数据库在迁移前后的 SHA-256 与各表记录数完全一致。任务文件保留，
+DWS 登录态移入 channels/dingtalk/dws，Email 保留一份共享操作账本，私人知识快照
+移入顶层 knowledge。迁移报告和原部署备份保存在忽略目录 backups 中。
+
+新配置本地检查通过，make run 使用 --config-dir 启动两渠道，观察到新的 DingTalk
+Stream connection、Feishu meeting entry connection 和 Feishu text receiver ready。
+工作台 8765 已启动。自动化检查覆盖 bot-only/DWS-only/both、禁用项不初始化、
+插件 channel/audience 过滤、迁移锁与数据保留。第一次全量并行检查有 fixture 时限
+失败，失败项独立复跑通过，随后 make check GOFLAGS=-p=1 全量通过。
+此记录证明启动及配置生效，不代表新增渠道用户消息的往返验收。
+
+同一配置的隔离 Host CLI 验证完成，观察到成功的 email list_accounts、check_account、
+DWS list_services 和 owner_notes 本地知识检索调用。直接邮箱连接检查确认 IMAP 与
+SMTP authenticated；迁移后的 DWS auth status 返回 authenticated=true。工作台
+HTTP 返回 200。验证未读取邮箱消息、未发送邮件或渠道测试消息；私密工具证据保存在
+迁移备份的 validation 子目录。

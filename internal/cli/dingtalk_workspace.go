@@ -90,7 +90,7 @@ func runDingTalkWorkspace(ctx context.Context, args []string, in io.Reader, out,
 
 func resolveDingTalkWorkspace(o *options) error {
 	o.dingtalkWorkspaceFingerprint = ""
-	if o.noTools || o.audienceID != "" && o.audienceID != "owner" {
+	if o.disableDingTalkWorkspace || o.noTools || o.audienceID != "" && o.audienceID != "owner" {
 		return nil
 	}
 	path := o.dingtalkWorkspaceConfig
@@ -101,6 +101,27 @@ func resolveDingTalkWorkspace(o *options) error {
 			return err
 		}
 		profile = bot.CorpID + ":" + bot.OwnerUserID
+		if path == "" && filepath.Base(o.dingtalkConfig) == "channels.dingtalk.json" {
+			envelope, e := readEnvelope(o.dingtalkConfig)
+			if e != nil {
+				return e
+			}
+			var settings struct {
+				Bot json.RawMessage `json:"bot,omitempty"`
+				DWS json.RawMessage `json:"dws,omitempty"`
+			}
+			if e := strictUnifiedJSON(envelope.Settings, &settings); e != nil {
+				return e
+			}
+			enabled, e := featureEnabled(settings.DWS)
+			if e != nil {
+				return e
+			}
+			if !enabled {
+				return nil
+			}
+			path = o.dingtalkConfig
+		}
 		if path == "" {
 			path = bot.WorkspaceConfig
 		}

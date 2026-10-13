@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "default_profile": "default",
+  "profiles": {
+    "default": {
+      "execution": {
+        "claude": "/absolute/path/to/claude",
+        "model": "explicit-native-model",
+        "jev_provider": "typesafe",
+        "jev_model": "jev-latest",
+        "timeout": "10m"
+      },
+      "environment_file": "credentials/environment.json"
+    }
+  }
+}

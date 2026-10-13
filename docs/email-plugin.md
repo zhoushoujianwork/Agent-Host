@@ -18,9 +18,11 @@ One 163 account is configured locally. Add Gmail or further 163 mailboxes to the
 same registry; AI discovers them through `list_accounts`. Credentials and real
 addresses remain outside this repository.
 
-For local chat, pass `--email-config /absolute/path/data-email-accounts.json`. The managed
-service accepts the same file through `email_config` in its private service
-configuration. [Setup and tool details](email-plugin-detail.md#configuration-and-commands)
+For channel startup, configure `.agent-host/config/plugins.email.json` with
+`enabled: true`, owner access and mailbox accounts in settings. Eligible channels
+share the plugin and its operation ledger. For local chat, pass
+`--email-config /absolute/path/plugins.email.json`; legacy direct account files
+remain supported. [Setup and tool details](email-plugin-detail.md#configuration-and-commands)
 include the local-only check and optional live connection check.
 
 ## Core approach

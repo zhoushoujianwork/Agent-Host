@@ -4,7 +4,19 @@ The [main guide](service-install.md) defines the current project-local workflow.
 The old system installation instructions below are retained as historical
 reference for prior evidence; `make install` is no longer a Make target.
 
-## Project-local runtime
+## Unified configuration runtime
+
+The current make run default scans ROOT/config/channels.*.json and plugins.*.json.
+See [the current configuration details](configuration-layout-detail.md) for the
+loader contract, bot/DWS optional branches, migration and live connection evidence.
+Use `python3 -B tools/service/migrate_config.py --root ABSOLUTE_PATH` only for the
+known stopped paired deployment; it refuses running locks, existing destinations
+and discovery configurations needing an explicit mapping. Failures after backup
+restore the old layout. The migration report retains database hashes and counts.
+
+The project-local sections below describe the prior layout and retained evidence.
+
+## Previous project-local runtime
 
 `make run` builds the checkout binary and invokes `agent-host service run`
 directly. The Go CLI scans `.agent-host/channels/channel-*.json` for registrations with

@@ -7,7 +7,7 @@ VERSION ?=
 DIST_DIR ?= dist
 SINGLE_RUNTIME := $(if $(filter undefined,$(origin RUNTIME_ROOT)),,1)
 RUNTIME_ROOT ?= $(CURDIR)/.agent-host/runtime
-CHANNELS_DIR ?= $(CURDIR)/.agent-host/channels
+CONFIG_DIR ?= $(CURDIR)/.agent-host/config
 RUN_ARGS ?=
 PYTHON ?= python3
 
@@ -22,7 +22,7 @@ run: build
 ifeq ($(SINGLE_RUNTIME),1)
 	./bin/agent-host service run --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 else
-	./bin/agent-host service run --channels-dir "$(CHANNELS_DIR)" --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+	./bin/agent-host service run --config-dir "$(CONFIG_DIR)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 endif
 
 help:
@@ -38,12 +38,13 @@ help:
 		'' \
 		'Viewer options: pass through VIEWER_ARGS' \
 		'  --port PORT       Loopback port (default: 8765; 0 selects a free port)' \
-		'  --home PATH       Host data directory (default: .agent-host/runtime/state)' \
+		'  --home PATH       Host data directory (choose channels/NAME/state for channel records)' \
 		'  --reports PATH    Saved report directory (default: experiments/experience/results)' \
 		'  --workspace PATH  Filter database runs by registered or legacy workspace' \
 		'  --project ID      Filter database runs and memory by stable project ID' \
 		'' \
-		'Run options: RUNTIME_ROOT=/absolute/runtime RUN_ARGS=--no-browser' \
+		'Run options: CONFIG_DIR=/absolute/ROOT/config RUN_ARGS=--no-browser' \
+		'  RUNTIME_ROOT=/absolute/runtime selects an explicit legacy runtime' \
 		'  --viewer-port PORT Shared workbench port (default: 8765)'  \
 		'Examples:' \
 		'  make viewer' \
@@ -61,6 +62,7 @@ check:
 	go test ./...
 	python3 -B tools/service/install_test.py
 	python3 -B tools/service/run_test.py
+	python3 -B tools/service/migrate_config_test.py
 	python3 -B tools/release/package_test.py
 	python3 -B tools/release/export_public_test.py
 	python3 -B tools/run-viewer/server_test.py

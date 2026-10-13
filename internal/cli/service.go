@@ -20,12 +20,20 @@ import (
 
 const serviceUsage = `Managed channel runtime (DingTalk by default).
 
+  agent-host service check --config-dir ABSOLUTE_ROOT/config
+  agent-host service run --config-dir ABSOLUTE_ROOT/config --viewer-source ABSOLUTE_PATH [--no-browser]
   agent-host service check --root ABSOLUTE_PATH
   agent-host service check --channels-dir ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
   agent-host service run --channels-dir ABSOLUTE_PATH --viewer-source ABSOLUTE_PATH [--no-browser]
 
-make run builds the Go CLI, which scans channel registrations, prepares viewers,
+make run loads host.json, channels.NAME.json and plugins.NAME.json from ROOT/config.
+Version 1 and explicit enabled are required; disabled components do not connect.
+DingTalk settings.bot and settings.dws are independently optional.
+Channel data lives under ROOT/channels/NAME and plugin state under ROOT/plugins/NAME.
+Changes require restarting. The explicit legacy commands below remain supported.
+
+The Go CLI scans channel registrations, prepares viewers,
 and supervises every enabled runtime. Each registration has enabled and runtime_root.
 Runtime paths may be relative to the registration directory. No channel directory
 preserves the legacy --root setup; an existing directory with no enabled channels fails.
@@ -42,6 +50,11 @@ Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
+	DisableKnowledge           bool   `json:"-"`
+	DWSOnly                    bool   `json:"-"`
+	DisableDWS                 bool   `json:"-"`
+	DWSConfig                  string `json:"-"`
+	MemoryScope                string `json:"memory_scope,omitempty"`
 	channelConfigPath          string
 	EmailConfig                string   `json:"email_config,omitempty"`
 	Channel                    string   `json:"channel,omitempty"`
@@ -94,6 +107,8 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	var root string
 	fs.StringVar(&root, "root", "", "Absolute managed runtime directory")
 	var channelsDirectory string
+	var configDirectory string
+	fs.StringVar(&configDirectory, "config-dir", "", "Unified ROOT/config directory")
 	fs.StringVar(&channelsDirectory, "channels-dir", "", "Private directory of enabled channel configurations")
 	var noBrowser bool
 	var viewerPython string
@@ -119,6 +134,12 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	if command == "run" && (viewerPort < 1 || viewerPort > 65535) {
 		return errors.New("viewer-port must be between 1 and 65535")
 	}
+	if configDirectory != "" {
+		if channelsDirectory != "" || root != "" {
+			return errors.New("config-dir cannot be combined with root or channels-dir")
+		}
+		return runConfiguredChannels(ctx, command, configDirectory, "", viewerSource, viewerPython, viewerPort, noBrowser, out, errout)
+	}
 	if channelsDirectory != "" || viewerSource != "" {
 		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, out, errout)
 	}
@@ -135,6 +156,9 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 		}
 	}
 	return withServiceEnvironment(layout.Native, environment, func() error {
+		if config.DWSOnly {
+			return runDWSChannel(ctx, command, layout, config, out, errout)
+		}
 		channelArgs := config.arguments(layout, "serve")
 		run := runDingTalk
 		if config.Channel == "feishu-meeting" || config.Channel == "feishu" {
@@ -162,6 +186,11 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 }
 
 func loadService(root string) (serviceLayout, serviceConfig, map[string]string, error) {
+	if directory := unifiedDirectory(root); directory != "" {
+		if _, err := os.Lstat(filepath.Join(directory, "host.json")); err == nil {
+			return loadUnifiedService(root)
+		}
+	}
 	var layout serviceLayout
 	var config serviceConfig
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
@@ -241,6 +270,9 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
+	if c.MemoryScope != "" && (strings.TrimSpace(c.MemoryScope) != c.MemoryScope || len(c.MemoryScope) > 4096 || strings.ContainsAny(c.MemoryScope, "\x00\r\n")) {
+		return errors.New("service memory_scope must be a nonempty single-line identity")
+	}
 	if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu-meeting" && c.Channel != "feishu" {
 		return errors.New("service channel must be dingtalk, feishu or feishu-meeting")
 	}
@@ -314,6 +346,18 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		args = append(args, "--jev-endpoint", c.JevEndpoint)
 	}
 	args = append(args, "--native-profile", layout.Native)
+	if c.MemoryScope != "" {
+		args = append(args, "--memory-scope", c.MemoryScope)
+	}
+	if c.DisableKnowledge {
+		args = append(args, "--disable-knowledge-plugin")
+	}
+	if c.DisableDWS {
+		args = append(args, "--disable-dingtalk-workspace")
+	}
+	if c.DWSConfig != "" {
+		args = append(args, "--dingtalk-workspace-config", c.DWSConfig)
+	}
 	if c.AgentsConfig != "" {
 		args = append(args, "--agents-config", c.AgentsConfig)
 	}

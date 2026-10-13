@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/mcpstdio"
 )
 
@@ -65,8 +66,18 @@ func Load(path string) (Config, string, error) {
 	if err != nil {
 		return c, "", err
 	}
+	raw, err = componentconfig.Settings(path, raw, "")
+	if err != nil {
+		return c, "", err
+	}
 	if mcpstdio.Decode(raw, &c) != nil {
 		return c, "", errors.New("invalid email configuration")
+	}
+	if filepath.Base(path) == "plugins.email.json" {
+		c.StateDirectory = filepath.Join(componentconfig.Root(path), "plugins", "email")
+		for i := range c.Accounts {
+			c.Accounts[i].CredentialFile = componentconfig.Resolve(path, c.Accounts[i].CredentialFile)
+		}
 	}
 	if len(c.Accounts) == 0 || len(c.Accounts) > 32 || !filepath.IsAbs(c.StateDirectory) {
 		return c, "", errors.New("email requires 1-32 accounts and an absolute state_directory")

@@ -104,6 +104,7 @@ type options struct {
 	knowledgeNames                                                                     []string
 	knowledgeConfig                                                                    string
 	emailConfig, emailFingerprint                                                      string
+	disableDingTalkWorkspace                                                           bool
 	dingtalkWorkspaceConfig, dingtalkWorkspaceFingerprint                              string
 	discoveryConfig                                                                    string
 	contextPolicy, contextExecutable                                                   string
@@ -111,6 +112,8 @@ type options struct {
 	reviewAt                                                                           string
 	historyEnabled                                                                     bool
 	historyExecutable                                                                  string
+	knowledgePluginDisabled                                                            bool
+	pluginNames                                                                        []string
 	knowledgeSources                                                                   []knowledge.ResolvedSource
 	knowledgeHints                                                                     []knowledge.Hint
 	mcpServers                                                                         []harness.MCPServer
@@ -145,6 +148,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.SetOutput(errout)
 	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
+	fs.StringVar(&o.defaultScope, "memory-scope", "", "Explicit durable default memory scope")
+	fs.BoolVar(&o.knowledgePluginDisabled, "disable-knowledge-plugin", false, "Skip disabled managed knowledge plugin")
+	fs.BoolVar(&o.disableDingTalkWorkspace, "disable-dingtalk-workspace", false, "Disable DingTalk workspace discovery and mounting")
 	fs.Func("project", "Registered project ID; repeat for joint chat", func(value string) error {
 		o.projectIDs = append(o.projectIDs, value)
 		o.projectID = value
@@ -678,6 +684,9 @@ func resolveOptions(ctx context.Context, store *state.Store, o *options, execute
 	p, err := routing.Resolve(ctx, store, o.projectID, o.workspace)
 	if err != nil {
 		return err
+	}
+	if p.ID == "" && o.defaultScope != "" {
+		p.Scope = o.defaultScope
 	}
 	o.projectID, o.projectName, o.scope, o.workspace = p.ID, p.Name, p.Scope, p.Workspace
 	o.projects = nil

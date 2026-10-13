@@ -1,9 +1,10 @@
 # Agent-Host architecture
 
-The [configuration and plugin startup proposal](configuration-layout.md) centralizes
+The [configuration and plugin startup](configuration-layout.md) centralizes
 editable configuration, separates channel/plugin runtime data and loads enabled
-built-in capabilities at startup. This layout and loader are planned; the runtime
-described below remains the delivered behavior.
+built-in capabilities at startup. DingTalk bot and DWS are independent channel
+options. Migrated default memory scopes are retained; new channels use stable
+default identities. Validation is recorded in the linked details.
 
 Status: architecture and roadmap, with a local CLI MVP, manual-review experience
 extension, DingTalk private/group-mention channels with configurable Agent
@@ -216,11 +217,11 @@ recall in an isolated runtime using the existing bot; the
 keeps this separate from production state and remaining live scenarios.
 Production latency remains to be evaluated.
 The [project-local runtime](service-install.md) starts through `make run` in
-the foreground. The Go CLI scans private enabled-channel registrations and
+the foreground. The Go CLI scans private `.agent-host/config/channels.*.json` configurations and
 supervises Feishu and DingTalk concurrently in separate worker processes.
 Their credentials, state, logs, workspace and native profiles live
-under distinct ignored runtime roots, with the mailbox registry in
-`.agent-host/email`. The former system service was removed; historical data was
+under `.agent-host/channels/<name>`, with editable configuration in
+`.agent-host/config` and shared email operation state in `.agent-host/plugins/email`. The former system service was removed; historical data was
 retained in the ignored project area. Ordinary CLI uses `.agent-host/cli-state`. Deployment evidence remains distinct from offline tests.
 
 The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local

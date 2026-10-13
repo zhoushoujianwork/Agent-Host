@@ -16,6 +16,8 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+
+	"agent-host/internal/componentconfig"
 )
 
 const ConnectorVersion = "knowledge-v3:local-markdown:audiences"
@@ -75,8 +77,45 @@ func Load(path string) (Configuration, error) {
 	if err != nil {
 		return c, fmt.Errorf("knowledge configuration: %w", err)
 	}
+	original := raw
+	raw, err = componentconfig.Settings(path, raw, "")
+	if err != nil {
+		return c, err
+	}
 	if err := decodeStrict(raw, &c); err != nil || c.Version != 1 || c.Sources == nil || len(c.Sources) > 32 {
 		return c, errors.New("knowledge configuration requires version 1 and up to 32 sources using documented fields")
+	}
+	if filepath.Base(path) == "plugins.knowledge.json" {
+		envelope, e := componentconfig.Decode(original)
+		if e != nil {
+			return c, e
+		}
+		if envelope.Access == nil || len(envelope.Access.Audiences) == 0 {
+			return c, errors.New("knowledge plugin requires audience access")
+		}
+		var sources []Source
+		for _, source := range c.Sources {
+			source.Root = componentconfig.Resolve(path, source.Root)
+			source.CredentialFile = componentconfig.Resolve(path, source.CredentialFile)
+			if source.Audiences == nil {
+				source.Audiences = envelope.Access.Audiences
+			} else {
+				var allowed []string
+				for _, audience := range source.Audiences {
+					for _, grant := range envelope.Access.Audiences {
+						if audience == grant {
+							allowed = append(allowed, audience)
+						}
+					}
+				}
+				source.Audiences = allowed
+				if len(allowed) == 0 {
+					continue
+				}
+			}
+			sources = append(sources, source)
+		}
+		c.Sources = sources
 	}
 	seen := map[string]bool{}
 	for _, s := range c.Sources {

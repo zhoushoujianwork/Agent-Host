@@ -17,6 +17,7 @@ import (
 	"agent-host/internal/channel"
 	"agent-host/internal/channel/feishu"
 	"agent-host/internal/channel/feishumeeting"
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/event"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
@@ -80,7 +81,15 @@ func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
 	if path == "" {
 		return feishumeeting.Config{}, errors.New("provide --config with the private Feishu meeting configuration")
 	}
-	if err := readServiceJSON(path, &c); err != nil {
+	var raw json.RawMessage
+	if err := readServiceJSON(path, &raw); err != nil {
+		return feishumeeting.Config{}, err
+	}
+	settings, err := componentconfig.Settings(path, raw, "")
+	if err != nil {
+		return feishumeeting.Config{}, err
+	}
+	if err := strictUnifiedJSON(settings, &c); err != nil {
 		return feishumeeting.Config{}, fmt.Errorf("Feishu meeting configuration: %w", err)
 	}
 	if c.PollIntervalSeconds < 5 || c.PollIntervalSeconds > int64((1<<63-1)/time.Second) {

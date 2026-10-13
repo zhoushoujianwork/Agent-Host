@@ -18,6 +18,7 @@ import (
 	"agent-host/internal/assembly"
 	"agent-host/internal/channel"
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/discovery"
 	"agent-host/internal/event"
@@ -94,6 +95,10 @@ func loadBotConfig(path string) (dingtalk.Config, error) {
 	if err != nil || len(rawConfig) > 32*1024 {
 		return result, errors.New("DingTalk configuration could not be read within its limit")
 	}
+	rawConfig, err = componentconfig.Settings(path, rawConfig, "bot")
+	if err != nil {
+		return result, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(rawConfig))
 	decoder.DisallowUnknownFields()
 	var c botConfigFile
@@ -103,6 +108,9 @@ func loadBotConfig(path string) (dingtalk.Config, error) {
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return result, errors.New("DingTalk configuration has trailing or oversized data")
+	}
+	if filepath.Base(path) == "channels.dingtalk.json" {
+		c.ClientSecretFile = componentconfig.Resolve(path, c.ClientSecretFile)
 	}
 	if !filepath.IsAbs(c.ClientSecretFile) {
 		return result, errors.New("client_secret_file must be an absolute path")

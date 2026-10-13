@@ -1,9 +1,15 @@
 # Configuration names
 
-The proposed [unified configuration and plugin startup](../docs/configuration-layout.md)
-uses `.agent-host/config/channels.<name>.json` and `plugins.<name>.json` with
-explicit enablement. It is not implemented yet; the names and loading rules below
-describe the current runtime.
+The [unified configuration and plugin startup](../docs/configuration-layout.md)
+loads `.agent-host/config/host.json`, optional `agents.json`,
+`channels.<name>.json` and `plugins.<name>.json`. Component files use version 1,
+explicit enablement and settings; plugins also declare channel/audience access.
+Use the unified example files for new deployments. Provider environments and
+credentials belong in the private `config/credentials/` directory. Plugin data
+lives in `plugins/<name>`, channel data in `channels/<name>`; DWS is an optional
+branch of the DingTalk channel, with state in `channels/dingtalk/dws`.
+
+## Legacy explicit runtime configuration
 
 Host configuration filenames identify the component that owns them. Keep
 populated files and credentials under the ignored `.agent-host/` directory.

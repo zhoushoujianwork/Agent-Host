@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "enabled": false,
+  "settings": {
+    "bot": {
+      "enabled": false,
+      "client_id": "APP_ID",
+      "robot_code": "ROBOT_CODE",
+      "client_secret_file": "credentials/dingtalk.secret",
+      "corp_id": "CORP_ID",
+      "owner_user_id": "OWNER_USER_ID"
+    },
+    "dws": {
+      "enabled": false,
+      "profile": "CORP_ID:OWNER_USER_ID",
+      "services": ["contact", "aisearch"]
+    }
+  }
+}

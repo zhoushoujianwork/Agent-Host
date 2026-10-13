@@ -21,18 +21,17 @@ Group tasks do not receive the owner's personal workspace.
 
 ## Setup
 
-1. Copy the [example](../config/data-dingtalk-workspace.example.json) to a private
-   file named `data-dingtalk-workspace.json` beside the bot configuration. Use the
-   bot owner's exact `corpId:userId`; choose products and an absolute, private
-   state directory. Apply mode `0600`. Alternatively set `workspace_config`
-   in the bot JSON to the absolute configuration path.
+1. Configure `settings.dws` in `.agent-host/config/channels.dingtalk.json` with
+   `enabled: true`, the owner's exact `corpId:userId` and selected services.
+   The bot branch is independently optional. DWS state is derived as
+   `channels/dingtalk/dws`; apply mode `0600` to the configuration file.
 2. Build and authorize the owner through the official login flow:
 
 ```sh
 make build
-./bin/agent-host dingtalk-workspace check --config /absolute/path/data-dingtalk-workspace.json
-./bin/agent-host dingtalk-workspace login --config /absolute/path/data-dingtalk-workspace.json
-./bin/agent-host dingtalk-workspace status --config /absolute/path/data-dingtalk-workspace.json
+./bin/agent-host dingtalk-workspace check --config /absolute/path/config/channels.dingtalk.json
+./bin/agent-host dingtalk-workspace login --config /absolute/path/config/channels.dingtalk.json
+./bin/agent-host dingtalk-workspace status --config /absolute/path/config/channels.dingtalk.json
 ```
 
 Use `login --device` for a headless environment. Organization access and product

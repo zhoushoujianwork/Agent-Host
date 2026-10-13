@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"agent-host/internal/email"
 	"agent-host/internal/harness"
@@ -77,6 +78,9 @@ func runEmail(ctx context.Context, args []string, in io.Reader, out, errout io.W
 	return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "accounts": c.Catalog(), "fingerprint": fp, "remote_verified": false})
 }
 func resolveEmail(o *options) error {
+	if o.pluginNames != nil && !slices.Contains(o.pluginNames, "email") {
+		return nil
+	}
 	if o.emailConfig == "" || o.noTools || o.audienceID != "" && o.audienceID != "owner" {
 		return nil
 	}
