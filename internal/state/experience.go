@@ -175,7 +175,7 @@ func ExecutionExperienceEvidence(evidence []ToolEvidence) []ToolEvidence {
 }
 
 func executionExperienceEligible(e ToolEvidence) bool {
-	return e.Name != "ToolSearch" && !strings.HasPrefix(e.Name, "mcp__email__") && !strings.HasPrefix(e.Name, "mcp__knowledge_") && !strings.HasPrefix(e.Name, "mcp__conversation_history__") && !strings.HasPrefix(e.Name, "mcp__host_context__")
+	return e.Name != "ToolSearch" && e.Name != "Skill" && !strings.HasPrefix(e.Name, "mcp__email__") && !strings.HasPrefix(e.Name, "mcp__knowledge_") && !strings.HasPrefix(e.Name, "mcp__conversation_history__") && !strings.HasPrefix(e.Name, "mcp__host_context__")
 }
 
 // EvidenceEntities derives project/file identities only from typed native tool
@@ -477,6 +477,20 @@ func (s *Store) CandidateEvidence(ctx context.Context, id string) ([]ToolEvidenc
 }
 
 func validateSnapshot(ctx context.Context, tx *sql.Tx, scope string, expected map[string]int, now time.Time, agentID, audienceID string) (map[string]Memory, error) {
+	if fileMemorySQL(ctx, tx) {
+		current := map[string]Memory{}
+		for id, revision := range expected {
+			m, err := readMemory(ctx, tx, id)
+			if err != nil {
+				return nil, err
+			}
+			if !samePartition(m.AgentID, m.AudienceID, agentID, audienceID) || m.Scope != scope || m.Revision != revision || m.Status == "invalidated" || expired(m, now) {
+				return nil, errors.New("memory comparison snapshot changed; review again")
+			}
+			current[id] = m
+		}
+		return current, nil
+	}
 	rows, err := tx.QueryContext(ctx, "SELECT payload FROM memories WHERE agent_id=? AND audience_id=? AND scope=? AND status IN ('active','conflicted') AND (expires_at IS NULL OR expires_at>?) ORDER BY rowid LIMIT 101", agentID, audienceID, scope, timestamp(now))
 	if err != nil {
 		return nil, err
@@ -510,7 +524,7 @@ func (s *Store) AcceptCandidate(ctx context.Context, id string, accept Candidate
 	if len(accept.DuplicateIDs) > 0 && len(accept.ConflictIDs) > 0 {
 		return accepted, errors.New("duplicate evidence cannot bypass a conflict")
 	}
-	err := s.transaction(ctx, func(tx *sql.Tx) error {
+	err := s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		candidate, err := s.readCandidate(ctx, tx, id)
 		if err != nil {
 			return err
@@ -533,6 +547,15 @@ func (s *Store) AcceptCandidate(ctx context.Context, id string, accept Candidate
 			return err
 		}
 		now := time.Now().UTC()
+		if s.files != nil {
+			fingerprint, err := memoryFingerprintTx(ctx, tx, []string{candidate.Scope}, candidate.AgentID, candidate.AudienceID)
+			if err != nil {
+				return err
+			}
+			if accept.ExpectedGeneration == "" || accept.ExpectedGeneration != fingerprint {
+				return errors.New("memory publication snapshot changed; review again")
+			}
+		}
 		if accept.ExpiresAt != nil && !accept.ExpiresAt.After(now) {
 			return errors.New("memory expiration must be in the future")
 		}
@@ -667,7 +690,7 @@ func (s *Store) RestructureExperience(ctx context.Context, id string, revision i
 	if revision < 1 || !json.Valid(decision) || strings.TrimSpace(note) == "" {
 		return revised, errors.New("experience restructuring requires a revision, decision and note")
 	}
-	err := s.transaction(ctx, func(tx *sql.Tx) error {
+	err := s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		m, err := s.readMemory(ctx, tx, id)
 		if err != nil {
 			return err
@@ -710,7 +733,7 @@ func (s *Store) InvalidateMemoryRevision(ctx context.Context, id, note string, r
 	if strings.TrimSpace(note) == "" {
 		return errors.New("memory invalidation requires a reason")
 	}
-	return s.transaction(ctx, func(tx *sql.Tx) error {
+	return s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		m, err := s.readMemory(ctx, tx, id)
 		if err != nil {
 			return err

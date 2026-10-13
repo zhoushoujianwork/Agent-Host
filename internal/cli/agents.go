@@ -26,12 +26,16 @@ type agentDefinition struct {
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
 	InstructionsFile string   `json:"instructions_file,omitempty"`
+	InstructionsDir  string   `json:"instructions_dir,omitempty"`
+	UserFile         string   `json:"user_file,omitempty"`
 	Workspace        string   `json:"workspace,omitempty"`
 	Projects         []string `json:"projects"`
 	Plugins          []string `json:"plugins,omitempty"`
 	KnowledgeSources []string `json:"knowledge_sources"`
 	Model            string   `json:"model,omitempty"`
 	role             string
+	contextFiles     []assembly.ContextFile
+	userProfile      string
 }
 
 type agentBinding struct {
@@ -99,18 +103,8 @@ func loadAgents(path string) (agentCatalog, error) {
 			}
 			a.Workspace = actual
 		}
-		if a.InstructionsFile != "" {
-			if !filepath.IsAbs(a.InstructionsFile) {
-				return c, errors.New("agent instructions_file must be absolute")
-			}
-			if info, err := privateServicePath(a.InstructionsFile, false); err != nil || info.Size() > 32*1024 {
-				return c, errors.New("agent instructions must be a private regular file of at most 32 KiB")
-			}
-			body, err := os.ReadFile(a.InstructionsFile)
-			if err != nil || len(body) > 32*1024 || strings.ContainsRune(string(body), 0) {
-				return c, errors.New("agent instructions cannot be read as bounded text")
-			}
-			a.role = string(body)
+		if err := a.loadContextFiles(filepath.Dir(path)); err != nil {
+			return c, fmt.Errorf("agent %s: %w", a.ID, err)
 		}
 	}
 	if !seen[c.DefaultAgent] {
@@ -199,6 +193,12 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 	o := base
 	o.agentID, o.audienceID = a.ID, audience
 	o.hostInstructions = host.ChannelInstructions(a.role, group)
+	o.contextFiles = append([]assembly.ContextFile(nil), a.contextFiles...)
+	o.userProfile = ""
+	if audience == state.OwnerAudienceID && !group && a.UserFile != "" {
+		o.userProfile = a.userProfile
+		o.contextFiles = append(o.contextFiles, assembly.ContextFile{Name: "USER.md", Source: a.UserFile, Content: a.userProfile})
+	}
 	o.permissionMode = "bypassPermissions"
 	if a.Model != "" {
 		o.model = a.Model
@@ -314,6 +314,10 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	o, err := a.options(base, audience, message.ConversationType == "2", true)
 	if err != nil {
 		return nil, err
+	}
+	o.retrievalQuery = message.Text
+	for _, supplement := range message.Supplements {
+		o.retrievalQuery += "\n" + supplement.Text
 	}
 	if provider == state.ReplyTargetFeishuMeeting {
 		o.hostInstructions = host.MeetingChannelInstructions(a.role)

@@ -6,13 +6,39 @@ reference for prior evidence; `make install` is no longer a Make target.
 
 ## Unified configuration runtime
 
-The current make run default scans ROOT/config/channels.*.json and plugins.*.json.
+The current make run default scans ROOT/config/channels.*.json and
+datasource.plugins.*.json.
 See [the current configuration details](configuration-layout-detail.md) for the
 loader contract, bot/DWS optional branches, migration and live connection evidence.
 Use `python3 -B tools/service/migrate_config.py --root ABSOLUTE_PATH` only for the
 known stopped paired deployment; it refuses running locks, existing destinations
 and discovery configurations needing an explicit mapping. Failures after backup
 restore the old layout. The migration report retains database hashes and counts.
+
+### File-memory runtime, 2026-10-13
+
+Explicit `memory migrate` creates versioned documents/Skills and a private
+state/file-memory.json receipt for each stopped state home. `memory verify`
+checks authoritative publication and rebuilds stale or missing cache indexes.
+`host.json` may explicitly select `memory.backend` as `files`; startup rejects
+missing/invalid migration receipts. Selecting `sqlite` requires explicit rollback
+when a receipt exists, preserving file-era changes before switching.
+Commands, recovery boundaries and history comparison are in the
+[file-memory details](file-memory-design-detail.md#迁移命令与回退).
+
+The local DingTalk, Feishu and CLI state homes have been migrated with distinct
+sources and shared memory/cache roots. Both channel workers reconnected, and the
+workbench memory API returned 3 memories, 1 candidate and 2 channels. Old channel
+memory/revision/evidence and original derived tables remain identical to the
+stopped backup. The final isolated history receipt is
+`.agent-host/backups/file-memory-history-20261013-final/report.json`; cutover
+backup is `.agent-host/backups/file-memory-cutover-20261013`.
+
+The default Agent now uses user-maintained AGENTS/SOUL/IDENTITY through
+instructions_dir, preserving the prior CLAUDE.md role text. No owner USER was
+automatically bound. The 14 owner_notes source documents moved into their
+local-documents plugin snapshot with unchanged hashes and grants. Configuration
+remains runtime-read-only; generated context and native packages live in cache.
 
 The project-local sections below describe the prior layout and retained evidence.
 

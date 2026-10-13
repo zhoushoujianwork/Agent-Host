@@ -17,8 +17,8 @@ Examples in the video are illustrative; current support is listed below.
   @mentions, and optional Feishu meeting text.
 - **Work across projects:** route requests to registered workspaces and continue
   compatible conversations with their project context.
-- **Remember useful context:** reuse saved project facts and accepted execution
-  lessons; look up earlier Agent conversations when needed.
+- **Remember useful context:** keep facts as readable documents and observed
+  procedures as versioned Skills; recall relevant knowledge and Agent history.
 - **Read your sources:** search configured Dokki, Confluence and local Markdown
   documents on demand, keeping their source references.
 - **Operate managed email:** AI lists configured Gmail/163 accounts, selects an
@@ -28,8 +28,9 @@ Examples in the video are illustrative; current support is listed below.
 
 Claude Code is the current execution engine. Email requires your own account
 setup; 163 reads have been tested live. Gmail onboarding and real send/reply
-acceptance remain separate checks. Execution lessons currently require
-`memory accept`; Codex execution and meeting audio are planned.
+acceptance remain separate checks. Migrated file-memory runtimes automatically
+publish selected execution lessons; legacy SQLite runtimes retain `memory accept`.
+Codex execution and meeting audio are planned.
 
 ## Plugin and integration support
 
@@ -44,8 +45,9 @@ Built-in capabilities use MCP tools or channel adapters:
 
 Accounts and source credentials require local configuration. Arbitrary third-party
 MCP registration, a public plugin SDK and a plugin marketplace are not delivered.
-Claude-native skills/plugins belong to the selected harness profile; Host does
-not install or manage them. See [support details](README-detail.md#plugin-and-integration-boundaries).
+Host mounts a private Claude Skill package from the task's eligible learned
+procedures. It does not install arbitrary native plugins or rewrite handwritten
+skills. See [support details](README-detail.md#plugin-and-integration-boundaries).
 
 ## Start
 
@@ -69,6 +71,11 @@ make run
 Enabled channel services run together in the foreground, print their workbench URLs and logs
 to the terminal. Ctrl-C stops it. Private configuration, credentials and state
 live in the Git-ignored `.agent-host/` directory.
+
+The [file-memory guide](docs/file-memory-design.md) explains explicit migration
+and verification before enabling `host.json`'s `memory.backend: "files"`.
+Published documents and Skills live in `memory/`; rebuildable SQLite indexes and
+task context copies live in `cache/`. Operational state remains durable.
 
 For a terminal conversation, supply your configured Jev credentials and run:
 
@@ -107,8 +114,8 @@ lists controls. Saved Host memory remains available after `/new`.
 [Runtime setup](docs/service-install.md) · [Email setup](docs/email-plugin.md) ·
 [DingTalk workspace](docs/dingtalk-workspace.md) ·
 [Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·
-[File memory and Skill proposal](docs/file-memory-design.md) ·
-[Workspace layout proposal](docs/workspace-layout.md) ·
+[File memory and Skills](docs/file-memory-design.md) ·
+[Workspace layout](docs/workspace-layout.md) ·
 [Feedback](docs/feedback.md) · [Development](docs/development.md)
 
 ```sh

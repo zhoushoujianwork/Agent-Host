@@ -10,6 +10,7 @@ import threading
 import unittest
 import os
 import socketserver
+import subprocess
 from http.server import BaseHTTPRequestHandler
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -54,6 +55,174 @@ class MemoryTests(unittest.TestCase):
         conn.execute("INSERT INTO runs VALUES(?,?,?,?)", (run["id"], run["scope"], run["created_at"], json.dumps(run)))
         conn.commit()
         return conn
+
+    def file_backend(self, memories, generation=1):
+        """Represent a published file snapshot beside deliberately stale SQL."""
+        home = self.home.resolve()
+        memory_root = (self.root / ("memory-" + home.name)).resolve()
+        cache_root = (self.root / "cache" / home.name / "memory").resolve()
+        source_id = "channel:dingtalk"
+        source_key = hashlib.sha256(source_id.encode()).hexdigest()[:24]
+        source = memory_root / "sources" / source_key
+        source.mkdir(parents=True, exist_ok=True)
+
+        def write(path, payload):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            body = (json.dumps(payload, ensure_ascii=False) + "\n").encode() if isinstance(payload, dict) else payload
+            path.write_bytes(body)
+            path.chmod(0o600)
+            return hashlib.sha256(body).hexdigest()
+
+        write(source / "publish.lock", b"")
+        marker = {"version": 1, "memory_root": str(memory_root), "cache_root": str(cache_root),
+                  "source_id": source_id, "state_home": str(home)}
+        write(home / "file-memory.json", marker)
+        domains, entries, normalized = {}, [], []
+        for order, value in enumerate(memories, 1):
+            memory = {"agent_id": "default", "audience_id": "owner", "revision": 1, **value}
+            normalized.append(memory)
+            domain_id = hashlib.sha256(json.dumps([source_id, memory["scope"], memory["agent_id"], memory["audience_id"]], separators=(",", ":")).encode()).hexdigest()[:32]
+            domain = {"version": 1, "id": domain_id, "source_id": source_id, "state_home": str(home),
+                      "scope": memory["scope"], "agent_id": memory["agent_id"], "audience_id": memory["audience_id"]}
+            domains[domain_id] = domain
+            write(memory_root / "domains" / domain_id / "scope.json", domain)
+            base = memory_root / "domains" / domain_id / "entries" / memory["id"] / "revisions" / str(memory["revision"])
+            record_hash = write(base / "record.json", {"version": 1, "source_id": source_id,
+                                                      "state_home": str(home), "memory": memory})
+            content_hash = write(base / "content.md", (memory["text"] + "\n").encode())
+            entries.append({"id": memory["id"], "domain": domain_id, "directory": "entries",
+                            "current": memory["revision"], "order": order,
+                            "revisions": [{"revision": memory["revision"], "record_sha256": record_hash,
+                                           "content_sha256": content_hash}], "evidence_runs": []})
+        manifest = {"version": 1, "source_id": source_id, "state_home": str(home), "generation": generation,
+                    "domains": list(domains.values()), "entries": entries}
+        write(source / "current.json", manifest)
+        index = cache_root / source_key / "index.db"
+        self.write_file_index(index, normalized, generation)
+        return marker, manifest, index, normalized
+
+    @staticmethod
+    def write_file_index(index, memories, generation):
+        index.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(index)
+        conn.executescript("CREATE TABLE memories(id TEXT PRIMARY KEY,scope TEXT,payload TEXT);"
+                           "CREATE TABLE memory_annotations(memory_id TEXT PRIMARY KEY,payload TEXT);"
+                           "CREATE TABLE file_index_checkpoint(id INTEGER PRIMARY KEY,generation INTEGER);")
+        conn.execute("INSERT INTO file_index_checkpoint VALUES(1,?)", (generation,))
+        for memory in memories:
+            conn.execute("INSERT INTO memories VALUES(?,?,?)", (memory["id"], memory["scope"], json.dumps(memory)))
+            conn.execute("INSERT INTO memory_annotations VALUES(?,?)", (memory["id"], '{"version":"entity-topic-v1","objects":[],"topics":[]}'))
+        conn.commit()
+        conn.close()
+        index.chmod(0o600)
+
+    def test_file_memory_views_current_revision_instead_of_stale_state_db(self):
+        conn = self.database()
+        old = json.loads(conn.execute("SELECT payload FROM memories WHERE id='m-a'").fetchone()[0])
+        current = {**old, "revision": 2, "text": "The corrected project preference."}
+        marker, manifest, index, normalized = self.file_backend([current])
+        with patch.object(server.Catalog, "verify_file_memory", return_value={"generation": 1}):
+            result = memory_catalog(server.Catalog(self.home, None, "/project-a"))
+            self.assertEqual(result["database_total"], 1)
+            self.assertEqual(result["memories"][0]["memory"]["revision"], 2)
+            self.assertEqual(result["memories"][0]["memory"]["text"], current["text"])
+            self.assertIn("文件记忆", result["memories"][0]["source"]["name"])
+            record = server.Catalog(self.home, None).record("db:source-a")
+            self.assertEqual(record["memories"], normalized)
+        self.assertEqual(json.loads(conn.execute("SELECT payload FROM memories WHERE id='m-a'").fetchone()[0])["revision"], 1)
+        conn.close()
+
+    def test_file_memory_preserves_agent_audience_and_project_filters(self):
+        conn = self.database()
+        memories = [{"id": "owner-a", "scope": "/project-a", "text": "Owner private A", "status": "active"},
+                    {"id": "owner-b", "scope": "/project-b", "text": "Owner private B", "status": "active"},
+                    {"id": "group-a", "scope": "/project-a", "text": "Group knowledge", "status": "active",
+                     "agent_id": "helper", "audience_id": "group-a"}]
+        self.file_backend(memories)
+        with patch.object(server.Catalog, "verify_file_memory", return_value={"generation": 1}):
+            owner = memory_catalog(server.Catalog(self.home, None, "/project-a"))
+            group = memory_catalog(server.Catalog(self.home, None, "/project-a", agent="helper", audience="group-a"))
+            self.assertEqual([item["memory"]["id"] for item in owner["memories"]], ["owner-a"])
+            self.assertEqual([item["memory"]["id"] for item in group["memories"]], ["group-a"])
+        conn.close()
+
+    def test_empty_go_publication_null_arrays_work_in_multi_channel_catalog(self):
+        conn = self.database()
+        conn.close()
+        self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        populated_home = self.home
+        self.home = self.root / "empty-home"
+        conn = self.database()
+        conn.close()
+        marker, manifest, index, memories = self.file_backend([])
+        # This is Go's canonical JSON representation of nil empty slices.
+        manifest["domains"], manifest["entries"] = None, None
+        source_key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
+        (Path(marker["memory_root"]) / "sources" / source_key / "current.json").write_text(json.dumps(manifest))
+        with patch.object(server.Catalog, "verify_file_memory", return_value={"generation": 1}):
+            result = server.MultiCatalog([f"populated={populated_home}", f"empty={self.home}"]).memories()
+            self.assertEqual(result["database_total"], 1)
+            self.assertEqual([item["key"] for item in result["memories"]], ["populated:db:current"])
+            # Empty publication must not expose the stale SQL rows seeded above.
+            self.assertEqual(server.Catalog(self.home, None).memories()["database_total"], 0)
+        self.home = populated_home
+
+    def test_missing_file_cache_is_rebuilt_only_through_host_verification(self):
+        conn = self.database()
+        marker, manifest, index, memories = self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        index.unlink()
+
+        def verify():
+            self.write_file_index(index, memories, 1)
+            return {"generation": 1}
+
+        with patch.object(self.catalog, "verify_file_memory", side_effect=verify) as verifier:
+            self.assertEqual(memory_catalog(self.catalog)["database_total"], 1)
+            verifier.assert_called_once_with()
+        conn.close()
+
+    def test_file_cache_corruption_and_missing_source_fail_without_legacy_fallback(self):
+        for mutation in ("generation", "payload", "source", "missing_cache"):
+            with self.subTest(mutation=mutation):
+                home = self.home
+                self.home = self.root / mutation
+                catalog = server.Catalog(self.home, None)
+                conn = self.database()
+                marker, manifest, index, memories = self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+                if mutation in {"generation", "payload"}:
+                    cache = sqlite3.connect(index)
+                    if mutation == "generation":
+                        cache.execute("UPDATE file_index_checkpoint SET generation=0")
+                    else:
+                        cache.execute("UPDATE memories SET payload=?", (json.dumps({**memories[0], "text": "STALE CACHE"}),))
+                    cache.commit(); cache.close()
+                elif mutation == "source":
+                    entry = manifest["entries"][0]
+                    (Path(marker["memory_root"]) / "domains" / entry["domain"] / "entries" / entry["id"] / "revisions" / "1" / "content.md").unlink()
+                else:
+                    index.unlink()
+                with patch.object(catalog, "verify_file_memory", return_value={"generation": 1}):
+                    with self.assertRaises((ValueError, FileNotFoundError)):
+                        memory_catalog(catalog)
+                conn.close()
+                self.home = home
+
+    def test_file_memory_verifier_is_explicit_and_errors_are_visible(self):
+        conn = self.database()
+        self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        binary = self.root / "host"
+        binary.write_text("fixture"); binary.chmod(0o700)
+        catalog = server.Catalog(self.home, None, host_binary=binary)
+        completed = subprocess.CompletedProcess([], 0, b'{"generation":1}', b"")
+        with patch.object(server.subprocess, "run", return_value=completed) as invocation:
+            catalog.verify_file_memory()
+            self.assertEqual(invocation.call_args.args[0], [str(binary.resolve()), "memory", "verify", "--home", str(self.home.resolve())])
+        with patch.object(server.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, b"", b"document checksum mismatch")):
+            with self.assertRaisesRegex(ValueError, "document checksum mismatch"):
+                memory_catalog(catalog)
+        with self.assertRaisesRegex(ValueError, "provide --host-binary"):
+            memory_catalog(server.Catalog(self.home, None, host_binary=self.root / "missing-host"))
+        conn.close()
 
     def archive(self, name="native.json"):
         path = Path(__file__).parent / "fixtures/attributed-retrieval.json"

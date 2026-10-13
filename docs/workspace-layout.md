@@ -1,130 +1,71 @@
 # Host 目录与 workspace 文件约定
 
-状态：2026-10-13 设计提案，尚未创建运行目录或更改当前服务。
-沿用现有名称 `.agent-host/`，不新增 `.agents-host/`。
-与[文件记忆方案](file-memory-design.md)配套；实现约定见[详细稿](workspace-layout-detail.md)。
+状态：2026-10-13 本期已实现并完成本地迁移。
+配套[文件记忆方案](file-memory-design.md)；实现细节见[详细稿](workspace-layout-detail.md)。
+沿用名称 `.agent-host/`。
 
-## 目标与使用方式
+## 配置、学习结果与任务副本
 
-让用户一眼找到配置、Agent 指令、用户偏好、学习后的 Skill 和任务产物。
-配置定义启用、角色与授权；记忆保存学习结果；workspace 提供当前任务实际需要的
-上下文。私人资料按用户和使用范围装配，不因为同一个 Agent 进入群聊就一起带入。
-
-`config/` 只保存用户维护的输入，Host 运行时只读。自动生成的用户偏好与 Skill
-写入 `memory/`；资料快照写入所属数据源目录；索引与上下文视图写入 `cache/`。
-新布局取消顶层 `knowledge/`，本地原文继续由数据源配置引用，不要求搬动。
-
-Agent 由用户定义，默认提供 `default`。用户可以复制模板建立 `ops`（运维助手）
-等角色，在 `agents.json` 中注册并选择；复制目录本身不自动启用 Agent。
-本方案恢复任务视图放 `cache/workspaces/` 的布局，不增加 `generated/` 根目录。
-
-参考 [OpenClaw 的 workspace 文件约定](https://docs.openclaw.ai/concepts/agent-workspace)，
-采用 `AGENTS.md`、`SOUL.md`、`IDENTITY.md`、`USER.md` 和 `MEMORY.md` 的可读形式。
-其当前工具说明归入 `AGENTS.md` 的 Tools 章节，本方案沿用该方式。
-加载规则由 Host 实现并适配原生引擎，不假设原生 CLI 会自动识别这些文件。
-
-## 根目录
+用户定义角色和配置，Host 学习事实与处理方法；每次任务再装配需要的内容。
+`config/` 运行期只读，生成内容进入 `memory/` 或 `cache/`，外部资料归数据源。
 
 ```text
 .agent-host/
-├── config/                          # 用户维护的设置与指令
-│   ├── host.json
-│   ├── agents.json
-│   ├── channels.dingtalk.json
-│   ├── channels.feishu.json
-│   ├── datasource.plugins.*.json
-│   ├── agents/default/              # 用户维护的默认助手
-│   │   ├── AGENTS.md                 # 工作规范与工具使用约定
-│   │   ├── SOUL.md                   # 角色、风格与行为边界
-│   │   └── IDENTITY.md               # 名称与展示身份
-│   ├── agents/ops/                  # 示例：复制运维模板后创建，同样的文件结构
-│   ├── users/<user-id>/USER.md        # 用户主动维护的偏好与背景
-│   ├── skills/<skill-name>/SKILL.md   # 用户配置的本地 Skill
-│   └── credentials/                 # 凭证引用，不能进入上下文视图
-├── memory/domains/<domain-id>/       # 按现有范围保存学习结果
-│   ├── entries/                     # 事实、学习后的偏好、决策及版本
-│   ├── skills/                      # 自动沉淀的 Skill 及版本
-│   ├── policies/                    # 禁用、恢复、纠正记录
-│   ├── current.json                 # 当前生效版本清单
-│   ├── scope.json                   # 范围映射
-│   └── drafts/                      # 待校验修改
-├── channels/<channel>/
-│   ├── state/                       # 任务、会话、证据与投递状态
-│   ├── workspace/                   # 当前渠道默认任务目录
-│   ├── native/                      # 原生引擎会话与配置状态
-│   ├── logs/
-│   └── dws/                         # 仅钉钉启用 DWS 时使用
-├── datasource/plugins/<plugin>/     # 数据源插件运行数据
-│   ├── sources/<source-id>/         # 来源实例的持久数据与快照（按需创建）
-│   └── ...                         # 插件自己的令牌、账本等
+├── config/
+│   ├── host.json、agents.json、channels.*.json、datasource.plugins.*.json
+│   ├── agents/default/              # 用户维护 AGENTS、SOUL、IDENTITY
+│   ├── agents/ops/                  # 用户复制模板后注册的运维角色
+│   ├── users/owner/USER.md           # 显式绑定的私人资料，可选
+│   ├── skills/                      # 手写 Skill 保留位置；新挂载入口待实现
+│   └── credentials/
+├── memory/
+│   ├── sources/<source-key>/         # current 发布权威、发布日志和应用回执
+│   └── domains/<domain-id>/          # 范围信息、查看投影、entries 和 skills
 ├── cache/
-│   ├── memory/                      # 可重建检索索引
-│   └── workspaces/<context-id>/      # 本次任务的上下文文件与原生 Skill 包
-├── cli-state/                       # 终端运行状态
-└── backups/                         # 停机迁移与恢复备份
+│   ├── memory/<source-key>/index.db  # 可重建 SQLite 检索索引
+│   └── workspaces/<run-id>/          # 本次上下文与 native-skills 包
+├── channels/<channel>/              # state、workspace、native、logs；钉钉可含 dws
+├── datasource/plugins/<plugin>/     # 插件运行数据及来源持久快照
+├── cli-state/
+└── backups/
 ```
 
-**沉淀的 Skill 放在 `memory/domains/<domain-id>/skills/`。**
-具体正文在 `<skill-id>/revisions/<revision>/SKILL.md`，Host 展示名称、来源和当前版本。
-用户自己配置的 Skill 放 `config/skills/`；最终给原生引擎使用的包在 `cache/workspaces/`。
-三者分别是学习结果、配置输入和可重建装配产物。
+**学习后的 Skill 放在 `memory/domains/<domain-id>/skills/<id>/revisions/<revision>/SKILL.md`。**
+正式事实、偏好和决策放同域的 `entries/`。当前版本由来源发布清单决定，
+域的 `current.json` 只是便于查看的投影。禁用与纠正保留为历史版本。
 
-## 默认助手与角色模板
+顶层 `knowledge/` 已退出本地运行布局。owner_notes 的 14 份原文已迁入
+local-documents 插件快照，摘要及原授权保持一致。数据源读取不会自动把资料变成记忆。
 
-仓库提供[默认模板](../config/agent-templates/default/AGENTS.md)和
-[运维模板](../config/agent-templates/operations/AGENTS.md)，包含 `AGENTS.md`、
-`SOUL.md`、`IDENTITY.md`。用户显式复制后修改内容，模板后续更新不覆盖已修改的原文。
-详细使用方式见[模板说明](../config/agent-templates/README.md)。
+## 默认助手与运维模板
 
-初始化时默认使用 `default`，没有自定义需求无需创建其他角色。需要运维助手时，
-复制运维模板为 `config/agents/ops/`，在 `agents.json` 注册 `ops`、选择项目与能力，
-再设置为默认角色或绑定目标会话，重启生效。首期不通过聊天自动创建或切换角色。
+默认角色是 `default`。用户可以复制[运维模板](../config/agent-templates/README.md)
+为 `config/agents/ops/`，修改后在 `agents.json` 注册；复制目录本身不启用角色。
 
-用户定义“这个助手是谁、如何工作”；Host 自动学习“处理问题的方法与事实”。
-角色正文由用户维护，自动学习写入 `memory/`，每次任务的装配副本写入 `cache/`。
-用户明确要求 AI 修改角色时，可以作为一次配置管理任务执行；它不属于自动沉淀。
+`instructions_dir: "agents/default"` 显式加载 AGENTS/SOUL/IDENTITY。
+可选 `user_file: "users/owner/USER.md"` 只向可信 owner 的私人任务提供资料，
+群聊和公开会议排除 USER。配置修改后重启生效；运行期学习不修改这些原文。
 
-外部资料由数据源插件提供；其留存快照放
-`datasource/plugins/<plugin>/sources/<source-id>/snapshots/`。
-快照是有来源的持久资料，不能像缓存一样删除。已部署的旧 `knowledge/` 在实施时
-核对来源与授权后迁移；本次设计不搬动实际文件。
-
-项目任务继续使用项目真实目录。渠道默认 workspace 不存账号状态或一整套私人记忆；
-Host 上下文视图独立存放，不把 `USER.md` 或 Skill 复制进项目代码库。
+本地默认角色已保留原 CLAUDE.md 全文并完成多文件配置迁移，没有自动建立私人 USER。
+模板后续更新不会覆盖用户已经修改的配置。
 
 ## workspace 中的文件
 
-| 文件 | 含义与加载方式 |
+任务仍在注册项目真实目录或渠道默认 workspace 执行。
+Host 不把配置文件和生成 Skill 写进项目代码库。
+
+| 缓存视图中的文件 | 内容 |
 | --- | --- |
-| `AGENTS.md` | 配置选中的 Agent 工作规范，包含 Tools 章节；每次任务按版本装配 |
-| `SOUL.md` | Agent 角色与回复风格，可选；不会被任务经验自动改写 |
-| `IDENTITY.md` | 展示身份，可选；真实平台身份与授权由配置和渠道决定 |
-| `USER.md` | 当前允许使用的用户资料与偏好；首期只在 owner 私人任务加载 |
-| `MEMORY.md` | 此任务召回的事实和决策摘要，带来源与版本；不是全量记忆库 |
-| `skills/` | 当前任务有权使用的 Skill；先提供说明，再按需加载正文 |
-| `manifest.json` | Host 保存装配来源、范围和版本，供检查与恢复 |
+| AGENTS/SOUL/IDENTITY | 所选角色的配置副本 |
+| USER.md | 当前私人任务的显式用户资料和适用学习偏好 |
+| MEMORY.md | 当前任务召回的知识、版本和来源 |
+| manifest.json | 范围、实际 cwd、输入文件摘要与记忆引用 |
+| native-skills/skills/<name>/SKILL.md | 当前允许的原生 Skill 副本 |
 
-`config/users/<user-id>/USER.md` 是用户维护的原文，自动学到的偏好另存记忆条目。
-workspace 的 `USER.md` 是两者经过筛选后的视图。当前请求优先于默认偏好，
-用户维护的明确设置优先于学习到的偏好；冲突有记录，旧偏好不能悄悄覆盖新设置。
-首期不在群聊装配个人 USER 文件，也不从显示名称自动关联不同平台的用户。
+这些文件是本次任务快照，不是另一套正式记忆。当前请求可覆盖普通回复默认值；
+显式用户配置优先于冲突的学习偏好，任何文档都不能授予工具或扩大资料范围。
+相同 Agent 进入群聊，不会携带 owner 私人 USER、MEMORY 或 Skill。
 
-workspace 的 `MEMORY.md`、`USER.md` 和 `skills/` 每次任务由 Host 生成，
-用户通过原文或 Host 的记忆修改入口维护内容。Host 不把这些生成文件写回 `config/`。
-缓存修改不能成为新记忆或配置。
-视图中出现某份文件不代表拥有额外工具或操作权限。
-
-## 本期取舍与实施顺序
-
-先实现目录、指令与 owner `USER.md` 配置，再结合文件记忆后端生成任务视图，
-最后接入 Skill 原生装配和版本变化后的会话刷新。全部复用文件记忆方案的迁移门槛。
-模板文件已提供；多文件角色加载与初始化入口尚未实现。
-现有 `config/CLAUDE.md` 与 Agent 的 `instructions_file` 显式迁移，不自动重复加载。
-
-首期不加载 `BOOT.md`、`BOOTSTRAP.md` 或 `HEARTBEAT.md` 触发自动任务。
-不新增每日自动日记；需要日记时再定义独立、有来源的记录机制。
-已有项目与原生引擎自己的指令和手写 Skill 保留各自机制。
-
-交付时验证：owner 私聊能使用偏好；群聊没有私人 USER 内容；项目文件未被污染；
-Skill 与事实更新后下一次任务使用新版本；删除 cache 能重建，删除 memory 则属于
-知识数据丢失，必须用备份恢复。本设计阶段仅修改文档。
+角色、用户资料或正式记忆变化影响下一次任务的会话选择；活动任务保留其输入快照。
+缓存可重建，清理时应跳过活动任务。尚未提供自动缓存清理器、记忆编辑草稿导入、
+手写 config/skills 新挂载入口或自动日记。

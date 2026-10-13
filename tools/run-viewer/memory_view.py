@@ -36,17 +36,21 @@ def object_payload(raw):
 
 def database_rows(catalog):
     if not catalog.database.exists():
+        if catalog.file_memory_marker() is not None:
+            raise ValueError("file memory requires its preserved operational state.db")
         return [], [], 0, 0, catalog.filter_context()
-    conn = catalog.connection()
+    conn = catalog.memory_connection()
     try:
         version = catalog.schema_version(conn)
         context = catalog.filter_context(conn)
         where, args = catalog.memory_filter(context, version)
-        total = conn.execute("SELECT count(*) FROM memories m" + where, args).fetchone()[0]
+        memories = catalog.memory_table(conn)
+        annotations = catalog.memory_table(conn, "memory_annotations")
+        total = conn.execute("SELECT count(*) FROM " + memories + " m" + where, args).fetchone()[0]
         annotation = "a.payload" if version >= 3 else "NULL"
-        join = " LEFT JOIN memory_annotations a ON a.memory_id=m.id" if version >= 3 else ""
+        join = " LEFT JOIN " + annotations + " a ON a.memory_id=m.id" if version >= 3 else ""
         rows = []
-        for raw, derived in conn.execute("SELECT m.payload," + annotation + " FROM memories m" + join + where + " ORDER BY m.rowid DESC LIMIT ?", args + (MEMORY_LIMIT,)):
+        for raw, derived in conn.execute("SELECT m.payload," + annotation + " FROM " + memories + " m" + join + where + " ORDER BY m.rowid DESC LIMIT ?", args + (MEMORY_LIMIT,)):
             memory = object_payload(raw)
             if version >= 3 and derived is None:
                 raise ValueError(f"missing stored annotation for memory {memory.get('id')}")
@@ -102,7 +106,7 @@ def decision_summary(record):
 
 def memory_catalog(catalog):
     database, db_records, db_total, run_total, filter_info = database_rows(catalog)
-    db_source = {"id": "db", "kind": "database", "name": "本机 state.db"}
+    db_source = catalog.memory_source()
     groups = {}
     if database or db_records:
         groups["db"] = {"source": db_source, "records": db_records, "rows": database}

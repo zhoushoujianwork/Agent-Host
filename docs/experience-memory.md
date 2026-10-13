@@ -1,101 +1,46 @@
-# Memory consolidation and execution experience
+# 记忆沉淀与执行经验
 
-The [file memory and Skill design](file-memory-design.md) now owns the target
-storage and implementation sequence. Automatic selection, source validation,
-independent retry and blacklist policy below carry forward; the SQLite-first
-implementation order is superseded. Current database behavior and historical
-validation remain unchanged.
+状态：2026-10-13 文件后端已实现自动经验发布、禁用准入检查和原生 Skill 装配。
+[文件记忆方案](file-memory-design.md)定义正式存储与迁移；
+[详细稿](experience-memory-detail.md)保留处理协议、旧人工审核基线及验证范围。
 
-Status: revised architecture decision, 2026-10-12. **Jev-selected memory becomes
-effective automatically; people disable unsuitable memory afterward through a
-blacklist.** There is no required human acceptance step in the target workflow.
-The current implementation automatically saves eligible user statements but
-still holds execution experience for `memory accept`. Automatic experience
-publication and protection against re-admitting blacklisted lessons remain to
-be implemented. The 2026-10-10 reviewed loop remains historical validation.
-The [local memory workbench](../tools/run-viewer/README.md#memory-workspace) now
-supports explicit publication/rejection of existing drafts and disabling saved
-memory while the channel is running. This does not complete automatic publication.
-See [implementation, transition and validation details](experience-memory-detail.md).
+## 使用方式
 
-## Goal and usage
+用户无需逐条批准正常沉淀。Host 从有依据的用户陈述和执行证据中选择可复用内容，
+保存来源、适用范围与版本，后续任务按需召回。用户可查看证据、禁用或显式恢复。
 
-Carry useful knowledge and experience into later tasks without making the user
-approve each memory. The user can inspect a saved lesson and its evidence, then
-disable it if it is wrong, obsolete or unsuitable.
+执行完成、业务验收与记忆发布是不同结果。某个工具报告成功只证明该工具所报告的
+观察，不能提高为独立事实核验或替用户授予权限。
 
-The host keeps three layers: original evidence, extracted proposals and durable
-memory. Original requests and tool results remain inspectable. Proposals help
-the system decide what to keep; they are processing records, not a human inbox.
-Only effective, applicable memory enters a task's context.
+## 沉淀流程
 
-Procedural lessons keep the successful path in ordered steps and observed
-failed approaches in a separate avoidance list. The workbench can reorganize
-an adopted lesson from its original tool evidence, saving a new revision after
-Jev screening while preserving the original draft and prior versions.
-
-## Core approach
-
-```mermaid
-flowchart LR
-    A[User statement or recorded tool results] --> B[Source-linked proposal]
-    B --> C[Jev selects useful supported memory and compares existing knowledge]
-    C -->|Selected and validated| D[Effective scoped memory]
-    C -->|Not selected or unresolved| E[Retained decision and evidence]
-    D --> F[Later tasks recall applicable memory]
-    D -->|User disables| G[Blacklist with reason and history]
-    G -->|Blocks recall and equivalent re-admission| C
-```
-
-| Source | How it becomes memory |
+| 来源 | 当前处理方式 |
 | --- | --- |
-| User statement | Jev selects the attributed preference, fact or decision; the host saves the source statement automatically. |
-| Execution experience | A separate tool-free model extracts conditions and steps from recorded tool results; Jev screens support and usefulness, compares existing memory, and the host publishes automatically. |
-| Selected everyday conversations | Future source-specific extraction keeps participant reports and original citations; selected lessons follow the same automatic publication and blacklist policy. |
+| 用户陈述 | Jev 选择归属明确的偏好、事实或决策；Host 自动保存 |
+| 文件后端中的执行经验 | 独立无工具提炼、证据筛选、Jev 比较、Host 校验后自动发布 |
+| 旧 SQLite 后端中的经验 | 保留 `memory accept` 人工接受流程 |
+| 日常对话与外部资料 | 继续各自来源流程，不因为读取成功就自动转为记忆 |
 
-The host validates evidence links, project/Agent/audience scope and current
-memory revisions before committing. Equivalent eligible experience adds
-evidence to its existing record. Unresolved conflicts remain excluded with an
-explanation; they do not create a mandatory approval queue. Jev selection makes
-memory available for reuse, while its original evidence strength stays visible.
-It does not certify business success or grant execution permissions.
+处理方法成为正式 Skill，事实与偏好成为知识文件。运行库仍保留原请求、
+工具结果、候选与处理回执；检索 SQLite 只是文件后端的可重建索引。
 
-## Blacklist and later corrections
+## 禁用、纠正与重试
 
-A blacklist entry disables a memory within its original scope. Keep its ID,
-reason, versions and supporting evidence; exclude it from search and future
-context assembly. A later extraction of the same lesson must not make it
-effective again under a new ID or different wording. Restoration requires an
-explicit user action. A distinct corrected lesson can be saved with links to
-the old record and its new evidence.
+`memory invalidate --reason REASON ID` 排除后续召回与 Skill 装配，并保留原因与版本。
+禁用条目还参与新内容准入检查，等价经验不能仅换一个 ID 自动恢复。
+显式 `memory restore --reason REASON ID` 才恢复符合条件的记录。
 
-Reuse the existing `memory invalidate --reason 'REASON' MEMORY_ID` operation as
-the local disable entry point. Expiration and detected source withdrawal also
-exclude memory from recall, with their own reasons. The planned policy applies
-to both user statements and execution experience.
+比较使用有界候选，而非全量模型输入；精确重复和版本检查在发布时再次执行。
+改写等价判断仍有质量边界，候选不存在不证明全域不存在重复。
+禁用比较超预算、来源不完整或发布失败都明确记录，不能伪装成成功。
 
-Run a task normally, then inspect the memory receipt or saved record as needed.
-The target receipt reports saved, merged, excluded or failed, with evidence
-links. It does not ask the user to accept a selected lesson. A memory-processing
-failure remains visible and can be retried from saved evidence without
-repeating the business task.
+`run retry-memory` 和 `run retry-experience` 从既有证据恢复处理，
+不重新执行原业务任务。直接编辑已发布正文会触发摘要错误；
+可编辑草稿导入流程尚未交付。
 
-## Scope and implementation order
+## 验证范围
 
-1. Move experience comparison and publication into post-run finalization,
-   replacing the required `memory accept` step. Keep source inspection and
-   independent retry.
-2. Enforce the blacklist at admission, deduplication, search and context assembly
-   for both memory paths. Verify that an equivalent later proposal stays disabled.
-3. Validate automatic save, fresh-task reuse, disable and retry as one complete
-   loop. Keep historical manual-review results separate from this new acceptance.
-
-Start with the current local SQLite store, bounded extraction and scoped
-retrieval. Everyday-conversation learning remains a separate future extension
-in the [source design](knowledge-sources.md). General extraction accuracy,
-memory benefit and performance at scale remain unmeasured.
-
-The [personal-assistant proposal](personal-assistant.md) applies this policy to
-future DWS-derived knowledge. It retains general memory types, keeps current
-matters and recommendations separate, and proposes an explicit owner-private
-domain without broadening existing project memory scope.
+历史数据迁移、缓存重建、完整回退和一个真实 Claude 历史 Skill 调用已通过。
+自动发布、范围隔离、禁用、快照变化和重试由针对性测试覆盖。
+2026-10-10 的人工接受循环继续作为历史证据，不能代替自动学习的普遍质量验证。
+日常对话自动学习、多万条性能、向量检索及一般任务收益仍未验收。

@@ -122,6 +122,14 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 	if req.ToolsDisabled && len(req.MCPServers) > 0 {
 		return nil, errors.New("Claude MCP servers conflict with tool-free execution")
 	}
+	if req.SkillPluginDir != "" || req.SkillPluginDigest != "" {
+		if req.ToolsDisabled || req.Extraction {
+			return nil, errors.New("Claude native skills conflict with tool-free execution or extraction")
+		}
+		if req.SkillPluginDir == "" || req.SkillPluginDigest == "" || !filepath.IsAbs(req.SkillPluginDir) || filepath.Clean(req.SkillPluginDir) != req.SkillPluginDir || strings.ContainsRune(req.SkillPluginDir, '\x00') {
+			return nil, errors.New("Claude native skills require a clean absolute package path and expected digest")
+		}
+	}
 	mcpConfig, err := nativeMCPConfig(req.MCPServers)
 	if err != nil {
 		return nil, err
@@ -155,6 +163,9 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 	}
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
+	}
+	if req.SkillPluginDir != "" {
+		args = append(args, "--plugin-dir", req.SkillPluginDir)
 	}
 	sessionFlag := "--session-id"
 	if req.Resume {
@@ -273,6 +284,23 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	if err := validateRunDirectories(req.Workspace, req.AdditionalDirectories); err != nil {
 		result.Status, result.Error = "failed", err.Error()
 		return result, err
+	}
+	if req.SkillPluginDir != "" {
+		manifest, err := validateSkillPlugin(req.SkillPluginDir, req.SkillPluginDigest)
+		if err == nil {
+			err = a.supportsSkillPlugin(ctx)
+		}
+		if err != nil {
+			result.Status, result.Error = "failed", err.Error()
+			return result, err
+		}
+		if emit != nil {
+			raw, _ := json.Marshal(manifest)
+			if err := emit(harness.Observation{Type: "skills_provided", Message: "provided task-scoped native skill package", Raw: raw}); err != nil {
+				result.Status, result.Error = "failed", err.Error()
+				return result, err
+			}
+		}
 	}
 	if !req.Extraction {
 		var sections []string

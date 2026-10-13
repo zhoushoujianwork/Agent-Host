@@ -1,8 +1,10 @@
 # Memory consolidation and execution experience details
 
-Status: the manual-review implementation passed synthetic live and automated
-checks on 2026-10-10. The revised automatic-publication policy below is planned,
-not a claim about the current binary. The
+Status: automatic experience publication and bounded blacklist admission checks
+are implemented for migrated file-memory runtimes on 2026-10-13. Legacy SQLite
+runtimes retain manual acceptance. The 2026-10-10 reviewed loop remains historical
+validation. File publication, recovery and current receipts are described in the
+[file-memory details](file-memory-design-detail.md). The
 [main design](experience-memory.md) governs scope and the user workflow. The
 [earlier MVP details](mvp-validation-detail.md) describe the underlying event,
 Claude execution, Jev transport, and user-statement contracts. This document
@@ -13,8 +15,9 @@ extends those contracts for execution experience.
 The required human acceptance gate is removed from the target architecture.
 Jev admission, relation decisions and Host validation determine publication.
 Human inspection remains optional; an explicit disable controls subsequent use.
-The remaining sections document the delivered manual-review implementation and
-its historical validation until the new path is implemented.
+The remaining legacy transaction/protocol sections document the manual-review
+baseline and historical validation. File-memory tasks now reuse those validation
+boundaries with automatic post-run comparison/publication and explicit recovery.
 
 The smallest transition reuses `finalizeExperience`, `Judge.Assess`,
 `Judge.Compare` and the transactional publication rules currently reached through

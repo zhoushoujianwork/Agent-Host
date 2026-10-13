@@ -107,7 +107,7 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 }
 
 func (h *Host) finishCandidates(ctx context.Context, j *journal, candidates []state.Candidate, audit json.RawMessage) error {
-	err := j.phase(ctx, "candidates", "memory.sqlite", "", func(ctx context.Context) error {
+	err := j.phase(ctx, "candidates", h.memoryComponent(), "", func(ctx context.Context) error {
 		if err := h.Store.SaveCandidates(ctx, j.run.ID, candidates, audit); err != nil {
 			return err
 		}
@@ -115,10 +115,21 @@ func (h *Host) finishCandidates(ctx context.Context, j *journal, candidates []st
 		for _, c := range candidates {
 			ids = append(ids, c.ID)
 		}
-		return j.emit(event.Event{Type: "candidates.saved", Phase: "candidates", Component: "memory.sqlite", Status: "completed", Message: fmt.Sprintf("%d candidates await review; pending candidates are excluded from recall", len(candidates)), Data: map[string]any{"candidate_ids": ids}})
+		message := fmt.Sprintf("%d candidates await review; pending candidates are excluded from recall", len(candidates))
+		if h.Store.FileMemoryEnabled() {
+			message = fmt.Sprintf("%d supported candidates saved for automatic comparison and publication", len(candidates))
+		}
+		return j.emit(event.Event{Type: "candidates.saved", Phase: "candidates", Component: h.memoryComponent(), Status: "completed", Message: message, Data: map[string]any{"candidate_ids": ids}})
 	})
 	if err != nil {
 		return h.experienceFailure(j, err)
+	}
+	if h.Store.FileMemoryEnabled() {
+		for _, candidate := range candidates {
+			if _, err := h.acceptExperience(ctx, candidate.ID, "Automatically selected from recorded execution evidence", nil, true); err != nil {
+				return h.experienceFailure(j, err)
+			}
+		}
 	}
 	return nil
 }
@@ -132,6 +143,9 @@ func (h *Host) experienceFailure(j *journal, cause error) error {
 	}
 	if r.ExperienceStatus == "pending" || r.ExperienceStatus == "failed" {
 		return errors.Join(cause, h.Store.ExperienceFailure(ctx, r.ID, cause.Error()))
+	}
+	if h.Store.FileMemoryEnabled() && r.ExperienceStatus == "review_pending" {
+		return errors.Join(cause, h.Store.ExperiencePublicationFailure(ctx, r.ID, cause.Error()))
 	}
 	return cause
 }
@@ -151,6 +165,19 @@ func (h *Host) RetryExperience(ctx context.Context, id string) (state.Run, error
 	if r.MemoryStatus != "saved" && r.MemoryStatus != "unchanged" {
 		return r, fmt.Errorf("source user memory is %s; finish retry-memory first", r.MemoryStatus)
 	}
+	if h.Store.FileMemoryEnabled() && r.ExecutionStatus == "completed" && r.ExperienceStatus == "review_pending" {
+		j := &journal{h: h, run: r, start: time.Now()}
+		candidates, err := h.Store.Candidates(ctx, r.Scope, r.ID, "pending")
+		if err != nil {
+			return r, err
+		}
+		for _, c := range candidates {
+			if _, err := h.acceptExperience(ctx, c.ID, "Automatically selected; recovered publication", nil, true); err != nil {
+				return h.receipt(j, h.experienceFailure(j, err))
+			}
+		}
+		return h.receipt(j, nil)
+	}
 	if r.ExecutionStatus != "completed" || (r.ExperienceStatus != "pending" && r.ExperienceStatus != "failed") {
 		return r, fmt.Errorf("run is not eligible for experience retry: execution=%s experience=%s", r.ExecutionStatus, r.ExperienceStatus)
 	}
@@ -162,6 +189,10 @@ func (h *Host) RetryExperience(ctx context.Context, id string) (state.Run, error
 // AcceptExperience only publishes the exact previously reviewed candidate.
 // Jev checks current relationships; no generation or business execution runs.
 func (h *Host) AcceptExperience(ctx context.Context, id, note string, expires *time.Time) (state.Memory, error) {
+	return h.acceptExperience(ctx, id, note, expires, false)
+}
+
+func (h *Host) acceptExperience(ctx context.Context, id, note string, expires *time.Time, automatic bool) (state.Memory, error) {
 	h = h.partitioned()
 	if expires != nil && !expires.After(time.Now()) {
 		return state.Memory{}, errors.New("memory expiration must be in the future")
@@ -186,9 +217,17 @@ func (h *Host) AcceptExperience(ctx context.Context, id, note string, expires *t
 	j := &journal{h: h, run: r, start: time.Now()}
 	var relation experience.Relations
 	var existing []state.Memory
+	var disabled map[string]bool
+	var generation string
+	if h.Store.FileMemoryEnabled() {
+		generation, err = h.Store.MemoryFingerprint(ctx, []string{c.Scope})
+		if err != nil {
+			return state.Memory{}, err
+		}
+	}
 	err = j.phase(ctx, "review", "memory.jev", h.Config.DecisionModel, func(ctx context.Context) error {
 		var err error
-		existing, err = h.Store.Memories(ctx, c.Scope)
+		existing, disabled, err = h.comparisonMemories(ctx, c.Scope, state.ExperienceText(c.Draft))
 		if err != nil {
 			return err
 		}
@@ -202,13 +241,26 @@ func (h *Host) AcceptExperience(ctx context.Context, id, note string, expires *t
 	if err != nil {
 		return state.Memory{}, err
 	}
+	for _, id := range append(append([]string(nil), relation.ConflictIDs...), relation.DuplicateIDs...) {
+		if disabled[id] {
+			if !automatic {
+				return state.Memory{}, errors.New("experience relates to disabled knowledge; explicit restoration or correction is required")
+			}
+			if err := h.Store.RejectCandidate(ctx, c.ID, "Excluded by disabled or unresolved knowledge relation"); err != nil {
+				return state.Memory{}, err
+			}
+			return state.Memory{}, j.emit(event.Event{Type: "candidate.excluded", Phase: "publish", Component: h.memoryComponent(), Status: "completed", Message: "disabled or unresolved lesson was not republished", Data: map[string]any{"candidate_id": c.ID, "excluded_memory_id": id, "relations": relation}})
+		}
+	}
 	if len(relation.ConflictIDs) > 0 {
 		relation.ConflictIDs = append(relation.ConflictIDs, relation.DuplicateIDs...)
 		relation.DuplicateIDs = nil
 	}
 	revisions := make(map[string]int, len(existing))
 	for _, m := range existing {
-		revisions[m.ID] = m.Revision
+		if !disabled[m.ID] {
+			revisions[m.ID] = m.Revision
+		}
 	}
 	audit, err := json.Marshal(relation)
 	if err != nil {
@@ -218,13 +270,13 @@ func (h *Host) AcceptExperience(ctx context.Context, id, note string, expires *t
 		note = "Accepted through local CLI"
 	}
 	var m state.Memory
-	err = j.phase(ctx, "publish", "memory.sqlite", "", func(ctx context.Context) error {
+	err = j.phase(ctx, "publish", h.memoryComponent(), "", func(ctx context.Context) error {
 		var err error
-		m, err = h.Store.AcceptCandidate(ctx, c.ID, state.CandidateAcceptance{MemoryID: ID(), Note: note, ExpiresAt: expires, ConflictIDs: relation.ConflictIDs, DuplicateIDs: relation.DuplicateIDs, ExpectedRevisions: revisions, Decision: audit})
+		m, err = h.Store.AcceptCandidate(ctx, c.ID, state.CandidateAcceptance{MemoryID: ID(), Note: note, ExpiresAt: expires, ConflictIDs: relation.ConflictIDs, DuplicateIDs: relation.DuplicateIDs, ExpectedRevisions: revisions, ExpectedGeneration: generation, Decision: audit})
 		if err != nil {
 			return err
 		}
-		return j.emit(event.Event{Type: "candidate.accepted", Phase: "publish", Component: "memory.sqlite", Status: "completed", Message: fmt.Sprintf("candidate=%s memory=%s status=%s", c.ID, m.ID, m.Status), Data: map[string]any{"candidate_id": c.ID, "memory": m}})
+		return j.emit(event.Event{Type: "candidate.accepted", Phase: "publish", Component: h.memoryComponent(), Status: "completed", Message: fmt.Sprintf("candidate=%s memory=%s status=%s", c.ID, m.ID, m.Status), Data: map[string]any{"candidate_id": c.ID, "memory": m}})
 	})
 	return m, err
 }

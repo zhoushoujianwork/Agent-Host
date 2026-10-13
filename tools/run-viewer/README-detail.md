@@ -19,8 +19,9 @@ path and its Run ID, so identical IDs in distinct sources are not conflated.
 No request can select an arbitrary file or change the configured source paths.
 
 SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
-request. No host startup, recovery, migrations, native process, or model API is
-invoked by reads. Memory actions delegate to the existing running Host and may
+request. Legacy reads invoke no Host process. A file-memory backend uses the
+explicit local Host verifier to validate publication and rebuild derived cache;
+it starts no business task, native harness, or model call. Memory actions delegate to the existing running Host and may
 invoke Jev relationship comparison before publication. Schema versions 1–14
 are supported; v1 has no candidate table.
 The additive v3 retrieval indexes, v4 channel tables and v5/v6 reaction outbox do not change the
@@ -29,6 +30,28 @@ viewer never reads channel reply capabilities or the channel inbox.
 An unsupported version or malformed existing source returns an explicit error.
 A missing database is an empty source, and its directory is not created.
 Concurrent Go-host updates appear on a subsequent refresh.
+
+## File-memory projections
+
+`state/file-memory.json` selects the published file backend. The configured
+`--host-binary` runs `memory verify --home STATE_HOME` with a bounded timeout;
+managed startup supplies its running executable. A failed or unavailable verifier
+is an explicit read error. Missing index files are rebuilt by Host, with no Python
+memory publication or fallback to historical operational memory tables.
+
+After verification the viewer holds a shared `publish.lock`, attaches the derived
+index read-only as `published_memory`, and checks its checkpoint generation,
+SQLite integrity and complete memory payload set against current file records.
+Record/document SHA256 and source, state-home, domain, Agent, audience, scope,
+ID and revision must agree with the publication manifest. Memory library reads,
+run-detail current memories and owner-action prechecks use the attached memory
+tables. Run, event, project and candidate reads use the preserved operational
+database. The lock is released when the projection connection closes.
+
+The same partition and project filters apply to both backends. The UI labels
+verified file memory separately from operational state and archived reports.
+Source damage, cache mismatch or a publication race cannot silently show stale
+old rows. Existing archived injection contexts retain their original revisions.
 
 Runtime feature phases carry their Host-defined label and parent phase in the
 journal. The viewer includes observed child stages, repeated calls and their

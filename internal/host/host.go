@@ -25,6 +25,13 @@ import (
 )
 
 type Config struct {
+	ContextFiles          []assembly.ContextFile
+	UserProfile           string
+	WorkspaceCache        string
+	MemorySource          string
+	MemoryFingerprint     string
+	ExpectedSkillDigest   string
+	SkillsPreselected     bool
 	ContextHome           string
 	ContextExecutable     string
 	ContextConfig         string
@@ -329,12 +336,14 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			query += "\n" + supplement.Text
 		}
 		for _, project := range recallProjects(r) {
-			all, err := h.Store.Memories(ctx, project.Scope)
-			if err != nil {
-				return err
-			}
-			if len(all) > memory.MaxExisting {
-				return fmt.Errorf("scope %s has %d memories; exceeds MVP comparison limit %d", project.Scope, len(all), memory.MaxExisting)
+			if !h.Store.FileMemoryEnabled() {
+				all, err := h.Store.Memories(ctx, project.Scope)
+				if err != nil {
+					return err
+				}
+				if len(all) > memory.MaxExisting {
+					return fmt.Errorf("scope %s has %d memories; exceeds MVP comparison limit %d", project.Scope, len(all), memory.MaxExisting)
+				}
 			}
 			retrieval, err := h.Store.Retrieve(ctx, project.Scope, query, 16)
 			if err != nil {
@@ -372,7 +381,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if err := h.Store.SaveContext(ctx, r.ID, selected); err != nil {
 			return err
 		}
-		return j.emit(event.Event{Type: "memory.recalled", Phase: "recall", Component: "memory.sqlite", Status: "completed", Message: fmt.Sprintf("selected %d memories; %d revision notices", len(selected), len(notices)), Data: map[string]any{"memories": selected, "revision_notices": notices, "selection": "scoped preferences/constraints + object/topic/FTS candidates with applicability checks; max 8 records, 12KiB text"}})
+		return j.emit(event.Event{Type: "memory.recalled", Phase: "recall", Component: h.memoryComponent(), Status: "completed", Message: fmt.Sprintf("selected %d memories; %d revision notices", len(selected), len(notices)), Data: map[string]any{"memories": selected, "revision_notices": notices, "selection": "scoped preferences/constraints + object/topic/FTS candidates with applicability checks; max 8 records, 12KiB text"}})
 	})
 	if err != nil {
 		return h.failBeforeExecution(j, err)
@@ -449,13 +458,63 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, err)
 		}
 	}
+	var skillPackage assembly.SkillPackage
+	promptMemories := selected
+	if h.Config.WorkspaceCache != "" {
+		view, err := assembly.MaterializeWorkspace(h.Config.WorkspaceCache, assembly.WorkspaceInput{Run: r, Files: h.Config.ContextFiles, Memories: selected, UserProfile: h.Config.UserProfile})
+		if err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+		if h.Store.FileMemoryEnabled() && !h.Config.ToolsDisabled {
+			identity := assembly.SkillIdentity{SourceIdentity: h.Config.MemorySource, AgentID: r.AgentID, AudienceID: r.AudienceID}
+			for _, p := range recallProjects(r) {
+				identity.Scopes = append(identity.Scopes, p.Scope)
+			}
+			skillPackage, err = assembly.BuildSkillPackage(h.Config.WorkspaceCache, r.ID, selected, identity, time.Now())
+			if err != nil {
+				return h.failBeforeExecution(j, err)
+			}
+			mounted := map[string]bool{}
+			for _, source := range skillPackage.Manifest.Sources {
+				mounted[source.MemoryID] = true
+			}
+			promptMemories = nil
+			for _, m := range selected {
+				if !mounted[m.ID] {
+					promptMemories = append(promptMemories, m)
+				}
+			}
+		}
+		if err := assembly.VerifyWorkspace(view); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+		if h.Config.SkillsPreselected && h.Config.ExpectedSkillDigest != skillPackage.Digest {
+			return h.failBeforeExecution(j, errors.New("selected skill set changed before native execution"))
+		}
+		if err := j.emit(event.Event{Type: "workspace.assembled", Phase: "execute", Component: "assembly.workspace", Status: "completed", Message: "materialized scoped context without changing execution cwd", Data: map[string]any{"view": view, "skill_manifest": skillPackage.Manifest}}); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
+	if h.Store.FileMemoryEnabled() && h.Config.MemoryFingerprint != "" {
+		var scopes []string
+		for _, p := range recallProjects(r) {
+			scopes = append(scopes, p.Scope)
+		}
+		fingerprint, err := h.Store.MemoryFingerprint(ctx, scopes)
+		if err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+		if fingerprint != h.Config.MemoryFingerprint {
+			return h.failBeforeExecution(j, errors.New("published memory changed before execution; a new task context is required"))
+		}
+	}
 	err = j.phase(ctx, "execute", "harness.claude", h.Config.Model, func(ctx context.Context) error {
 		if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: "host", Status: "running", Model: h.Config.Model, Message: "dispatch local-claude through native CLI", Data: map[string]any{"native_session_id": s.NativeSessionID, "resume": resume, "requested_model": h.Config.Model, "tools_disabled": h.Config.ToolsDisabled, "allowed_tools": h.Config.AllowedTools, "native_profile": h.Config.NativeProfile, "permission_mode": h.Config.PermissionMode}}); err != nil {
 			return err
 		}
 		var runErr error
 		activity := newRuntimePhases(j.emit)
-		result, runErr = h.Runner.Run(ctx, harness.Request{NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, selected, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...), Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...), Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: "harness.claude", Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
@@ -529,12 +588,19 @@ func (h *Host) finalize(ctx context.Context, j *journal) error {
 	}
 	var updates []state.MemoryUpdate
 	var raw json.RawMessage
+	var generation string
 	err := j.phase(ctx, "remember", "memory.jev", h.Config.DecisionModel, func(ctx context.Context) error {
 		r, err := h.Store.Run(ctx, j.run.ID)
 		if err != nil {
 			return err
 		}
-		existing, err := h.Store.Memories(ctx, r.Scope)
+		if h.Store.FileMemoryEnabled() {
+			generation, err = h.Store.MemoryFingerprint(ctx, []string{r.Scope})
+			if err != nil {
+				return err
+			}
+		}
+		existing, disabled, err := h.comparisonMemories(ctx, r.Scope, r.Input)
 		if err != nil {
 			return err
 		}
@@ -557,6 +623,12 @@ func (h *Host) finalize(ctx context.Context, j *journal) error {
 		if err := j.emit(event.Event{Type: "decision.completed", Phase: "remember", Component: "memory.jev", Status: "completed", Model: d.Model, Message: fmt.Sprintf("kind=%s store=%t conflicts=%d", d.Kind, d.Store, len(d.ConflictIDs)), Data: map[string]any{"decision": d}}); err != nil {
 			return err
 		}
+		for _, id := range append(append([]string(nil), d.ConflictIDs...), d.DuplicateIDs...) {
+			if disabled[id] {
+				raw, err = json.Marshal(map[string]any{"decision": d, "reason": "disabled_or_unresolved_memory_relation", "excluded_memory_id": id})
+				return err
+			}
+		}
 		if d.Store || len(d.DuplicateIDs) > 0 {
 			updates = []state.MemoryUpdate{{Memory: state.Memory{ID: ID(), Scope: r.Scope, Kind: d.Kind, Text: r.Input, Status: "active", Revision: 1, SourceRunID: r.ID, CreatedAt: time.Now().UTC()}, ConflictIDs: d.ConflictIDs}}
 			if len(d.ConflictIDs) == 0 {
@@ -566,8 +638,8 @@ func (h *Host) finalize(ctx context.Context, j *journal) error {
 		return nil
 	})
 	if err == nil {
-		err = j.phase(ctx, "persist", "memory.sqlite", "", func(ctx context.Context) error {
-			return h.Store.FinalizeMemory(ctx, j.run.ID, updates, raw)
+		err = j.phase(ctx, "persist", h.memoryComponent(), "", func(ctx context.Context) error {
+			return h.Store.FinalizeMemory(ctx, j.run.ID, updates, raw, generation)
 		})
 	}
 	if err != nil {

@@ -43,6 +43,13 @@ func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, pyt
 	}
 	childCtx, cancel := context.WithCancel(ctx)
 	args := []string{"-B", script, "--home", layout.State, "--no-reports", "--port", fmt.Sprint(port)}
+	if binary, err := os.Executable(); err == nil {
+		args = append(args, "--host-binary", binary)
+	} else {
+		cancel()
+		_ = log.Close()
+		return nil, errors.New("cannot locate Host executable for memory inspection")
+	}
 	for _, source := range sources {
 		args = append(args, "--channel-home", source.Name+"="+filepath.Join(source.Root, "state"))
 	}

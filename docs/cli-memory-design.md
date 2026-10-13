@@ -1,9 +1,9 @@
 # CLI chat and the memory loop
 
-The [file memory and Skill proposal](file-memory-design.md) supersedes the target
-storage choice below. The SQLite-authoritative design remains the historical and
-currently delivered baseline; file authority and rebuildable indexes are planned,
-with migration and validation defined in the new proposal.
+The [file memory and Skill implementation](file-memory-design.md) supersedes the
+storage choice below for migrated runtimes. Versioned files own knowledge and
+cache SQLite indexes are rebuildable. The SQLite-authoritative sections below
+remain the historical, unmigrated compatibility baseline.
 
 Status: broader CLI memory roadmap. The [MVP 1 baseline](mvp-validation.md)
 and [experience design](experience-memory.md) describe the implemented
@@ -11,8 +11,8 @@ subset: native chat, structured events, attributed statements, reviewed tool-bas
 procedures, SQLite recall and independent memory retry. The
 [revised memory policy](experience-memory.md) makes Jev-selected memory effective
 automatically and uses a blacklist for later disabling. User statements already
-save automatically; automatic experience publication and blacklist protection
-against equivalent re-admission remain planned. The
+save automatically; migrated file-memory tasks also publish selected experience
+automatically and apply bounded blacklist admission checks. The
 [object retrieval extension](object-retrieval.md) implements bounded service names,
 scoped aliases and property/topic matching. General entity/event extraction,
 pronoun resolution and verified outcome promotion below remain planned.

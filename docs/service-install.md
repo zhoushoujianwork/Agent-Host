@@ -3,7 +3,9 @@
 Run enabled channels and built-in capabilities with `make run`. Editable
 configuration lives in `.agent-host/config/`; channel data lives in
 `.agent-host/channels/<name>/`, plugin data in `.agent-host/datasource/plugins/<name>/`,
-and retained knowledge in `.agent-host/knowledge/`. All remain Git-ignored.
+learned knowledge in `.agent-host/memory/`, and rebuildable indexes/task views in
+`.agent-host/cache/`. Source snapshots belong to their datasource plugin.
+All remain Git-ignored.
 See the [configuration guide](configuration-layout.md) and
 [implementation details](configuration-layout-detail.md).
 
@@ -15,8 +17,8 @@ with mode `600`. Existing installations must migrate before using the new defaul
 
 | File | Purpose |
 | --- | --- |
-| `host.json` | Named execution profiles and provider environment-file references |
-| `agents.json` | Optional roles, project/source selection and plugin subsets |
+| `host.json` | Execution profiles, provider environments and explicit memory backend |
+| `agents.json` | Roles, project/source selection, plugin subsets, `instructions_dir` and optional owner `user_file` |
 | `channels.dingtalk.json` | Channel enablement and independent `settings.bot`/`settings.dws` options |
 | `channels.feishu.json` | Feishu enablement and text/meeting settings |
 | `datasource.plugins.email.json` | Mailboxes and allowed channels; owner-private only |
@@ -74,6 +76,25 @@ the relevant `--home`; migrated default memories retain the original scope:
 Legacy explicit `service --root` and `--channels-dir` entry points remain for
 unmigrated runtimes. The stopped-runtime migration and deployment evidence are
 recorded in the [details](service-install-detail.md#unified-configuration-runtime).
+
+## File-memory migration
+
+File memory requires an explicit stopped-runtime migration and verification for
+each enabled channel; it is not created by startup. Back up the current state,
+then use the [file-memory commands](file-memory-design-detail.md#迁移命令与回退)
+with distinct sources such as `dingtalk` and `feishu`. Set
+`"memory": {"backend": "files"}` in `host.json`, run service check and restart.
+Missing receipts, changed source identity or damaged documents fail explicitly.
+
+The published `memory/` documents and Skills own knowledge. `cache/memory/`
+SQLite indexes can be rebuilt; channel state databases retain operational history.
+The workbench verifies file publication before reading that index. Task views
+and native Skill packages live under `cache/workspaces/`, without changing the
+project cwd or writing generated content into `config/`.
+
+`memory rollback --home PATH` preserves file-era updates before returning to
+SQLite. After all relevant channels roll back, explicitly select `sqlite` and
+restart. Merely changing config cannot bypass a migrated state's backend marker.
 
 ## Data-source configuration migration
 

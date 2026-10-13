@@ -1,60 +1,30 @@
-# Execution experience as native skills
+# 执行经验与原生 Skill
 
-Status: revised planning on 2026-10-13 for [issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1).
-No generated skills or native skill mounting are delivered. See the
-[implementation notes](experience-skills-detail.md) and the
-[delivery order](release-follow-up.md#issue-1-delivery-plan).
+状态：2026-10-13 文件后端已实现并完成本地切换，真实 Claude 已发现并调用历史 Skill。
+存储与迁移见[文件记忆方案](file-memory-design.md)，装配细节见[详细稿](experience-skills-detail.md)。
 
-## Goal and usage
+## 使用方式
 
-Let the native assistant reuse an observed procedure when a similar task arrives.
-For example, a saved repair-and-test procedure becomes an available skill in a
-fresh conversation for the same project, Agent and audience. The user can inspect
-its source memory and disable it through the existing memory controls.
+有证据支持的处理方法保存为正式 `SKILL.md`，新任务检索到适用方法后，
+Host 生成本次任务的私有包，交给 Claude 按需加载。用户可以查看来源、禁用或显式恢复。
 
-## Core approach
+文件后端会自动发布通过筛选的经验；旧 SQLite 后端仍采用人工接受流程。
+迁移不自动接受 pending 候选，历史人工审核与原证据保持不变。
 
-The [file memory proposal](file-memory-design.md) owns the new storage and
-delivery sequence. Published Skill files become authoritative procedural
-knowledge; native skill packages and retrieval indexes are derived. This replaces
-the previous SQLite-authoritative export proposal. Facts and reply preferences
-remain separate knowledge files, with their own lifecycle.
+## 核心约定
 
-Preserve conditions, steps, evidence references and evidence strength. Start with
-direct rendering of eligible procedures; skill packaging adds no second model
-rewrite and does not combine unrelated lessons.
+- 正式 Skill 在 `memory/domains/<domain-id>/skills/`；原生包在 `cache/workspaces/<run-id>/native-skills/`。
+- 只装配当前项目、Agent 和 audience 允许的有效方法，保留条件、步骤与证据。
+- 不生成脚本、工具许可或 MCP 配置，不改用户手写 Skill 和共享 native 配置。
+- 纠正、禁用或到期影响后续任务；会话变化不能抹除已经执行的动作。
 
-Only skills allowed for the current task are made available to the native harness.
-Keep generated files outside shared project skill folders and shared native user
-profiles. Hand-written skills keep their own files and names. A generated skill
-does not grant tools or permissions, and the native harness owns its invocation.
+事实、偏好与决策单独保存为知识文件，不为了使用 Skill 强行转换成处理方法。
+执行完成、经验发布、Skill 被加载和业务结果分别记录。
 
-Disabling, expiry or conflict removes a procedure from future skill sets. A change
-to that set starts a fresh native conversation with an appropriate continuity
-notice; removing a file cannot erase instructions already loaded into history.
+## 验证与后续
 
-## First scope and order
+历史 Skill 已在隔离真实 Claude 中被发现并成功调用；该任务只总结来源，
+有 1 次 Skill 加载、0 次业务工具执行，没有新增记忆。这证明装配与调用可用，
+尚未证明一般任务收益或完整的新经验学习循环。
 
-1. Establish versioned file storage, reversible migration and scoped retrieval
-   under the [new memory design](file-memory-design.md).
-2. Complete automatic publication and blacklist protection, then publish
-   procedure-only Skill files and build bounded native packages with provenance.
-3. Mount that exact set for Claude tasks and verify real native discovery and use.
-   Keep extraction and tool-free tasks free of generated skills.
-4. Validate save, fresh-task use, update, disable and recovery as one loop.
-
-Historical manually accepted experience can qualify if it passes current
-eligibility checks. Its original human-review evidence stays unchanged.
-Topic grouping, generated scripts, public publication and Codex mounting follow
-only when needed; the Codex adapter is still planned.
-
-## Acceptance
-
-- A published procedure is discovered and used by a fresh native task in its
-  authorized scope, with inspectable memory and evidence links.
-- Other projects, Agents and audiences receive no unauthorized generated skill;
-  an owner's private procedure never enters a group skill set.
-- Updates and disabling affect the next task, including resumed conversations;
-  equivalent re-extraction cannot restore a disabled lesson.
-- Export failures remain visible and independently recoverable without replaying
-  the business task. Automated cases and native acceptance are reported separately.
+手写 `config/skills` 新挂载、Codex 适配、方法自动合并、生成脚本与公开发布未交付。

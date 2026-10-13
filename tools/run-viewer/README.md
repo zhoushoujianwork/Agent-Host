@@ -84,6 +84,16 @@ quote provenance when present. Private reply and input-download capabilities
 are never queried; the viewer does not serve saved attachment bytes. Inspect
 channel receipt and delivery separately with `agent-host dingtalk status`.
 
+Migrated state homes with `file-memory.json` read current memory from its
+published files and verified SQLite search cache. The viewer runs
+`agent-host memory verify --home ...` before those reads, rebuilding a missing
+cache through Host. It reports damaged files, stale cache content, or an unavailable
+verifier explicitly; it never falls back to the old memory rows in `state.db`.
+Managed startup supplies the exact Host executable. For a standalone viewer,
+`--host-binary /absolute/path/to/agent-host` overrides the default `bin/agent-host`.
+Operational runs, candidates and events remain in `state.db`; saved reports remain
+historical snapshots.
+
 The workbench reads local owner data, binds only to loopback, and provides
 memory controls when the corresponding channel Host is running. Read errors are shown explicitly; displayed old
 data is marked unsynchronized. It does not authenticate multiple users or

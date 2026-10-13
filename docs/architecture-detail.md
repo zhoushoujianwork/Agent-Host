@@ -5,8 +5,10 @@ bounded Jev decisions and reviewed experience are implemented. The
 [experience details](experience-memory-detail.md) cover tool evidence,
 extraction and review, including passing bounded live validation. The
 [revised memory policy](experience-memory-detail.md#revised-publication-and-blacklist-policy-2026-10-12)
-plans automatic publication after Jev selection and scoped blacklist enforcement;
-the current experience implementation still requires human acceptance. The
+is implemented for explicitly migrated file-memory runtimes, including automatic
+publication and bounded blacklist admission checks. Legacy SQLite experience
+retains human acceptance. The [file-memory details](file-memory-design-detail.md)
+record authoritative manifests, reversible migration and current validation. The
 [first MVP details](mvp-validation-detail.md) retain the earlier validation. The
 [CLI memory details](cli-memory-design-detail.md) retain the broader roadmap.
 The [evaluation details](evaluation-detail.md) define categorized regression

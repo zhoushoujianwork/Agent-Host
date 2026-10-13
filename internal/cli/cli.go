@@ -36,6 +36,10 @@ Usage:
   agent-host memory accept [--note TEXT] [--expires-at RFC3339] [options] CANDIDATE_ID
   agent-host memory reject --reason TEXT [options] CANDIDATE_ID
   agent-host memory invalidate --reason TEXT [options] MEMORY_ID
+  agent-host memory restore --reason TEXT [options] MEMORY_ID
+  agent-host memory migrate --home PATH --memory-root PATH --memory-cache PATH --memory-source ID
+  agent-host memory verify --home PATH
+  agent-host memory rollback --home PATH
   agent-host run show [options] RUN_ID
   agent-host run events [options] RUN_ID
   agent-host run retry-memory [options] RUN_ID
@@ -99,6 +103,10 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	retrievalQuery, skillFingerprint                                                   string
+	skillsPreselected                                                                  bool
+	contextFiles                                                                       []assembly.ContextFile
+	userProfile, workspaceCache, memoryFingerprint, memorySource                       string
 	maxConcurrentConversations                                                         int
 	agentsConfig, agentID, audienceID, nativeProfile, permissionMode, hostInstructions string
 	knowledgeNames                                                                     []string
@@ -151,6 +159,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
 	fs.StringVar(&o.defaultScope, "memory-scope", "", "Explicit durable default memory scope")
+	fs.StringVar(&o.workspaceCache, "workspace-cache", "", "Private root for rebuildable task context views")
 	fs.BoolVar(&o.knowledgePluginDisabled, "disable-knowledge-plugin", false, "Skip disabled managed knowledge plugin")
 	fs.BoolVar(&o.disableDingTalkWorkspace, "disable-dingtalk-workspace", false, "Disable DingTalk workspace discovery and mounting")
 	fs.Func("project", "Registered project ID; repeat for joint chat", func(value string) error {
@@ -195,7 +204,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.runFilter, "run", "", "Filter candidates by source run")
 	fs.StringVar(&o.status, "status", "pending", "Candidate status or all")
 	fs.StringVar(&o.note, "note", "", "Acceptance note")
-	fs.StringVar(&o.reason, "reason", "", "Rejection or invalidation reason")
+	fs.StringVar(&o.reason, "reason", "", "Rejection, invalidation or restoration reason")
 	fs.StringVar(&o.expiresAt, "expires-at", "", "Experience expiration (RFC3339)")
 	fs.IntVar(&o.maxConcurrentConversations, "max-concurrent-conversations", 4, "Maximum simultaneous channel conversations (1-32)")
 	fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "Per-turn timeout")
@@ -379,6 +388,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if args[0] == "assistance" {
 		return runAssistance(ctx, args[1:], out, errout)
 	}
+	if args[0] == "memory" && len(args) > 1 && (args[1] == "migrate" || args[1] == "verify" || args[1] == "rollback") {
+		return runMemoryStorage(ctx, args[1:], out, errout)
+	}
 	command := args[0]
 	args = args[1:]
 	if command == "memory" || command == "run" {
@@ -389,7 +401,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		args = args[1:]
 	}
 	switch command {
-	case "chat", "memory search", "memory show", "memory candidates", "memory candidate", "memory accept", "memory reject", "memory invalidate", "run show", "run events", "run retry-memory", "run retry-experience":
+	case "chat", "memory search", "memory show", "memory candidates", "memory candidate", "memory accept", "memory reject", "memory invalidate", "memory restore", "run show", "run events", "run retry-memory", "run retry-experience":
 	default:
 		return fmt.Errorf("unknown command %q", command)
 	}
@@ -415,8 +427,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		return inspect(ctx, command, o, id, out)
 	}
-	if (command == "memory reject" || command == "memory invalidate") && strings.TrimSpace(o.reason) == "" {
-		return errors.New("provide --reason for rejection or invalidation")
+	if (command == "memory reject" || command == "memory invalidate" || command == "memory restore") && strings.TrimSpace(o.reason) == "" {
+		return errors.New("provide --reason for rejection, invalidation or restoration")
 	}
 	var expires *time.Time
 	if o.expiresAt != "" {
@@ -427,7 +439,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		expires = &t
 	}
 	var client *jev.Client
-	if command != "memory reject" && command != "memory invalidate" {
+	if command != "memory reject" && command != "memory invalidate" && command != "memory restore" {
 		client, err = newJevClient(o.provider, o.jevEndpoint, o.jevModel)
 		if err != nil {
 			return err
@@ -461,13 +473,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 			return err
 		}
 	}
+	if command == "chat" && o.oneShot {
+		o.retrievalQuery = o.message
+	}
 	if err := resolveOptions(ctx, store, &o, command == "chat"); err != nil {
 		return err
 	}
 	if err := store.Recover(ctx); err != nil {
 		return fmt.Errorf("recover: %w", err)
 	}
-	if command == "memory reject" || command == "memory invalidate" {
+	if command == "memory reject" || command == "memory invalidate" || command == "memory restore" {
 		return localReview(ctx, store, command, o, pos[0], out)
 	}
 	renderer := &terminal.Renderer{Out: out, JSON: o.format == "json"}
@@ -485,7 +500,17 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		return err
 	}
-	s, err := h.Session(ctx, o.resume)
+	var s state.Session
+	if store.FileMemoryEnabled() && o.resume != "" && !o.oneShot {
+		// Interactive input is not known yet. Inspect the owned session now;
+		// compare its exact runtime after reading the first task, before dispatch.
+		s, err = store.Session(ctx, o.resume)
+		if err == nil {
+			err = store.SessionCanResume(ctx, s.ID)
+		}
+	} else {
+		s, err = h.Session(ctx, o.resume)
+	}
 	if err != nil {
 		return err
 	}
@@ -501,7 +526,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		if len(input) > 16*1024 {
 			return errors.New("message exceeds MVP limit of 16 KiB")
 		}
-		previous := o.runtimeFingerprint
+		previous := s.RuntimeFingerprint
+		o.retrievalQuery = input
 		if err := resolveOptions(ctx, store, &o, true); err != nil {
 			return err
 		}
@@ -679,8 +705,14 @@ func localReview(ctx context.Context, s *state.Store, command string, o options,
 	if m.Scope != o.scope {
 		return errors.New("memory belongs to another workspace")
 	}
-	if err := s.InvalidateMemory(ctx, id, o.reason); err != nil {
-		return err
+	var changeErr error
+	if command == "memory restore" {
+		changeErr = s.RestoreMemory(ctx, id, o.reason)
+	} else {
+		changeErr = s.InvalidateMemory(ctx, id, o.reason)
+	}
+	if changeErr != nil {
+		return changeErr
 	}
 	m, err = s.Memory(ctx, id)
 	if err != nil {
@@ -721,6 +753,9 @@ func resolveOptions(ctx context.Context, store *state.Store, o *options, execute
 			return fmt.Errorf("resolve Claude executable: %w", err)
 		}
 		if err := resolveKnowledge(o); err != nil {
+			return err
+		}
+		if err := refreshFileRuntime(ctx, store, o); err != nil {
 			return err
 		}
 		r, err := assembly.Assemble(p.ID, p.Name, p.Scope, p.Workspace, assemblyConfig(*o))

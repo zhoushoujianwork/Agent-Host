@@ -1,8 +1,9 @@
 # Configuration names
 
 [User-managed Agent templates](agent-templates/README.md) provide a default
-assistant and an operations assistant to copy and customize. Their multi-file
-loading is planned; the current runtime uses one explicit `instructions_file`.
+assistant and an operations assistant to copy and customize. Explicit
+`instructions_dir` loads AGENTS/SOUL/IDENTITY together; the legacy single-file
+`instructions_file` remains supported. Optional owner `user_file` is explicit.
 
 The [unified configuration and plugin startup](../docs/configuration-layout.md)
 loads `.agent-host/config/host.json`, optional `agents.json`,
@@ -39,6 +40,24 @@ names above. Native tools' conventional filenames such as `CLAUDE.md` stay intac
 they are not Host JSON configuration files.
 
 See the [runtime guide](../docs/service-install.md) for startup and configuration.
+## Host memory and Agent role files
+
+`host.json` may select `"memory": {"backend": "sqlite"}` for the compatible
+legacy backend, or `files` after explicit stopped-runtime migration. Examples
+do not force a file migration at startup. Each channel needs its own matching
+`memory migrate` receipt; `memory verify` checks it, while `memory rollback`
+preserves file-era revisions before returning to SQLite.
+See [file memory](../docs/file-memory-design.md).
+
+Agent registration accepts `instructions_dir: "agents/default"` for the
+user-maintained AGENTS/SOUL/IDENTITY set, relative to `agents.json`. Optional
+`user_file: "users/owner/USER.md"` applies only to trusted owner-private tasks.
+Use private directory/file permissions and the
+[copyable templates](agent-templates/README.md). Neither directory discovery nor
+learning automatically enables a role, creates USER or overwrites configuration.
+`config/skills` is reserved for handwritten content; its new Host mounting
+entry point is not delivered in this increment.
+
 ## Built-in DingTalk workspace
 
 `data-dingtalk-workspace.example.json` selects the exact owner profile, private

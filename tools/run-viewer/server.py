@@ -11,6 +11,9 @@ import socket
 import sqlite3
 import stat
 import os
+import fcntl
+import subprocess
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -20,6 +23,39 @@ ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
 MAX_REPORT_BYTES = 32 << 20
 RUN_LIMIT = 200
+MAX_MEMORY_FILE_BYTES = 4 << 20
+
+
+class MemoryConnection(sqlite3.Connection):
+    """Keep a file-publication read lock until the projection has finished."""
+
+    publication_lock = None
+
+    def close(self):
+        try:
+            super().close()
+        finally:
+            if self.publication_lock is not None:
+                fcntl.flock(self.publication_lock.fileno(), fcntl.LOCK_UN)
+                self.publication_lock.close()
+                self.publication_lock = None
+
+
+def bounded_memory_file(path):
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+        raise ValueError(f"file memory requires a private regular file: {path}")
+    if path.resolve() != path:
+        raise ValueError(f"file memory path contains a symlink: {path}")
+    with path.open("rb") as handle:
+        body = handle.read(MAX_MEMORY_FILE_BYTES + 1)
+    if len(body) > MAX_MEMORY_FILE_BYTES:
+        raise ValueError(f"file memory exceeds its read bound: {path}")
+    return body
+
+
+def memory_object(path):
+    return decode(bounded_memory_file(path))
 
 
 def decode(payload):
@@ -166,7 +202,7 @@ def report_records(report, source):
 
 
 class Catalog:
-    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner"):
+    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner", host_binary=None):
         if workspace and project:
             raise ValueError("--project and --workspace are mutually exclusive")
         self.database = Path(home).expanduser().resolve() / "state.db"
@@ -174,14 +210,151 @@ class Catalog:
         self.workspace = str(Path(workspace).expanduser().resolve()) if workspace else None
         self.project = project
         self.agent, self.audience = agent, audience
+        self.host_binary = Path(host_binary).expanduser().resolve() if host_binary else ROOT / "bin" / "agent-host"
         if not agent or not audience:
             raise ValueError("agent and audience must be nonempty identifiers")
 
     def connection(self):
-        conn = sqlite3.connect(self.database.as_uri() + "?mode=ro", uri=True, timeout=2)
+        conn = sqlite3.connect(self.database.as_uri() + "?mode=ro", uri=True, timeout=2, factory=MemoryConnection)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         return conn
+
+    def file_memory_marker(self):
+        path = self.database.parent / "file-memory.json"
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            return None
+        marker = memory_object(path)
+        if set(marker) != {"version", "memory_root", "cache_root", "source_id", "state_home"} or type(marker.get("version")) is not int or marker["version"] != 1 or marker.get("state_home") != str(self.database.parent) or not isinstance(marker.get("source_id"), str) or not marker["source_id"]:
+            raise ValueError("invalid file-memory backend marker")
+        for key in ("memory_root", "cache_root"):
+            value = marker[key]
+            if not isinstance(value, str) or not Path(value).is_absolute() or str(Path(value)) != value:
+                raise ValueError(f"invalid file-memory {key}")
+        return marker
+
+    def verify_file_memory(self):
+        if not self.host_binary.is_file() or not os.access(self.host_binary, os.X_OK):
+            raise ValueError("file memory requires an executable Host verifier; provide --host-binary")
+        try:
+            completed = subprocess.run([str(self.host_binary), "memory", "verify", "--home", str(self.database.parent)],
+                                       capture_output=True, timeout=15, check=False)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ValueError(f"file-memory verification unavailable: {error}") from error
+        if completed.returncode != 0:
+            diagnostic = completed.stderr[:2000].decode("utf-8", errors="replace").strip()
+            raise ValueError(f"file-memory verification failed: {diagnostic or 'Host verifier returned an error'}")
+        if len(completed.stdout) > 1 << 20:
+            raise ValueError("file-memory verification report exceeded its bound")
+        result = decode(completed.stdout)
+        if type(result.get("generation")) is not int or result["generation"] < 1:
+            raise ValueError("file-memory verifier did not report a publication generation")
+        return result
+
+    def memory_connection(self):
+        marker = self.file_memory_marker()
+        if marker is None:
+            return self.connection()
+        self.verify_file_memory()
+        source_key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
+        source = Path(marker["memory_root"]) / "sources" / source_key
+        lock_path = source / "publish.lock"
+        info = lock_path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077 or lock_path.resolve() != lock_path:
+            raise ValueError("unsafe file-memory publication lock")
+        lock = lock_path.open("rb")
+        conn = None
+        try:
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ValueError("file-memory publication is busy; refresh after it completes")
+                    time.sleep(0.01)
+            # Re-read the marker after taking the lock; never mix backend roots.
+            if marker != self.file_memory_marker():
+                raise ValueError("file-memory backend changed during verification; refresh")
+            manifest = memory_object(source / "current.json")
+            index = Path(marker["cache_root"]) / source_key / "index.db"
+            if index.resolve() != index or not index.is_file():
+                raise ValueError("verified file-memory cache is missing or has an unsafe path")
+            conn = self.connection()
+            conn.publication_lock = lock
+            conn.execute("ATTACH DATABASE ? AS published_memory", (index.as_uri() + "?mode=ro",))
+            self.validate_memory_cache(conn, marker, manifest)
+            return conn
+        except Exception:
+            if conn is not None:
+                conn.close()
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                lock.close()
+            raise
+
+    def validate_memory_cache(self, conn, marker, manifest):
+        if manifest.get("version") != 1 or manifest.get("source_id") != marker["source_id"] or manifest.get("state_home") != marker["state_home"] or type(manifest.get("generation")) is not int or manifest["generation"] < 1:
+            raise ValueError("file-memory publication identity is invalid")
+        row = conn.execute("SELECT generation FROM published_memory.file_index_checkpoint WHERE id=1").fetchone()
+        if row is None or row[0] != manifest["generation"]:
+            raise ValueError("file-memory cache generation differs from publication; refresh to rebuild")
+        if conn.execute("PRAGMA published_memory.quick_check").fetchone() != ("ok",):
+            raise ValueError("file-memory cache integrity check failed")
+        memories = {}
+        # Go encodes nil publication slices as null for an empty source. Only
+        # these two arrays have that empty representation; other types still fail.
+        domain_records = manifest.get("domains")
+        entry_records = manifest.get("entries")
+        if domain_records is None:
+            domain_records = []
+        if entry_records is None:
+            entry_records = []
+        if not isinstance(domain_records, list) or not isinstance(entry_records, list):
+            raise ValueError("file-memory publication requires domain and entry arrays")
+        domains = {}
+        for domain in domain_records:
+            if not isinstance(domain, dict) or not isinstance(domain.get("id"), str) or domain["id"] in domains:
+                raise ValueError("file-memory publication contains an invalid or duplicate domain")
+            domains[domain["id"]] = domain
+        for entry in entry_records:
+            if not isinstance(entry, dict) or not isinstance(entry.get("revisions"), list) or not all(isinstance(reference, dict) for reference in entry["revisions"]):
+                raise ValueError("file-memory publication contains an invalid revision set")
+            identifier, domain_id, directory = entry.get("id"), entry.get("domain"), entry.get("directory")
+            if not isinstance(identifier, str) or not identifier or identifier in {".", ".."} or any(character in identifier for character in "/\\\0") or identifier in memories or not isinstance(domain_id, str) or domain_id not in domains or directory not in {"entries", "skills"}:
+                raise ValueError("file-memory publication contains an invalid entry")
+            domain = domains[domain_id]
+            if domain.get("source_id") != marker["source_id"] or domain.get("state_home") != marker["state_home"] or not isinstance(domain_id, str) or len(domain_id) != 32 or any(character not in "0123456789abcdef" for character in domain_id):
+                raise ValueError("file-memory domain identity is invalid")
+            reference = next((revision for revision in entry.get("revisions", []) if revision.get("revision") == entry.get("current")), None)
+            if reference is None or type(entry.get("current")) is not int or entry["current"] < 1:
+                raise ValueError("file-memory publication has no current revision")
+            base = Path(marker["memory_root"]) / "domains" / domain_id / directory / identifier / "revisions" / str(entry["current"])
+            raw = bounded_memory_file(base / "record.json")
+            content = bounded_memory_file(base / ("SKILL.md" if directory == "skills" else "content.md"))
+            if hashlib.sha256(raw).hexdigest() != reference.get("record_sha256") or hashlib.sha256(content).hexdigest() != reference.get("content_sha256"):
+                raise ValueError(f"file-memory publication checksum mismatch: {identifier}")
+            record = decode(raw)
+            memory = record.get("memory")
+            if record.get("version") != 1 or record.get("source_id") != marker["source_id"] or record.get("state_home") != marker["state_home"] or not isinstance(memory, dict) or memory.get("id") != identifier or memory.get("revision") != entry["current"] or memory.get("scope") != domain.get("scope") or partition(memory) != (domain.get("agent_id"), domain.get("audience_id")):
+                raise ValueError("file-memory record attribution differs from publication")
+            memories[identifier] = memory
+        indexed = {identifier: decode(payload) for identifier, payload in conn.execute("SELECT id,payload FROM published_memory.memories")}
+        if indexed != memories:
+            raise ValueError("file-memory cache differs from authoritative records; rebuild the cache")
+
+    @staticmethod
+    def memory_table(conn, table="memories"):
+        if table not in {"memories", "memory_annotations"}:
+            raise ValueError("unsupported memory projection table")
+        names = {row[1] for row in conn.execute("PRAGMA database_list")}
+        return ("published_memory." if "published_memory" in names else "") + table
+
+    def memory_source(self):
+        return {"id": "db", "kind": "database", "name": "文件记忆（已验证索引）" if self.file_memory_marker() else "本机 state.db"}
 
     def control_available(self):
         path = self.database.parent / "memory-control.sock"
@@ -221,10 +394,10 @@ class Catalog:
         if not key.startswith("db:") or not self.control_available():
             raise ValueError("only live owner records in a running Host can be managed")
         identifier = key[3:]
-        conn = self.connection()
+        conn = self.memory_connection() if action in {"invalidate", "restructure"} else self.connection()
         try:
             context = self.filter_context(conn)
-            table = "memories" if action in {"invalidate", "restructure"} else "candidates"
+            table = self.memory_table(conn) if action in {"invalidate", "restructure"} else "candidates"
             where, args = self.memory_filter(context, self.schema_version(conn), "m")
             row = conn.execute("SELECT m.payload FROM " + table + " m" + where + " AND m.id=?", args + (identifier,)).fetchone()
             if row is None:
@@ -335,7 +508,7 @@ class Catalog:
             if key not in records:
                 raise KeyError("record not found")
             return records[key]
-        conn = self.connection()
+        conn = self.memory_connection()
         try:
             schema = self.schema_version(conn)
             context = self.filter_context(conn)
@@ -354,7 +527,7 @@ class Catalog:
             scopes = sorted({p["scope"] for p in run.get("projects", [])}) or [run["scope"]]
             memory_where, memory_args = self.memory_filter({"scope": None}, schema, "")
             memories = [decode(row[0]) for row in conn.execute(
-                "SELECT payload FROM memories" + memory_where + " AND scope IN (" + ",".join("?" for _ in scopes) + ")", memory_args + tuple(scopes))]
+                "SELECT payload FROM " + self.memory_table(conn) + memory_where + " AND scope IN (" + ",".join("?" for _ in scopes) + ")", memory_args + tuple(scopes))]
             return {"key": key, "run": run, "events": events, "candidates": candidates, "memories": memories,
                     "source": {"id": "db", "kind": "database", "name": "本机 state.db"}, "snapshot": False,
                     "receipt": next((e for e in reversed(events) if e["type"] == "run.finished"), {})}
@@ -365,14 +538,14 @@ class Catalog:
 class MultiCatalog:
     """Combine channel projections without merging their underlying state."""
 
-    def __init__(self, sources, agent="default", audience="owner"):
+    def __init__(self, sources, agent="default", audience="owner", host_binary=None):
         self.catalogs = {}
         self.agent, self.audience = agent, audience
         for source in sources:
             name, separator, home = source.partition("=")
             if not separator or not name or not home or name in self.catalogs:
                 raise ValueError("--channel-home requires a unique NAME=PATH")
-            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience)
+            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience, host_binary=host_binary)
 
     @staticmethod
     def qualify(value, channel):
@@ -521,16 +694,17 @@ def main():
     selection.add_argument("--project", help="Limit database records to this registered project ID")
     parser.add_argument("--agent", default="default", help="Agent instance ID (default: default)")
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
+    parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
     try:
         if args.channel_home:
             if args.workspace or args.project or not args.no_reports:
                 parser.error("--channel-home requires --no-reports and no project/workspace filter")
-            catalog = MultiCatalog(args.channel_home, args.agent, args.audience)
+            catalog = MultiCatalog(args.channel_home, args.agent, args.audience, args.host_binary)
             catalog.index()
         else:
-            catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience)
+            catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience, args.host_binary)
             catalog.index()
     except (OSError, ValueError, sqlite3.Error) as error:
         parser.error(str(error))

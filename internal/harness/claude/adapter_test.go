@@ -44,6 +44,12 @@ func fixture(mode string) {
 		fmt.Println(version)
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--help" {
+		if mode != "skills_unsupported" {
+			fmt.Println("--plugin-dir <path> session-local skill package")
+		}
+		return
+	}
 	session := testSession
 	for i, arg := range os.Args {
 		if (arg == "--session-id" || arg == "--resume") && i+1 < len(os.Args) {

@@ -64,6 +64,7 @@ check:
 	python3 -B tools/service/run_test.py
 	python3 -B tools/service/migrate_config_test.py
 	python3 -B tools/service/migrate_datasource_test.py
+	python3 -B tools/service/validate_file_memory_history_test.py
 	python3 -B tools/release/package_test.py
 	python3 -B tools/release/export_public_test.py
 	python3 -B tools/run-viewer/server_test.py

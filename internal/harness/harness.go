@@ -22,7 +22,9 @@ type Request struct {
 	AllowedTools          []string
 	MCPServers            []MCPServer
 	JSONSchema            string
-	Extraction            bool // Isolated, tool-free, nonpersistent extraction invocation.
+	Extraction            bool   // Isolated, tool-free, nonpersistent extraction invocation.
+	SkillPluginDir        string // Explicit task-scoped, instruction-only native package.
+	SkillPluginDigest     string // Expected snapshot digest; cache content cannot change it.
 }
 
 const (

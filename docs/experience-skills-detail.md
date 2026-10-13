@@ -1,82 +1,77 @@
 # Execution experience as native skills: implementation notes
 
-Companion to the [main proposal](experience-skills.md). The
-[new file memory details](file-memory-design-detail.md) own storage, publication,
-migration and implementation order. Native rendering and mounting
-notes below remain proposed; concrete commands need installed-version validation.
+Companion to the [main guide](experience-skills.md) and
+[file-memory details](file-memory-design-detail.md). Claude mounting is implemented
+for migrated file-memory tasks; legacy SQLite tasks keep their historical behavior.
 
-## Current baseline
+## Eligibility and rendering
 
-`internal/state/types.go` stores memory conditions, steps, evidence IDs, source
-run, revision and Agent/audience/project scope. `internal/state/experience.go`
-implements the historical review path. `internal/assembly` supplies eligible
-memory context, and `internal/harness/claude` owns native invocation.
-`harness.Request` has no generated-skill field. The Codex package is a placeholder.
+Eligible records are active, unexpired procedures with source_type
+reviewed_experience, conditions, steps, source run and evidence IDs. That source
+type retains its historical name; review metadata distinguishes automatic Host
+selection from original human-reviewed lessons. Pending/rejected candidates,
+facts, conflicted or disabled records do not become native skills.
 
-The [file memory transition](file-memory-design-detail.md) must establish file
-publication, retrieval and blacklist exclusion before this becomes the normal
-post-run path. Skill generation must not treat a pending candidate as published.
+The renderer preserves the original conditional lesson and evidence strength.
+It adds no second model rewrite, scripts, hooks, allowed-tools or MCP configuration.
+The [Agent Skills specification](https://agentskills.io/specification) remains
+the format reference: name/description frontmatter and string-valued metadata.
+Text capable of native dynamic command substitution is rejected.
 
-## Rendering and native mounting
+The source file publication owns the procedure. The private plugin is derived
+from the exact retrieval-selected source record and revision. A malformed or
+out-of-scope record fails instead of selecting a weaker replacement.
 
-The [Agent Skills specification](https://agentskills.io/specification) requires
-`name` and `description` frontmatter and supports string-valued metadata. Use
-stable Host-owned names and metadata for memory ID/revision, source type and
-renderer version. The body carries conditions, observed steps, evidence strength
-and references to the retained original evidence. Do not copy raw tool logs or
-credentials into the artifact. Local references do not promise portability of
-the underlying evidence outside this installation.
+## Native packaging
 
-Use a deterministic renderer and validate generated YAML/Markdown. Source text
-must not create extra frontmatter, dynamic command substitutions, tool grants,
-hooks, scripts or MCP configuration. No `allowed-tools` declaration is generated.
-The renderer preserves procedure meaning without upgrading its evidence strength.
+internal/assembly/skills.go publishes this task-local structure atomically:
 
-Claude documents session-local plugin loading through
-[`--plugin-dir`](https://code.claude.com/docs/en/cli-reference) and
-[namespaced plugin skills](https://code.claude.com/docs/en/skills).
-The preferred first integration is a Host-owned, skill-only local plugin containing
-the exact eligible set, passed for that invocation. This is native packaging,
-not a public Host plugin API. Verify discovery with the installed native version
-before committing to this mount; documentation is not integration acceptance.
-Do not install generated skills in shared `.claude/skills` or native profiles,
-and do not use `--add-dir` merely to mount them, since that also adds filesystem
-access. An unsupported native mount fails explicitly without a weaker substitute.
+```text
+cache/workspaces/<run-id>/native-skills/
+├── .claude-plugin/plugin.json
+├── manifest.json
+└── skills/<host-owned-name>/SKILL.md
+```
 
-## Scope and lifecycle
+The namespace and names include source identity, Agent, audience, scope and memory
+identity to prevent collisions. Manifest records revisions, renderer, source runs,
+evidence IDs and content hashes. Files are private, immutable and checked before use.
+Limits are eight skills, 16 KiB per body and 64 KiB total. Extraction and no-tools
+requests do not receive the mount.
 
-Select through existing authorized project/Agent/audience and applicability
-rules, including all explicit grants for a joint task. Do not infer access from
-cwd or a procedure mentioning another project. Reuse the current recall budget
-as the initial bound, accounting for descriptions and bodies; avoid simultaneously
-injecting the full procedure and its skill without an explicit reason.
+The Claude adapter explicitly supplies --plugin-dir, using the documented
+[CLI mechanism](https://code.claude.com/docs/en/cli-reference) and
+[namespaced skills](https://code.claude.com/docs/en/skills). Installed support is
+checked explicitly; unsupported invocation fails. Generated packages do not
+write shared .claude/skills or native profiles and do not add filesystem
+permissions through --add-dir.
 
-Materialization is a derived outcome separate from execution and memory save.
-Publish files atomically under private Host state and retain a manifest of exact
-memory revisions, scope, renderer and content hashes. Recheck eligibility before
-launch; a stale native manifest cannot override the authoritative file publication
-snapshot. Coordinate disable/update with active readers so future discovery
-cannot use withdrawn artifacts. Interrupted
-generation can be rebuilt idempotently; retries do not dispatch another task.
+Scope checks derive from trusted runtime identity and selected project grants;
+a mentioned project or shared cwd grants no access. Mounted procedure bodies are
+not also duplicated as full steps in the ordinary automatic memory prompt.
 
-The skill-set digest joins runtime compatibility. When it changes, replace the
-native session and preserve only authorized continuity context excluding withdrawn
-procedure text. Already running tasks are reported as having received the older
-snapshot; disabling cannot undo their earlier actions or erase native history.
-Ordinary memory revision checks still apply. Extraction, `--no-tools` and
-unsupported engines receive no generated skill mount.
+## Session and observations
 
-## Implementation slices and validation
+The selected Skill digest and published memory fingerprint join session compatibility.
+Updating or disabling knowledge selects a fresh compatible session, retaining
+authorized continuity data while excluding withdrawn procedure text.
+A pre-launch snapshot check rejects a concurrent publication change.
+Already running tasks retain the version they received.
 
-| Slice | Existing boundary | Required proof |
-| --- | --- | --- |
-| Eligibility and rendering | File publication/experience plus a small internal renderer | Active procedure exports; pending, fact, expired, conflicted and disabled records do not |
-| Private artifact lifecycle | Host/state coordination | Atomic rebuild, stale revisions, failure receipt and independent retry |
-| Native mount and compatibility | Assembly/harness/Claude | Exact set, unchanged handwritten skills, no added permission/configuration, fresh session after withdrawal |
-| End-to-end use | Existing eval and experiment conventions | Native skill discovery and invocation; same-task baseline without skill; citation and scope checks |
+The task context and native package have separate manifests. workspace.assembled
+records the scoped view; native observations separate provision/discovery and
+Skill invocation from business tool results. Package creation is not proof of use,
+and a Skill invocation is not proof that its described business actions succeeded.
 
-Retain failures and exact tested binary/version, manifests and source receipts.
-Compare native invocation and task outcome separately: a discovered skill is not
-proof of use or benefit. Run `make check`, focused concurrency tests for lifecycle
-changes and a bounded native save/use/disable loop. General performance and model
-quality remain unmeasured until separately evaluated.
+## Validation and remaining work
+
+On 2026-10-13 an isolated real Claude task discovered and successfully invoked the
+single eligible historical Skill. It summarized the retained lesson and sources,
+with one Skill load, zero business tool calls, completed execution, unchanged
+memory and empty experience. File-memory history validation, corrupted package
+checks, scope exclusion and no-tools cases are recorded in the
+[file-memory validation](file-memory-design-detail.md#已完成验证与边界).
+
+This is bounded discovery/invocation acceptance. A general benefit comparison,
+new automatic-learning native loop, large-corpus performance, handwritten
+config/skills mounting, generated code and Codex mounting remain separate work.

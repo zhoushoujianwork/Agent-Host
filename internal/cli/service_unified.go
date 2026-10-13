@@ -17,6 +17,7 @@ import (
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/mcpstdio"
+	"agent-host/internal/state"
 )
 
 type executionProfile struct {
@@ -25,9 +26,14 @@ type executionProfile struct {
 }
 
 type unifiedHost struct {
+	Memory         *hostMemoryConfig           `json:"memory,omitempty"`
 	Version        int                         `json:"version"`
 	DefaultProfile string                      `json:"default_profile"`
 	Profiles       map[string]executionProfile `json:"profiles"`
+}
+
+type hostMemoryConfig struct {
+	Backend string `json:"backend"`
 }
 
 func strictUnifiedJSON(raw []byte, value any) error {
@@ -71,7 +77,7 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 	for _, entry := range entries {
 		name := entry.Name()
 		if entry.IsDir() {
-			if name != "credentials" {
+			if name != "credentials" && name != "agents" && name != "users" && name != "skills" {
 				return nil, fmt.Errorf("unknown configuration directory %s", name)
 			}
 			continue
@@ -211,6 +217,9 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 	if host.Version != 1 {
 		return layout, zero, nil, errors.New("host requires version 1")
 	}
+	if host.Memory != nil && host.Memory.Backend != "sqlite" && host.Memory.Backend != "files" {
+		return layout, zero, nil, errors.New("memory backend must be sqlite or files")
+	}
 	id := filepath.Base(root)
 	path := filepath.Join(directory, "channels."+id+".json")
 	e, err := readEnvelope(path)
@@ -229,6 +238,27 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		return layout, zero, nil, errors.New("channel references an unknown execution profile")
 	}
 	c := p.Execution
+	if host.Memory != nil && host.Memory.Backend == "files" {
+		if _, err := os.Stat(filepath.Join(layout.State, "file-memory.json")); err != nil {
+			return layout, zero, nil, errors.New("file memory requires explicit memory migrate before startup")
+		}
+		c.WorkspaceCache = filepath.Join(filepath.Dir(directory), "cache")
+		store, err := state.Open(layout.State, true)
+		if err != nil {
+			return layout, zero, nil, err
+		}
+		_, verifyErr := store.VerifyFileMemory(context.Background())
+		if err := errors.Join(verifyErr, store.Close()); err != nil {
+			return layout, zero, nil, err
+		}
+	}
+	if host.Memory != nil && host.Memory.Backend == "sqlite" {
+		if _, err := os.Stat(state.FileMemoryMarker(layout.State)); err == nil {
+			return layout, zero, nil, errors.New("sqlite backend requires explicit memory rollback before startup")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return layout, zero, nil, err
+		}
+	}
 	c.Channel = id
 	c.channelConfigPath = path
 	// Capability configurations belong to the unified registry, not profiles.

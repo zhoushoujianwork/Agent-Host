@@ -10,9 +10,11 @@ service/alias/property subset, shared by writes, chat and memory search. The
 Exact Go interfaces and SQL schemas should be defined when implementing the
 corresponding step rather than treated as a public API now.
 The [revised publication policy](experience-memory-detail.md#revised-publication-and-blacklist-policy-2026-10-12)
-plans automatic Jev-selected experience publication and admission/recall
-blacklist checks. The current code still requires experience acceptance; the
-implemented user-statement path already saves automatically.
+is implemented for explicitly migrated file-memory tasks: automatic experience
+publication and bounded admission/recall blacklist checks. Legacy SQLite tasks
+retain human acceptance. The [file-memory details](file-memory-design-detail.md)
+own authoritative storage, publication recovery and current validation; the
+SQLite storage and transaction sections below remain historical compatibility notes.
 
 ## Command and session behavior
 

@@ -105,6 +105,31 @@ func fixtureMemory(id, source string) state.Memory {
 	return state.Memory{ID: id, Scope: "/tmp/fixture", Kind: "procedure", Text: "Run the package tests after changing the fixture", SourceType: source, Status: "active", Revision: 1}
 }
 
+func TestQuarantinedUserStatementSameRelationRemainsVisibleToPublication(t *testing.T) {
+	for _, relation := range []string{"same", "independent"} {
+		t.Run(relation, func(t *testing.T) {
+			m := fixtureMemory("disabled-assertion", "user_statement")
+			m.Status, m.Kind = "conflicted", "constraint"
+			f := &fakeEvaluator{fn: func(context.Context, any, map[string]jev.Question) (jev.Response, error) {
+				return jev.Response{Model: "fixture-cross-source", Answers: map[string]jev.Answer{"m0": answer(relation, .99)}}, nil
+			}}
+			out, err := (&JevJudge{client: f}).Compare(t.Context(), fixtureCandidate(), []state.Memory{m})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if relation == "same" && strings.Join(out.ConflictIDs, ",") != m.ID {
+				t.Fatalf("equivalent user assertion escaped publication relation: %+v", out)
+			}
+			if relation == "independent" && len(out.ConflictIDs) != 0 {
+				t.Fatalf("independent procedure was blocked: %+v", out)
+			}
+			if len(out.DuplicateIDs) != 0 || m.Status != "conflicted" || m.SourceType != "user_statement" {
+				t.Fatalf("comparison relabeled or attached experience evidence to an assertion: %+v %+v", out, m)
+			}
+		})
+	}
+}
+
 func TestComparisonHandlesRelationsWithoutRelabelingUserStatements(t *testing.T) {
 	existing := []state.Memory{
 		fixtureMemory("duplicate-experience", "reviewed_experience"),

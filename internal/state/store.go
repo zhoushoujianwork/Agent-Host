@@ -26,6 +26,9 @@ type Store struct {
 	agentID               string
 	audienceID            string
 	borrowed              bool
+	home                  string
+	readOnly              bool
+	files                 *fileMemory
 }
 
 const schemaV1 = `
@@ -125,6 +128,13 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 			return nil, err
 		}
 	}
+	// Resolve platform aliases such as macOS /var before recording a durable
+	// state-home locator. Runtime authorization remains with the host config.
+	physicalHome, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	path = filepath.Join(physicalHome, "state.db")
 	u := url.URL{Scheme: "file", Path: path}
 	q := u.Query()
 	q.Add("_pragma", "busy_timeout(5000)")
@@ -271,7 +281,13 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 			return fail(err)
 		}
 	}
-	return &Store{db: db, legacyProjectMetadata: readOnly && version < 9}, nil
+	store := &Store{db: db, home: filepath.Dir(path), readOnly: readOnly, legacyProjectMetadata: readOnly && version < 9}
+	if !projectInspection {
+		if err := store.openFileMemory(context.Background()); err != nil {
+			return fail(err)
+		}
+	}
+	return store, nil
 }
 
 func (s *Store) Close() error {
@@ -410,6 +426,22 @@ func (s *Store) Run(ctx context.Context, id string) (Run, error) {
 }
 
 func (s *Store) transaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	if s.files != nil {
+		return s.fileOperationalTransaction(ctx, fn)
+	}
+	return s.sqlTransaction(ctx, fn)
+}
+
+// Operational evidence remains writable when learned files need repair.
+// Only methods that consume or publish knowledge require the file coordinator.
+func (s *Store) memoryTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
+	if s.files != nil {
+		return s.fileTransaction(ctx, fn)
+	}
+	return s.sqlTransaction(ctx, fn)
+}
+
+func (s *Store) sqlTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return errors.Join(err, ctx.Err())
@@ -430,7 +462,7 @@ func (s *Store) transaction(ctx context.Context, fn func(*sql.Tx) error) error {
 }
 
 func (s *Store) SaveContext(ctx context.Context, id string, memories []Memory) error {
-	return s.transaction(ctx, func(tx *sql.Tx) error {
+	return s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		run, err := s.readRun(ctx, tx, id)
 		if err != nil {
 			return err

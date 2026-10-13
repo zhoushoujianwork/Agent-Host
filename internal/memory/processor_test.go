@@ -59,6 +59,31 @@ func existing(id, text, status string) state.Memory {
 	return state.Memory{ID: id, Scope: "/project", Text: text, Kind: "preference", Status: status, Revision: 1}
 }
 
+func TestQuarantinedReviewedExperienceSameRelationRemainsVisibleToAdmission(t *testing.T) {
+	// Host presents a disabled record as conflicted comparison data so a change
+	// of source type cannot hide an equivalent lesson from blacklist handling.
+	for _, relation := range []string{"same", "independent"} {
+		t.Run(relation, func(t *testing.T) {
+			m := existing("disabled-procedure", "Use the configured destination when checking the connection.", "conflicted")
+			m.Kind, m.SourceType, m.Conditions = "procedure", "reviewed_experience", "For the configured connection."
+			f := &fakeEvaluator{responses: []jev.Response{classification("constraint", .99), relations(decisionAnswer(relation, .99))}}
+			d, err := (&Processor{client: f}).Decide(t.Context(), "The connection check must use the configured destination.", []state.Memory{m})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if relation == "same" && !reflect.DeepEqual(d.ConflictIDs, []string{m.ID}) {
+				t.Fatalf("same procedure escaped admission relation: %+v", d)
+			}
+			if relation == "independent" && len(d.ConflictIDs) != 0 {
+				t.Fatalf("independent declaration was blocked: %+v", d)
+			}
+			if len(d.DuplicateIDs) != 0 || m.Status != "conflicted" || m.SourceType != "reviewed_experience" {
+				t.Fatalf("comparison changed source or attached user evidence to experience: %+v %+v", d, m)
+			}
+		})
+	}
+}
+
 func TestExactUserStatementAndAudit(t *testing.T) {
 	input := "我偏好中文回复。"
 	f := &fakeEvaluator{responses: []jev.Response{classification("preference", .93)}, inspect: func(i int, s any, q map[string]jev.Question) {

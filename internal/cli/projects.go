@@ -84,6 +84,9 @@ func resolveProjectSet(ctx context.Context, store *state.Store, o *options, exec
 	if err := resolveKnowledge(o); err != nil {
 		return err
 	}
+	if err := refreshFileRuntime(ctx, store, o); err != nil {
+		return err
+	}
 	r, err := assembly.AssembleProjects(o.projects, o.primaryProject, scope, workspace, assemblyConfig(*o))
 	if err != nil {
 		return err
@@ -114,7 +117,7 @@ func assemblyConfig(o options) assembly.Configuration {
 	if o.historyEnabled && !o.noTools {
 		policy = history.PolicyVersion
 	}
-	return assembly.Configuration{AgentID: o.agentID, AudienceID: o.audienceID, HostInstructions: o.hostInstructions, PermissionMode: o.permissionMode, Binary: o.binary, Model: o.model, NativeProfile: o.nativeProfile, ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, KnowledgeFingerprint: knowledge.Fingerprint(o.knowledgeSources), ConversationHistoryPolicy: policy, ContextPolicy: o.contextPolicy, EmailFingerprint: o.emailFingerprint, DingTalkFingerprint: o.dingtalkWorkspaceFingerprint}
+	return assembly.Configuration{AgentID: o.agentID, AudienceID: o.audienceID, HostInstructions: o.hostInstructions, UserProfile: o.userProfile, MemoryFingerprint: fileRuntimeCompatibility(o), PermissionMode: o.permissionMode, Binary: o.binary, Model: o.model, NativeProfile: o.nativeProfile, ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, KnowledgeFingerprint: knowledge.Fingerprint(o.knowledgeSources), ConversationHistoryPolicy: policy, ContextPolicy: o.contextPolicy, EmailFingerprint: o.emailFingerprint, DingTalkFingerprint: o.dingtalkWorkspaceFingerprint}
 }
 
 func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {

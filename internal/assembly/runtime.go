@@ -34,6 +34,8 @@ type Configuration struct {
 	AgentID, AudienceID          string
 	PermissionMode               string
 	HostInstructions             string
+	UserProfile                  string `json:",omitempty"`
+	MemoryFingerprint            string `json:",omitempty"`
 	KnowledgeFingerprint         string
 	EmailFingerprint             string `json:",omitempty"`
 	DingTalkFingerprint          string `json:",omitempty"`

@@ -268,13 +268,14 @@ type Candidate struct {
 }
 
 type CandidateAcceptance struct {
-	MemoryID          string
-	Note              string
-	ExpiresAt         *time.Time
-	ConflictIDs       []string
-	DuplicateIDs      []string
-	ExpectedRevisions map[string]int
-	Decision          json.RawMessage
+	MemoryID           string
+	Note               string
+	ExpiresAt          *time.Time
+	ConflictIDs        []string
+	DuplicateIDs       []string
+	ExpectedRevisions  map[string]int
+	ExpectedGeneration string
+	Decision           json.RawMessage
 }
 
 // MemoryUpdate appends an exact user statement. Conflicts exclude both sides

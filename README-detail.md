@@ -5,9 +5,9 @@ This page keeps additional commands, configuration notes and implementation guid
 
 ## Runtime and credentials
 
-`make run` invokes the Go CLI to start all enabled `.agent-host/channels/channel-*.json`
-registrations, with visible foreground logs and a workbench per runtime. Without
-a channel directory, it retains `.agent-host/runtime` as the legacy default.
+`make run` invokes the Go CLI to start enabled `.agent-host/config/channels.*.json`
+configurations, with visible foreground logs and one shared workbench. Channel
+state lives in `.agent-host/channels/<name>/`; explicit legacy entry points remain.
 Use `make run RUN_ARGS=--no-browser` to suppress browser launch, or
 `RUNTIME_ROOT=/absolute/private/runtime` to select another configured runtime.
 See the [runtime guide](docs/service-install.md).
@@ -19,7 +19,7 @@ or inspection. The channel runtime's state is separate from ordinary CLI state.
 Claude uses its configured native authentication. Jev uses TypeSafe by default
 with `TYPESAFE_API_KEY`; `--jev-provider custom --jev-endpoint URL` selects an
 explicit gateway and reads `JEV_API_KEY`. In the channel runtime, configure
-provider values in the private `config/component-environment.json`. There is no provider
+provider values in the private environment file referenced by `config/host.json`. There is no provider
 fallback. All accounts, credentials and populated runtime files belong in the
 ignored `.agent-host/` tree.
 
@@ -46,7 +46,9 @@ registrations to the native harness for each eligible run.
 `--no-tools` prevents MCP mounts. Memory extraction runs separately without MCP
 tools and uses Claude safe mode to exclude ambient plugins and customizations.
 Normal execution uses the configured native profile; native skills/plugin
-behavior and permissions remain the harness's responsibility. Host has no
+execution and permissions remain the harness's responsibility. File-memory Host
+tasks mount a private skill-only Claude plugin for eligible learned procedures;
+no-tools and extraction requests receive none. Host has no
 plugin installer, discovery command or compatibility guarantee for arbitrary
 native plugins. Claude invocations use `--strict-mcp-config`, so MCP settings
 installed outside Host do not automatically become task capabilities.
@@ -74,14 +76,22 @@ own; inspection of channel runs needs that channel runtime's `--home`.
 ./bin/agent-host memory accept --note 'Reviewed the cited evidence' CANDIDATE_ID
 ./bin/agent-host memory reject --reason 'Not supported by the evidence' CANDIDATE_ID
 ./bin/agent-host memory invalidate --reason 'Superseded' MEMORY_ID
+./bin/agent-host memory restore --reason 'Explicitly restored' MEMORY_ID
 ./bin/agent-host run show RUN_ID
 ./bin/agent-host run events RUN_ID
 ./bin/agent-host run retry-memory RUN_ID
 ./bin/agent-host run retry-experience RUN_ID
 ./bin/agent-host eval --suite evals/memory-v2.json
-./bin/agent-host email check --config "$PWD/.agent-host/email/data-email-accounts.json"
+./bin/agent-host email check --config "$PWD/.agent-host/config/datasource.plugins.email.json"
 ./bin/agent-host assistance --help
 ```
+
+See [file memory](docs/file-memory-design.md) for explicit `memory migrate`,
+`memory verify` and lossless `memory rollback`. A migrated state's files own
+knowledge; `cache/memory` is rebuildable, while its runtime database retains
+operational history. Direct edits to published memory fail checksum validation;
+editable-draft import is not delivered. [Agent templates](config/agent-templates/README.md)
+use explicit `instructions_dir` and optional owner-private `user_file` bindings.
 
 Execution completion, task acceptance and memory persistence are separate.
 User statements are attributed evidence; accepted execution lessons retain the

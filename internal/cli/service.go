@@ -50,6 +50,7 @@ Use --no-browser to keep the workbench available without opening a browser.
 `
 
 type serviceConfig struct {
+	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
 	KnowledgeChannel           string   `json:"-"`
 	DisableKnowledge           bool     `json:"-"`
@@ -350,6 +351,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	args = append(args, "--native-profile", layout.Native)
 	if c.MemoryScope != "" {
 		args = append(args, "--memory-scope", c.MemoryScope)
+	}
+	if c.WorkspaceCache != "" {
+		args = append(args, "--workspace-cache", c.WorkspaceCache)
 	}
 	if c.DisableKnowledge {
 		args = append(args, "--disable-knowledge-plugin")

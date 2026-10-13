@@ -1,13 +1,14 @@
 # Agent-Host architecture
 
-The [file memory and experience Skill proposal](file-memory-design.md) defines
-the next storage direction: versioned files own learned knowledge, SQLite keeps
-operational evidence and rebuildable retrieval indexes, and Host supplies scoped
-skills to native harnesses. It supersedes the earlier database-authoritative
-memory/derived-skill target. It is not implemented; the SQLite behavior described
-below remains the delivered baseline. Its staged migration and acceptance gates
-own the next memory implementation order.
-The [workspace layout proposal](workspace-layout.md) assigns user-maintained Agent
+The [file memory and experience Skill implementation](file-memory-design.md)
+stores versioned knowledge in files, keeps operational evidence in state.db and
+rebuildable retrieval indexes under cache, and supplies scoped Claude skills.
+Explicit migration selects this backend; unmigrated SQLite behavior remains
+available for compatibility. Source publication manifests own atomic visibility;
+domain views and native packages are derived. Historical migration, cache rebuild,
+rollback and one real native Skill invocation passed; local channels have been
+migrated and restarted. General scale remains unmeasured.
+The [workspace layout](workspace-layout.md) assigns user-maintained Agent
 instructions and profiles to read-only runtime configuration, learned knowledge
 and skills to memory, source snapshots to datasource plugin storage, and scoped
 task context views to cache. It removes the separate top-level knowledge directory
@@ -24,7 +25,7 @@ options. Migrated default memory scopes are retained; new channels use stable
 default identities. Validation is recorded in the linked details.
 
 Status: architecture and roadmap, with a local CLI MVP, manual-review experience
-extension, DingTalk private/group-mention channels with configurable Agent
+extension plus migrated file-memory publication/Skills, DingTalk private/group-mention channels with configurable Agent
 instances, and a Feishu meeting text channel implemented. The
 [Feishu IM increment](feishu-channel.md) adds owner private and group-mention
 text; its assembled checks and one private greeting/reply passed. Group and
@@ -36,8 +37,9 @@ and remaining work. The experience extension passed its bounded synthetic
 live loop on 2026-10-10; general accuracy and scale remain unmeasured.
 The revised [memory design](experience-memory.md) removes required human
 acceptance: Jev-selected memory becomes effective automatically, with a blacklist
-for later disabling. Automatic experience publication and protection against
-equivalent re-admission are planned, not delivered by the current binary.
+for later disabling. File-memory runtimes implement automatic experience
+publication and bounded blacklist admission checks; legacy SQLite runtimes retain
+human acceptance. Equivalence remains model-dependent for arbitrary rewrites.
 The [evaluation guide](evaluation.md) introduces categorized cases and recurring
 regression checks. The [object retrieval extension](object-retrieval.md) resolves
 the two initial retrieval cases and passes the expanded 26-case recall set.
@@ -97,7 +99,8 @@ supported proposals and compares existing memory. The target policy publishes
 selected memory automatically after Host validation, with no required human
 acceptance. Later disabling preserves history and blocks both recall and
 equivalent re-admission within the same scope. The current code automatically
-saves user statements but still requires `memory accept` for experience.
+saves user statements. File-memory tasks also publish selected experience
+automatically; legacy SQLite tasks retain `memory accept`.
 Experience retains conditions and evidence strength; it is not independently
 verified truth. Execution completion, task acceptance, selection and memory
 persistence remain separate outcomes.
@@ -153,11 +156,11 @@ automatically become learned Host memory. Its validation is tracked separately.
 
 The [CLI memory-loop proposal](cli-memory-design.md) narrows the first milestone
 to terminal chat through the native Claude CLI. It uses one local owner and one
-configured harness, without requiring external channel integration. SQLite is
-the authority for operational evidence, review candidates and versioned memory
-in separate tables, with FTS5 and rebuildable object/topic indexes. Pending/rejected candidates, quarantined memories,
-expired records and invalidated records are excluded from recall. Markdown
-export remains planned. A versioned
+configured harness, without requiring external channel integration. SQLite remains the authority for operational evidence and processing candidates.
+Migrated memory files own versioned knowledge, with rebuildable FTS5 and
+object/topic indexes under cache; the historical SQLite backend remains compatible. Pending/rejected candidates, quarantined memories,
+expired records and invalidated records are excluded from recall. Formal Markdown documents and Skills are implemented in the file backend;
+direct document-edit import remains planned. A versioned
 event journal drives terminal text and NDJSON output. The local
 [execution and memory viewer](../tools/run-viewer/README.md) reads saved events,
 database memory and archived reports. Owner-local controls publish or reject
@@ -238,7 +241,7 @@ the foreground. The Go CLI scans private `.agent-host/config/channels.*.json` co
 supervises Feishu and DingTalk concurrently in separate worker processes.
 Their credentials, state, logs, workspace and native profiles live
 under `.agent-host/channels/<name>`, with editable configuration in
-`.agent-host/config` and shared email operation state in `.agent-host/plugins/email`. The former system service was removed; historical data was
+`.agent-host/config` and shared email operation state in `.agent-host/datasource/plugins/email`. The former system service was removed; historical data was
 retained in the ignored project area. Ordinary CLI uses `.agent-host/cli-state`. Deployment evidence remains distinct from offline tests.
 
 The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local
@@ -258,9 +261,10 @@ own public audience and authorized history. An IM-only configuration performs
 no meeting reads. The new IM path's validation is recorded separately from the
 meeting evidence.
 
-The [issue #1 plan](release-follow-up.md#issue-1-delivery-plan) proposes derived
-native skills from eligible execution procedures and explicit per-person reply
-preferences. Both remain planned. They reuse scoped, source-linked memory and
+The [issue #1 plan](release-follow-up.md#issue-1-delivery-plan) includes native
+skills from eligible execution procedures and explicit per-person reply
+preferences. File-memory Claude Skill mounting is implemented; broader per-person
+profiles remain planned. Optional owner USER configuration is a narrower binding. They reuse scoped, source-linked memory and
 depend on the publication/blacklist increment; native skill execution remains
 inside the harness, and profile data cannot broaden identity or audience grants.
 
@@ -275,10 +279,9 @@ inside the harness, and profile data cannot broaden identity or audience grants.
    retrieval. Demonstrate source-linked reuse in a fresh conversation and
    validate multilingual retrieval as data grows. **User-statement loop and
    bounded, explicitly reviewed experience are implemented. The experience
-   extension passed its bounded live loop. Automatic Jev-selected experience
-   publication and a blacklist that also blocks equivalent re-admission are the
-   next memory increment; general extraction, quality and scale work remain
-   planned. Bounded service/alias/property retrieval and categorized
+   extension passed its bounded live loop. Automatic Jev-selected experience publication and bounded blacklist
+   admission checks are implemented in the migrated file backend; general
+   extraction, quality and scale work remain planned. Bounded service/alias/property retrieval and categorized
    regression are implemented. The original retrieval failures remain preserved
    as historical baselines; a live Jev admission gap remains unresolved.**
 4. Prioritize the first everyday channel: DingTalk owner private messages through

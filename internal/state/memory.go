@@ -26,10 +26,28 @@ func readMemory(ctx context.Context, q rowQuerier, id string) (Memory, error) {
 }
 
 func (s *Store) Memory(ctx context.Context, id string) (Memory, error) {
+	if s.files != nil {
+		var m Memory
+		err := s.memoryTransaction(ctx, func(tx *sql.Tx) error { var err error; m, err = s.readMemory(ctx, tx, id); return err })
+		return m, err
+	}
 	return s.readMemory(ctx, s.db, id)
 }
 
 func (s *Store) Memories(ctx context.Context, scope string) ([]Memory, error) {
+	if s.files != nil {
+		var memories []Memory
+		err := s.memoryTransaction(ctx, func(tx *sql.Tx) error {
+			agentID, audienceID := s.Partition()
+			rows, err := tx.QueryContext(ctx, "SELECT payload FROM memories WHERE agent_id=? AND audience_id=? AND scope=? AND status IN ('active','conflicted') AND (expires_at IS NULL OR expires_at>?) ORDER BY rowid", agentID, audienceID, scope, timestamp(time.Now()))
+			if err != nil {
+				return err
+			}
+			memories, err = scanMemories(rows)
+			return errors.Join(err, rows.Close())
+		})
+		return memories, err
+	}
 	agentID, audienceID := s.Partition()
 	rows, err := s.db.QueryContext(ctx, "SELECT payload FROM memories WHERE agent_id=? AND audience_id=? AND scope=? AND status IN ('active','conflicted') AND (expires_at IS NULL OR expires_at>?) ORDER BY rowid LIMIT 201", agentID, audienceID, scope, timestamp(time.Now()))
 	if err != nil {
@@ -150,7 +168,7 @@ func persistMemory(ctx context.Context, tx *sql.Tx, m Memory, isNew bool) error 
 	if isNew {
 		_, err = tx.ExecContext(ctx, "INSERT INTO memories(id,agent_id,audience_id,sender_id,scope,text,status,expires_at,payload) VALUES(?,?,?,?,?,?,?,?,?)", m.ID, m.AgentID, m.AudienceID, m.SenderID, m.Scope, m.Text, m.Status, expiry, payload)
 	} else {
-		_, err = tx.ExecContext(ctx, "UPDATE memories SET status=?,expires_at=?,payload=? WHERE id=?", m.Status, expiry, payload, m.ID)
+		_, err = tx.ExecContext(ctx, "UPDATE memories SET text=?,status=?,expires_at=?,payload=? WHERE id=?", m.Text, m.Status, expiry, payload, m.ID)
 	}
 	if err != nil {
 		return err
@@ -169,14 +187,26 @@ func persistMemory(ctx context.Context, tx *sql.Tx, m Memory, isNew bool) error 
 	return persistAnnotation(ctx, tx, m)
 }
 
-func (s *Store) FinalizeMemory(ctx context.Context, id string, updates []MemoryUpdate, decision json.RawMessage) error {
+func (s *Store) FinalizeMemory(ctx context.Context, id string, updates []MemoryUpdate, decision json.RawMessage, expectedGeneration ...string) error {
+	if len(expectedGeneration) > 1 {
+		return errors.New("memory finalization accepts one expected generation")
+	}
 	if len(decision) == 0 || !json.Valid(decision) {
 		return errors.New("memory finalization requires valid raw decision JSON")
 	}
-	return s.transaction(ctx, func(tx *sql.Tx) error {
+	return s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		run, err := s.readRun(ctx, tx, id)
 		if err != nil {
 			return err
+		}
+		if s.files != nil && len(expectedGeneration) == 1 {
+			fingerprint, err := memoryFingerprintTx(ctx, tx, []string{run.Scope}, run.AgentID, run.AudienceID)
+			if err != nil {
+				return err
+			}
+			if expectedGeneration[0] == "" || expectedGeneration[0] != fingerprint {
+				return errors.New("memory publication snapshot changed; compare the user statement again")
+			}
 		}
 		if len(run.Projects) > 1 {
 			return errors.New("automatic memory writeback is disabled for multi-project runs")

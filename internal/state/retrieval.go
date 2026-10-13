@@ -115,9 +115,14 @@ func persistAnnotation(ctx context.Context, tx *sql.Tx, m Memory) error {
 }
 
 func eligibleAnnotations(ctx context.Context, tx *sql.Tx, scope string, now time.Time, partition ...string) ([]annotatedMemory, error) {
+	fileIndex := fileMemorySQL(ctx, tx)
 	filter, args := partitionWhere("m.", partition...)
 	args = append([]any{scope, timestamp(now)}, args...)
-	rows, err := tx.QueryContext(ctx, `SELECT m.payload,a.version,a.payload FROM memories m LEFT JOIN memory_annotations a ON a.memory_id=m.id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?)`+filter+` ORDER BY m.rowid LIMIT 201`, args...)
+	query := `SELECT m.payload,a.version,a.payload FROM memories m LEFT JOIN memory_annotations a ON a.memory_id=m.id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?)` + filter + ` ORDER BY m.rowid`
+	if !fileIndex {
+		query += " LIMIT 201"
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, wrap("read eligible annotations", err)
 	}
@@ -148,7 +153,7 @@ func eligibleAnnotations(ctx context.Context, tx *sql.Tx, scope string, now time
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	if len(result) > 200 {
+	if !fileIndex && len(result) > 200 {
 		return nil, errors.New("scope exceeds MVP annotation limit of 200 eligible memories; narrower registry retrieval is required")
 	}
 	return result, nil
@@ -162,6 +167,18 @@ func annotationRecords(items []annotatedMemory) []annotation.Annotation {
 	return result
 }
 
+// Without aliases, a memory's explicit objects are self-contained. Resolving
+// every record against the complete registry repeats an identical object map
+// N times; this fast path preserves the same applicability rules at growth.
+func registryHasAliases(records []annotation.Annotation) bool {
+	for _, record := range records {
+		if len(record.Aliases) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func rebuildTerms(ctx context.Context, tx *sql.Tx, scope string, partition ...string) error {
 	items, err := eligibleAnnotations(ctx, tx, scope, time.Now(), partition...)
 	if err != nil {
@@ -173,8 +190,13 @@ func rebuildTerms(ctx context.Context, tx *sql.Tx, scope string, partition ...st
 		return err
 	}
 	records := annotationRecords(items)
+	hasAliases := registryHasAliases(records)
 	for _, item := range items {
-		query := annotation.Resolve(scope, item.Memory.Text, records)
+		registry := records
+		if !hasAliases {
+			registry = []annotation.Annotation{item.Annotation}
+		}
+		query := annotation.Resolve(scope, item.Memory.Text, registry)
 		for _, key := range annotation.QueryKeys(query) {
 			if _, err = tx.ExecContext(ctx, "INSERT INTO memory_terms(memory_id,term) VALUES(?,?) ON CONFLICT DO NOTHING", item.Memory.ID, key); err != nil {
 				return wrap("index memory annotation", err)
@@ -197,7 +219,7 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 	if limit < 1 || limit > 200 {
 		return result, errors.New("search limit must be between 1 and 200")
 	}
-	err = s.transaction(ctx, func(tx *sql.Tx) error {
+	err = s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		now := time.Now()
 		agentID, audienceID := s.Partition()
 		items, err := eligibleAnnotations(ctx, tx, scope, now, agentID, audienceID)
@@ -205,6 +227,7 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 			return err
 		}
 		records := annotationRecords(items)
+		hasAliases := registryHasAliases(records)
 		result.Query = annotation.Resolve(scope, text, records)
 		byID := map[string]annotatedMemory{}
 		for _, item := range items {
@@ -264,7 +287,11 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 		canonical := map[string]annotation.Annotation{}
 		memoryQueries := map[string]annotation.Query{}
 		for _, item := range items {
-			memoryQuery := annotation.Resolve(scope, item.Memory.Text, records)
+			registry := records
+			if !hasAliases {
+				registry = []annotation.Annotation{item.Annotation}
+			}
+			memoryQuery := annotation.Resolve(scope, item.Memory.Text, registry)
 			memoryQueries[item.Memory.ID] = memoryQuery
 			current := annotation.Canonical(memoryQuery)
 			canonical[item.Memory.ID] = current
