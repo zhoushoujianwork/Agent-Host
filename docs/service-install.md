@@ -23,7 +23,9 @@ Running `make run` again picks up configuration and code changes.
 
 The shared workbench stays at `http://127.0.0.1:8765/` across restarts.
 It combines enabled channels' execution records and memory with clear source
-labels. To choose another fixed port, use
+labels. The [memory workbench](../tools/run-viewer/README.md#memory-workspace)
+also lets the owner publish or reject saved experience drafts and disable
+memory while its channel Host is running. To choose another fixed port, use
 `make run RUN_ARGS='--viewer-port 9000'`. If occupied, the workbench reports
 failure instead of switching ports; the channels still start.
 

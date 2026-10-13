@@ -267,6 +267,11 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		return renderer.Render(e)
 	}
 	var channelMu sync.Mutex
+	stopMemory, err := startManagedMemoryControl(ctx, store, o, client)
+	if err != nil {
+		return fmt.Errorf("start memory workbench control: %w", err)
+	}
+	defer stopMemory()
 	var seq int64
 	start := time.Now()
 	emitChannel := func(kind, message, status string, data map[string]any) error {

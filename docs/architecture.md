@@ -135,10 +135,11 @@ the authority for operational evidence, review candidates and versioned memory
 in separate tables, with FTS5 and rebuildable object/topic indexes. Pending/rejected candidates, quarantined memories,
 expired records and invalidated records are excluded from recall. Markdown
 export remains planned. A versioned
-event journal drives terminal text and NDJSON output. The local read-only
+event journal drives terminal text and NDJSON output. The local
 [execution and memory viewer](../tools/run-viewer/README.md) reads saved events,
-database memory and archived reports. A Web interface for submitting tasks or
-changing memory remains planned.
+database memory and archived reports. Owner-local controls publish or reject
+existing experience drafts and disable memory through the running Host, which
+keeps database ownership and validation. Web task submission remains planned.
 
 The first external channel accepts the configured owner's DingTalk private
 messages and same-enterprise group mentions using an application bot. The

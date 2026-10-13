@@ -8,6 +8,10 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+import os
+import socketserver
+from http.server import BaseHTTPRequestHandler
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -17,7 +21,7 @@ from memory_view import memory_catalog
 
 class MemoryTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="agent-host-memory-view-test-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="ah-memory-", dir="/tmp")
         self.root = Path(self.temporary.name)
         self.home, self.reports = self.root / "home", self.root / "reports"
         self.reports.mkdir()
@@ -33,6 +37,7 @@ class MemoryTests(unittest.TestCase):
                            "CREATE TABLE memory_annotations(memory_id TEXT PRIMARY KEY,payload TEXT);"
                            "CREATE TABLE runs(id TEXT PRIMARY KEY,scope TEXT,created_at TEXT,payload TEXT);"
                            "CREATE TABLE events(run_id TEXT,seq INTEGER,payload TEXT);"
+                           "CREATE TABLE candidates(id TEXT PRIMARY KEY,scope TEXT,run_id TEXT,payload TEXT,agent_id TEXT DEFAULT 'default',audience_id TEXT DEFAULT 'owner');"
                            "CREATE TABLE projects(id TEXT PRIMARY KEY,name TEXT,workspace TEXT,scope TEXT,created_at TEXT,updated_at TEXT);"
                            "CREATE TABLE channel_messages(id TEXT,reply_url TEXT);"
                            "CREATE TABLE channel_reactions(id INTEGER,channel_message_id TEXT,status TEXT);"
@@ -241,6 +246,74 @@ class MemoryTests(unittest.TestCase):
                     urlopen(Request(base + "/api/memories", method=method, headers=headers))
                 self.assertEqual(error.exception.code, expected)
                 error.exception.close()
+        finally:
+            http.shutdown(); http.server_close(); worker.join()
+
+    def test_candidate_source_scope_and_live_host_forwarding(self):
+        conn = self.database()
+        for name, scope in (("candidate-a", "/project-a"), ("candidate-b", "/project-b")):
+            candidate = {"id": name, "scope": scope, "run_id": "source-a", "status": "pending",
+                         "draft": {"title": "Fixture", "summary": "Fixture evidence", "steps": [], "evidence_ids": []},
+                         "assessment": {"eligible": True}, "created_at": "2026-10-13T00:00:00Z"}
+            conn.execute("INSERT INTO candidates(id,scope,run_id,payload) VALUES(?,?,?,?)", (name, scope, "source-a", json.dumps(candidate)))
+        conn.commit(); conn.close()
+        requests = []
+
+        class HostHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                body = b'{"ok":true,"result":{"status":"accepted"}}'
+                self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        path = self.home / "memory-control.sock"
+        host = socketserver.UnixStreamServer(str(path), HostHandler)
+        os.chmod(path, 0o600)
+        worker = threading.Thread(target=host.serve_forever, daemon=True); worker.start()
+        try:
+            selected = server.Catalog(self.home, self.reports, "/project-a")
+            candidates = selected.memories()["candidates"]
+            self.assertEqual([item["key"] for item in candidates], ["db:candidate-a"])
+            self.assertTrue(candidates[0]["can_manage"])
+            with self.assertRaises(KeyError):
+                selected.action("db:candidate-b", "accept", "reviewed", 0)
+            with self.assertRaises(ValueError):
+                selected.action("report-123:candidate-a", "accept", "reviewed", 0)
+            self.assertEqual(requests, [])
+            status, result = selected.action("db:candidate-a", "accept", "reviewed", 0)
+            self.assertEqual(status, 200); self.assertTrue(result["ok"])
+            self.assertEqual(requests, [{"action": "accept", "id": "candidate-a", "agent_id": "default", "audience_id": "owner", "note": "reviewed", "revision": 0}])
+            sources = server.MultiCatalog([f"dingtalk={self.home}", f"feishu={self.home}"]).memories()["candidates"]
+            self.assertEqual({item["key"] for item in sources}, {"dingtalk:db:candidate-a", "dingtalk:db:candidate-b", "feishu:db:candidate-a", "feishu:db:candidate-b"})
+        finally:
+            host.shutdown(); host.server_close(); worker.join()
+
+    def test_memory_action_requires_same_origin_token_and_bounded_action(self):
+        self.archive()
+        http = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        http.catalog = self.catalog
+        http.mutation_token = "fixture-token"
+        calls = []
+        worker = threading.Thread(target=http.serve_forever, daemon=True); worker.start()
+        base = f"http://127.0.0.1:{http.server_port}"
+        body = json.dumps({"key": "db:fixture", "action": "reject", "note": "unsupported", "revision": 0}).encode()
+        headers = {"Content-Type": "application/json", "Origin": base, "X-Host-Action": "fixture-token"}
+        try:
+            with patch.object(self.catalog, "action", side_effect=lambda *args: (calls.append(args) or (200, {"ok": True}))):
+                for changed in ({"Origin": "http://outside.example"}, {"X-Host-Action": "wrong"}, {"Host": "outside.example"}, {"Origin": "null"}):
+                    with self.assertRaises(HTTPError) as error:
+                        urlopen(Request(base + "/api/memory-action", data=body, headers={**headers, **changed}))
+                    self.assertEqual(error.exception.code, 403); error.exception.close()
+                self.assertEqual(calls, [])
+                for bad in (b'{}', b'{"action":"shell"}', b'x' * 8193):
+                    with self.assertRaises(HTTPError) as error:
+                        urlopen(Request(base + "/api/memory-action", data=bad, headers=headers))
+                    self.assertEqual(error.exception.code, 400); error.exception.close()
+                with urlopen(Request(base + "/api/memory-action", data=body, headers=headers)) as response:
+                    self.assertTrue(json.load(response)["ok"])
+                self.assertEqual(calls, [("db:fixture", "reject", "unsupported", 0)])
         finally:
             http.shutdown(); http.server_close(); worker.join()
 

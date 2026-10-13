@@ -238,6 +238,11 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	observe := func(kind, message string) error {
 		return sink(event.Event{Version: event.Version, At: time.Now().UTC(), Type: kind, Phase: "channel", Component: "channel.feishu-meeting", Message: message})
 	}
+	stopMemory, err := startManagedMemoryControl(ctx, store, o, client)
+	if err != nil {
+		return fmt.Errorf("start memory workbench control: %w", err)
+	}
+	defer stopMemory()
 	profile := channel.Key("feishu-meeting-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
 	if cfg.AutoJoin {
 		profile = channel.Key("feishu-meeting-auto-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())

@@ -28,7 +28,8 @@ The supervisor forwards cancellation with SIGTERM, waits for cleanup, removes
 its worker PID files, and releases locks. Unexpected worker exit fails the
 supervisor and stops peers; it never replays tasks or restarts silently.
 The retained Python single-runtime runner is compatibility tooling only;
-it is not invoked by `make run`. Python still serves the read-only workbench.
+it is not invoked by `make run`. Python serves the workbench projection and
+forwards explicit memory actions to the corresponding running Host.
 The Host owns graceful channel, native execution and viewer shutdown. No launchd
 registration, startup-at-login, automatic crash restart or shell daemon is added.
 The legacy installer remains available for historical release tooling, but is
@@ -220,8 +221,10 @@ leaving observation available. Ordinary channel reconnects do not reopen tabs.
 Service cancellation stops and reaps the viewer child. Viewer startup or browser
 failures are reported separately without stopping channel execution; viewer
 runtime errors remain in `ROOT/logs/viewer.log`. The service's structured event
-journal remains separate. No authentication, remote listener, task submission or
-memory mutation is added to this owner-local read-only view.
+journal remains separate. The current owner-local memory controls use a private
+socket per channel Host, while Python retains read-only SQLite access. There is
+no remote listener or task submission; source and request checks are documented
+in the [workbench details](../tools/run-viewer/README-detail.md#owner-local-memory-controls).
 
 Regression tests start the installed viewer assets against isolated schema-13
 state, verify both pages and the memory API, check default/disabled/failed browser

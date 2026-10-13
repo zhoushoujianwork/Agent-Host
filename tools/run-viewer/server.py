@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Serve an owner-local, read-only HTML view of host records and saved reports."""
+"""Serve an owner-local workbench with Host-owned memory controls."""
 
 import argparse
 import hashlib
 import json
+import http.client
 from pathlib import Path
+import secrets
+import socket
 import sqlite3
+import stat
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
@@ -178,6 +183,70 @@ class Catalog:
         conn.execute("BEGIN")
         return conn
 
+    def control_available(self):
+        path = self.database.parent / "memory-control.sock"
+        try:
+            info = path.lstat()
+            return self.audience == "owner" and stat.S_ISSOCK(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077
+        except FileNotFoundError:
+            return False
+
+    def candidates(self):
+        if not self.database.exists():
+            return []
+        conn = self.connection()
+        try:
+            version = self.schema_version(conn)
+            if version < 2:
+                return []
+            context = self.filter_context(conn)
+            where, args = self.memory_filter(context, version, "c")
+            rows = conn.execute("SELECT c.payload FROM candidates c" + where + " ORDER BY c.rowid DESC LIMIT 200", args)
+            return [{"key": "db:" + c["id"], "candidate": c,
+                     "source": {"id": "db", "kind": "database", "name": "本机 state.db"},
+                     "origin_run": {"key": "db:" + c["run_id"]},
+                     "can_manage": self.control_available()} for (raw,) in rows for c in [decode(raw)]]
+        finally:
+            conn.close()
+
+    def memories(self):
+        result = memory_catalog(self)
+        result["candidates"] = self.candidates()
+        available = self.control_available()
+        for item in result["memories"]:
+            item["can_manage"] = available and not item["snapshot"]
+        return result
+
+    def action(self, key, action, note, revision):
+        if not key.startswith("db:") or not self.control_available():
+            raise ValueError("only live owner records in a running Host can be managed")
+        identifier = key[3:]
+        conn = self.connection()
+        try:
+            context = self.filter_context(conn)
+            table = "memories" if action == "invalidate" else "candidates"
+            where, args = self.memory_filter(context, self.schema_version(conn), "m")
+            row = conn.execute("SELECT m.payload FROM " + table + " m" + where + " AND m.id=?", args + (identifier,)).fetchone()
+            if row is None:
+                raise KeyError("record outside the selected source or scope")
+        finally:
+            conn.close()
+        connection = http.client.HTTPConnection("localhost", timeout=100)
+        connection.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.sock.settimeout(100)
+        try:
+            connection.sock.connect(str(self.database.parent / "memory-control.sock"))
+            body = {"action": action, "id": identifier, "agent_id": self.agent,
+                    "audience_id": self.audience, "note": note, "revision": revision}
+            connection.request("POST", "/memory-action", json.dumps(body), {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            raw = response.read((1 << 20) + 1)
+            if len(raw) > 1 << 20:
+                raise ValueError("Host response exceeded its bound; refresh to inspect the outcome")
+            return response.status, decode(raw)
+        finally:
+            connection.close()
+
     def schema_version(self, conn):
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
@@ -313,7 +382,7 @@ class MultiCatalog:
         if not isinstance(value, dict):
             return value
         result = dict(value)
-        for key in ("records", "memories", "sources", "recalls", "uses", "origin_run", "source"):
+        for key in ("records", "memories", "candidates", "sources", "recalls", "uses", "origin_run", "source"):
             if key in result:
                 result[key] = MultiCatalog.qualify(result[key], channel)
         for key in ("key", "annotation_record_key"):
@@ -343,9 +412,9 @@ class MultiCatalog:
         return self.qualify(self.catalogs[channel].record(reference), channel)
 
     def memories(self):
-        catalogs = [self.qualify(memory_catalog(catalog), name) for name, catalog in self.catalogs.items()]
+        catalogs = [self.qualify(catalog.memories(), name) for name, catalog in self.catalogs.items()]
         result = {key: [item for catalog in catalogs for item in catalog[key]]
-                  for key in ("memories", "sources", "recalls")}
+                  for key in ("memories", "candidates", "sources", "recalls")}
         result["memories"].sort(key=lambda item: item["memory"].get("created_at", ""), reverse=True)
         result["recalls"].sort(key=lambda item: item.get("created_at") or "", reverse=True)
         result.update({key: sum(catalog[key] for catalog in catalogs)
@@ -354,6 +423,12 @@ class MultiCatalog:
                       truncated=any(catalog["truncated"] for catalog in catalogs),
                       agent_id=self.agent, audience_id=self.audience, channels=list(self.catalogs))
         return result
+
+    def action(self, key, action, note, revision):
+        channel, separator, reference = key.partition(":")
+        if not separator or channel not in self.catalogs:
+            raise KeyError("record channel not found")
+        return self.catalogs[channel].action(reference, action, note, revision)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -377,7 +452,9 @@ class Handler(BaseHTTPRequestHandler):
             if target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
             elif target.path == "/api/memories":
-                self.send(200, self.server.catalog.memories() if isinstance(self.server.catalog, MultiCatalog) else memory_catalog(self.server.catalog))
+                result = self.server.catalog.memories()
+                result["mutation_token"] = getattr(self.server, "mutation_token", None)
+                self.send(200, result)
             elif target.path == "/api/record":
                 keys = parse_qs(target.query).get("key", [])
                 if len(keys) != 1:
@@ -396,9 +473,35 @@ class Handler(BaseHTTPRequestHandler):
             self.send(500, {"error": f"record read failed: {error}"})
 
     def do_POST(self):
-        self.send(405, {"error": "viewer is read-only"})
+        token = getattr(self.server, "mutation_token", None)
+        if urlsplit(self.path).path != "/api/memory-action" or not token:
+            self.send(405, {"error": "this route is read-only"})
+            return
+        host = self.headers.get("Host", "")
+        if host not in {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"} or self.headers.get("Origin") != "http://" + host or not secrets.compare_digest(self.headers.get("X-Host-Action", "").encode(), token.encode()):
+            self.send(403, {"error": "same-origin owner action required"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 8192 or self.headers.get("Content-Type") != "application/json" or self.headers.get("Transfer-Encoding"):
+                raise ValueError("provide a bounded JSON action")
+            self.connection.settimeout(10)
+            value = decode(self.rfile.read(length))
+            if set(value) != {"key", "action", "note", "revision"} or not all(isinstance(value[k], str) for k in ("key", "action", "note")) or type(value["revision"]) is not int or len(value["note"]) > 2000 or len(value["key"]) > 256 or value["action"] not in {"accept", "reject", "invalidate"}:
+                raise ValueError("invalid memory action")
+            status, result = self.server.catalog.action(value["key"], value["action"], value["note"], value["revision"])
+            self.send(status, result)
+        except KeyError:
+            self.send(404, {"error": "record outside the selected source or scope"})
+        except (ValueError, sqlite3.Error) as error:
+            self.send(400, {"error": str(error)})
+        except (OSError, http.client.HTTPException):
+            self.send(503, {"error": "Host control unavailable or interrupted; refresh to inspect the outcome before retrying"})
 
-    do_PUT = do_DELETE = do_PATCH = do_POST
+    def do_PUT(self):
+        self.send(405, {"error": "unsupported operation"})
+
+    do_DELETE = do_PATCH = do_PUT
 
     def log_message(self, format, *args):
         # Do not log record payloads or request query strings.
@@ -433,6 +536,7 @@ def main():
         parser.error(str(error))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.catalog = catalog
+    server.mutation_token = secrets.token_urlsafe(32)
     print(f"Execution viewer: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()

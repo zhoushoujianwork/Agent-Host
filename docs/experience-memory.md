@@ -7,6 +7,9 @@ The current implementation automatically saves eligible user statements but
 still holds execution experience for `memory accept`. Automatic experience
 publication and protection against re-admitting blacklisted lessons remain to
 be implemented. The 2026-10-10 reviewed loop remains historical validation.
+The [local memory workbench](../tools/run-viewer/README.md#memory-workspace) now
+supports explicit publication/rejection of existing drafts and disabling saved
+memory while the channel is running. This does not complete automatic publication.
 See [implementation, transition and validation details](experience-memory-detail.md).
 
 ## Goal and usage

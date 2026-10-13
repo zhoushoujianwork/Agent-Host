@@ -650,6 +650,12 @@ func (s *Store) RejectCandidate(ctx context.Context, id, note string) error {
 }
 
 func (s *Store) InvalidateMemory(ctx context.Context, id, note string) error {
+	return s.InvalidateMemoryRevision(ctx, id, note, 0)
+}
+
+// InvalidateMemoryRevision rejects stale workbench actions atomically with the write.
+// A zero revision retains the existing CLI behavior.
+func (s *Store) InvalidateMemoryRevision(ctx context.Context, id, note string, revision int) error {
 	if strings.TrimSpace(note) == "" {
 		return errors.New("memory invalidation requires a reason")
 	}
@@ -660,6 +666,9 @@ func (s *Store) InvalidateMemory(ctx context.Context, id, note string) error {
 		}
 		if m.Status != "active" && m.Status != "conflicted" {
 			return errors.New("memory is already invalidated")
+		}
+		if revision != 0 && m.Revision != revision {
+			return errors.New("memory revision changed; refresh before disabling")
 		}
 		m.Status = "invalidated"
 		m.Revision++

@@ -1,7 +1,7 @@
 # Local execution viewer
 
-Status: implemented local, read-only prototype. This is a standalone viewer;
-it does not add a Web channel or change the Go host's execution path.
+Status: local execution inspection and owner memory management are implemented.
+Memory actions use the running Host; the page does not submit business tasks.
 
 Open saved Agent-Host runs as an HTML dashboard. Select a run to see the core
 route, component durations, actual agent/model observations, tool evidence,
@@ -84,8 +84,8 @@ quote provenance when present. Private reply and input-download capabilities
 are never queried; the viewer does not serve saved attachment bytes. Inspect
 channel receipt and delivery separately with `agent-host dingtalk status`.
 
-This prototype reads local owner data, binds only to loopback, and has no
-execution or review actions. Read errors are shown explicitly; displayed old
+The workbench reads local owner data, binds only to loopback, and provides
+memory controls when the corresponding channel Host is running. Read errors are shown explicitly; displayed old
 data is marked unsynchronized. It does not authenticate multiple users or
 provide remote deployment. Stop the process with Ctrl-C.
 
@@ -117,5 +117,16 @@ separate from each other and from current database state. A credential topic
 is not displayed as a service or a newly invented credential object.
 
 Archived input annotations and incomplete source links are explicitly labeled.
-This is a local inspection prototype with five-second polling. It does not
-review, change or delete memories, run agents, or independently verify claims.
+The **经验草稿** section shows pending proposals, their applicability, original
+steps and cited tool evidence. Open a draft and choose **发布原稿** to publish
+that exact proposal through the existing Host comparison and admission path,
+or **不采用** with a reason. Published and rejected drafts remain inspectable.
+Open an active memory and choose **停用记忆** with a reason to exclude it from
+future recall while retaining the source and revision history.
+
+These controls work while the channel service is running. An offline database,
+archived report or group-audience view is inspection-only. Stale revisions and
+already-processed drafts are rejected; failures remain visible. Refresh after
+an interrupted action to inspect its outcome before trying again. Automatic
+refresh pauses while a detail dialog is open so it does not erase your input.
+The page neither runs business tasks nor independently verifies their claims.

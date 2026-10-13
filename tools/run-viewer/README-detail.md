@@ -5,13 +5,14 @@ See the [main guide](README.md) for scope and usage.
 ## Boundary and data flow
 
 `server.py` uses only Python's standard library. It serves `index.html`,
-`style.css`, and `app.js`, plus two read-only JSON endpoints:
+`style.css`, and `app.js`, plus these JSON endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/records` | Recent database runs and saved report runs, with source identity |
 | `GET /api/record?key=...` | One run, complete event journal, related candidates/memories and source metadata |
-| `GET /api/memories` | Memory library, stored or observed annotations, source/run links and actual recall decisions |
+| `GET /api/memories` | Memory library, experience drafts, annotations, source/run links, recall decisions and local action token |
+| `POST /api/memory-action` | Publish/reject an existing live owner draft or disable a current memory through its running Host |
 
 Database keys are `db:RUN_ID`. Report keys combine a hash of the selected report
 path and its Run ID, so identical IDs in distinct sources are not conflated.
@@ -19,7 +20,9 @@ No request can select an arbitrary file or change the configured source paths.
 
 SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
 request. No host startup, recovery, migrations, native process, or model API is
-invoked. Schema versions 1–14 are supported; v1 has no candidate table.
+invoked by reads. Memory actions delegate to the existing running Host and may
+invoke Jev relationship comparison before publication. Schema versions 1–14
+are supported; v1 has no candidate table.
 The additive v3 retrieval indexes, v4 channel tables and v5/v6 reaction outbox do not change the
 queried run/candidate payloads. Run provenance is retained in raw data; the
 viewer never reads channel reply capabilities or the channel inbox.
@@ -115,7 +118,10 @@ eligibility alone.
 ## Local HTTP boundary
 
 The server binds to `127.0.0.1` and accepts only matching loopback Host headers.
-Only fixed asset and JSON routes are served. POST/PUT/PATCH/DELETE return 405.
+Only fixed asset and JSON routes are served. PUT/PATCH/DELETE and unsupported
+POST routes return 405. `POST /api/memory-action` requires a matching Origin,
+the per-process token returned by the same-origin memory read, JSON content
+type and a body of at most 8 KiB. Unknown fields and actions are rejected.
 Responses use no-store, nosniff and a same-origin content security policy.
 Untrusted requests, model output and tool data are rendered with `textContent`;
 no source HTML, Markdown scripts or commands are executed. No external assets
@@ -137,6 +143,39 @@ review/reuse/invalidation provenance. Browser inspection covers record selection
 phase details, probability-based rejection, evidence navigation, memory status
 and source/search controls. These tests do not prove production scale or
 memory-model accuracy.
+
+## Owner-local memory controls
+
+Each managed channel Host opens `state/memory-control.sock` with mode `0600`
+after acquiring its existing runtime writer lock. Python retains read-only
+SQLite connections and forwards only `accept`, `reject` or `invalidate` to the
+selected source's socket. The source/channel-qualified record key resolves to
+an existing row in the configured project, Agent and owner partition; paths,
+model settings and credentials never come from browser requests. Offline
+sources, report snapshots and group-audience projections cannot mutate state.
+
+The Go endpoint validates fields and bounds, scopes the Store to the requested
+Agent's owner partition and serializes local actions. Draft review requires a
+finished source run. Publication reuses `Host.AcceptExperience`, including Jev
+comparison, evidence validation, revision checks and conflict/duplicate handling;
+it does not run an agent or replay the source business task. Rejection reuses
+`Store.RejectCandidate`. Disabling reuses `Store.InvalidateMemoryRevision`, whose
+displayed revision check and invalidation are one transaction. Reject/disable
+reasons remain persisted with the original record and evidence.
+
+Drafts are separately bounded to the latest 200 per source and never counted as
+effective memory. Detail dialogs show applicability, original steps and recorded
+assessment evidence. Polling pauses while the dialog is open. Actions disable
+their buttons while pending; failures are shown and never automatically retried.
+After transport interruption, refresh to inspect state before any further action.
+Standalone CLI mutations still require the runtime lock; Web actions use the
+already-running writer and do not weaken that ownership rule.
+
+Regression checks cover actual Host publication and persisted rejection/disable,
+no source replay, stale revision and reviewed-candidate rejection, private socket
+lifecycle, project/source/partition isolation, report exclusion, body bounds and
+cross-origin/token rejection. These controls retain the currently implemented
+explicit publication workflow; automatic experience publication remains separate.
 
 ## Memory projection and visualization
 

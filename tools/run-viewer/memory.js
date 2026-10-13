@@ -1,6 +1,6 @@
 "use strict";
 
-// Render recorded identities and judgments. This page never extracts or writes memory.
+// Render recorded evidence; explicit actions are validated by the running Host.
 const $ = (id) => document.getElementById(id);
 const list = (value) => Array.isArray(value) ? value : [];
 const dom = (tag, className = "", text) => {
@@ -15,7 +15,9 @@ const statuses = {active: "可供召回", conflicted: "存在冲突", invalidate
 const topics = {database: "数据库", port: "端口", timeout: "超时", owner: "负责人", "credential.type.key": "密钥类型", "credential.type.password": "密码类型", "credential.type.token": "令牌类型", "credential.type.certificate": "证书类型", "credential.rotation": "凭据轮换", "credential.rotation.period": "轮换周期", "physical.key": "实体钥匙"};
 const reasons = {different_object: "对象不匹配", different_topic: "属性不匹配", different_credential_type: "凭据类型不同", different_key_domain: "钥匙领域不同", missing_rotation_period: "缺少轮换周期", unresolved_query_object: "查询对象未确定", unresolved_memory_object: "记忆对象未确定", candidate_limit: "候选数量限制", compatible: "对象与属性适用"};
 const choices = {remember: "值得长期记忆", skip: "不应保存", independent: "相互独立", same: "语义重复", conflict: "存在冲突", uncertain: "关系未确定"};
-const state = {data: null, source: "", object: null, topic: null, busy: false, selected: null};
+const state = {data: null, source: "", object: null, topic: null, busy: false, selected: null, candidate: null, mutating: false};
+const candidateStatuses = {pending: "待处理", accepted: "已发布", rejected: "未采用"};
+const sourceCandidates = () => list(state.data?.candidates).filter((item) => state.source === "all" || item.source.id === state.source);
 const text = (value) => String(value || "");
 const annotation = (item) => item.annotation || {};
 const objectList = (item) => list(annotation(item).objects);
@@ -51,7 +53,7 @@ function selectObject(object) { state.object = object; state.topic = null; rende
 function clearFilter() { state.object = null; state.topic = null; render(); }
 
 async function refresh() {
-  if (state.busy) return;
+  if (state.busy || state.mutating) return;
   state.busy = true; $("refresh").disabled = true;
   try {
     const response = await fetch("/api/memories", {cache: "no-store"});
@@ -117,6 +119,11 @@ function render() {
   $("scope-note").textContent = `AGENT ${state.data.agent_id || "default"} · AUDIENCE ${state.data.audience_id || "owner"}${state.data.scope ? ` · ${state.data.project ? `PROJECT ${state.data.project} · ` : ""}MEMORY SCOPE ${state.data.scope}` : " · SOURCES KEPT SEPARATE"}`;
   const visible = filteredItems();
   renderGraph(visible); renderRecall(); renderCards(visible);
+  renderCandidates();
+  if ($("memory-detail").open && state.candidate) {
+    const current = sourceCandidates().find((item) => item.key === state.candidate);
+    if (current) renderCandidateDetail(current);
+  }
   if ($("memory-detail").open && state.selected) {
     const current = items.find((item) => item.key === state.selected);
     if (current) renderDetail(current);
@@ -220,7 +227,77 @@ function renderCards(items) {
   if (!items.length) $("memory-grid").append(dom("div", "library-empty", "当前筛选下没有记忆记录。可以清除筛选，或选择其他数据源。"));
 }
 
-function openDetail(item) {state.selected = item.key; renderDetail(item); if (!$("memory-detail").open) $("memory-detail").showModal();}
+function openDetail(item) {state.candidate = null; state.selected = item.key; renderDetail(item); if (!$("memory-detail").open) $("memory-detail").showModal();}
+
+function renderCandidates() {
+  const items = sourceCandidates(), wanted = $("candidate-filter").value;
+  const visible = items.filter((item) => wanted === "all" || item.candidate.status === wanted);
+  $("candidate-count").textContent = items.filter((item) => item.candidate.status === "pending").length;
+  $("candidate-grid").replaceChildren();
+  for (const item of visible) {
+    const c = item.candidate, card = dom("button", "memory-card");
+    card.append(tag(candidateStatuses[c.status] || c.status), dom("h3", "", c.draft.title), dom("p", "", c.draft.summary), dom("small", "", `${item.source.name} · ${date(c.created_at)}`));
+    card.setAttribute("aria-label", `查看经验草稿：${c.draft.title}`);
+    card.addEventListener("click", () => {state.selected = null; state.candidate = item.key; renderCandidateDetail(item); $("memory-detail").showModal();});
+    $("candidate-grid").append(card);
+  }
+  if (!visible.length) $("candidate-grid").append(dom("p", "detail-note", "当前来源没有符合筛选条件的经验草稿。"));
+  $("candidate-limit").textContent = "每个数据源最多显示最近 200 条草稿；待处理草稿尚不可供召回。";
+}
+
+function actionControls(body, item, candidate) {
+  const actions = candidate ? item.candidate.status === "pending" ? ["accept", "reject"] : []
+    : ["active", "conflicted"].includes(item.memory.status) ? ["invalidate"] : [];
+  if (!actions.length) return;
+  const box = section(body, "管理此记录");
+  if (!item.can_manage || !state.data.mutation_token) {
+    box.append(dom("p", "detail-note", "当前来源暂不可管理。请启动对应通道服务；归档记录仅供查看。")); return;
+  }
+  box.append(dom("p", "detail-note", candidate ? "发布会保留这份原稿及来源证据，并检查已有记忆的重复或冲突。" : "停用后，后续任务将不再召回这条记忆；原文与历史保留。"));
+  const label = dom("label", "action-label", "处理说明（不采用或停用时必填）");
+  const note = dom("textarea", "action-note"); note.rows = 3; note.maxLength = 2000; note.id = "action-reason"; label.htmlFor = note.id;
+  const controls = dom("div", "memory-actions"), result = dom("p", "detail-note"); result.setAttribute("role", "status");
+  box.append(label, note, controls, result);
+  for (const action of actions) {
+    const button = dom("button", `action-button ${action === "accept" ? "primary" : ""}`, {accept: "发布原稿", reject: "不采用", invalidate: "停用记忆"}[action]);
+    controls.append(button);
+    button.addEventListener("click", async () => {
+      if (state.mutating) return;
+      if (action !== "accept" && !note.value.trim()) {result.textContent = "请填写处理原因。"; note.focus(); return;}
+      state.mutating = true; controls.querySelectorAll("button").forEach((b) => b.disabled = true); $("close-detail").disabled = true;
+      result.textContent = "正在处理，请稍候…";
+      try {
+        const response = await fetch("/api/memory-action", {method: "POST", headers: {"Content-Type": "application/json", "X-Host-Action": state.data.mutation_token}, body: JSON.stringify({key: item.key, action, note: note.value.trim(), revision: candidate ? 0 : item.memory.revision})});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        $("action-notice").hidden = false;
+        $("action-notice").textContent = action === "accept" ? `经验已发布 · ${statuses[data.result.status] || data.result.status}` : action === "reject" ? "草稿已标记为不采用，来源证据保留。" : "记忆已停用，原文与历史保留。";
+        $("memory-detail").close(); state.selected = null; state.candidate = null;
+        state.mutating = false;
+        await refresh();
+      } catch (error) {result.textContent = `处理未完成：${error.message}。请刷新并检查当前状态，勿重复提交结果未知的操作。`;}
+      finally {state.mutating = false; controls.querySelectorAll("button").forEach((b) => b.disabled = false); $("close-detail").disabled = false;}
+    });
+  }
+}
+
+function renderCandidateDetail(item) {
+  const body = $("detail-body"); body.replaceChildren();
+  const c = item.candidate;
+  body.append(tag(candidateStatuses[c.status] || c.status), dom("h3", "detail-statement", c.draft.title), dom("p", "", c.draft.summary));
+  const steps = section(body, "适用条件与原始步骤"); steps.append(dom("p", "", c.draft.conditions));
+  const sequence = dom("ol"); list(c.draft.steps).forEach((step) => sequence.append(dom("li", "", step))); steps.append(sequence);
+  const evidence = section(body, "来源与筛选记录");
+  kv(evidence, [["数据源", item.source.name], ["草稿 ID", c.id], ["记忆范围", c.scope], ["提取模型", c.model], ["引用工具结果", list(c.draft.evidence_ids).length], ["处理说明", c.review_note || "未处理"]]);
+  const assessment = c.assessment || {}, audit = assessment.audit || {};
+  for (const evaluation of list(audit.evaluations)) {
+    const answers = evaluation.response?.answers;
+    if (answers) {const grid = dom("div", "judgment-grid"); judgment(grid, "可复用性", answers.durable, audit.probability_threshold); judgment(grid, "证据支持", answers.support, audit.probability_threshold); evidence.append(grid);}
+  }
+  const source = dom("a", "recall-link", "查看源执行与工具结果 →"); source.href = recordURL(item.origin_run.key); evidence.append(source);
+  const raw = dom("details"); raw.append(dom("summary", "", "查看原始草稿、判断与引用证据"), dom("pre", "", JSON.stringify(c, null, 2))); evidence.append(raw);
+  actionControls(body, item, true);
+}
 function section(parent, title) {const node = dom("section", "detail-section"); node.append(dom("h3", "", title)); parent.append(node); return node;}
 function kv(parent, entries) {
   const node = dom("dl", "detail-kv");
@@ -284,14 +361,16 @@ function renderDetail(item) {
   if (item.annotation_record_key) {const link = dom("a", "recall-link", "查看同文输入标注 →"); link.href = recordURL(item.annotation_record_key); provenance.append(link);}
   const raw = dom("details"); raw.append(dom("summary", "", "查看记忆及派生标注原始数据"), dom("pre", "", JSON.stringify({memory, annotation: item.annotation, annotation_origin: item.annotation_origin}, null, 2))); provenance.append(raw);
   body.append(dom("p", "detail-note", "来源为用户声明，或人工接受的经验。记忆状态和模型概率不构成对内容的独立真实性验证。"));
+  actionControls(body, item, false);
 }
 
-$("source-filter").addEventListener("change", () => {state.source = $("source-filter").value; state.object = null; state.topic = null; state.selected = null; $("memory-detail").close(); render();});
+$("source-filter").addEventListener("change", () => {state.source = $("source-filter").value; state.object = null; state.topic = null; state.selected = null; state.candidate = null; $("memory-detail").close(); render();});
+$("candidate-filter").addEventListener("change", renderCandidates);
 $("search").addEventListener("input", render);
 $("status-filter").addEventListener("change", render);
 $("refresh").addEventListener("click", refresh);
 $("close-detail").addEventListener("click", () => $("memory-detail").close());
 $("memory-detail").addEventListener("click", (event) => {if (event.target === $("memory-detail")) {const bounds = event.target.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) event.target.close();}});
-setInterval(() => {if ($("auto-refresh").checked && !document.hidden) refresh();}, 5000);
-document.addEventListener("visibilitychange", () => {if (!document.hidden && $("auto-refresh").checked) refresh();});
+setInterval(() => {if ($("auto-refresh").checked && !document.hidden && !$("memory-detail").open) refresh();}, 5000);
+document.addEventListener("visibilitychange", () => {if (!document.hidden && $("auto-refresh").checked && !$("memory-detail").open) refresh();});
 refresh();
