@@ -6,12 +6,25 @@ reference for prior evidence; `make install` is no longer a Make target.
 
 ## Project-local runtime
 
-`make run` builds the checkout binary and invokes `tools/service/run.py` with
-`.agent-host/runtime` by default. `RUNTIME_ROOT` selects another explicit root;
-`RUN_ARGS=--no-browser` suppresses browser launch. The runner copies the tracked
-viewer assets into the private runtime, runs `service check`, then relays the
-service's stdout/stderr to both the terminal and a private append-only log.
-It writes `service.pid` while running and forwards SIGINT/SIGTERM to the child.
+`make run` builds the checkout binary and invokes `agent-host service run`
+directly. The Go CLI scans `.agent-host/channels/*.json` for registrations with
+`enabled: true` and a `runtime_root`, resolving relative paths against the
+registration directory. `CHANNELS_DIR` selects another registration directory;
+an explicit `RUNTIME_ROOT` bypasses scanning and selects one runtime.
+`RUN_ARGS=--no-browser` suppresses browser launch. Without a registration
+directory, startup retains `.agent-host/runtime` as the legacy default.
+
+The CLI validates all enabled runtimes and acquires their exclusive `run.lock`
+locks before connecting. It copies tracked viewer assets with private atomic
+replacement, then starts one Go worker process per runtime. Child processes
+isolate process-wide provider environment variables and native profiles.
+Each workbench selects a free loopback port. Workers relay stdout/stderr to the
+terminal and their private append-only logs, and record `service.pid`.
+The supervisor forwards cancellation with SIGTERM, waits for cleanup, removes
+its worker PID files, and releases locks. Unexpected worker exit fails the
+supervisor and stops peers; it never replays tasks or restarts silently.
+The retained Python single-runtime runner is compatibility tooling only;
+it is not invoked by `make run`. Python still serves the read-only workbench.
 The Host owns graceful channel, native execution and viewer shutdown. No launchd
 registration, startup-at-login, automatic crash restart or shell daemon is added.
 The legacy installer remains available for historical release tooling, but is
@@ -20,6 +33,7 @@ not part of the checkout's `make run` workflow.
 | Project-local path | Purpose |
 | --- | --- |
 | `bin/agent-host` | Binary built from the checkout |
+| `.agent-host/channels/*.json` | Private enabled-channel registrations |
 | `.agent-host/runtime/config` | Current Feishu service/provider/channel configuration |
 | `.agent-host/runtime/state` | Feishu task/history/memory database and input artifacts |
 | `.agent-host/runtime/native` | Dedicated native profiles and sessions |
@@ -27,14 +41,19 @@ not part of the checkout's `make run` workflow.
 | `.agent-host/runtime/logs` | Service and viewer logs |
 | `.agent-host/runtime/viewer` | Private copy of viewer assets |
 | `.agent-host/email` | Shared mailbox registry, private credentials and operation ledger |
-| `.agent-host/dingtalk` | Preserved optional DingTalk runtime |
+| `.agent-host/dingtalk` | Independently configured DingTalk runtime |
 | `.agent-host/legacy-home` | Preserved remaining former home-directory data and evidence |
 | `.agent-host/cli-state` | Default state for ordinary local CLI invocations |
 
 The existing root `.gitignore` rule excludes the complete `.agent-host/` tree.
-The runner requires current-user ownership and private regular files, rejects
+The CLI requires current-user ownership and private regular files, rejects
 symlink runtime paths, and does not write credential values to commands. It uses
-the Python interpreter running the wrapper for the viewer unless overridden.
+`python3` for the viewer unless `--viewer-python` is explicitly supplied.
+
+Go regression tests cover enabled and disabled registrations, relative paths,
+duplicate roots, malformed/private/symlink configuration, legacy fallback,
+preflight failure before any connection, runtime-lock release, concurrent worker
+startup, cancellation, peer failure and PID cleanup.
 
 On 2026-10-13, the prior email deployment mismatch was traced to two separate
 services: DingTalk production had email configured, while the Feishu lab still

@@ -13,7 +13,8 @@ public-source snapshot. Follow the [development guide](development.md).
 The source includes configuration examples, foreground-runner/viewer tools, guides,
 LICENSE and dependency notices. Users supply their own native harness and
 authentication. This is not a bundled model or shared hosted service. Building
-requires Go 1.26+ and Make; the foreground runner and viewer need Python 3.
+requires Go 1.26+ and Make; channel startup is handled by the Go CLI, and the
+read-only viewer needs Python 3.10+.
 The historical packaging/export utilities remain for compatibility and audit,
 not as the current distribution workflow.
 

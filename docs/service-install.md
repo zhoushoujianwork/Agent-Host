@@ -1,8 +1,9 @@
 # Project-local runtime
 
-Run the channel service from the project with `make run`. Configuration,
+Run all enabled channel services from the project with `make run`. Configuration,
 credentials, state, logs and native profiles live under the ignored
-`.agent-host/` directory. The default local runtime currently serves Feishu.
+`.agent-host/` directory. The Go CLI scans `.agent-host/channels/*.json` and
+starts every enabled channel together. Feishu and DingTalk can run concurrently.
 There is no system startup registration or login-time restart.
 See the [details](service-install-detail.md#project-local-runtime) for layout,
 configuration, migration evidence and the retained legacy deployment history.
@@ -13,11 +14,12 @@ configuration, migration evidence and the retained legacy deployment history.
 make run
 ```
 
-The command builds `bin/agent-host`, checks local configuration, prepares the
-workbench files and starts the service in the foreground. Logs appear in the
-terminal and append to `.agent-host/runtime/logs/service.ndjson`. The printed
-workbench URL shows saved tasks, tools and memory. Ctrl-C stops the service and
-workbench. Running `make run` again picks up configuration and code changes.
+The command builds `bin/agent-host` and invokes its Go CLI directly. The CLI
+checks all enabled configurations, prepares workbench files, and supervises the
+channel workers in the foreground. Each channel keeps its own state, logs, model
+environment and workbench. Logs appear in the terminal and each runtime's
+`logs/service.ndjson`. Ctrl-C stops all workers and workbenches.
+Running `make run` again picks up configuration and code changes.
 
 To avoid opening a browser:
 
@@ -25,18 +27,41 @@ To avoid opening a browser:
 make run RUN_ARGS=--no-browser
 ```
 
-The migrated DingTalk runtime is available separately:
+To run only one explicit runtime for diagnosis:
 
 ```sh
 make run RUNTIME_ROOT="$PWD/.agent-host/dingtalk"
 ```
 
-Stop the current runtime before switching. These commands do not install a
-system service. They do not replay old tasks.
+Stop its current worker before starting the same runtime again. These commands
+do not install a system service or replay old tasks.
 
 ## Configure
 
-Edit `.agent-host/runtime/config/service.json` for the channel, model, provider,
+Create one private registration file per channel, for example
+`.agent-host/channels/feishu.json`:
+
+```json
+{
+  "enabled": true,
+  "runtime_root": "../runtime"
+}
+```
+
+For `.agent-host/channels/dingtalk.json`, use `"runtime_root": "../dingtalk"`.
+Set `enabled` to `false` to disable a channel on the next startup. Runtime paths
+are relative to the registration directory or absolute. Only present, enabled
+registrations start workers; each must reference a complete runtime. Protect
+the directory with mode `700` and files with mode `600`. The example is
+[channel.example.json](../config/channel.example.json).
+
+An absent channel directory preserves the older single-runtime setup. An
+existing directory with no enabled channels fails explicitly. Invalid enabled
+runtime settings prevent startup before any channel connects. Duplicate runtime
+paths and running instances are rejected. If a worker exits unexpectedly, the
+CLI reports failure and stops its peers; it does not silently restart tasks.
+
+Edit each runtime's `config/service.json` for the channel, model, provider,
 tool policy and optional source configurations. Provider values belong in
 `config/environment.json`; channel identity belongs in `config/feishu.json` or
 `config/dingtalk.json`. Keep credentials and populated configuration private

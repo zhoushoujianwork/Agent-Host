@@ -66,7 +66,7 @@ After preparing your private configuration, start the channel service:
 make run
 ```
 
-The channel service runs in the foreground, prints its workbench URL and logs
+Enabled channel services run together in the foreground, print their workbench URLs and logs
 to the terminal. Ctrl-C stops it. Private configuration, credentials and state
 live in the Git-ignored `.agent-host/` directory.
 

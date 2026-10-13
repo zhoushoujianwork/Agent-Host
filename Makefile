@@ -5,7 +5,9 @@
 VIEWER_ARGS ?=
 VERSION ?=
 DIST_DIR ?= dist
+SINGLE_RUNTIME := $(if $(filter undefined,$(origin RUNTIME_ROOT)),,1)
 RUNTIME_ROOT ?= $(CURDIR)/.agent-host/runtime
+CHANNELS_DIR ?= $(CURDIR)/.agent-host/channels
 RUN_ARGS ?=
 PYTHON ?= python3
 
@@ -17,7 +19,11 @@ package:
 	python3 -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
 
 run: build
-	$(PYTHON) -B tools/service/run.py --root "$(RUNTIME_ROOT)" --binary "$(CURDIR)/bin/agent-host" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+ifeq ($(SINGLE_RUNTIME),1)
+	./bin/agent-host service run --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+else
+	./bin/agent-host service run --channels-dir "$(CHANNELS_DIR)" --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+endif
 
 help:
 	@printf '%s\n' \
@@ -25,7 +31,7 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  run     Run the project-local channel service in the foreground' \
+		'  run     Run all configured and enabled channels in the foreground' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
 		'  help    Print this usage guide (default target)' \

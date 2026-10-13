@@ -210,8 +210,10 @@ recall in an isolated runtime using the existing bot; the
 keeps this separate from production state and remaining live scenarios.
 Production latency remains to be evaluated.
 The [project-local runtime](service-install.md) starts through `make run` in
-the foreground. Its credentials, state, logs, workspace and native profiles live
-under the project's ignored `.agent-host/runtime`, with the mailbox registry in
+the foreground. The Go CLI scans private enabled-channel registrations and
+supervises Feishu and DingTalk concurrently in separate worker processes.
+Their credentials, state, logs, workspace and native profiles live
+under distinct ignored runtime roots, with the mailbox registry in
 `.agent-host/email`. The former system service was removed; historical data was
 retained in the ignored project area. Ordinary CLI uses `.agent-host/cli-state`. Deployment evidence remains distinct from offline tests.
 

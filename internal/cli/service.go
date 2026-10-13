@@ -21,9 +21,15 @@ import (
 const serviceUsage = `Managed channel runtime (DingTalk by default).
 
   agent-host service check --root ABSOLUTE_PATH
+  agent-host service check --channels-dir ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
+  agent-host service run --channels-dir ABSOLUTE_PATH --viewer-source ABSOLUTE_PATH [--no-browser]
 
-make run prepares the project-local viewer and starts the private configured runtime.
+make run builds the Go CLI, which scans channel registrations, prepares viewers,
+and supervises every enabled runtime. Each registration has enabled and runtime_root.
+Runtime paths may be relative to the registration directory. No channel directory
+preserves the legacy --root setup; an existing directory with no enabled channels fails.
+--viewer-source enables runtime locking and supervised startup for a single --root too.
 Configuration comes from ROOT/config/service.json, environment.json and
 dingtalk.json, feishu.json for channel feishu, or feishu-meeting.json for
 channel feishu-meeting, plus the optional private agents_config file. Native Claude
@@ -85,11 +91,15 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	fs.SetOutput(errout)
 	var root string
 	fs.StringVar(&root, "root", "", "Absolute managed runtime directory")
+	var channelsDirectory string
+	fs.StringVar(&channelsDirectory, "channels-dir", "", "Private directory of enabled channel configurations")
 	var noBrowser bool
 	var viewerPython string
+	var viewerSource string
 	if command == "run" {
 		fs.BoolVar(&noBrowser, "no-browser", false, "Do not open the default browser")
 		fs.StringVar(&viewerPython, "viewer-python", "python3", "Python 3.10+ executable for the workbench")
+		fs.StringVar(&viewerSource, "viewer-source", "", "Tracked workbench assets; enables managed startup and runtime locking")
 	}
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -99,6 +109,9 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	}
 	if len(fs.Args()) != 0 {
 		return errors.New("service commands do not accept positional arguments")
+	}
+	if channelsDirectory != "" || viewerSource != "" {
+		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, noBrowser, out, errout)
 	}
 	layout, config, environment, err := loadService(root)
 	if err != nil {

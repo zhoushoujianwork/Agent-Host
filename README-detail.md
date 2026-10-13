@@ -5,8 +5,10 @@ This page keeps additional commands, configuration notes and implementation guid
 
 ## Runtime and credentials
 
-`make run` uses `.agent-host/runtime`, with visible foreground logs and a local
-workbench. Use `make run RUN_ARGS=--no-browser` to suppress browser launch, or
+`make run` invokes the Go CLI to start all enabled `.agent-host/channels/*.json`
+registrations, with visible foreground logs and a workbench per runtime. Without
+a channel directory, it retains `.agent-host/runtime` as the legacy default.
+Use `make run RUN_ARGS=--no-browser` to suppress browser launch, or
 `RUNTIME_ROOT=/absolute/private/runtime` to select another configured runtime.
 See the [runtime guide](docs/service-install.md).
 
