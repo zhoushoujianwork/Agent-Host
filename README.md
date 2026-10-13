@@ -13,11 +13,10 @@ diagnostic summary and report runtime or memory problems. Licensed under
 
 ## Intro video
 
-[![Watch the Agent-Host introduction](docs/media/agent-host-intro-preview.jpg)](docs/media/agent-host-intro.mp4)
+https://github.com/user-attachments/assets/aa3b84c9-e689-4231-bff3-a8575509ba76
 
-Click the preview above to open the video.
-
-[Watch the 80-second introduction](docs/media/agent-host-intro.mp4) (MP4,
+Play the 80-second introduction above, [open the video directly](https://github.com/user-attachments/assets/aa3b84c9-e689-4231-bff3-a8575509ba76),
+or [download the MP4](docs/media/agent-host-intro.mp4) (MP4,
 1080p, 6.3 MB, Chinese on-screen text, synthesized music, no narration). It
 covers the problem, architecture, reviewed memory loop, DingTalk channel,
 automatic project routing, on-demand knowledge sources, getting started, and
