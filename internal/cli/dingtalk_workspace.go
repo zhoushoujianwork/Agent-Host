@@ -80,7 +80,7 @@ func runDingTalkWorkspace(ctx context.Context, args []string, in io.Reader, out,
 	if command == "login" {
 		return dingtalkworkspace.Login(ctx, executable, path, binding, device, out, errout)
 	}
-	raw, err := dingtalkworkspace.Process(executable)(ctx, dingtalkworkspace.Request{Config: path, Fingerprint: binding, Args: []string{"auth", "status", "--profile", c.Profile, "--readonly", "--format", "json"}})
+	raw, err := dingtalkworkspace.Process(executable)(ctx, dingtalkworkspace.Request{Config: path, Fingerprint: binding, Args: []string{"auth", "status", "--profile", c.Profile, "--format", "json"}})
 	if err != nil {
 		return err
 	}

@@ -1,7 +1,9 @@
 # Built-in DingTalk workspace
 
 Status: implemented with automated worker, scope and source-collection checks.
-Real owner login and business read/write acceptance remain unverified.
+Owner authorization, personal sending, bounded message reads and one robot-led
+ticket-result notification passed live validation on 2026-10-13. Other product
+read/write acceptance remains unverified.
 See the [implementation details](dingtalk-workspace-detail.md).
 
 ## Goal and usage
@@ -35,7 +37,10 @@ make build
 
 Use `login --device` for a headless environment. Organization access and product
 permissions are checked by DingTalk; a local configuration check does not prove
-authorization. For terminal chat, pass `--dingtalk-workspace-config PATH`.
+authorization. Enable `contact` for recipient lookup. Add the eight
+`mcp__dingtalk__` tools to an explicit native `allowed_tools` policy, then restart
+the channel service after configuration changes. For terminal chat, pass
+`--dingtalk-workspace-config PATH`.
 
 ## Current scope
 
@@ -51,8 +56,8 @@ RFC3339 `after`/`before`, a window of at most 24 hours, and 1–20 messages.
 It retains message authors, timestamps, IDs and genuine partial/pagination
 metadata. Message content never grants permission to send or act. Conversation
 lookup is available through the official `chat search` command. Other chat
-administration is not exposed. Real sending and message reads still require
-owner login and platform acceptance checks.
+administration is not exposed. Each installation requires owner login;
+permissions and availability still depend on its DingTalk account.
 
 Selected products can include people search, contacts, calendar, tasks,
 documents, files, meeting notes, knowledge spaces, AI tables, spreadsheets,

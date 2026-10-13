@@ -130,3 +130,30 @@ official failure preservation and selected-source partial evidence.
 establish real owner authorization, remote product availability, successful
 calendar/task writes, newer encrypted chat compatibility or live end-to-end
 assistant behavior. Those remain explicit platform acceptance work after login.
+
+### Bounded live validation (2026-10-13)
+
+The project-local owner completed official device authorization. The exact
+configured owner profile was present in the isolated registry, and `auth status`
+reported valid access and refresh credentials. The pinned package does not
+support `auth status --readonly`; the Host status command now uses its supported
+profile and JSON flags.
+
+The built-in MCP sent one owner-personal instruction to the configured robot.
+A read-only bot lookup and conversation-info lookup resolved the same private
+conversation before sending. Platform status returned `SUCCESS` with a message
+ID; the Stream receiver admitted it and ran the native assistant with the
+built-in workspace mounted. The assistant resolved one ticket submitter through
+contact lookup and search, then used `execute_command` for a personal result
+notification and `get_send_status` to verify `SUCCESS`. An initial `user` target
+was rejected before execution; the subsequent verified `open-dingtalk-id`
+attempt produced one notification. A separate bounded `read_messages` call
+read back that exact message ID, owner sender and notification text from the
+recipient conversation with `complete: true` and `partial: false`.
+
+This validates the requested send/receive/assistant/notify/readback path for one
+existing ticket result. It does not prove recipient read acknowledgement,
+current infrastructure state, ticket approval/closure, unrelated product
+writes, encrypted chat support or retry behavior under transport failures.
+Private receipts, operation IDs, user identities and runtime credentials remain
+outside tracked documentation.
