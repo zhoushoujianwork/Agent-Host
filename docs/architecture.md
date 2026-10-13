@@ -306,7 +306,9 @@ The [built-in DingTalk workspace](dingtalk-workspace.md) embeds the official Go
 CLI package in isolated workers behind one owner-private MCP. It provides
 on-demand business command discovery and execution without a separate DWS
 installation. Selected-source collection can use the same embedded worker;
-general personal IM is not mounted as a task tool. Automated checks and real
+owner-authorized message tools require the separately enabled `chat` service.
+Task reads are bounded and do not enable general IM administration or events.
+Automated checks and real
 owner login/business acceptance are tracked separately in that guide.
 
 See [implementation notes](architecture-detail.md) for proposed code boundaries

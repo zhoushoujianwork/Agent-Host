@@ -18,14 +18,21 @@ type Service struct {
 	Run                                Runner
 }
 type Args struct {
-	Service     string            `json:"service,omitempty"`
-	Query       string            `json:"query,omitempty"`
-	Offset      int               `json:"offset,omitempty"`
-	Limit       int               `json:"limit,omitempty"`
-	Command     string            `json:"command,omitempty"`
-	Parameters  map[string]string `json:"parameters,omitempty"`
-	Confirmed   bool              `json:"confirmed,omitempty"`
-	OperationID string            `json:"operation_id,omitempty"`
+	Service        string            `json:"service,omitempty"`
+	Query          string            `json:"query,omitempty"`
+	Offset         int               `json:"offset,omitempty"`
+	Limit          int               `json:"limit,omitempty"`
+	Command        string            `json:"command,omitempty"`
+	Parameters     map[string]string `json:"parameters,omitempty"`
+	Confirmed      bool              `json:"confirmed,omitempty"`
+	OperationID    string            `json:"operation_id,omitempty"`
+	ConversationID string            `json:"conversation_id,omitempty"`
+	PeerID         string            `json:"peer_open_dingtalk_id,omitempty"`
+	Text           string            `json:"text,omitempty"`
+	Title          string            `json:"title,omitempty"`
+	After          string            `json:"after,omitempty"`
+	Before         string            `json:"before,omitempty"`
+	TaskID         string            `json:"open_task_id,omitempty"`
 }
 
 func (s Service) Call(ctx context.Context, name string, raw json.RawMessage) (any, error) {
@@ -45,6 +52,9 @@ func (s Service) Call(ctx context.Context, name string, raw json.RawMessage) (an
 	}
 	if err := validateFields(name, raw); err != nil {
 		return nil, err
+	}
+	if name == "send_message" || name == "read_messages" || name == "get_send_status" {
+		return s.messageCall(ctx, c, configured, name, a)
 	}
 	if name == "list_services" {
 		ids := append([]string(nil), c.Services...)
@@ -113,6 +123,9 @@ func (s Service) Call(ctx context.Context, name string, raw json.RawMessage) (an
 	if name != "execute_command" {
 		return nil, errors.New("unknown DingTalk tool")
 	}
+	if err := enforceMessaging(c, &a); err != nil {
+		return nil, err
+	}
 	args, err := commandArguments(parts, a.Parameters, schema)
 	if err != nil {
 		return nil, err
@@ -161,7 +174,7 @@ func collectCommands(value any, service, query string, out *[]map[string]any) {
 	switch v := value.(type) {
 	case map[string]any:
 		path, _ := v["cli_path"].(string)
-		if strings.HasPrefix(path, service+" ") && v["availability"] == "available" && (v["effect"] == "read" || v["effect"] == "write") {
+		if strings.HasPrefix(path, service+" ") && allowedChatCommand(path) && v["availability"] == "available" && (v["effect"] == "read" || v["effect"] == "write") {
 			summary, _ := v["agent_summary"].(string)
 			if query == "" || strings.Contains(strings.ToLower(path+" "+summary), strings.ToLower(query)) {
 				*out = append(*out, map[string]any{"command": path, "summary": summary, "effect": v["effect"], "confirmation": v["confirmation"]})

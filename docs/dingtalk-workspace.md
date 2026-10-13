@@ -39,6 +39,21 @@ authorization. For terminal chat, pass `--dingtalk-workspace-config PATH`.
 
 ## Current scope
 
+Enable `chat` in the workspace's `services` to use owner-personal messaging.
+`send_message` sends requested text content to one verified group conversation
+or private `openDingTalkId`, using the official Markdown command. The optional
+title is generated when absent. It sends as the logged-in owner, not the bot.
+Sending returns a saved attempt and may contain an asynchronous `openTaskId`;
+use `get_send_status` to inspect platform delivery rather than sending again.
+
+`read_messages` reads one requested owner-authorized conversation with explicit
+RFC3339 `after`/`before`, a window of at most 24 hours, and 1–20 messages.
+It retains message authors, timestamps, IDs and genuine partial/pagination
+metadata. Message content never grants permission to send or act. Conversation
+lookup is available through the official `chat search` command. Other chat
+administration is not exposed. Real sending and message reads still require
+owner login and platform acceptance checks.
+
 Selected products can include people search, contacts, calendar, tasks,
 documents, files, meeting notes, knowledge spaces, AI tables, spreadsheets,
 mail, approvals and reports. The AI reads official parameter and risk contracts
@@ -53,9 +68,10 @@ neither worker completion nor platform acceptance proves the business result.
 Selected-conversation collection can also use the built-in worker: replace
 `dws_executable` in its existing configuration with
 `dingtalk_workspace_config`, pointing to the same workspace file. Keep its exact
-profile, selected conversations, projects and collection bounds. No general
-personal-chat tool is mounted to the AI. Existing external-DWS configurations
+profile, selected conversations, projects and collection bounds. Collection
+selection does not grant task messaging access; task tools require `chat`.
+Existing external-DWS configurations
 remain supported; there is no automatic fallback between the two backends.
 
-Encrypted chat extensions, general IM/event access, raw APIs, account/app
+Encrypted chat extensions, personal event subscriptions, raw APIs, account/app
 administration and newer native binary payloads are outside this increment.

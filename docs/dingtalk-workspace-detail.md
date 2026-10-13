@@ -69,6 +69,31 @@ audience removes the personal-workspace mount.
 
 ## Outcomes and evidence
 
+The optional `chat` service exposes only `chat message send`,
+`chat message query-send-status`, `chat +chat-messages` and `chat search`.
+Dedicated send/read/status tools call these official contracts through the same
+owner worker. The generic command route applies the same messaging restrictions;
+enabling chat does not enable group administration, permission changes,
+message recall or bot/Webhook sends.
+
+Sending requires exactly one verified `conversation_id` or private
+`peer_open_dingtalk_id`, bounded text and an operation ID. Host generates a stable
+official `idempotency-key` UUID from profile and operation ID, preserving it for
+upstream transport retries. The original official AI identity marking remains
+enabled. Optional title and content use the official Markdown path. Async
+acceptance remains `provider_pending`; the separate read-only status query
+preserves actual platform status and message IDs without claiming recipient
+reading. Tests do not send real messages.
+
+Task history reads require a positive time window at most 24 hours, maximum
+20 items and exactly one target. Host fixes ascending order, one page and no
+reactions; resource downloads and alternate target selectors are not accepted.
+The canonical history schema declares `group`; its pinned, source-verified
+`conversation-id` alias bypasses natural-name resolution and keeps the exact
+selector used by the existing collector. Original message and coverage JSON is
+retained. Partial coverage must be reported; a smaller follow-up range remains
+a separate read, never an implicit account-wide collection.
+
 Read results retain official JSON, including failures and coverage. Large reads
 ask for a smaller page. Writes reserve `(profile, operation_id)` in a private
 SQLite ledger before starting the business command. The request digest binds

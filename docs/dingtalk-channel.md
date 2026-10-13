@@ -110,6 +110,9 @@ It uses separate personal authorization for selected business products and
 does not require installing DWS. Add `workspace_config` to the bot JSON, or
 place `data-dingtalk-workspace.json` beside it. Without setup, the tool reports the
 required configuration; bot reception and ordinary replies remain available.
+Enable its `chat` service for owner-personal message sending, asynchronous send
+status and bounded conversation reads. These use the owner's personal login;
+normal replies to incoming channel requests continue to use the application bot.
 
 For daily use, follow the [production installation guide](service-install.md):
 prepare private configuration once, then use `make install` to install and start.

@@ -24,7 +24,21 @@ func commandPath(c Config, path string) ([]string, error) {
 			return nil, errors.New("invalid DingTalk command path")
 		}
 	}
+	if !allowedChatCommand(path) {
+		return nil, errors.New("chat command is outside the built-in messaging scope")
+	}
 	return parts, nil
+}
+
+func allowedChatCommand(path string) bool {
+	if !strings.HasPrefix(path, "chat ") {
+		return true
+	}
+	switch path {
+	case "chat message send", "chat message query-send-status", "chat +chat-messages", "chat search":
+		return true
+	}
+	return false
 }
 
 func describe(ctx context.Context, run Runner, r Request, path string) (map[string]any, error) {
@@ -47,7 +61,11 @@ func commandArguments(parts []string, params map[string]string, schema map[strin
 	declared, _ := schema["parameters"].(map[string]any)
 	keys := make([]string, 0, len(params))
 	for key, value := range params {
-		if _, ok := declared[key]; !ok || !pathWord.MatchString(key) || strings.ContainsRune(value, 0) || len(value) > 32768 {
+		canonical := key
+		if strings.Join(parts, " ") == "chat +chat-messages" && key == "conversation-id" {
+			canonical = "group"
+		}
+		if _, ok := declared[canonical]; !ok || !pathWord.MatchString(key) || strings.ContainsRune(value, 0) || len(value) > 32768 {
 			return nil, errors.New("parameter is absent from the official leaf schema or exceeds its limit")
 		}
 		// Global identity, credential, output and destination overrides are never
