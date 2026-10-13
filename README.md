@@ -4,6 +4,13 @@ Give AI work continuity across conversations and projects.
 Agent-Host connects your requests, workspaces, knowledge and mailboxes to
 Claude Code, while keeping task history and reusable memory locally.
 
+## Introduction video
+
+https://github.com/user-attachments/assets/aa3b84c9-e689-4231-bff3-a8575509ba76
+
+[Download the introduction (MP4)](docs/media/agent-host-intro.mp4).
+Examples in the video are illustrative; current support is listed below.
+
 ## What it does
 
 - **Chat where you work:** CLI, DingTalk and Feishu private messages, group
@@ -23,6 +30,22 @@ Claude Code is the current execution engine. Email requires your own account
 setup; 163 reads have been tested live. Gmail onboarding and real send/reply
 acceptance remain separate checks. Execution lessons currently require
 `memory accept`; Codex execution and meeting audio are planned.
+
+## Plugin and integration support
+
+Built-in capabilities use MCP tools or channel adapters:
+
+| Integration | Current support |
+| --- | --- |
+| Email MCP | Gmail and personal 163 accounts; AI lists accounts and selects one for each read/send operation. |
+| Knowledge MCP | Dokki, Confluence and selected local Markdown sources; search and read on demand. |
+| Host MCP tools | Scoped conversation history, eligible memory, current matters and private suggestions. |
+| Channel adapters | CLI, DingTalk, Feishu chat and optional Feishu meeting text. |
+
+Accounts and source credentials require local configuration. Arbitrary third-party
+MCP registration, a public plugin SDK and a plugin marketplace are not delivered.
+Claude-native skills/plugins belong to the selected harness profile; Host does
+not install or manage them. See [support details](README-detail.md#plugin-and-integration-boundaries).
 
 ## Start
 
@@ -90,10 +113,3 @@ make check
 ```
 
 [Apache License 2.0](LICENSE) · [Third-party notices](NOTICE)
-
-## Demo
-
-https://github.com/user-attachments/assets/aa3b84c9-e689-4231-bff3-a8575509ba76
-
-The introduction uses illustrative examples; validation records are linked in
-the detailed guides.

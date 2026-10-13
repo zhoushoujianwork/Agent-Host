@@ -26,6 +26,37 @@ email access. `--allowed-tools` accepts explicit native permission patterns.
 Channel Agent instances retain their configured native execution policy;
 runtime directories are not an OS isolation boundary.
 
+## Plugin and integration boundaries
+
+The [homepage](README.md#plugin-and-integration-support) summarizes supported
+integrations. These are built-in capabilities; Host supplies explicit MCP
+registrations to the native harness for each eligible run.
+
+| Capability | Configuration and availability |
+| --- | --- |
+| Email MCP (`email`) | Set `email_config` in the runtime or `--email-config` for CLI. `list_accounts` discovers the registry; subsequent calls specify `account_id`. Owner-private runs only. Gmail needs OAuth; personal 163 uses a client authorization password. |
+| Knowledge MCP (`knowledge_*`) | Set `knowledge_config` or `--knowledge-config`. Dokki, Confluence and local Markdown sources are selected through configured project, Agent and audience grants. Each selected source has its own MCP registration. |
+| Conversation history (`conversation_history`) | Built-in access to saved Agent messages/replies in the authorized conversation, Agent, audience and project scope. It does not expose arbitrary personal chats. |
+| Owner context (`host_context`) | Built-in on-demand access to eligible memory, selected-source matters, citations and private suggestions in the run's scope. Retrieval does not publish memory or execute a suggestion. |
+| DingTalk and Feishu | Channel adapters configured through the runtime's private channel files. They receive requests and deliver responses; they are not mailbox or knowledge MCP servers. |
+| Selected DWS intake | Optional background collection and owner-private topic/matter processing. It is not a general DWS chat-reading task MCP. |
+
+`--no-tools` prevents MCP mounts. Memory extraction runs separately without MCP
+tools and uses Claude safe mode to exclude ambient plugins and customizations.
+Normal execution uses the configured native profile; native skills/plugin
+behavior and permissions remain the harness's responsibility. Host has no
+plugin installer, discovery command or compatibility guarantee for arbitrary
+native plugins. Claude invocations use `--strict-mcp-config`, so MCP settings
+installed outside Host do not automatically become task capabilities.
+
+The current public configuration supports the providers above, not an arbitrary
+MCP command/server registry. Adding another provider requires Host integration
+work. A general-purpose third-party plugin API and marketplace remain future
+scope; the internal harness MCP type is not a public plugin SDK.
+
+Source documents, emails and plugin results remain attributed data. They cannot
+change account selection rules, source grants or user authorization.
+
 ## Additional CLI examples
 
 Put options before positional queries and IDs. Replace paths and IDs with your
