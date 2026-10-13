@@ -1,5 +1,11 @@
 # Memory consolidation and execution experience
 
+The [file memory and Skill design](file-memory-design.md) now owns the target
+storage and implementation sequence. Automatic selection, source validation,
+independent retry and blacklist policy below carry forward; the SQLite-first
+implementation order is superseded. Current database behavior and historical
+validation remain unchanged.
+
 Status: revised architecture decision, 2026-10-12. **Jev-selected memory becomes
 effective automatically; people disable unsuitable memory afterward through a
 blacklist.** There is no required human acceptance step in the target workflow.

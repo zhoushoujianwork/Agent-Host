@@ -1,5 +1,10 @@
 # CLI chat and the memory loop
 
+The [file memory and Skill proposal](file-memory-design.md) supersedes the target
+storage choice below. The SQLite-authoritative design remains the historical and
+currently delivered baseline; file authority and rebuildable indexes are planned,
+with migration and validation defined in the new proposal.
+
 Status: broader CLI memory roadmap. The [MVP 1 baseline](mvp-validation.md)
 and [experience design](experience-memory.md) describe the implemented
 subset: native chat, structured events, attributed statements, reviewed tool-based

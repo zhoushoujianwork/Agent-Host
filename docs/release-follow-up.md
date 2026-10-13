@@ -35,6 +35,12 @@ publication behavior and adds no automatic external message delivery.
 
 ## Related memory increment
 
+The [file memory and Skill proposal](file-memory-design.md) now owns the next
+memory delivery order: file foundation and reversible migration, retrieval and
+read controls, automatic publication and native skills, then live cutover.
+The database-first ordering below is the earlier planning baseline. Neither this
+proposal nor the historical acceptance records establish new implementation.
+
 Automatic publication of Jev-selected execution experience and a blacklist that
 prevents equivalent disabled lessons from being admitted again. Eligible user
 statements already save automatically; execution experience still requires
@@ -59,11 +65,12 @@ the proposed layers build on those foundations.
 | 3 | Owner-private explicit reply preferences | Opt-in, fresh-conversation use, current-request override, correction and disable |
 | 4 | Explicit identity links and group-member preferences | Source visibility preserved; alternating members keep distinct preferences; no private profile enters shared history |
 
-Begin development with order 1 as a separately reviewable change. It closes an
-existing memory-policy gap and supplies the lifecycle needed by both proposals.
-Skill export and owner preferences can then ship independently; neither requires
-Codex, inferred habits, user-defined schedules or public skill publishing.
-Group preference work follows real non-owner channel acceptance.
+The table preserves the earlier issue planning baseline. For new memory work,
+begin with the file foundation and reversible migration in the
+[new design](file-memory-design.md#本期范围与实施顺序), then integrate retrieval
+before automatic publication and native Skill use. Explicit person profiles
+remain a separate proposal and should use the new knowledge lifecycle when
+implemented. Group preference work follows real non-owner channel acceptance.
 
 Existing reliability checks remain active: the historical Jev admission failure,
 database wait diagnosis, and Feishu group/multi-turn/reaction platform acceptance

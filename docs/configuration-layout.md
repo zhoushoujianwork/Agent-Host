@@ -85,6 +85,10 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 
 ## 知识与记忆
 
+[文件记忆与 Skill 新方案](file-memory-design.md)规划增加 `.agent-host/memory/`，
+保存学习后的知识正文、Skill 和版本；SQLite 保留运行状态和可重建索引。
+该方案尚未迁移或启用，下面仍描述当前部署行为。
+
 `knowledge/` 保存有来源的知识材料，由 `datasource.plugins.local-documents.json` 声明读取范围。
 项目已有文档留在项目目录，通过知识源配置引用。私人快照可以供多个渠道引用，
 但仍需满足项目、Agent 与 owner 可见范围，不能因为文件共享就向群聊开放。

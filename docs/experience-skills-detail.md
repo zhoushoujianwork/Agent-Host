@@ -1,7 +1,9 @@
 # Execution experience as native skills: implementation notes
 
-Companion to the [main proposal](experience-skills.md). Everything below is
-proposed; concrete schema and command names can be settled during implementation.
+Companion to the [main proposal](experience-skills.md). The
+[new file memory details](file-memory-design-detail.md) own storage, publication,
+migration and implementation order. Native rendering and mounting
+notes below remain proposed; concrete commands need installed-version validation.
 
 ## Current baseline
 
@@ -11,8 +13,8 @@ implements the historical review path. `internal/assembly` supplies eligible
 memory context, and `internal/harness/claude` owns native invocation.
 `harness.Request` has no generated-skill field. The Codex package is a placeholder.
 
-The [memory transition](experience-memory-detail.md#revised-publication-and-blacklist-policy-2026-10-12)
-must establish publication and semantic exclusion before this becomes the normal
+The [file memory transition](file-memory-design-detail.md) must establish file
+publication, retrieval and blacklist exclusion before this becomes the normal
 post-run path. Skill generation must not treat a pending candidate as published.
 
 ## Rendering and native mounting
@@ -21,7 +23,7 @@ The [Agent Skills specification](https://agentskills.io/specification) requires
 `name` and `description` frontmatter and supports string-valued metadata. Use
 stable Host-owned names and metadata for memory ID/revision, source type and
 renderer version. The body carries conditions, observed steps, evidence strength
-and references to the authoritative evidence. Do not copy raw tool logs or
+and references to the retained original evidence. Do not copy raw tool logs or
 credentials into the artifact. Local references do not promise portability of
 the underlying evidence outside this installation.
 
@@ -52,8 +54,9 @@ injecting the full procedure and its skill without an explicit reason.
 Materialization is a derived outcome separate from execution and memory save.
 Publish files atomically under private Host state and retain a manifest of exact
 memory revisions, scope, renderer and content hashes. Recheck eligibility before
-launch; a stale manifest cannot override SQLite. Coordinate disable/update with
-active readers so future discovery cannot use withdrawn artifacts. Interrupted
+launch; a stale native manifest cannot override the authoritative file publication
+snapshot. Coordinate disable/update with active readers so future discovery
+cannot use withdrawn artifacts. Interrupted
 generation can be rebuilt idempotently; retries do not dispatch another task.
 
 The skill-set digest joins runtime compatibility. When it changes, replace the
@@ -67,7 +70,7 @@ unsupported engines receive no generated skill mount.
 
 | Slice | Existing boundary | Required proof |
 | --- | --- | --- |
-| Eligibility and rendering | State/experience plus a small internal renderer | Active procedure exports; pending, fact, expired, conflicted and disabled records do not |
+| Eligibility and rendering | File publication/experience plus a small internal renderer | Active procedure exports; pending, fact, expired, conflicted and disabled records do not |
 | Private artifact lifecycle | Host/state coordination | Atomic rebuild, stale revisions, failure receipt and independent retry |
 | Native mount and compatibility | Assembly/harness/Claude | Exact set, unchanged handwritten skills, no added permission/configuration, fresh session after withdrawal |
 | End-to-end use | Existing eval and experiment conventions | Native skill discovery and invocation; same-task baseline without skill; citation and scope checks |

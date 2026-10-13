@@ -1,6 +1,6 @@
 # Execution experience as native skills
 
-Status: proposed on 2026-10-13 for [issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1).
+Status: revised planning on 2026-10-13 for [issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1).
 No generated skills or native skill mounting are delivered. See the
 [implementation notes](experience-skills-detail.md) and the
 [delivery order](release-follow-up.md#issue-1-delivery-plan).
@@ -14,10 +14,15 @@ its source memory and disable it through the existing memory controls.
 
 ## Core approach
 
-SQLite memory remains authoritative. Generate one skill per eligible execution
-procedure, preserving its conditions, steps, evidence references and evidence
-strength. Facts and reply preferences remain ordinary memory. Start with direct
-rendering of existing procedures; no second model rewrites or combines lessons.
+The [file memory proposal](file-memory-design.md) owns the new storage and
+delivery sequence. Published Skill files become authoritative procedural
+knowledge; native skill packages and retrieval indexes are derived. This replaces
+the previous SQLite-authoritative export proposal. Facts and reply preferences
+remain separate knowledge files, with their own lifecycle.
+
+Preserve conditions, steps, evidence references and evidence strength. Start with
+direct rendering of eligible procedures; skill packaging adds no second model
+rewrite and does not combine unrelated lessons.
 
 Only skills allowed for the current task are made available to the native harness.
 Keep generated files outside shared project skill folders and shared native user
@@ -30,10 +35,10 @@ notice; removing a file cannot erase instructions already loaded into history.
 
 ## First scope and order
 
-1. Complete the [automatic publication and blacklist increment](experience-memory.md),
-   including protection against equivalent disabled lessons returning.
-2. Generate a bounded set of procedure-only skills from eligible memory, with
-   inspectable provenance and rebuildable files.
+1. Establish versioned file storage, reversible migration and scoped retrieval
+   under the [new memory design](file-memory-design.md).
+2. Complete automatic publication and blacklist protection, then publish
+   procedure-only Skill files and build bounded native packages with provenance.
 3. Mount that exact set for Claude tasks and verify real native discovery and use.
    Keep extraction and tool-free tasks free of generated skills.
 4. Validate save, fresh-task use, update, disable and recovery as one loop.

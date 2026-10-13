@@ -1,5 +1,13 @@
 # Agent-Host architecture
 
+The [file memory and experience Skill proposal](file-memory-design.md) defines
+the next storage direction: versioned files own learned knowledge, SQLite keeps
+operational evidence and rebuildable retrieval indexes, and Host supplies scoped
+skills to native harnesses. It supersedes the earlier database-authoritative
+memory/derived-skill target. It is not implemented; the SQLite behavior described
+below remains the delivered baseline. Its staged migration and acceptance gates
+own the next memory implementation order.
+
 The [datasource plugin configuration](datasource-plugins-design.md) loads local
 Markdown, Dokki, Confluence and Email from separate `datasource.plugins.*.json`
 files, with namespaced sources and preserved Host memory boundaries.
