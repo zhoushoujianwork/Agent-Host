@@ -33,7 +33,7 @@ Claude Code 等原生执行引擎负责执行。渠道接入、任务路由和�
 
 配置仍统一放 `.agent-host/config/`，新增知识沉淀放 `.agent-host/memory/`。
 沉淀 Skill 的正文保存在 `memory/domains/<domain-id>/skills/<skill-id>/revisions/<revision>/SKILL.md`。
-手写 Skill 与 Agent/用户原文放 `config/`，任务上下文视图放 `generated/agents/<agent-id>/workspaces/`。
+手写 Skill 与 Agent/用户原文放 `config/`，任务上下文视图放 `cache/workspaces/`。
 `config/` 为用户输入，运行期只读；新方案取消顶层 `knowledge/`。
 数据源留存快照放 `datasource/plugins/<plugin>/sources/<source-id>/snapshots/`，
 既有原文无需复制，旧快照目录在实施时显式迁移。

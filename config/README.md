@@ -1,5 +1,9 @@
 # Configuration names
 
+[User-managed Agent templates](agent-templates/README.md) provide a default
+assistant and an operations assistant to copy and customize. Their multi-file
+loading is planned; the current runtime uses one explicit `instructions_file`.
+
 The [unified configuration and plugin startup](../docs/configuration-layout.md)
 loads `.agent-host/config/host.json`, optional `agents.json`,
 `channels.<name>.json` and `datasource.plugins.<name>.json`. Component files use version 1,

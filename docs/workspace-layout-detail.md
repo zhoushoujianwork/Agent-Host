@@ -10,6 +10,23 @@
 以及 workspace skills；同时将配置、凭证与会话状态放在 workspace 之外。
 当前 Tools 说明在 AGENTS 的 Tools 章节，而非新增 TOOLS 文件。
 
+[OpenClaw SOUL 模板](https://docs.openclaw.ai/reference/templates/SOUL)允许 Agent
+逐步更新该文件并通知用户。Host 本期选择用户维护角色原文，自动成长仅发生在
+知识和 Skill 层；用户显式要求修改配置时才执行角色管理操作。
+
+## 默认角色与模板复制
+
+仓库的 `config/agent-templates/default/` 和 `operations/` 提供可复制原文。
+用户初始化 default 或复制 operations 为 ops 后，原文归用户维护；运行期不会
+同步模板更新或自动创建额外角色。模板目录不是启用配置扫描入口。
+沿用 agents.json 的 default_agent、agents 列表和已有 group_bindings，复制后必须
+注册 ID/name、项目和能力选择，才能被路由选中。改变默认角色只影响之后的任务，
+旧角色记忆不因改名或复制模板而合并，新角色保留独立身份。
+
+目前加载器没有多文件指令目录字段，AGENTS/SOUL/IDENTITY 联合装配仍待实现。
+现有 instructions_file 可显式引用 AGENTS 原文；这种使用仅加载该单文件，不能
+声称其他模板文件已经生效。默认身份已支持，模板初始化入口仍是后续实现。
+
 Host 采用这些名称，但将用户配置、版本化学习结果、任务装配视图分开保存。
 本方案不是 OpenClaw workspace 兼容实现，也不照搬其启动、日记或注入预算。
 原生 Claude/Codex 是否自动识别这些名字不能作为加载依据，由适配器显式装配。
@@ -19,14 +36,12 @@ Host 采用这些名称，但将用户配置、版本化学习结果、任务装
 Host 的 task workspace 由两个部分组成：
 
 - 执行 cwd：注册项目的真实目录，或当前渠道/Agent 已配置的默认工作目录。
-- 上下文视图：`generated/agents/<agent-id>/workspaces/<context-id>/` 中的私有、不可变本次任务快照。
+- 上下文视图：`cache/workspaces/<context-id>/` 中的私有、不可变本次任务快照。
 
 context-id 由 Host 创建并绑定 run，不从平台消息文本生成路径。
 manifest 记录 Agent、渠道、用户绑定、audience、项目/默认 scope、记忆快照、
 输入指令摘要及 native 装配器版本。相同角色和项目、不同 audience 必须分开。
 多项目任务只合并本次明确允许的资料，不从 cwd 扩大知识范围。
-agent-id 取自已选配置角色，generated 目录不参与 Agent 发现或启用。
-新增系统生成目录不会创建新的配置 Agent，也不会形成另一份可编辑的角色配置。
 
 渠道默认工作目录暂不搬动。Agent 的既有 workspace override 保留，项目 cwd
 也不写 Host 的 USER、MEMORY、AGENTS 或生成 Skill。上下文视图不等于沙箱；
@@ -123,7 +138,7 @@ memory/domains/<domain-id>/skills/<skill-id>/revisions/<revision>/
 的 locator 查询，避免两个渠道 ID 相同导致引用串库。
 
 视图的 `skills/<native-name>/SKILL.md` 是有效正文的派生复制，保持 ID/revision
-与摘要映射。最终原生插件包装依 Claude 安装版本验证，辅助包装放同一 generated
+与摘要映射。最终原生插件包装依 Claude 安装版本验证，辅助包装放同一 cache
 视图内，不在全局配置或项目 `.claude/skills/` 下安装。
 不会将所有域的 Skill 软链接到 workspace；有引用文件时只复制已验证允许范围
 的内容，并阻止路径逃逸。缺引用或能力不足明确失败，不使用其他范围的替代包。
@@ -150,8 +165,7 @@ datasource/plugins/<plugin>/sources/<source-id>/snapshots/<snapshot-id>/
 | 学习内容的修改草案 | memory/domains/<domain-id>/drafts | 尚未发布，不能注入 |
 | 系统提议的配置修改 | 渠道/CLI 运行状态目录的 management-drafts | 用户明确应用后才更新配置 |
 | 数据源快照与清单 | datasource/plugins/<plugin>/sources | 持久来源资料，需备份 |
-| AGENTS/SOUL/IDENTITY、USER/MEMORY 视图及原生 Skill 包 | generated/agents/<agent-id>/workspaces | 从配置与发布记忆重建 |
-| 检索索引 | cache/memory | 从发布记忆重建 |
+| 检索索引、USER/MEMORY 视图、原生 Skill 包 | cache | 从配置与发布记忆重建 |
 | 任务产物、执行证据、日志与会话 | 工作目录及渠道/CLI 运行目录 | 按各自生命周期保留 |
 
 学习条目引用快照时记录插件、source-id、snapshot-id 与正文摘要。不能因为把
@@ -167,8 +181,7 @@ datasource/plugins/<plugin>/sources/<source-id>/snapshots/<snapshot-id>/
 
 活动任务视图保持不可变，发布修改不能改变已启动任务的输入。
 任务结束后记录输入摘要和来源版本到运行证据，再释放视图；清理只能删除无活动
-引用的快照。generated 是任务装配产物，cache 是检索缓存；两者均可重建，
-清理它们不能删除学习结果、配置或历史证据。
+引用的快照。cache 是可重建数据，清理它不能删除学习结果、配置或历史证据。
 重建旧快照仅供历史检查，不能让过期 Skill 再次进入新任务。
 
 ## 迁移与验证
@@ -191,7 +204,7 @@ datasource/plugins/<plugin>/sources/<source-id>/snapshots/<snapshot-id>/
 | 两渠道同名 Agent | 配置绑定可复用；学习域不自动合并；来源 locator 不混淆 |
 | 配置与学习偏好冲突 | 显式来源优先，当前请求可覆盖普通偏好 |
 | 指令或 Skill 更新/禁用 | 后续任务刷新，旧内容不经 native history/handoff 回流 |
-| generated/cache 损坏与清理 | 摘要错误可见；删除后重建；活动任务不被清理 |
+| 缓存损坏与清理 | 摘要错误可见；删除后重建；活动任务不被清理 |
 | 原生加载 | 提供/发现/使用分别记录；手写 Skill 无覆盖；不增额外目录权限 |
 
 本阶段先交付设计，不触发自动日记、开机任务、定时学习、外发消息或生产迁移。
