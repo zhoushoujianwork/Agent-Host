@@ -105,6 +105,12 @@ or memory-review interface.
 
 ## Prepare and start
 
+Owner-private tasks automatically discover the [built-in DingTalk workspace](dingtalk-workspace.md).
+It uses separate personal authorization for selected business products and
+does not require installing DWS. Add `workspace_config` to the bot JSON, or
+place `data-dingtalk-workspace.json` beside it. Without setup, the tool reports the
+required configuration; bot reception and ordinary replies remain available.
+
 For daily use, follow the [production installation guide](service-install.md):
 prepare private configuration once, then use `make install` to install and start.
 The commands below remain the foreground development workflow; use an explicit

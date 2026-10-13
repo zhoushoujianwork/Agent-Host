@@ -15,11 +15,13 @@ import (
 	"strings"
 	"syscall"
 
+	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/state"
 )
 
 type Config struct {
-	DWSExecutable             string   `json:"dws_executable"`
+	DWSExecutable             string   `json:"dws_executable,omitempty"`
+	DingTalkWorkspaceConfig   string   `json:"dingtalk_workspace_config,omitempty"`
 	Profile                   string   `json:"profile"`
 	IntervalSeconds           int      `json:"interval_seconds"`
 	InitialWindowHours        int      `json:"initial_window_hours"`
@@ -69,15 +71,29 @@ func LoadConfig(path string) (Config, error) {
 // Check validates static bounds, plus current project registrations when a
 // Store is supplied. It does not authenticate or read live chat content.
 func (cfg Config) Check(ctx context.Context, store *state.Store) error {
-	if !filepath.IsAbs(cfg.DWSExecutable) || filepath.Clean(cfg.DWSExecutable) != cfg.DWSExecutable || strings.ContainsAny(cfg.DWSExecutable, "\x00\r\n") {
-		return errors.New("discovery DWS executable must be an explicit clean absolute path")
-	}
-	info, err := os.Stat(cfg.DWSExecutable)
-	if err != nil {
-		return fmt.Errorf("inspect discovery executable: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return errors.New("discovery DWS executable must be an executable regular file")
+	var err error
+	if cfg.DingTalkWorkspaceConfig != "" {
+		if cfg.DWSExecutable != "" {
+			return errors.New("select either embedded DingTalk workspace or external DWS executable, never both")
+		}
+		c, _, e := dingtalkworkspace.Load(cfg.DingTalkWorkspaceConfig)
+		if e != nil {
+			return e
+		}
+		if c.Profile != cfg.Profile {
+			return errors.New("discovery workspace identity differs from the selected source profile")
+		}
+	} else {
+		if !filepath.IsAbs(cfg.DWSExecutable) || filepath.Clean(cfg.DWSExecutable) != cfg.DWSExecutable || strings.ContainsAny(cfg.DWSExecutable, "\x00\r\n") {
+			return errors.New("discovery DWS executable must be an explicit clean absolute path")
+		}
+		info, err := os.Stat(cfg.DWSExecutable)
+		if err != nil {
+			return fmt.Errorf("inspect discovery executable: %w", err)
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+			return errors.New("discovery DWS executable must be an executable regular file")
+		}
 	}
 	if !profileIdentity.MatchString(cfg.Profile) {
 		return errors.New("discovery requires one fixed corpId:userId personal profile")

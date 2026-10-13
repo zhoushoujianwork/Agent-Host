@@ -36,6 +36,7 @@ type Configuration struct {
 	HostInstructions             string
 	KnowledgeFingerprint         string
 	EmailFingerprint             string `json:",omitempty"`
+	DingTalkFingerprint          string `json:",omitempty"`
 	ConversationHistoryPolicy    string `json:",omitempty"`
 	ContextPolicy                string `json:",omitempty"`
 	Binary, Model, NativeProfile string

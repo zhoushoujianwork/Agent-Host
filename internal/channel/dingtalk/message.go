@@ -23,11 +23,12 @@ const (
 )
 
 type Config struct {
-	ClientID     string
-	RobotCode    string
-	ClientSecret string `json:"-"`
-	CorpID       string
-	OwnerUserID  string
+	ClientID        string
+	RobotCode       string
+	ClientSecret    string `json:"-"`
+	CorpID          string
+	OwnerUserID     string
+	WorkspaceConfig string `json:"-"`
 }
 
 func ValidateConfig(cfg Config) error {

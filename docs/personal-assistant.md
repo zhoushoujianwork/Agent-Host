@@ -130,6 +130,12 @@ habit inference, automatic external follow-ups, organization-wide collection,
 specialist memory stores and graph infrastructure can follow. The first scope
 does not depend on them.
 
+The [built-in DingTalk workspace](dingtalk-workspace.md) now supplies optional
+official business-command tools, including calendar and Todo, and an embedded
+selected-source collection backend. This adds execution access; it does not
+automatically schedule follow-ups or expand observed conversations. Real owner
+login and business acceptance remain unverified.
+
 ## Research and delivery boundary
 
 The screenshot illustrates a useful combination of action, timing and evidence.

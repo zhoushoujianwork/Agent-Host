@@ -14,6 +14,11 @@ without DWS. The [architecture](architecture.md) defines ownership;
 [implementation notes](knowledge-sources-detail.md) separate offline checks, live
 acceptance and remaining scope.
 
+The [built-in DingTalk workspace](dingtalk-workspace.md) adds an optional embedded
+official worker for selected-source collection, without installing `dws`.
+Historical live evidence above belongs to the external-CLI path; the new
+embedded path has separate automated checks and pending live acceptance.
+
 ## Goal and usage
 
 Let an agent consult existing company knowledge when needed. Separately, let

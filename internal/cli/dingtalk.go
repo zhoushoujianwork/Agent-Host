@@ -50,6 +50,8 @@ Common execution options: --home, --workspace or --project, --model, --claude, -
 --allowed-tools, --agents-config, --native-profile, --jev-provider, --jev-endpoint, --jev-model,
 --timeout, --format text|json, --discovery-config.
 Agent history search/read is mounted automatically when tools are enabled.
+Owner-private tasks also discover the built-in DingTalk workspace MCP.
+workspace_config selects its private configuration; default is data-dingtalk-workspace.json beside the bot JSON.
 Optional system DWS discovery uses explicit selected conversations in a private file.
 check validates local configuration and credentials without connecting or sending.
 serve owns its state home; stop it before local memory review/retry commands.
@@ -67,6 +69,7 @@ type botConfigFile struct {
 	ClientSecretFile string `json:"client_secret_file"`
 	CorpID           string `json:"corp_id"`
 	OwnerUserID      string `json:"owner_user_id"`
+	WorkspaceConfig  string `json:"workspace_config,omitempty"`
 }
 
 func loadBotConfig(path string) (dingtalk.Config, error) {
@@ -124,7 +127,10 @@ func loadBotConfig(path string) (dingtalk.Config, error) {
 	if err != nil || len(raw) > 4096 {
 		return result, errors.New("DingTalk credential file could not be read within its limit")
 	}
-	result = dingtalk.Config{ClientID: c.ClientID, RobotCode: c.RobotCode, ClientSecret: strings.TrimSpace(string(raw)), CorpID: c.CorpID, OwnerUserID: c.OwnerUserID}
+	if c.WorkspaceConfig != "" && !filepath.IsAbs(c.WorkspaceConfig) {
+		return result, errors.New("workspace_config must be an absolute path")
+	}
+	result = dingtalk.Config{ClientID: c.ClientID, RobotCode: c.RobotCode, ClientSecret: strings.TrimSpace(string(raw)), CorpID: c.CorpID, OwnerUserID: c.OwnerUserID, WorkspaceConfig: c.WorkspaceConfig}
 	if err := dingtalk.ValidateConfig(result); err != nil {
 		return dingtalk.Config{}, err
 	}

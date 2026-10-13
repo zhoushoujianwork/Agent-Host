@@ -49,6 +49,7 @@ Usage:
   agent-host dingtalk serve --config PATH [options]
   agent-host dingtalk check --config PATH [options]
   agent-host dingtalk status [options]
+  agent-host dingtalk-workspace --help
   agent-host feishu serve --config PATH [options]
   agent-host feishu check --config PATH [options]
   agent-host feishu status [--home PATH]
@@ -77,6 +78,7 @@ Options (place before positional IDs/queries):
   --no-tools            Explicit tool-free Claude execution for controlled tests
   --allowed-tools LIST  Native permission allowlist; repeat or comma-separate
   --email-config PATH  Private managed mailbox configuration
+  --dingtalk-workspace-config PATH  Private built-in DingTalk workspace configuration
   --knowledge-config PATH  Private Dokki/Confluence source configuration
   --agents-config PATH  Private agent roles, context selections and group bindings
   --agent ID            Logical instance for chat and local state (default default)
@@ -102,6 +104,7 @@ type options struct {
 	knowledgeNames                                                                     []string
 	knowledgeConfig                                                                    string
 	emailConfig, emailFingerprint                                                      string
+	dingtalkWorkspaceConfig, dingtalkWorkspaceFingerprint                              string
 	discoveryConfig                                                                    string
 	contextPolicy, contextExecutable                                                   string
 	suggestionRevision                                                                 int
@@ -152,6 +155,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.model, "model", model, "Claude model")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
+	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.StringVar(&o.knowledgeConfig, "knowledge-config", "", "Private knowledge source configuration")
 	fs.StringVar(&o.discoveryConfig, "discovery-config", "", "Private DWS system topic discovery configuration")
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
@@ -328,6 +332,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "dingtalk" {
 		return runDingTalk(ctx, args[1:], out, errout)
+	}
+	if args[0] == "dingtalk-workspace" {
+		return runDingTalkWorkspace(ctx, args[1:], in, out, errout)
 	}
 	if args[0] == "feishu-meeting" || args[0] == "feishu" {
 		return runFeishuMeeting(ctx, args[1:], out, errout)

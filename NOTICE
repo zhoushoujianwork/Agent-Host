@@ -10,3 +10,9 @@ internal/knowledge/memgov-LICENSE, internal/knowledge/ATTRIBUTION.md,
 and the adapted source file headers.
 
 Dependencies retain their own licenses. Binary packages include their notices.
+
+Agent-Host embeds the official DingTalk Workspace CLI Go package v1.0.61.
+DingTalk Workspace CLI (dws)
+Copyright 2026 Alibaba Group
+This product includes software developed at DingTalk (https://www.dingtalk.com/).
+Licensed under the Apache License, Version 2.0; see LICENSE.

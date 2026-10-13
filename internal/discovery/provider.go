@@ -7,11 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/state"
 )
 
@@ -23,9 +26,19 @@ type Collection struct {
 type Provider interface {
 	Fetch(context.Context, Source, Range) (Collection, error)
 }
-type DWSProvider struct{ config Config }
+type DWSProvider struct {
+	config               Config
+	run                  dingtalkworkspace.Runner
+	workspaceFingerprint string
+}
 
-func NewDWSProvider(cfg Config) *DWSProvider { return &DWSProvider{config: cfg} }
+func NewDWSProvider(cfg Config) *DWSProvider {
+	p := &DWSProvider{config: cfg}
+	if cfg.DingTalkWorkspaceConfig != "" {
+		_, p.workspaceFingerprint, _ = dingtalkworkspace.Load(cfg.DingTalkWorkspaceConfig)
+	}
+	return p
+}
 
 type boundedBuffer struct {
 	bytes.Buffer
@@ -75,10 +88,8 @@ func (p *DWSProvider) Fetch(ctx context.Context, source Source, r Range) (Collec
 	}
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(p.config.TimeoutSeconds)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(callCtx, p.config.DWSExecutable, args...)
 	stdout, stderr := &boundedBuffer{limit: 8 << 20}, &boundedBuffer{limit: 16 << 10}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-	runErr := cmd.Run()
+	runErr := p.execute(callCtx, args, stdout, stderr)
 	if stdout.exceeded || stderr.exceeded {
 		return Collection{}, errors.New("DWS response exceeded bounded output limits")
 	}
@@ -330,10 +341,8 @@ func sourceType(raw json.RawMessage) string {
 func (p *DWSProvider) verifyIdentity(ctx context.Context) error {
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(p.config.TimeoutSeconds)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(callCtx, p.config.DWSExecutable, "profile", "list", "--format", "json")
 	out, stderr := &boundedBuffer{limit: 1 << 20}, &boundedBuffer{limit: 16 << 10}
-	cmd.Stdout, cmd.Stderr = out, stderr
-	if err := cmd.Run(); err != nil {
+	if err := p.execute(callCtx, []string{"profile", "list", "--format", "json"}, out, stderr); err != nil {
 		return errors.New("DWS identity verification failed; no chat history was read")
 	}
 	if out.exceeded || stderr.exceeded {
@@ -364,4 +373,37 @@ func (p *DWSProvider) verifyIdentity(ctx context.Context) error {
 		return errors.New("DWS configured stable personal identity is missing or ambiguous; no alternate identity was selected")
 	}
 	return nil
+}
+
+// The embedded path reuses the official im.message-list.v1 command and the same
+// exact-selector/coverage validation. It does not expose general IM task tools.
+func (p *DWSProvider) execute(ctx context.Context, args []string, out, stderr *boundedBuffer) error {
+	if p.config.DingTalkWorkspaceConfig == "" {
+		cmd := exec.CommandContext(ctx, p.config.DWSExecutable, args...)
+		cmd.Stdout, cmd.Stderr = out, stderr
+		return cmd.Run()
+	}
+	c, fp, err := dingtalkworkspace.Load(p.config.DingTalkWorkspaceConfig)
+	if err != nil || c.Profile != p.config.Profile || fp != p.workspaceFingerprint {
+		return errors.New("embedded discovery identity/configuration changed")
+	}
+	run := p.run
+	if run == nil {
+		executable, e := os.Executable()
+		if e != nil {
+			return e
+		}
+		executable, e = filepath.EvalSymlinks(executable)
+		if e != nil {
+			return e
+		}
+		run = dingtalkworkspace.ProcessWithLimit(executable, 8<<20)
+	}
+	raw, err := run(ctx, dingtalkworkspace.Request{Config: p.config.DingTalkWorkspaceConfig, Fingerprint: fp, Args: args})
+	if len(raw) > 0 {
+		if _, e := out.Write(raw); e != nil {
+			return e
+		}
+	}
+	return err
 }

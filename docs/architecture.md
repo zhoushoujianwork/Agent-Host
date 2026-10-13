@@ -302,6 +302,13 @@ adapters. The unified tools and provider adapters are implemented; one 163
 account passed bounded live reads. Gmail onboarding and real send/reply acceptance
 remain separate from the offline checks.
 
+The [built-in DingTalk workspace](dingtalk-workspace.md) embeds the official Go
+CLI package in isolated workers behind one owner-private MCP. It provides
+on-demand business command discovery and execution without a separate DWS
+installation. Selected-source collection can use the same embedded worker;
+general personal IM is not mounted as a task tool. Automated checks and real
+owner login/business acceptance are tracked separately in that guide.
+
 See [implementation notes](architecture-detail.md) for proposed code boundaries
 and the first validation target, and [research conclusions](research.md) for the
 reasoning behind the host boundary.

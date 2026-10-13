@@ -24,3 +24,12 @@ names above. Native tools' conventional filenames such as `CLAUDE.md` stay intac
 they are not Host JSON configuration files.
 
 See the [runtime guide](../docs/service-install.md) for startup and configuration.
+## Built-in DingTalk workspace
+
+`data-dingtalk-workspace.example.json` selects the exact owner profile, private
+state root and business products. Save a private copy beside the bot JSON as
+`data-dingtalk-workspace.json`, or set the bot's absolute `workspace_config` path.
+Authorize through `agent-host dingtalk-workspace login --config PATH`.
+For selected-source discovery, replace `dws_executable` with
+`dingtalk_workspace_config` pointing to that workspace file; keep existing
+source selectors and limits. See [the guide](../docs/dingtalk-workspace.md).

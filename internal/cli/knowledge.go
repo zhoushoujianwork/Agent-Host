@@ -85,6 +85,7 @@ func resolveKnowledge(o *options) error {
 	o.mcpServers = nil
 	o.knowledgeHints = nil
 	o.emailFingerprint = ""
+	o.dingtalkWorkspaceFingerprint = ""
 	if o.noTools {
 		return nil
 	}
@@ -104,6 +105,9 @@ func resolveKnowledge(o *options) error {
 		o.contextPolicy = policy
 	}
 	if err := resolveEmail(o); err != nil {
+		return err
+	}
+	if err := resolveDingTalkWorkspace(o); err != nil {
 		return err
 	}
 	selected, err := selectKnowledgeForOptions(*o)

@@ -105,6 +105,7 @@ lists controls. Saved Host memory remains available after `/new`.
 ## More
 
 [Runtime setup](docs/service-install.md) · [Email setup](docs/email-plugin.md) ·
+[DingTalk workspace](docs/dingtalk-workspace.md) ·
 [Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·
 [Feedback](docs/feedback.md) · [Development](docs/development.md)
 

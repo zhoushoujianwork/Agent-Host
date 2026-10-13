@@ -1,0 +1,5 @@
+{
+  "profile": "YOUR_ENTERPRISE_ID:YOUR_OWNER_USER_ID",
+  "state_directory": "/absolute/private/path/to/dingtalk-workspace-state",
+  "services": ["aisearch", "contact", "calendar", "todo", "doc", "drive", "minutes", "wiki", "aitable", "sheet", "mail", "oa", "report"]
+}
