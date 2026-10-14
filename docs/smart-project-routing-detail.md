@@ -416,3 +416,26 @@ report in the [experiment guide](../experiments/runtime/README.md).
 Use isolated project catalogs and memories for acceptance. Record failures as
 well as successes. A successful model answer is not proof of native directory
 access, platform delivery or business acceptance.
+
+## Inconsistent provider response recovery
+
+The 2026-10-14 DingTalk failure occurred before native execution: Jev selected a
+`scope_change` choice whose probability was below another option. The client
+continues to reject this response with a typed `ChoiceMismatchError`. Only the
+project router retries this specific failure, once, using the same provider,
+model, questions and task context. Other provider/format failures are not retried.
+There is no probability rewriting, weaker-provider fallback or native task replay.
+
+A recovered decision retains both `rejected_response` and the validated
+`response` in routing evidence. Persistent failure records the retry in its
+error text. Channel replies distinguish inconsistent Jev answers, evaluation
+failure, deadline/cancellation and project configuration/result validation.
+They use fixed explanations and remedies without exposing raw provider errors,
+credentials, endpoint URLs or local paths.
+
+Regression coverage uses a local HTTP provider to exercise contradictory-then-valid,
+persistent contradiction, HTTP failure, malformed response and failed second
+attempt. It verifies bounded attempts, unchanged task context, retained rejected
+evidence and no decision on failure. Reply tests verify causes, remedies and
+redaction. This is offline proof; live Jev recovery and group-client display
+remain separate acceptance checks.

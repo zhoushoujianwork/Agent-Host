@@ -55,6 +55,17 @@ type Response struct {
 	UsedPool     string            `json:"used_pool,omitempty"`
 }
 
+// ChoiceMismatchError retains the rejected provider response for routing audit.
+// It never turns an inconsistent answer into a usable decision.
+type ChoiceMismatchError struct {
+	Question string
+	Response Response
+}
+
+func (e *ChoiceMismatchError) Error() string {
+	return fmt.Sprintf("question %q: choice is not a maximum-probability option", e.Question)
+}
+
 type Client struct {
 	apiKey   string
 	model    string
@@ -352,7 +363,7 @@ func validateResponse(body []byte, r Response, questions map[string]Question) er
 			}
 			for _, p := range a.Probabilities {
 				if p > a.Probabilities[a.Choice]+1e-9 {
-					return fmt.Errorf("question %q: choice is not a maximum-probability option", name)
+					return &ChoiceMismatchError{Question: name, Response: r}
 				}
 			}
 		} else {

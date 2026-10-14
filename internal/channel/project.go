@@ -249,7 +249,7 @@ func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state
 	}
 	ids, primary, decision, err := s.routeTask(ctx, m)
 	if err != nil {
-		return state.Run{}, "项目路由失败，任务没有执行。请稍后重试或联系管理员。", err
+		return state.Run{}, "", &routingFailureError{Cause: err}
 	}
 	if decision.Kind != "" {
 		encoded, err := json.Marshal(decision)

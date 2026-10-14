@@ -10,8 +10,10 @@ import (
 	"unicode/utf8"
 
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/decision/jev"
 	"agent-host/internal/event"
 	"agent-host/internal/harness"
+	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
 
@@ -202,6 +204,24 @@ func TestReplyWithoutRunDoesNotRequireManualSessionReset(t *testing.T) {
 	text := resultText(state.Run{Output: "untrusted partial output"}, errors.New("no execution"))
 	if !strings.Contains(text, "本次请求未能启动") || strings.Contains(text, "/new") || strings.Contains(text, "untrusted partial output") || strings.Contains(text, "运行：") {
 		t.Fatal(text)
+	}
+}
+
+func TestRoutingFailureReplyExplainsCauseAndRemedy(t *testing.T) {
+	for _, tc := range []struct {
+		cause error
+		want  string
+	}{
+		{&routing.EvaluationError{Cause: &jev.ChoiceMismatchError{Question: "private-question"}, Attempts: 2}, "自动重新评估一次后仍异常"},
+		{&routing.EvaluationError{Cause: errors.New("private-secret https://internal.invalid"), Attempts: 1}, "Jev 请求失败或返回格式异常"},
+		{context.DeadlineExceeded, "项目路由等待超时"},
+		{context.Canceled, "项目路由尚未完成"},
+		{errors.New("/private/project invalid configuration"), "项目路由配置或结果校验失败"},
+	} {
+		text := resultTextWithNotice(state.Run{}, &routingFailureError{Cause: tc.cause}, "", dingtalk.MaxReplyBytes)
+		if !strings.Contains(text, tc.want) || !strings.Contains(text, "任务没有执行") || !strings.Contains(text, "重新发送") || strings.Contains(text, "private") || strings.Contains(text, "internal.invalid") || strings.Count(text, "本次请求") != 1 {
+			t.Fatal(text)
+		}
 	}
 }
 

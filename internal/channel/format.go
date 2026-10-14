@@ -12,7 +12,9 @@ import (
 	"unicode/utf8"
 
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/decision/jev"
 	"agent-host/internal/harness"
+	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
 
@@ -172,7 +174,34 @@ func formatDurationMS(ms float64) string {
 	return fmt.Sprintf("%.1f s", ms/1000)
 }
 
+type routingFailureError struct{ Cause error }
+
+func (e *routingFailureError) Error() string { return e.Cause.Error() }
+func (e *routingFailureError) Unwrap() error { return e.Cause }
+
 func executionFailureText(run state.Run, runErr error) string {
+	var routeErr *routingFailureError
+	if run.ID == "" && errors.As(runErr, &routeErr) {
+		var mismatch *jev.ChoiceMismatchError
+		var evaluation *routing.EvaluationError
+		retried := errors.As(routeErr, &evaluation) && evaluation.Attempts == 2
+		switch {
+		case errors.As(routeErr, &mismatch):
+			recovery := ""
+			if retried {
+				recovery = "自动重新评估一次后仍异常。"
+			}
+			return "本次请求未能启动：项目路由服务 Jev 返回的答案与概率不一致。" + recovery + "任务没有执行，旧任务没有自动重做。请稍后重新发送；若持续出现，请管理员检查 Jev 服务的返回格式及 choice 与 probabilities 是否一致。"
+		case errors.Is(routeErr, context.DeadlineExceeded):
+			return "本次请求未能启动：项目路由等待超时，任务没有执行。请稍后重新发送；若持续出现，请管理员检查 Jev 服务连接和超时配置。旧任务没有自动重做。"
+		case errors.Is(routeErr, context.Canceled):
+			return "本次请求已取消：项目路由尚未完成，任务没有执行。需要继续时请重新发送；旧任务没有自动重做。"
+		case errors.As(routeErr, &evaluation):
+			return "本次请求未能启动：项目路由服务 Jev 请求失败或返回格式异常，任务没有执行。请稍后重新发送；若持续出现，请管理员检查 Jev 服务状态、凭据及返回格式。旧任务没有自动重做。"
+		default:
+			return "本次请求未能启动：项目路由配置或结果校验失败，任务没有执行。请管理员检查助手可用项目及路由配置，修复后重新发送。旧任务没有自动重做。"
+		}
+	}
 	var resumeErr *state.SessionResumeError
 	if errors.As(runErr, &resumeErr) && resumeErr.CanStartFresh() {
 		return "当前对话无法继续，本次请求未能启动。下一条消息会尝试使用新会话和保存的上下文继续；也可用 /new 重置对话。旧任务没有自动重做。"

@@ -75,6 +75,20 @@ type Evaluator interface {
 
 type Router struct{ client Evaluator }
 
+// EvaluationError identifies a failure before any native task is started.
+type EvaluationError struct {
+	Cause    error
+	Attempts int
+}
+
+func (e *EvaluationError) Error() string {
+	if e.Attempts == 2 {
+		return "project routing evaluation after one inconsistent-choice retry: " + e.Cause.Error()
+	}
+	return "project routing evaluation: " + e.Cause.Error()
+}
+func (e *EvaluationError) Unwrap() error { return e.Cause }
+
 func New(client Evaluator) *Router {
 	if c, ok := client.(*jev.Client); ok && c == nil {
 		client = nil
@@ -118,22 +132,33 @@ func (r *Router) Decide(ctx context.Context, req Request) (Decision, error) {
 	}
 	questions := routingQuestions(s)
 	response, err := r.client.Evaluate(ctx, s, questions)
+	attempts := 1
+	var rejected *jev.Response
+	var mismatch *jev.ChoiceMismatchError
+	if errors.As(err, &mismatch) && ctx.Err() == nil {
+		// One fresh evaluation through the same configured provider. Never
+		// rewrite its probabilities or replay native execution.
+		rejected = &mismatch.Response
+		attempts++
+		response, err = r.client.Evaluate(ctx, s, questions)
+	}
 	if err != nil {
-		return Decision{}, fmt.Errorf("project routing evaluation: %w", err)
+		return Decision{}, &EvaluationError{Cause: err, Attempts: attempts}
 	}
 	if err := validateAnswers(response, questions); err != nil {
 		return Decision{}, fmt.Errorf("project routing response: %w", err)
 	}
 	d := interpret(req, response, matches)
 	audit, err := json.Marshal(struct {
-		Policy    string                  `json:"policy"`
-		Provider  string                  `json:"provider"`
-		Endpoint  string                  `json:"endpoint"`
-		Model     string                  `json:"requested_model"`
-		State     routingState            `json:"state"`
-		Questions map[string]jev.Question `json:"questions"`
-		Response  jev.Response            `json:"response"`
-	}{"project-routing-v6", r.client.Provider(), r.client.Endpoint(), r.client.Model(), s, questions, response})
+		Policy           string                  `json:"policy"`
+		Provider         string                  `json:"provider"`
+		Endpoint         string                  `json:"endpoint"`
+		Model            string                  `json:"requested_model"`
+		State            routingState            `json:"state"`
+		Questions        map[string]jev.Question `json:"questions"`
+		Response         jev.Response            `json:"response"`
+		RejectedResponse *jev.Response           `json:"rejected_response,omitempty"`
+	}{"project-routing-v6", r.client.Provider(), r.client.Endpoint(), r.client.Model(), s, questions, response, rejected})
 	if err != nil {
 		return Decision{}, fmt.Errorf("encode project routing evidence: %w", err)
 	}

@@ -32,6 +32,13 @@ needs that information. Users need not label messages as "general" or learn comm
 Natural follow-ups can retain the latest task's project when they change only
 the method, information source or output; users need not say "continue".
 
+If Jev returns a choice that contradicts its own probabilities, routing asks the
+same service to evaluate once more before starting execution. A valid second
+response can proceed; persistent invalid results stop the task. Failure replies
+identify the routing stage, state that execution did not start, and explain
+whether to resend or ask an operator to check Jev/configuration. Old tasks are
+never automatically replayed. See the [recovery details](smart-project-routing-detail.md#inconsistent-provider-response-recovery).
+
 Explaining supplied logs, code snippets or tables can use the default workspace
 when the answer needs only those materials and general knowledge. A project name
 inside the material does not make it an execution target. Asking the assistant
