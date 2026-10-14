@@ -73,7 +73,11 @@ func (d *MediaDownloader) Download(ctx context.Context, attachment Attachment) (
 	var reply struct {
 		DownloadURL string `json:"downloadUrl"`
 	}
-	if json.Unmarshal(raw, &reply) != nil || !trustedMediaURL(reply.DownloadURL) {
+	if json.Unmarshal(raw, &reply) != nil {
+		return nil, "", errors.New("DingTalk returned an invalid attachment download URL")
+	}
+	downloadURL, ok := secureMediaURL(reply.DownloadURL)
+	if !ok {
 		return nil, "", errors.New("DingTalk returned an invalid attachment download URL")
 	}
 	client := http.Client{Timeout: mediaTimeout}
@@ -81,12 +85,14 @@ func (d *MediaDownloader) Download(ctx context.Context, attachment Attachment) (
 		client = *d.HTTPClient
 	}
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 5 || !trustedMediaURL(req.URL.String()) {
+		target, ok := secureMediaURL(req.URL.String())
+		if len(via) >= 5 || !ok {
 			return errors.New("DingTalk attachment redirect was rejected")
 		}
+		req.URL, _ = url.Parse(target)
 		return nil
 	}
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, reply.DownloadURL, nil)
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, "", &operationError{operation: "media request construction", cause: err}
 	}
@@ -112,6 +118,16 @@ func (d *MediaDownloader) Download(ctx context.Context, attachment Attachment) (
 		}
 	}
 	return data, mime, nil
+}
+
+// DingTalk can resolve a capability to an HTTP OSS URL. Upgrade only trusted
+// hosts before dispatch, preserving the signed path and query byte for byte.
+// Redirects follow the same rule; media is never transferred over HTTP.
+func secureMediaURL(value string) (string, bool) {
+	if strings.HasPrefix(value, "http://") {
+		value = "https://" + strings.TrimPrefix(value, "http://")
+	}
+	return value, trustedMediaURL(value)
 }
 
 func trustedMediaURL(value string) bool {

@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,6 +33,10 @@ func (d *inputDownloader) Download(_ context.Context, a dingtalk.Attachment) ([]
 	d.calls = append(d.calls, a)
 	return d.data, d.mime, d.err
 }
+
+type inputRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f inputRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 func inputCallback(t *testing.T, f *serviceFixture, id, kind, text string, content any, quote any) dingtalk.Message {
 	t.Helper()
@@ -329,6 +335,82 @@ func TestChannelMixedRichTextPreservesTextAndNativeImage(t *testing.T) {
 	f.receive(t, input)
 	if _, err := f.service.Store.ClaimNextChannelMessage(context.Background(), f.service.Profile); !errors.Is(err, sql.ErrNoRows) || len(d.calls) != 1 {
 		t.Fatal("mixed rich text duplicate repeated its download or turn", err)
+	}
+}
+
+func TestChannelMixedRichTextDownloadsSignedImageOverHTTPS(t *testing.T) {
+	f := newServiceFixture(t)
+	data, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const cdnHost = "wukong-file-im-sz.oss-cn-shenzhen.aliyuncs.com"
+	const signedQuery = "Expires=1792000000&OSSAccessKeyId=fixture&Signature=CDN_SECRET%2B%2F%3D&x-oss-security-token=temporary%2Btoken"
+	const signedURL = "http://" + cdnHost + "/task%2Fimage.png?" + signedQuery
+	const redirectURL = "http://" + cdnHost + "/resolved%2Fimage.png?" + signedQuery
+	tokenCalls, resolutionCalls, cdnCalls := 0, 0, 0
+	f.service.Downloader = &dingtalk.MediaDownloader{Config: f.config, HTTPClient: &http.Client{Transport: inputRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Scheme != "https" {
+			t.Fatal("attachment requested without HTTPS")
+		}
+		response := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header)}
+		switch {
+		case req.URL.Host == "api.dingtalk.com" && req.URL.Path == "/v1.0/oauth2/accessToken":
+			tokenCalls++
+			response.Body = io.NopCloser(strings.NewReader(`{"accessToken":"TOKEN_SECRET","expireIn":7200}`))
+		case req.URL.Host == "api.dingtalk.com" && req.URL.Path == "/v1.0/robot/messageFiles/download":
+			resolutionCalls++
+			var body map[string]string
+			if json.NewDecoder(req.Body).Decode(&body) != nil || body["downloadCode"] != "ORIGINAL_IMAGE_SECRET" || body["robotCode"] != f.config.ClientID || req.Header.Get("x-acs-dingtalk-access-token") != "TOKEN_SECRET" {
+				t.Fatal("image resolution lost the original authenticated capability")
+			}
+			raw, _ := json.Marshal(map[string]string{"downloadUrl": signedURL})
+			response.Body = io.NopCloser(strings.NewReader(string(raw)))
+		case req.URL.Host == cdnHost:
+			cdnCalls++
+			wantURL := strings.Replace(signedURL, "http://", "https://", 1)
+			if cdnCalls == 2 {
+				wantURL = strings.Replace(redirectURL, "http://", "https://", 1)
+			}
+			if req.Method != http.MethodGet || req.URL.String() != wantURL || req.Header.Get("x-acs-dingtalk-access-token") != "" {
+				t.Fatal("CDN request changed its signed URL or received an application token")
+			}
+			response.Body = io.NopCloser(strings.NewReader(string(data)))
+			if cdnCalls == 1 {
+				response.StatusCode = http.StatusFound
+				response.Header.Set("Location", redirectURL)
+			}
+		default:
+			t.Fatal("unexpected attachment request")
+		}
+		return response, nil
+	})}}
+	f.service.MediaRoot = filepath.Join(f.home, "media")
+	input := f.richTextMessage(t, "signed-image", []any{
+		map[string]string{"text": "Explain "},
+		map[string]string{"type": "picture", "downloadCode": "ORIGINAL_IMAGE_SECRET", "pictureDownloadCode": "PREVIEW_IMAGE_SECRET"},
+		map[string]string{"text": " and this error."},
+	}, "owner-dm")
+	m := f.process(t, input)
+	requests := f.runner.snapshot()
+	if m.Status != "completed" || m.ReplyStatus != "accepted" || m.Text != "Explain [图片 1] and this error." || m.Input == nil || len(m.Input.Attachments) != 1 || len(requests) != 1 || len(requests[0].Images) != 1 || string(requests[0].Images[0].Data) != string(data) || requests[0].Images[0].MediaType != "image/png" || !strings.Contains(requests[0].Prompt, m.Text) {
+		t.Fatalf("signed image did not reach native execution with its ordered text: %+v", m)
+	}
+	a := m.Input.Attachments[0]
+	digest := sha256.Sum256(data)
+	stored, err := os.ReadFile(a.Path)
+	if err != nil || string(stored) != string(data) || !filepath.IsAbs(a.Path) || a.SHA256 != hex.EncodeToString(digest[:]) || a.Bytes != int64(len(data)) || a.ContentType != "image/png" {
+		t.Fatal("signed image receipt lost its preserved bytes or digest", err)
+	}
+	for _, path := range []string{filepath.Dir(a.Path), a.Path} {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode().Perm()&0077 != 0 || info.Mode()&os.ModeSymlink != 0 {
+			t.Fatal("signed image storage is not private", err)
+		}
+	}
+	f.receive(t, input)
+	if _, err := f.service.Store.ClaimNextChannelMessage(context.Background(), f.service.Profile); !errors.Is(err, sql.ErrNoRows) || tokenCalls != 1 || resolutionCalls != 1 || cdnCalls != 2 || len(f.runner.snapshot()) != 1 || len(f.replier.snapshot()) != 1 {
+		t.Fatal("duplicate signed image repeated its download, native execution or reply", err)
 	}
 }
 

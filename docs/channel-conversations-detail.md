@@ -98,8 +98,11 @@ is credential-bearing local state and requires private database backups. The
 read-only viewer does not select it.
 
 An unexecuted claimed request retrieves its own codes and uses the configured
-bot's download API. The adapter validates the returned HTTPS download host,
-bounds redirects to trusted hosts, limits transfer size and validates image content type.
+bot's download API. The adapter validates the returned download host and
+upgrades HTTP URLs from trusted hosts to HTTPS before fetching, preserving the
+signed path and query. Redirects use the same validation and upgrade; every
+transfer uses HTTPS. Redirect counts and transfer size remain bounded, and
+image content type is validated.
 The worker saves bytes under `<home>/attachments/input-…/` in a private directory,
 with regular `0600` files and generated storage names. Original filenames remain
 metadata; they do not become caller-controlled paths. Original size claims,
@@ -267,6 +270,28 @@ Associated-quote validation on 2026-10-12:
 Real input samples, test messages and detailed platform records stay outside the
 repository. Automated fixtures and native checks do not establish live media
 delivery.
+
+### Signed image download correction (2026-10-14)
+
+The reported group image-with-text receipt was parsed successfully but failed
+before native execution. Its authenticated download resolver returned an HTTP
+signed OSS URL, which the HTTPS-only downloader rejected. The same signed path
+and query returned a valid PNG over HTTPS. Trusted resolver URLs and redirects
+are now upgraded before dispatch, while untrusted hosts, explicit ports,
+credentials in URLs, redirect limits and existing media limits remain enforced.
+
+Regression fixtures exercise signed resolver URLs and redirects, unchanged
+signatures, HTTPS-only requests and application-token exclusion. An assembled
+image-with-text test covers private attachment evidence, native image input and
+duplicate prevention. Separately, the patched Go downloader fetched the original
+233,325-byte PNG; an isolated tool-free native Claude call correctly read its
+visible URL and provider. The failed channel task was not replayed. A fresh
+client image round trip remains separate from these download/native checks.
+`make check` passed, along with all 491 race tests for DingTalk and channel
+handling. The rebuilt runtime restarted with fresh DingTalk and Feishu readiness
+at 14:05:47 Singapore time; both worker PIDs remained stable and the shared
+workbench returned HTTP 200. Detailed receipt evidence remains in the ignored
+runtime area.
 
 
 ## Interactive-card quote parsing (2026-10-13)

@@ -45,6 +45,8 @@ Identity, agent selection and memory partitions remain unchanged. Received
 attachments are saved privately under the state home's `attachments` directory,
 with their source and content metadata. Callback download credentials remain
 outside public records and model input.
+Trusted download links returned by DingTalk are upgraded to HTTPS when needed,
+so an HTTP link from its file API can still deliver the attachment securely.
 
 Separate conversations do **not** isolate shared project files. Two audiences
 can operate on the same checkout concurrently; no worktree or filesystem lock

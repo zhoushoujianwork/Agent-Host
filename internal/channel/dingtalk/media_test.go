@@ -126,9 +126,16 @@ func TestMediaURLAndRedirectValidation(t *testing.T) {
 		"https://127.0.0.1/file", "https://[::1]/file", "https://localhost/file", "http://media.aliyuncs.com/file",
 		"https://media.aliyuncs.com.evil.test/file", "https://evilaliyuncs.com/file", "https://media.aliyuncs.com:443/file",
 		"https://user@media.aliyuncs.com/file", "https://media.aliyuncs.com/file#fragment", "file:///private/secret",
+		"http://127.0.0.1/file", "http://media.aliyuncs.com.evil.test/file", "http://evilaliyuncs.com/file",
+		"http://media.aliyuncs.com:80/file", "http://user@media.aliyuncs.com/file", "http://media.aliyuncs.com/file#fragment",
 	} {
 		if trustedMediaURL(target) {
 			t.Errorf("unsafe download URL accepted: %s", target)
+		}
+		if target != "http://media.aliyuncs.com/file" {
+			if _, ok := secureMediaURL(target); ok {
+				t.Errorf("unsafe download URL normalized: %s", target)
+			}
 		}
 	}
 	for _, target := range []string{"https://media.aliyuncs.com/file", "https://media.alicdn.com/file", "https://media.dingtalkcdn.com/file", "https://dingtalk.com/file"} {
@@ -175,5 +182,68 @@ func TestMediaURLAndRedirectValidation(t *testing.T) {
 				t.Fatalf("canceled request dispatched: %d, %v", requests.Load(), err)
 			}
 		})
+	}
+}
+
+func TestMediaDownloaderUpgradesSignedHTTPURLsBeforeEveryFetch(t *testing.T) {
+	image, _ := base64.StdEncoding.DecodeString(tinyMediaPNG)
+	const signedPath = "/folder/image%2F1.png?Expires=123&Signature=CDN_SECRET%2B%2F%3D&OSSAccessKeyId=KEY_SECRET"
+	const mediaHost = "wukong-file-im-sz.oss-cn-shenzhen.aliyuncs.com"
+	for _, scheme := range []string{"http", "https"} {
+		for _, redirect := range []string{"none", "trusted HTTP", "untrusted HTTP", "HTTP with port", "redirect loop"} {
+			t.Run(scheme+"/"+redirect, func(t *testing.T) {
+				var mediaCalls int
+				downloader := &MediaDownloader{Config: testConfig, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+					if req.URL.Scheme != "https" {
+						t.Fatal("download capability was sent over HTTP")
+					}
+					switch req.URL.Path {
+					case reactionTokenPath:
+						return mediaHTTPResponse(`{"accessToken":"TOKEN_SECRET","expireIn":7200}`), nil
+					case messageFileDownloadPath:
+						return mediaHTTPResponse(`{"downloadUrl":"` + scheme + `://` + mediaHost + signedPath + `"}`), nil
+					default:
+						mediaCalls++
+						if req.URL.Host != mediaHost || req.Header.Get("x-acs-dingtalk-access-token") != "" || req.Header.Get("Authorization") != "" {
+							t.Fatal("media fetched from an untrusted host or received application credentials")
+						}
+						if req.URL.RequestURI() != signedPath {
+							t.Fatal("signed media path or query changed")
+						}
+						if mediaCalls == 1 && redirect != "none" || redirect == "redirect loop" {
+							response := mediaHTTPResponse("")
+							response.StatusCode = http.StatusFound
+							location := "http://" + mediaHost + signedPath
+							if redirect == "untrusted HTTP" {
+								location = "http://attacker.example/CDN_SECRET"
+							} else if redirect == "HTTP with port" {
+								location = "http://" + mediaHost + ":80" + signedPath
+							}
+							response.Header.Set("Location", location)
+							return response, nil
+						}
+						return mediaHTTPResponse(string(image)), nil
+					}
+				})}}
+				data, mime, err := downloader.Download(context.Background(), Attachment{Kind: "image", DownloadCode: "CODE_SECRET"})
+				if redirect == "untrusted HTTP" || redirect == "HTTP with port" || redirect == "redirect loop" {
+					wantCalls := 1
+					if redirect == "redirect loop" {
+						wantCalls = 5
+					}
+					if err == nil || data != nil || mime != "" || mediaCalls != wantCalls || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "http") {
+						t.Fatalf("unsafe redirect was fetched or disclosed: calls=%d error=%v", mediaCalls, err)
+					}
+					return
+				}
+				wantCalls := 1
+				if redirect != "none" {
+					wantCalls = 2
+				}
+				if err != nil || string(data) != string(image) || mime != "image/png" || mediaCalls != wantCalls {
+					t.Fatalf("secure download failed: calls=%d mime=%q error=%v", mediaCalls, mime, err)
+				}
+			})
+		}
 	}
 }
