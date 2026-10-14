@@ -14,15 +14,14 @@ credentials belong in the private `config/credentials/` directory. Plugin data
 lives in `datasource/plugins/<name>`, channel data in `channels/<name>`; DWS is an optional
 branch of the DingTalk channel, with state in `channels/dingtalk/dws`.
 
-## Proposed development configuration
+## Proposed runtime project records
 
-The [unified configuration design](../docs/configuration-layout.md) reserves an
-optional Host-owned `development.json` for shared project directories and delivery
-defaults. Its [documentation example](../docs/examples/development-projects/development.example.json)
-uses the `version`, `enabled`, `access`, `settings` envelope. This filename is not
-supported by the current loader: keep the example outside live configuration
-until the planned implementation is delivered. Generated project/task records
-belong to the shared development workspace, not `config/`.
+The [engineering project proposal](../docs/development-projects.md) enrolls a
+resolved project automatically when development is requested. There is no
+`development.json` or manual enable step. Generated records, progress and
+Host-created clones/new projects belong under the current Host's `projects/`
+runtime directory, outside `config/`. Existing model, channel and credential
+configuration retains its purpose. Dynamic enrollment is not implemented yet.
 
 ## Legacy explicit runtime configuration
 

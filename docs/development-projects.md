@@ -1,106 +1,107 @@
-# Shared engineering records and workspaces
+# Runtime-managed engineering projects
 
-Status: proposed; no shared development catalog, clone service or record exporter
-is implemented. This extends the [development workflow](development-workflow.md).
-See [implementation details and record examples](development-projects-detail.md).
+Status: proposed; dynamic project enrollment, managed preparation and shared
+engineering records are not implemented. This extends the
+[development workflow](development-workflow.md). See the
+[implementation notes and record examples](development-projects-detail.md).
 
-## Decision
+## Decision and usage
 
-Keep project records and development progress in **one shared development
-workspace per local user**. Keep each Agent's conversation and per-run context
-in its existing runtime. An Agent takes responsibility for a task; the project
-and its progress survive a change of Agent or channel.
+A development request brings its project into Host management automatically.
+Users do not enable a development component, edit project configuration or
+register a repository before asking for work. Runtime locates the project,
+records its directory and task, and retains progress for later requests.
 
-The default development workspace is `~/workspace/development/`, configurable
-through the proposed `config/development.json` in the
-[unified configuration layout](configuration-layout.md). Existing repositories
-under `~/github`, `~/gitlab` or an explicitly
-selected directory stay where they are. New, explicitly requested clones go to
-the shared workspace's `repositories/` directory. Feature work always uses a
-task worktree.
+Prefer an existing local checkout, including projects under `~/github`,
+`~/gitlab`, the current request's directory or previously observed locations.
+Keep those repositories in place. If preparation needs a new clone or the user
+requests a new project, use the current Host's hidden `.agent-host/projects/`
+area. All entries of that Host use the same registry; Agents keep their own
+conversations and receive references to the shared engineering task.
 
 ## Where things live
 
 ```text
-~/github/Agent-Host/                         # Existing checkout: stays here
-~/gitlab/team/service/                      # Another existing checkout
+~/github/Agent-Host/                    # Existing checkout: stays here
+~/gitlab/team/service/                 # Another existing checkout
 
-~/workspace/development/
-├── state.db                                # Shared project/task state
-├── repositories/<host>/<namespace>/<repo>/  # Only Host-created clones
-├── projects/<project-id>/
-│   ├── project.json                        # Project record snapshot
-│   ├── PROJECT.md                          # Readable project/progress overview
-│   ├── tasks/<task-id>/
-│   │   ├── task.json                       # Feature/task record snapshot
-│   │   ├── TASK.md                         # Goal, progress, checks and PR
-│   │   └── artifacts/                      # Retained diffs and check evidence
-│   └── worktrees/<task-id>/                 # Actual feature development
-└── locks/                                  # Cross-runtime writer/repository locks
+.agent-host/                           # Current Host runtime root
+├── config/                            # Existing user-maintained configuration
+├── projects/                          # Generated engineering state
+│   ├── state.db                       # Shared project/task authority
+│   ├── locks/                         # Repository and task writer locks
+│   └── <project-id>/
+│       ├── project.json                # Generated project record
+│       ├── PROJECT.md                  # Readable project/progress overview
+│       ├── repository/                 # Only for a Host-created clone/new project
+│       ├── tasks/<task-id>/
+│       │   ├── task.json               # Generated feature/task record
+│       │   ├── TASK.md                 # Goal, progress, checks and PR
+│       │   └── artifacts/             # Retained diffs and check evidence
+│       └── worktrees/<task-id>/        # Actual feature development
+└── channels/<channel>/                # Original evidence, sessions and context
 ```
 
-GitLab namespaces can contain nested groups. Provider hostname and namespace
-keep similarly named repositories apart. Existing source checkouts and newly
-cloned source checkouts have the same role: starting points for task worktrees.
-
-| Information | Owner and location |
-| --- | --- |
-| Repository path, identity, aliases and development policy | Shared project record |
-| Feature goals, progress, commits, checks and PR | Shared task record |
-| Work in progress and task files | Task worktree |
-| Agent role, private conversation and native session | Existing Agent/channel runtime |
-| This run's instructions, memory and task binding | Existing context cache |
-| Learned knowledge | Existing memory domains and access rules |
-
-The database maintains current operational state. JSON and Markdown files are
-Host-generated views for inspection, backup and handoff; edits to a view do not
-silently change a task. Records stay outside the user's source repository.
+For an external checkout, `project.json` points to its original absolute path;
+there is no duplicate `repository/`. Host-created code, task worktrees and
+engineering records are retained runtime material. Although their location is
+hidden, they are not disposable context cache.
 
 ## Finding and preparing a project
 
-1. Match a registered project or the current task first.
-2. If needed, inspect bounded candidates under configured roots such as
-   `~/github` and `~/gitlab`, or a directory the user explicitly selected.
-3. Reuse a uniquely identified existing checkout. A clear development request
-   can authorize binding that checkout under the configured local policy;
-   discovery alone does not activate every repository. Ambiguity needs one
-   focused question.
-4. Clone only when the request identifies a remote and authorizes cloning.
-   Use `repositories/<host>/<namespace>/<repo>/` by default, then bind the
-   verified checkout. Never clone automatically because a local path is missing.
-5. Create the feature worktree and bind the selected Agent's run to that task.
+1. Resolve the current request's target and any clearly referenced active task.
+2. Check known project paths and inspect bounded local candidates. Local lookup
+   comes before preparing another clone; directory discovery does not enroll
+   every repository it finds.
+3. Automatically create or update the project record once its identity is clear,
+   retaining the originating request and observed path. No enable step is needed.
+4. When no local checkout exists, prepare the identified remote repository as
+   needed for the authorized development request, or initialize a local project
+   when the user requests a new one. Ask only if the target/source is missing or
+   ambiguous; never invent a remote or replace a missing known project silently.
+5. Bind a task worktree and run the selected Agent. Save progress, checks,
+   commits and PR receipts against the same project/task.
 
-For example, using an existing `~/github/Agent-Host` creates a shared
-project record pointing to that path. Its code is not copied into an Agent
-workspace. A requested clone of `github.com/example/api` lands at
-`~/workspace/development/repositories/github.com/example/api/`.
+“Fix export in Agent-Host” can therefore find `~/github/Agent-Host`, record it
+automatically and start in a task worktree. A later request through another entry
+can reuse that record. A new clone lives under
+`.agent-host/projects/<project-id>/repository/`, with its verified remote recorded.
 
-## Sharing and progress
+## Records and sharing
 
-Authorized Agents serving the same owner can inspect the same engineering
-progress. Each task has one writer; other Agents can inspect or take over after
-the writer stops. A handoff passes the goal, current diff/commit, check results
-and PR status. It starts a compatible session for the receiving Agent without
-moving the prior Agent's native conversation.
+| Information | Location |
+| --- | --- |
+| Project identity, observed directory, source/remote and request origin | Shared project record |
+| Goals, progress, commits, checks, blockers and PR | Shared task record |
+| Current code changes | Task worktree |
+| Agent role, private conversation and native session | Existing Agent/channel runtime |
+| This run's instructions, memory and task binding | Existing context cache |
 
-Shared storage does not make private conversations or memory public. Keep raw
-messages in their original channel state and link their evidence. Project/task
-views obey audience access; owner-private progress is not exposed to groups.
+Runtime updates the operational database and generates JSON/Markdown views.
+These files make progress inspectable; editing a view does not authorize work or
+change its phase. They are not a second set of startup configuration.
 
-Moving a repository updates its path binding, not its project identity or task
-history. Worktree cleanup never deletes an external checkout, the source clone
-or the project's engineering records.
+Authorized Agents can take over the same task after its writer stops. Each
+worktree has one writer. Engineering handoff includes the goal, current changes,
+checks and PR; native conversation history and private memory remain separate.
+Every existing task entry uses this same mechanism with its current identity,
+audience and tool permissions. The originating audience still controls what
+progress or evidence can be disclosed.
+
+Project identity survives a directory move or Agent handoff. Worktree cleanup
+preserves external checkouts, Host-created source repositories and task records.
+Dynamic enrollment does not itself authorize remote publication or merge.
 
 ## Implementation order
 
-1. Add shared project/task state and generated record files, preserving existing
-   project IDs, channel history and memory scopes.
-2. Bind selected existing repositories; add explicit clone preparation and
-   default-directory handling.
-3. Connect task worktrees, Agent handoffs, status views and PR receipts to the
-   same records. Validate reuse across CLI and two channel/Agent runtimes.
+1. Add the Host-level runtime registry and generated record files; reuse existing
+   project IDs/history when their identity is verified.
+2. Connect development intent to local lookup and automatic enrollment; prepare
+   needed clones or explicitly requested new projects under the hidden Host root.
+3. Connect worktrees, status, handoffs and PR receipts to that registry across
+   existing entries. Validate shared progress without shared native sessions.
 
-Local lookup and explicit clone onboarding are included in this revised first
-scope. GitHub PR delivery remains first; GitLab records do not claim an implemented
-GitLab merge provider. Broad organization discovery and multi-machine shared
-workspaces remain later work.
+The [configuration layout](configuration-layout.md) documents this generated
+runtime area. No `development.json` or manual enablement is proposed. GitHub PR
+delivery remains first; GitLab paths and records do not imply a delivered GitLab
+merge provider. Broad remote-account discovery and multi-machine state remain later work.

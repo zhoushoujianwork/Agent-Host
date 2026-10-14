@@ -1,194 +1,166 @@
-# Engineering records: implementation details
+# Runtime engineering records: implementation notes
 
 Status: proposed. The [main document](development-projects.md) owns scope and
-defaults. All linked examples are illustrative contracts, not configurations
-recognized by the current binary. No user repositories or runtime data were moved.
+defaults. Linked examples are illustrative generated records, not startup
+configuration. No user repository or runtime state is changed by this design.
 
-## Roots and ownership
+## Host root and lifecycle
 
-Introduce the optional Host-owned `config/development.json` described in the
-[unified configuration contract](configuration-layout-detail.md#工程开发配置待实现).
-Its [example](examples/development-projects/development.example.json) uses the
-existing `version`, `enabled`, `access`, `settings` envelope and defines one
-development root, selected lookup roots and default delivery policy.
-The current loader does not recognize this filename; do not install the example
-as live configuration before the planned loader extension is implemented.
-It is read-only during execution. Resolve `~` using the local runtime owner's
-home directory; resolve relative overrides against the configuration file,
-canonicalize them and never invoke a shell to expand paths.
-Unspecified base branches or empty validation-command defaults mean unconfigured,
-not successful validation. Resolve the target branch during preparation and the
-required project checks before readiness can be granted.
+`ROOT` is the current Host's already resolved runtime root, normally the managed
+`.agent-host/` directory. Derive `ROOT/projects` from that identity; do not
+introduce a separate development root or `config/development.json` switch.
+Supervisor/launcher context passes the same root to each entry and worker. A
+native task's cwd cannot change it. A standalone CLI belongs to its resolved Host
+instance; a different Host root is a different catalog, not an implicit merge.
 
-All participating CLI/channel runtimes must resolve the same canonical
-`development_root` and workspace identity before sharing tasks. Another root
-is another catalog, not a copy to merge automatically. P0 is local storage owned
-by one OS user; do not use network filesystems or promise multi-machine writers.
-Create private state directories/files with owner-only access.
+Development requests lazily create the registry and necessary project state.
+Ordinary greetings, discussion and read-only review do not create a development
+task or enroll every observed directory. Startup can inspect/reconcile existing
+records without scanning the user's disk, cloning repositories or replaying work.
+P0 shares local storage within one Host instance and OS user; it does not promise
+network-filesystem or multi-machine writers.
 
-Use the following ownership labels for source checkouts:
+Existing configuration still owns models, native profiles, credentials and entry
+identity. Engineering paths, progress and observed repository facts are runtime
+records. Repository rules and the current request determine the target branch
+and required checks; retain their source instead of requiring a prefilled policy
+file. A missing branch/check decision is preparation work, not a passed check.
+Publication and merge grants retain their original authenticated source.
 
-- `external`: an existing user checkout, regardless of its folder name.
-- `managed_clone`: a checkout created by a recorded Host clone operation.
+## Paths and ownership
 
-Discovery cannot change ownership. A pre-existing directory under the clone
-root remains external unless its ownership receipt is verified. The registry
-has one primary source checkout per project in P0; additional discovered clones
-are candidates, not permission to switch the source path. Recognize an existing
-linked worktree as an attachment to its repository rather than a new project.
+The registry owns `ROOT/projects/state.db` and `ROOT/projects/locks/`.
+Each stable project ID owns a record directory at `ROOT/projects/<project-id>/`:
 
-Worktrees live at `projects/<project-id>/worktrees/<task-id>/`, outside both
-external checkouts and `repositories/`. Clone/worktree paths are durable, not
-cache. Reuse the existing `cache/workspaces/<run-id>/manifest.json` for an
-Agent run's development binding; no second per-Agent task-progress authority.
+- `external`: record the existing checkout's canonical absolute path; no source
+  copy is created under the project record directory.
+- `managed_clone`: Runtime prepares the identified remote under `repository/`
+  when needed for the development request.
+- `managed_new`: Runtime initializes a local source repository under
+  `repository/` for an explicit new-project request.
 
-## Record files and a single state authority
+Task worktrees are siblings at `<project-id>/worktrees/<task-id>/`. A new source
+repository must reach a valid worktree starting state before feature execution;
+retain its initialization evidence and keep substantive edits in the task
+worktree. Lack of a remote for a new project blocks PR publication until a real
+destination is supplied; it does not authorize creating a hosting account/repository.
 
-Keep the shared operational catalog, tasks, operations and writer leases in
-`development_root/state.db`. This database is distinct from channel evidence
-databases and from formal memory files. JSON/Markdown projections and artifact
-files belong to this shared workspace; they are not learned memory.
+Hidden Host storage is durable engineering material, not ordinary cache. Source
+repositories and unmerged work cannot be discarded by context-cache cleanup.
+The Host runtime area remains private and excluded from source publication;
+it may live beneath the Host's own checkout without altering tracked source.
+Preserve unrelated edits in external repositories. Do not blanket-copy ignored
+credentials, databases or other runtime files into task worktrees.
 
-| Record | Essential contents | Write responsibility |
-| --- | --- | --- |
-| `project.json` | Stable ID, aliases, checkout ownership/path, verified repository/remote, memory references, development policy and enabled scope. | Host snapshot exporter after a project transaction. |
-| `PROJECT.md` | Repository location, current task list, blockers and latest delivery outcomes. | Generated from project and accessible task records. |
-| `task.json` | Request summary, acceptance conditions, project, worktree/branch/base/head, writer, phase, checks, PR and source refs. | Host snapshot exporter after task transitions. |
-| `TASK.md` | Readable goal, completed/remaining work, blocker, revision/check results and next action. | Generated from the task record. |
-| `artifacts/` | Referenced immutable diffs, command/check logs and provider receipts. | Host evidence recorder; metadata indexed in state.db. |
-| Existing run `manifest.json` | Development-root identity, project/task IDs, task revision, worktree and current Agent/audience. | Current runtime assembly. |
+## Records and authority
 
-Every JSON projection has a schema version, record revision and export time.
-Write snapshots by atomic replacement after committing the database transaction.
-A crash may leave an older snapshot: readers treat it as a view, compare revisions
-against the Host and rebuild it. A Markdown summary is never the merge authority.
-Do not maintain authoritative task status in JSON, Markdown and a channel DB
-simultaneously. No independently appended `events.jsonl` is required in P0;
-durable operation history is in the shared database.
+The shared database owns the dynamic catalog, tasks, preparation/publication
+operations, grants and writer ownership. Channel databases retain original
+messages, native attempts and their existing memory boundaries. No local channel
+catalog or generated file becomes a second writable development authority.
 
-Users update projects through explicit Host operations. Direct record-file edits
-do not grant access or change phase/policy. A future explicit file import can
-validate a proposed edit against its recorded revision; it is not implicit hot
-reload. Snapshot-only backups are useful for inspection but are insufficient for
-full recovery: retain a consistent database backup plus referenced artifacts,
-source repositories and worktrees. Existing memory backups remain separate.
+| Record | Essential contents |
+| --- | --- |
+| `project.json` | Stable ID/aliases, canonical checkout and ownership, observed Git/remote identity, enrollment origin, memory references and derived delivery requirements. |
+| `PROJECT.md` | Source location, active tasks, blockers and latest outcomes. |
+| `task.json` | Goal/acceptance conditions, origin Agent/entry/audience, worktree/branch/base/head, writer, phase, check receipts, PR and source/grant references. |
+| `TASK.md` | Current goal, completed/remaining work, blocker, checks and next action. |
+| `tasks/<task-id>/artifacts/` | Referenced immutable diffs, command/check logs and provider receipts. |
+| Existing run `manifest.json` | Host-root identity, project/task IDs and revision, worktree, Agent and audience. |
 
-Concrete templates: [project snapshot](examples/development-projects/project.example.json),
-[task snapshot](examples/development-projects/task.example.json),
+Examples: [project record](examples/development-projects/project.example.json),
+[task record](examples/development-projects/task.example.json),
 [project overview](examples/development-projects/PROJECT.example.md) and
-[task overview](examples/development-projects/TASK.example.md).
-Examples have no real executions, commits, successful checks or PR receipts.
+[task overview](examples/development-projects/TASK.example.md). They contain no
+real execution, successful check or PR receipt. There is no enablement sample.
 
-## Identity and repository lookup
+JSON views carry schema version, revision and export time. Export by atomic
+replacement after committing state; compare stale views with database revisions
+and regenerate them. Markdown summaries cannot establish readiness or merge.
+Direct file edits do not grant permission. Full recovery needs a consistent
+database backup, referenced artifacts and retained Git material, not just views.
 
-Project identity is a stable catalog ID, not a directory basename, URL or Agent
-name. Preserve existing IDs during an explicit import; allocate a fresh ID for
-a genuinely new binding. Renaming an alias, moving a path or changing the
-responsible Agent does not rename the project. Existing project memory scopes
-remain unchanged and retain their Agent/audience partitions.
+## Request-driven lookup and enrollment
 
-Repository evidence includes the canonical checkout/common Git directory and
-the configured remote's host, namespace and repository. Normalize equivalent
-SSH/HTTPS transport descriptions without discarding hostname, port or namespace.
-Do not lowercase case-sensitive filesystem paths or equate unrelated servers.
-Multiple remotes/forks require an explicit source and publication destination.
-Exported records contain sanitized remote URLs and credential-profile references,
-never embedded tokens, passwords or raw credential-helper output.
+The current request's explicit target wins over old task context. Reuse an active
+task only for a compatible follow-up. First check runtime-known paths and trusted
+explicit locations; then perform bounded local lookup using current directory
+context, prior path observations and common `~/github`/`~/gitlab` locations when
+existing native access permits. These are lookup hints, not newly granted roots.
 
-The current request's explicit target takes precedence over old task context.
-Reuse an active task only for a compatible follow-up. Resolve exact path/project
-references and registered aliases before bounded candidates within configured
-roots. Lookup only inspects Git
-identity and short local project descriptions. It does not recursively ingest
-source, read private unrelated repositories or register all children. Respect
-native filesystem access and configured scan limits. Missing roots are reported
-as unavailable candidates; an already bound missing source is a blocker, not a
-reason to switch to a clone with the same name.
+Inspect Git identity and short project descriptions, not all source contents.
+Deduplicate verified common Git directories and recognize linked worktrees.
+Host-managed repositories already present under `ROOT/projects` also count as
+local candidates. Do not create another clone solely because an alias was missed.
+Several candidates require a focused target question before editing.
 
-When one candidate clearly matches a development request, create its binding
-with the default local policy and acknowledge the chosen path. This registration
-records the authorized target, not permission to publish. If the project is not
-development-enabled, clarify/enable it through the trusted local policy path.
-Ambiguous targets require clarification before any editing attempt.
+Once the target is resolved, the Host transaction creates/updates its record and
+links the development request. This is a task-triggered runtime observation;
+there is no `project enable`, per-project enable flag or component-config step.
+Inventory without a development request does not enroll all candidates. Existing
+authenticated entry/audience/tool permissions still apply to actual operations.
 
-For an explicit clone request, require a concrete remote identity, supported Git
-transport and existing credential access. Clone into a task-owned staging path,
-verify the resulting remote/repository, then move it into the reserved destination
-and record ownership/binding. Keep an operation receipt so interruption can be
-reconciled. An existing destination is inspected for an exact match or reported
-as a collision; it is never overwritten, recloned or cleaned by inference.
-Nested namespaces produce nested directories. Sanitize path components, resolve
-symlinks and ensure derived clone paths remain inside the configured clone root.
-No network credentials appear in record templates or prompts.
+Stable project ID is independent of path, name and Agent. Preserve prior IDs and
+memory associations when adopting the referenced existing record; allocate a
+new ID for a new binding. Multiple unrelated clones/remotes remain candidates
+until a primary source is clear. Repository evidence includes canonical common
+Git directory plus sanitized host/namespace/remote identity. Handle equivalent
+transports without erasing host/port or case-sensitive paths. Never export tokens
+or raw credential-helper output.
 
-Catalog/clone support is separate from PR-provider support. Existing GitLab paths
-can be recorded and inspected; full managed feature delivery waits for a supported
-provider and policy. Do not silently downgrade a requested PR workflow to local
-editing because the selected provider is unavailable.
+A first request with no checkout can prepare a clone when the remote identity
+is known and preparation is necessary for its authorized development work; the
+user need not separately say “enable” or “clone.” Record the operation before
+preparing into an owned staging path, verify its Git identity, then install it at
+`<project-id>/repository/`. Reconcile collisions/interruption; never overwrite
+an unrelated directory or retry an unknown mutation blindly. If the user wants
+a new project, record `managed_new` and initialize that source location instead.
+A missing remote for an existing project is not permission to invent an empty
+replacement. Report missing known paths and unresolved identities explicitly.
 
-## Shared progress, private execution
+Catalog/preparation support remains separate from PR-provider support. GitLab
+paths may be identified and recorded; requested full delivery cannot silently
+downgrade to local edits when its PR provider is unavailable.
 
-Shared project/task access is evaluated from authenticated owner, selected Agent,
-audience and configured project grants. One OS user owns the workspace in P0;
-shared storage is not a new cross-user access model. Group use remains outside
-the first development workflow. Do not mount the entire development root into
-every native run: supply only its worktree, authorized status tools and task
-context. The coordinator, not each coding Agent, updates the records.
+## Entries, sharing and handoff
 
-Keep raw channel messages, replies and native session IDs in their original
-runtime. A task stores the minimum engineering summary suitable for its scope,
-plus source references containing runtime/channel/message/run identity. Source
-reads still require their original grants. A different Agent can receive allowed
-task facts without obtaining the previous Agent's private transcript or learned
-memory. Engineering facts are not automatically published as Host knowledge.
+Existing CLI and channel entries use the same development coordinator whenever
+their user requests project development. No per-entry development switch or new
+`channels.development.json` is needed. Entries pass authenticated requester,
+Agent, audience, Host identity and source references. The capability keeps the
+current entry's authorization model; dynamic enrollment grants no new filesystem,
+private-history or remote operation rights.
 
-The shared database owns task phase, current candidate and intended writer.
-Cross-process repository and task locks under `locks/` prevent two writers even
-when requests originate in different state homes. Lock ownership and process
-liveness must agree before transferring a writer; lease timeout alone does not
-authorize a second process. Independent tasks use separate worktrees.
+Generated full records are owner-local runtime files. Native runs receive only
+their worktree and audience-appropriate task context/status tools, not the entire
+`projects` tree. Project overviews and channel replies filter accessible tasks;
+private-owner progress is not copied into public/group replies. Keep raw messages
+and native session IDs in original channel state. Shared task facts do not merge
+Agent memory domains or authorize access to prior private transcripts.
 
-A handoff pauses/stops the old writer, verifies current worktree/diff/head and
-saves a task revision before releasing ownership. The receiving runtime binds
-that same task/worktree, with its own native session and scoped context. Progress
-does not depend on its Agent workspace surviving. A deleted context cache can
-be rebuilt; a lost worktree requires recovery, never an invented clean slate.
+Repository/task locks under `ROOT/projects/locks` enforce one writer even across
+different channel state homes. Writer transfer requires old-process reconciliation,
+not lease expiry alone. A handoff stops the writer, records current diff/head and
+task revision, then lets another Agent bind that worktree with its own compatible
+native session. Deleted context can be rebuilt; missing work requires explicit
+recovery rather than an invented clean slate.
 
-`/status` resolves the current conversation's task reference and returns an
-authorized view. A future project overview can aggregate permitted tasks from
-other Agents; it never dumps unrelated owner-private requests into group replies.
+## Compatibility and acceptance
 
-## Compatibility and delivery
+Current `internal/cli/project.go` and `internal/state/project.go` persist projects
+in the selected `state.Store`; `internal/cli/service_unified.go` assigns separate
+channel state homes. Dynamic Host-wide enrollment is new behavior, not delivered
+catalog functionality.
 
-Today project registration lives in a selected `state.Store`: `internal/cli/project.go`
-opens the chosen `--home`, and `internal/state/project.go` persists its project
-rows. `internal/cli/service_unified.go` selects each channel's separate state
-directory. The proposed shared database is a new authority
-for development bindings, not a claim that a global catalog already exists.
-Existing runs and conversation references must remain readable in their stores.
+On a development request, adopt a referenced legacy binding after verifying its
+identity and scope. Preserve IDs, evidence and memory associations; surface ID,
+clone or policy conflicts instead of merging by name. Historical runs remain in
+their stores. Do not require a bulk manual registration/migration step before
+ordinary development; do not partially switch an active writer's authority.
 
-Implement a controlled import from selected existing catalogs into the shared
-registry. Preserve project IDs, path/scope associations and provenance; detect
-conflicting IDs, different clones and policy differences rather than merging
-them by name. Channel stores retain historical data and a mapping to the shared
-project. Memory remains in its original stores/domains; sharing a project record
-does not combine Agent memories. Once a binding adopts shared development state,
-its local catalog copy is a compatibility view, not a second writable authority.
-Record adoption/reconciliation explicitly; do not partially switch a running task.
-
-P0 delivery order is shared records and import, selected-local-path binding,
-explicit clone preparation, then worktree/native/PR integration. No runtime
-migration is performed by this design change. Validate the following boundaries:
-
-- Existing checkout with unrelated changes: unchanged path/content, external
-  ownership, feature work only in its worktree.
-- Clone identity/collision/interruption: correct destination and one owned clone;
-  no overwrite or hidden retry.
-- Two Agent/channel runtimes: one shared task revision and writer, different
-  native sessions, unchanged memory boundaries.
-- Stale view, restart or moved checkout: reconstruct records from authority;
-  preserve task/PR identity and report unavailable worktrees explicitly.
-
-Worktree cleanup preserves the source checkout and project/task history.
-Repository deletion, external checkout removal and deletion of development
-records are separate explicit maintenance operations, not merge side effects.
+Acceptance focuses on: no enable/config requirement; local checkout preferred
+over clone; one durable enrollment across entries; owned clone/new-project
+preparation under the hidden Host root; worktree-only feature edits; one writer;
+audience-correct status; and restart recovery without duplicate enrollment, clone
+or PR. Cleanup preserves source repositories and task history. Deleting external
+checkouts or retained project records is separate explicit maintenance.

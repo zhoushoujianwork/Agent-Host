@@ -10,14 +10,19 @@
   "goal": "Export run history as CSV from the CLI",
   "acceptance_conditions": [
     "CSV preserves commas, quotes and line breaks",
-    "The configured project checks pass"
+    "The required project checks pass"
   ],
   "phase": "preparing",
   "blocker": null,
   "visibility": "owner_private",
+  "origin": {
+    "entry": "cli",
+    "agent_id": "default",
+    "audience_id": "owner"
+  },
   "writer": null,
   "workspace": {
-    "relative_path": "projects/agent-host/worktrees/dev_csv_export",
+    "relative_path": "agent-host/worktrees/dev_csv_export",
     "branch": "codex/dev_csv_export",
     "base_branch": "main",
     "base_commit": null,

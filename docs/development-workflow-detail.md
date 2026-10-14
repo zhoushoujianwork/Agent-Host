@@ -11,7 +11,7 @@ Current source checks on 2026-10-14 establish these extension points:
 | Foundation | Current boundary | Proposed extension |
 | --- | --- | --- |
 | `internal/routing/router.go`, `Decision` | Registered project selection, reasons, evidence and source-linked continuation. | Independently identify development action and continuation of a development task. |
-| `internal/state/types.go`, `Project` | Stable identity, registered cwd, memory scope, description and aliases. | Separate locally configured repository and delivery policy. |
+| `internal/state/types.go`, `Project` | Stable identity, registered cwd, memory scope, description and aliases. | Runtime repository enrollment and observed delivery requirements. |
 | `internal/assembly/runtime.go`, `Runtime` | Separates project memory identity from cwd; fingerprints execution configuration. | Substitute task worktree as execution cwd while retaining project identity/scope. |
 | `internal/channel/project.go`, `routedSession` | Binds conversation to project set, cwd, configuration and access set. | Add development-task/worktree identity to compatible native sessions. |
 | `internal/host/host.go`, native invocation | Starts the runner with the session's saved cwd. | Prepare the managed workspace before any editing invocation. |
@@ -22,7 +22,7 @@ for an existing linked worktree. It does not manage worktree lifecycle. Bounded
 source inspection found no Host worktree manager, commit gate, PR provider or
 merge controller. Native tools can invoke Git today, without a Host-owned
 delivery record. `make check` is this repository's contributor check; target
-projects need their own configured validation command.
+projects need their own resolved validation command.
 
 ## Intent and project binding
 
@@ -47,9 +47,9 @@ scope or authority is material and missing. Implementation planning happens
 inside the native harness; no mandatory additional planning agent is needed.
 
 P0 changes one bound Git repository. The [shared engineering records](development-projects.md)
-add selected-local-path binding and explicitly requested clones to the initial
-scope. A clear development request may bind its verified local target under
-configured policy; directory discovery alone does not activate projects.
+add request-driven local lookup and automatic enrollment, plus needed clones and
+explicitly requested new projects. A clear development request binds its verified
+target without an enable step; directory discovery alone does not enroll projects.
 Activation still needs that binding before editing. Do not clone an inferred
 remote, switch repositories or execute an uncertain write in the default
 workspace. Current general routing behavior remains delivered behavior; this
@@ -89,8 +89,8 @@ native session can receive the task's cited requirements and verified evidence.
 
 Worktrees are durable working material, not rebuildable context cache. The
 [engineering record layout](development-projects.md) selects the configurable
-default `~/workspace/development/`, with worktrees under
-`projects/<project-id>/worktrees/<task-id>/`. Shared development state owns task
+Host-owned `.agent-host/projects/`, with worktrees under
+`<project-id>/worktrees/<task-id>/`. Shared development state owns task
 progress; channel state retains original evidence and task references. Channels
 resolving the same common Git directory share repository locking. Task
 context/Skill snapshots stay under the existing cache with their own retention.
@@ -98,9 +98,9 @@ context/Skill snapshots stay under the existing cache with their own retention.
 Preparation should establish these invariants:
 
 1. Canonicalize the repository, Git common directory and proposed worktree path.
-   Verify an enabled project policy and the configured provider/remote. A remote
+   Verify the request-derived project binding and selected provider/remote. A remote
    name such as `origin` or a basename alone is not repository identity.
-2. Fetch the configured base ref and pin its SHA. Failure to fetch cannot silently
+2. Fetch the resolved base ref and pin its SHA. Failure to fetch cannot silently
    select a stale base. An explicitly requested local base may be used with its
    provenance recorded. Do not copy the original checkout's uncommitted changes
    unless the user specifically asks to include them.
@@ -132,14 +132,14 @@ and cwd alone cannot prevent native shell tools from editing elsewhere or pushin
 Managed-mode adapter acceptance must demonstrate the configured write/publication
 boundaries using native permission or environment controls. Unrestricted channel
 `bypassPermissions` is not sufficient evidence. If a profile cannot enforce the
-required controls, leave managed development disabled for it and expose the
+required controls, stop managed editing for that profile and expose the
 limitation. Do not promise a sandbox based only on preflight/postflight checks.
 Choose and validate one workable Claude profile before building more adapters.
 
 ## Validation, commits and PR delivery
 
 The native harness edits and runs useful checks. The Host owns readiness: review
-the actual diff, require the configured checks, stage only task-owned changes and
+the actual diff, require the resolved project checks, stage only task-owned changes and
 create a local commit. Repository-required hooks remain enabled. Native text and
 structured results are proposals; Git, command and provider receipts establish
 the facts. An empty diff produces no empty feature commit or PR.
@@ -169,22 +169,23 @@ later adapter, with no public plugin API prerequisite.
 
 ## Authorization and merge
 
-Grants originate in authenticated user requests or local project policy, scoped
+Grants originate in authenticated user requests or existing trusted authority, scoped
 to requester, project, operation and task. Retrieved source content, PR comments,
-memory and successful tests are not grants. P0 uses owner-private channel/CLI
-requests, so group authorization semantics are deferred.
+memory and successful tests are not grants. Existing task entries retain their
+authenticated requester/audience model; dynamic enrollment introduces no new
+group-member roles or private-history grants.
 
 | Operation | P0 authorization |
 | --- | --- |
 | Implement, check, local commit | Clear development request for the bound project. |
-| Push and create/update a PR | Explicit task request or configured project publication policy. |
+| Push and create/update a PR | Explicit task request or applicable standing user authorization. |
 | Merge | Explicit instruction for the concrete PR/current head; no default automatic merge. |
 
 Preserve the source and applicability of grants across restarts and compatible
 follow-ups. Before asking for publication or merge authority, finish the local
 work and provide the concrete diff/checks or PR being authorized. A new candidate
 head after an explicit merge instruction requires renewed head-specific approval
-in P0. Later project automatic-merge policies may define different standing grants.
+in P0. Later automatic-merge support may define different standing grants.
 
 Before merge, reconcile PR owner/repository, base, head, review requirements,
 checks and conflicts. Match the authorized head in the provider operation and
@@ -222,7 +223,8 @@ Initial acceptance focuses on the following outcomes, not an exhaustive matrix:
 
 | Scenario | Required observation |
 | --- | --- |
-| Discussion, investigation, ambiguous or unregistered target | No managed editing attempt or publication starts. |
+| Discussion, investigation or ambiguous target | No managed editing attempt or publication starts. |
+| Clear development target with no prior record | Runtime enrolls it without enablement, preferring an existing local checkout. |
 | Clear feature; original checkout has unrelated edits | Implementation/commit stay in its owned worktree; original edits survive. |
 | Two features and a follow-up | Separate task worktrees; one writer per tree; follow-up uses its original task/PR and memory scope. |
 | Check failure, hook rewrite or changed head | Readiness/approval cannot rely on stale evidence. |

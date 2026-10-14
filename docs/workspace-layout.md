@@ -72,7 +72,8 @@ Host 不把配置文件和生成 Skill 写进项目代码库。
 
 ## 后续开发工程 workspace（待实现）
 
-[工程记录与共享 workspace 方案](development-projects.md)约定：已有仓库原地登记，
-显式要求的新 clone 默认进入 `~/workspace/development/repositories/`；工程记录、
-开发任务进度与 worktree 由同一全局开发 workspace 管理。Agent 和渠道仍保留各自
-会话、原始证据和本轮上下文，只引用共享任务。该方案尚未改变当前运行目录或数据。
+[工程记录与共享 workspace 方案](development-projects.md)约定：开发请求触发 Runtime
+自动登记，优先查找并原地复用本地工程，不要求人工 enable。必要的新 clone 或用户
+要求的新工程进入当前 Host 的 `.agent-host/projects/<project-id>/repository/`；
+工程记录、进度与 worktree 同属 `projects/`。Agent 和渠道仍保留各自会话、原始证据
+和本轮上下文，只引用共享任务。该方案尚未改变当前运行目录或数据。

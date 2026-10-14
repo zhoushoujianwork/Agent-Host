@@ -21,8 +21,11 @@
     "provider": "github"
   },
   "memory_references": [],
-  "policy": {
-    "development_enabled": true,
+  "registration": {
+    "trigger": "development_request",
+    "source_references": []
+  },
+  "delivery": {
     "base_branch": "main",
     "validation_commands": ["make check"],
     "publication": "on_request",
