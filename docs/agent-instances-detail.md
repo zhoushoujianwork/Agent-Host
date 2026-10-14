@@ -136,7 +136,10 @@ independent safe-mode, no-tool configuration, not business approval bypass.
 
 ## Audience-specific behavior
 
-Channel policy version 6 separates owner-private and group behavior while using
+Channel policy version 7 adds a project-introduction line (what Agent-Host is
+and its source URL, https://github.com/zhoushoujianwork/Agent-Host) that the
+assistant mentions only when asked what it runs on or how to deploy/configure
+it, then separates owner-private and group behavior while using
 the same configured execution capabilities. Owner-private instructions execute
 requests directly without additional Host permission, disclosure or approval
 restrictions. Requested local paths, Host configuration, diagnostic details and
@@ -172,7 +175,7 @@ claim that default memory processing is disabled.
 
 ## Everyday answer grounding
 
-Channel policy version 6 asks the native assistant to ground facts in the current
+Channel policy version 7 asks the native assistant to ground facts in the current
 request and relevant evidence, retain supplied labels/dates/units/identities,
 and distinguish observations, calculations and hypotheses. Diagnostic answers
 keep leading explanations tentative until verified; indirect metrics cannot
@@ -203,7 +206,7 @@ instructions, ordinary group execution, claimed-owner text without identity
 replacement, owner-in-group behavior, different senders in one native session,
 default-workspace target grounding and policy-dependent session compatibility.
 Assembly compatibility tests also cover changes to the complete Host policy.
-The Host-to-runner checks cover version 6 chat guidance reaching owner-private,
+The Host-to-runner checks cover version 7 chat guidance reaching owner-private,
 member-group and owner-group execution while preserving diagnostic permissions
 and authenticated identity. All 64 Host package tests passed for this change.
 These tests verify prompt assembly and routing of configured capabilities;
