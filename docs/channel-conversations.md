@@ -15,6 +15,8 @@ finish. `/status` waits in that same queue; it is not an immediate control.
 An interrupted progress hint does not cancel the task. The final reply warns
 when progress reporting failed; execution evidence and final state still have
 to be recorded successfully.
+When Claude delegates work to a background agent, the Host waits for its final
+answer rather than completing the task with an interim waiting response.
 
 Send text, pictures, files, image-with-text messages, or forwarded Markdown.
 One message can contain up to four attachments: each image up to 5 MiB and each file up to

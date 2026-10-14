@@ -293,6 +293,44 @@ at 14:05:47 Singapore time; both worker PIDs remained stable and the shared
 workbench returned HTTP 200. Detailed receipt evidence remains in the ignored
 runtime area.
 
+### Native background completion correction (2026-10-14)
+
+The resubmitted image downloaded and was preserved successfully, then Claude
+read it and delegated a source-code search. A completion notification caused
+Claude Code 2.1.223 to re-emit `system/init` for the same session and initial
+model. The adapter previously rejected every repeated initialization and
+canceled the native process before the final answer.
+
+Repeated snapshots now retain native evidence without starting another Host
+execution or overwriting the resolved model and tool correlation. Each snapshot
+still validates the session, initial model, MCP connections and extraction
+restrictions. Native task starts link to observed tool calls; a matching terminal
+notification and validated initialization authorize its continuation result.
+An intermediate submitted-turn result can arrive before or after that
+initialization. The adapter retains the later answer and waits for native process
+exit, required results and completed task boundaries. Unrelated notifications,
+invalid linkage, duplicate results and incomplete work cannot establish success;
+an unsuccessful accepted result remains a failure.
+Synchronous Agent calls consume their notice through the correlated completed
+tool result. If an async notification is handled by a new parent response in the
+already-active query, completion waits for a clean process exit; a child response
+cannot satisfy that boundary. The notice remains pending during streaming, so a
+later initialization and continuation can still replace an interim waiting answer.
+
+The separate isolated native image check reproduced the async lifecycle and
+completed with its final synthetic marker and the screenshot's visible URL.
+It executed no original business task and sent no IM. A fresh client round trip
+remains separate from this native verification; the failed production receipt
+is preserved without replay.
+The final `make check` passed. Regression coverage includes initial/resumed
+image runs, synchronous and asynchronous Agent completion, queued result order,
+inline parent responses, missing final boundaries, stale waiting results,
+duplicate rejection and repeated MCP/extraction checks.
+All 485 race tests for the Claude adapter and channel handling passed. The
+rebuilt runtime emitted fresh DingTalk and Feishu readiness at 15:01:20 Singapore
+time, both worker PIDs remained stable, and the workbench returned HTTP 200.
+Detailed native and runtime evidence remains in the ignored local runtime area.
+
 
 ## Interactive-card quote parsing (2026-10-13)
 

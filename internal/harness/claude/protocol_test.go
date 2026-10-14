@@ -62,6 +62,223 @@ func TestToolInputAndOutputRemainNativeEvidence(t *testing.T) {
 	}
 }
 
+func TestRepeatedInitializationRetainsEvidenceAndResolvedExecutionState(t *testing.T) {
+	var observations []harness.Observation
+	decoder := streamDecoder{session: "s", mcpServers: []harness.MCPServer{{Name: "knowledge_dokki"}}, emit: func(o harness.Observation) error {
+		observations = append(observations, o)
+		return nil
+	}}
+	lines := []string{
+		`{"type":"system","subtype":"init","session_id":"s","model":"claude-sonnet-5[1m]","uuid":"first","mcp_servers":[{"name":"knowledge_dokki","status":"connected"}]}`,
+		`{"type":"stream_event","session_id":"s","event":{"type":"message_start","message":{"model":"claude-sonnet-5"}}}`,
+		`{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"read","name":"Read","input":{"file_path":"source.go"}}]}}`,
+		`{"type":"system","subtype":"task_notification","session_id":"s","task_id":"background","status":"completed"}`,
+		`{"type":"system","subtype":"init","session_id":"s","model":"claude-sonnet-5[1m]","uuid":"refreshed","mcp_servers":[{"name":"knowledge_dokki","status":"connected"}]}`,
+		`{"type":"user","session_id":"s","message":{"content":[{"type":"tool_result","tool_use_id":"read","content":"source contents"}]}}`,
+		`{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"done"}`,
+	}
+	for i, line := range lines {
+		if err := decoder.consume([]byte(line)); err != nil {
+			t.Fatalf("event %d: %v", i, err)
+		}
+		if i == 4 && (decoder.finalSeen || decoder.model != "claude-sonnet-5") {
+			t.Fatal("initialization refresh changed model or completed the task")
+		}
+	}
+	if len(observations) != len(lines) || observations[0].Type != "init" || observations[4].Type != "native" {
+		t.Fatalf("initialization refresh started a second execution: %+v", observations)
+	}
+	for i, observation := range observations {
+		if string(observation.Raw) != lines[i] || observation.NativeSessionID != "s" {
+			t.Fatalf("event %d lost native evidence: %+v", i, observation)
+		}
+	}
+	if tool := observations[5].Tool; tool == nil || tool.ID != "read" || tool.Name != "Read" || tool.Stage != "result" {
+		t.Fatalf("initialization refresh lost tool correlation: %+v", tool)
+	}
+	if !decoder.finalSeen || decoder.finalError || decoder.text != "done" || decoder.model != "claude-sonnet-5" {
+		t.Fatalf("native completion changed after initialization refresh: %+v", decoder)
+	}
+}
+
+func TestRepeatedInitializationRejectsInvalidIdentity(t *testing.T) {
+	for _, tc := range []struct{ name, fields, wantError string }{
+		{"other-session", `"session_id":"other","model":"m"`, "does not match requested session"},
+		{"missing-session", `"model":"m"`, "invalid"},
+		{"missing-model", `"session_id":"s"`, "invalid"},
+		{"changed-model", `"session_id":"s","model":"changed"`, "model"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var observed harness.Observation
+			decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observed = o; return nil }}
+			if err := decoder.consume([]byte(`{"type":"system","subtype":"init","session_id":"s","model":"m"}`)); err != nil {
+				t.Fatal(err)
+			}
+			line := `{"type":"system","subtype":"init",` + tc.fields + `}`
+			err := decoder.consume([]byte(line))
+			if err == nil || !strings.Contains(err.Error(), tc.wantError) || observed.Type != "protocol_error" || string(observed.Raw) != line || decoder.finalSeen {
+				t.Fatalf("invalid repeated initialization accepted or evidence lost: %v %+v", err, observed)
+			}
+		})
+	}
+}
+
+func TestLinkedBackgroundContinuationPreservesNativeResultOrdering(t *testing.T) {
+	main := `{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"waiting for Agent"}`
+	continuation := `{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"actual final answer","origin":{"kind":"task-notification"}}`
+	notice := `{"type":"system","subtype":"task_notification","session_id":"s","task_id":"background","tool_use_id":"agent","status":"completed"}`
+	refresh := `{"type":"system","subtype":"init","session_id":"s","model":"alias[1m]","uuid":"refreshed"}`
+	for _, tc := range []struct {
+		name  string
+		turns []string
+	}{
+		{"main-before-notice", []string{main, notice, refresh, continuation}},
+		{"delayed-main", []string{notice, refresh, main, continuation}},
+		{"continuation-before-main", []string{notice, refresh, continuation, main}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var observations []harness.Observation
+			decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observations = append(observations, o); return nil }}
+			lines := []string{
+				`{"type":"system","subtype":"init","session_id":"s","model":"alias[1m]","uuid":"first"}`,
+				`{"type":"assistant","session_id":"s","message":{"model":"resolved","content":[{"type":"tool_use","id":"agent","name":"Agent","input":{"run_in_background":true}}]}}`,
+				`{"type":"system","subtype":"task_started","session_id":"s","task_id":"background","tool_use_id":"agent"}`,
+			}
+			lines = append(lines, tc.turns...)
+			for i, line := range lines {
+				if err := decoder.consume([]byte(line)); err != nil {
+					t.Fatalf("event %d: %v", i, err)
+				}
+				if decoder.finalSeen != (i == len(lines)-1) {
+					t.Fatalf("event %d completed before both native results or lost completion", i)
+				}
+			}
+			if !decoder.finalSeen || decoder.finalError || decoder.text != "actual final answer" || decoder.model != "resolved" {
+				t.Fatalf("native continuation result changed: %+v", decoder)
+			}
+			if len(observations) != len(lines) {
+				t.Fatal("native lifecycle evidence lost")
+			}
+			for i, observation := range observations {
+				if string(observation.Raw) != lines[i] || observation.NativeSessionID != "s" {
+					t.Fatalf("event %d evidence changed: %+v", i, observation)
+				}
+				if i > 0 && observation.Type == "init" || i < len(lines)-1 && observation.Type == "result" {
+					t.Fatalf("intermediate native event restarted or completed execution: %+v", observation)
+				}
+			}
+			if observations[len(lines)-1].Type != "result" {
+				t.Fatal("native final result was not surfaced")
+			}
+		})
+	}
+}
+
+func TestUnlinkedBackgroundEventsCannotAuthorizeContinuationResult(t *testing.T) {
+	for _, tc := range []struct{ name, taskID, toolID, status string }{
+		{"unknown-task", "other", "agent", "completed"},
+		{"wrong-tool", "background", "other", "completed"},
+		{"missing-tool", "background", "", "completed"},
+		{"nonterminal", "background", "agent", "running"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var observed harness.Observation
+			decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observed = o; return nil }}
+			notice, _ := json.Marshal(map[string]string{"type": "system", "subtype": "task_notification", "session_id": "s", "task_id": tc.taskID, "tool_use_id": tc.toolID, "status": tc.status})
+			lines := []string{
+				`{"type":"system","subtype":"init","session_id":"s","model":"m"}`,
+				`{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"agent","name":"Agent","input":{"run_in_background":true}}]}}`,
+				`{"type":"system","subtype":"task_started","session_id":"s","task_id":"background","tool_use_id":"agent"}`,
+				string(notice),
+				`{"type":"system","subtype":"init","session_id":"s","model":"m"}`,
+				`{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"unrelated answer","origin":{"kind":"task-notification"}}`,
+			}
+			for _, line := range lines {
+				if err := decoder.consume([]byte(line)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if decoder.finalSeen || decoder.text != "" || observed.Type != "native" || string(observed.Raw) != lines[len(lines)-1] {
+				t.Fatalf("unlinked notification became submitted completion: %+v %+v", decoder, observed)
+			}
+		})
+	}
+}
+
+func TestAuthorizedContinuationStillRequiresValidFinalResult(t *testing.T) {
+	for _, fields := range []string{
+		`"subtype":"success","is_error":false`,
+		`"session_id":"s","is_error":false`,
+		`"session_id":"s","subtype":"success"`,
+	} {
+		var observed harness.Observation
+		decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observed = o; return nil }}
+		for _, line := range []string{
+			`{"type":"system","subtype":"init","session_id":"s","model":"m"}`,
+			`{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"agent","name":"Agent","input":{"run_in_background":true}}]}}`,
+			`{"type":"system","subtype":"task_started","session_id":"s","task_id":"background","tool_use_id":"agent"}`,
+			`{"type":"system","subtype":"task_notification","session_id":"s","task_id":"background","tool_use_id":"agent","status":"completed"}`,
+			`{"type":"system","subtype":"init","session_id":"s","model":"m"}`,
+		} {
+			if err := decoder.consume([]byte(line)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		line := `{"type":"result","origin":{"kind":"task-notification"},` + fields + `}`
+		err := decoder.consume([]byte(line))
+		if err == nil || !strings.Contains(err.Error(), "lacks session") || decoder.finalSeen || observed.Type != "protocol_error" || string(observed.Raw) != line {
+			t.Fatalf("authorized continuation bypassed result validation: %v %+v", err, observed)
+		}
+	}
+}
+
+func TestInlineNotificationCompletionWaitsForNativeProcessClosure(t *testing.T) {
+	decoder := streamDecoder{session: "s"}
+	lines := []string{
+		`{"type":"system","subtype":"init","session_id":"s","model":"alias"}`,
+		`{"type":"assistant","session_id":"s","message":{"model":"resolved","content":[{"type":"tool_use","id":"agent","name":"Agent","input":{"run_in_background":true}}]}}`,
+		`{"type":"system","subtype":"task_started","session_id":"s","task_id":"background","tool_use_id":"agent"}`,
+		`{"type":"system","subtype":"task_notification","session_id":"s","task_id":"background","tool_use_id":"agent","status":"completed"}`,
+		`{"type":"stream_event","session_id":"s","parent_tool_use_id":null,"event":{"type":"message_start","message":{"model":"resolved"}}}`,
+		`{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"inline final answer"}`,
+	}
+	for i, line := range lines {
+		if err := decoder.consume([]byte(line)); err != nil {
+			t.Fatalf("event %d: %v", i, err)
+		}
+		if decoder.finalSeen {
+			t.Fatalf("event %d completed before native process closure", i)
+		}
+	}
+	decoder.finish()
+	if !decoder.finalSeen || decoder.finalError || decoder.text != "inline final answer" || decoder.model != "resolved" {
+		t.Fatalf("parent's completed same-turn response lost: %+v", decoder)
+	}
+}
+
+func TestInlineNotificationCannotCompleteEarlierWaitingResult(t *testing.T) {
+	decoder := streamDecoder{session: "s"}
+	for _, line := range []string{
+		`{"type":"system","subtype":"init","session_id":"s","model":"m"}`,
+		`{"type":"assistant","session_id":"s","message":{"content":[{"type":"tool_use","id":"agent","name":"Agent","input":{"run_in_background":true}}]}}`,
+		`{"type":"system","subtype":"task_started","session_id":"s","task_id":"background","tool_use_id":"agent"}`,
+		`{"type":"result","subtype":"success","session_id":"s","is_error":false,"result":"waiting for Agent"}`,
+		`{"type":"system","subtype":"task_notification","session_id":"s","task_id":"background","tool_use_id":"agent","status":"completed"}`,
+		`{"type":"stream_event","session_id":"s","parent_tool_use_id":null,"event":{"type":"message_start","message":{"model":"m"}}}`,
+	} {
+		if err := decoder.consume([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+		if decoder.finalSeen {
+			t.Fatal("parent response start completed the earlier waiting result")
+		}
+	}
+	decoder.finish()
+	if decoder.finalSeen || decoder.text != "waiting for Agent" {
+		t.Fatalf("process closure promoted an earlier incomplete result: %+v", decoder)
+	}
+}
+
 func TestToolBlocksRemainSeparateAndRepeatedCallsAreNotNormalizedTwice(t *testing.T) {
 	var observations []harness.Observation
 	decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observations = append(observations, o); return nil }}
@@ -125,10 +342,17 @@ func TestExtractionAllowsOnlyStructuredOutputFormatter(t *testing.T) {
 	}{
 		{`[]`, `[]`, false}, {`["StructuredOutput"]`, `[]`, false}, {`["Bash"]`, `[]`, true}, {`[]`, `[{"name":"server"}]`, true},
 	} {
-		decoder := streamDecoder{session: "s", extraction: true}
-		line := `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":` + tc.tools + `,"mcp_servers":` + tc.mcp + `}`
-		if err := decoder.consume([]byte(line)); (err != nil) != tc.wantError {
-			t.Fatalf("tools=%s mcp=%s err=%v", tc.tools, tc.mcp, err)
+		for _, repeated := range []bool{false, true} {
+			decoder := streamDecoder{session: "s", extraction: true}
+			if repeated {
+				if err := decoder.consume([]byte(`{"type":"system","subtype":"init","session_id":"s","model":"m","tools":["StructuredOutput"],"mcp_servers":[]}`)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			line := `{"type":"system","subtype":"init","session_id":"s","model":"m","tools":` + tc.tools + `,"mcp_servers":` + tc.mcp + `}`
+			if err := decoder.consume([]byte(line)); (err != nil) != tc.wantError {
+				t.Fatalf("repeated=%t tools=%s mcp=%s err=%v", repeated, tc.tools, tc.mcp, err)
+			}
 		}
 	}
 }
@@ -154,25 +378,44 @@ func TestMCPInitializationRequiresExactConnectedSources(t *testing.T) {
 		{"config-error", `,"mcp_server_errors":[{"name":"knowledge_dokki","type":"invalid_config","message":"private-configuration"}]`, true, "rejected"},
 		{"error-despite-connected", `,"mcp_servers":[{"name":"knowledge_dokki","status":"connected"}],"mcp_server_errors":[{"name":"other","type":"future_type","message":"private-configuration"}]`, true, "rejected"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var observed harness.Observation
-			decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observed = o; return nil }}
-			if tc.configured {
-				decoder.mcpServers = []harness.MCPServer{{Name: "knowledge_dokki", Command: "/bin/host"}}
+		for _, repeated := range []bool{false, true} {
+			name := tc.name
+			if repeated {
+				name += "/repeated"
 			}
-			line := `{"type":"system","subtype":"init","session_id":"s","model":"m"` + tc.fields + `}`
-			err := decoder.consume([]byte(line))
-			if tc.wantError == "" {
-				if err != nil || !decoder.initialized || observed.Type != "init" {
-					t.Fatalf("valid init rejected: %v %+v", err, observed)
+			t.Run(name, func(t *testing.T) {
+				var observed harness.Observation
+				decoder := streamDecoder{session: "s", emit: func(o harness.Observation) error { observed = o; return nil }}
+				if tc.configured {
+					decoder.mcpServers = []harness.MCPServer{{Name: "knowledge_dokki", Command: "/bin/host"}}
 				}
-			} else if err == nil || !strings.Contains(err.Error(), tc.wantError) || strings.Contains(err.Error(), "private-configuration") || decoder.initialized || !decoder.mcpSetupFailed || observed.Type != "protocol_error" {
-				t.Fatalf("invalid init accepted or diagnostic leaked: %v %+v", err, observed)
-			}
-			if string(observed.Raw) != line {
-				t.Fatal("native MCP setup evidence lost")
-			}
-		})
+				if repeated {
+					fields := ""
+					if tc.configured {
+						fields = `,"mcp_servers":[{"name":"knowledge_dokki","status":"connected"}]`
+					}
+					if err := decoder.consume([]byte(`{"type":"system","subtype":"init","session_id":"s","model":"m"` + fields + `}`)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				line := `{"type":"system","subtype":"init","session_id":"s","model":"m"` + tc.fields + `}`
+				err := decoder.consume([]byte(line))
+				if tc.wantError == "" {
+					wantType := "init"
+					if repeated {
+						wantType = "native"
+					}
+					if err != nil || !decoder.initialized || observed.Type != wantType {
+						t.Fatalf("valid init rejected: %v %+v", err, observed)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), tc.wantError) || strings.Contains(err.Error(), "private-configuration") || decoder.initialized != repeated || !decoder.mcpSetupFailed || observed.Type != "protocol_error" {
+					t.Fatalf("invalid init accepted or diagnostic leaked: %v %+v", err, observed)
+				}
+				if string(observed.Raw) != line {
+					t.Fatal("native MCP setup evidence lost")
+				}
+			})
+		}
 	}
 }
 

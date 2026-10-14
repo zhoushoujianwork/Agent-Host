@@ -80,6 +80,12 @@ type envelope struct {
 	Tools            []string          `json:"tools"`
 	MCPServers       []json.RawMessage `json:"mcp_servers"`
 	MCPServerErrors  []json.RawMessage `json:"mcp_server_errors"`
+	TaskID           string            `json:"task_id"`
+	ToolUseID        string            `json:"tool_use_id"`
+	Status           string            `json:"status"`
+	ToolUseResult    json.RawMessage   `json:"tool_use_result"`
+	ParentToolUseID  string            `json:"parent_tool_use_id"`
+	SubagentType     string            `json:"subagent_type"`
 	Origin           struct {
 		Kind string `json:"kind"`
 	} `json:"origin"`
@@ -102,20 +108,28 @@ type message struct {
 }
 
 type streamDecoder struct {
-	session          string
-	model            string
-	text             string
-	subtype          string
-	initialized      bool
-	extraction       bool
-	mcpServers       []harness.MCPServer
-	mcpSetupFailed   bool
-	finalSeen        bool
-	finalError       bool
-	structuredOutput json.RawMessage
-	toolCalls        map[string]harness.ToolObservation
-	toolResults      map[string]harness.ToolObservation
-	emit             func(harness.Observation) error
+	session              string
+	initModel            string
+	model                string
+	text                 string
+	subtype              string
+	initialized          bool
+	extraction           bool
+	mcpServers           []harness.MCPServer
+	mcpSetupFailed       bool
+	finalSeen            bool
+	finalError           bool
+	mainResultSeen       bool
+	continuationSeen     bool
+	activeTasks          map[string]string
+	pendingNotifications map[string]string
+	notificationsHandled bool
+	inlineResultSeen     bool
+	continuationResults  int
+	structuredOutput     json.RawMessage
+	toolCalls            map[string]harness.ToolObservation
+	toolResults          map[string]harness.ToolObservation
+	emit                 func(harness.Observation) error
 }
 
 func (s *streamDecoder) consume(line []byte) error {
@@ -149,8 +163,11 @@ func (s *streamDecoder) consume(line []byte) error {
 	case "system":
 		observation.Message = event.Subtype
 		if event.Subtype == "init" {
-			if s.initialized || event.SessionID == "" || event.Model == "" {
-				return s.reject(observation, "invalid or duplicate session initialization")
+			if event.SessionID == "" || event.Model == "" {
+				return s.reject(observation, "invalid session initialization")
+			}
+			if s.initialized && event.Model != s.initModel {
+				return s.reject(observation, "session initialization changed model")
 			}
 			if s.extraction {
 				for _, tool := range event.Tools {
@@ -166,12 +183,60 @@ func (s *streamDecoder) consume(line []byte) error {
 				s.mcpSetupFailed = true
 				return s.reject(observation, err.Error())
 			}
-			s.initialized = true
-			s.model = event.Model
-			observation.Type, observation.Model = "init", s.model
+			if !s.initialized {
+				s.initialized = true
+				s.initModel, s.model = event.Model, event.Model
+				observation.Type, observation.Model = "init", s.model
+			} else if len(s.pendingNotifications) > 0 {
+				// A completed, source-linked native task can resume the parent
+				// query. Its result may arrive after the submitted turn's queued
+				// result, so keep both boundaries until the process exits.
+				s.pendingNotifications = nil
+				s.notificationsHandled = false
+				s.inlineResultSeen = false
+				s.continuationResults++
+				s.finalSeen = false
+			}
+			// Native background-task notifications can start another turn and
+			// re-emit init in this same process/session. Retain the snapshot as
+			// evidence without restarting Host execution or resetting the model
+			// resolved by assistant events, tool correlation, or final outcome.
+		}
+		if s.initialized && event.SessionID == s.session {
+			switch event.Subtype {
+			case "task_started":
+				if call, ok := s.toolCalls[event.ToolUseID]; !s.finalSeen && ok && call.Stage == "call" && event.TaskID != "" {
+					if s.activeTasks == nil {
+						s.activeTasks = make(map[string]string)
+					}
+					s.activeTasks[event.TaskID] = event.ToolUseID
+				}
+			case "task_notification":
+				if toolID, ok := s.activeTasks[event.TaskID]; ok && toolID == event.ToolUseID && (event.Status == "completed" || event.Status == "failed" || event.Status == "stopped") {
+					delete(s.activeTasks, event.TaskID)
+					if s.pendingNotifications == nil {
+						s.pendingNotifications = make(map[string]string)
+					}
+					s.pendingNotifications[event.TaskID] = event.ToolUseID
+					s.notificationsHandled = false
+					s.inlineResultSeen = false
+				}
+			}
 		}
 	case "stream_event":
 		parseErr = s.partial(event.Event, &observation)
+		if parseErr == nil && event.SessionID == s.session && event.ParentToolUseID == "" && event.SubagentType == "" && len(s.pendingNotifications) > 0 {
+			var partial struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(event.Event, &partial) == nil && partial.Type == "message_start" {
+				// A notification can also be handled by the already-active
+				// parent query. Keep it pending until process exit: a queued
+				// waiting result may still precede another init/continuation.
+				s.notificationsHandled = true
+				s.inlineResultSeen = false
+			}
+		}
 	case "assistant", "user":
 		var msg message
 		parseErr = json.Unmarshal(event.Message, &msg)
@@ -211,30 +276,78 @@ func (s *streamDecoder) consume(line []byte) error {
 				}
 			}
 			if len(tools) > 0 {
+				// Synchronous Agent calls also emit a task notification, followed
+				// by their completed tool result in the same query. That exact
+				// correlated result consumes the notice without a new init/turn.
+				var result struct {
+					Status  string          `json:"status"`
+					IsAsync json.RawMessage `json:"isAsync"`
+				}
+				if event.Type == "user" && json.Unmarshal(event.ToolUseResult, &result) == nil && result.Status == "completed" && (len(result.IsAsync) == 0 || bytes.Equal(result.IsAsync, []byte("false"))) {
+					for _, tool := range tools {
+						for taskID, toolID := range s.pendingNotifications {
+							if tool.Stage == "result" && tool.ID == toolID {
+								delete(s.pendingNotifications, taskID)
+							}
+						}
+					}
+				}
 				observation.Model = s.model
 				return s.observeTools(observation, tools)
 			}
 		}
 	case "result":
-		// Task-notification envelopes concern native background tasks, not the
-		// final result of this submitted turn.
-		if event.Origin.Kind == "task-notification" {
+		continuation := event.Origin.Kind == "task-notification"
+		// An unrelated notification cannot replace the submitted task result.
+		if continuation && s.continuationResults == 0 {
+			if s.continuationSeen {
+				return s.reject(observation, "duplicate native continuation result")
+			}
 			observation.Message = "Native task notification"
 			break
 		}
 		if event.SessionID == "" || event.IsError == nil || event.Subtype == "" {
 			return s.reject(observation, "final result lacks session, subtype, or is_error")
 		}
-		s.finalSeen, s.finalError = true, *event.IsError || event.Subtype != "success"
-		s.text, s.subtype = event.Result, event.Subtype
-		s.structuredOutput = bytes.Clone(event.StructuredOutput)
+		if !continuation && s.mainResultSeen {
+			return s.reject(observation, "duplicate submitted turn result")
+		}
+		failed := *event.IsError || event.Subtype != "success"
+		// Retain the continuation's answer even when the earlier submitted
+		// result was queued and arrives later. Any unsuccessful result remains
+		// a failure rather than being hidden by a subsequent successful turn.
+		if !s.finalError && (continuation || !s.continuationSeen || failed) {
+			s.text, s.subtype = event.Result, event.Subtype
+			s.structuredOutput = bytes.Clone(event.StructuredOutput)
+		}
+		s.finalError = s.finalError || failed
+		if continuation {
+			s.continuationResults--
+			s.continuationSeen = true
+		} else {
+			s.mainResultSeen = true
+			s.inlineResultSeen = s.notificationsHandled
+		}
+		s.finalSeen = s.mainResultSeen && s.continuationResults == 0 && len(s.activeTasks) == 0 && len(s.pendingNotifications) == 0
 		observation.Type, observation.Message = "result", event.Subtype
+		if !s.finalSeen {
+			observation.Type, observation.Message = "native", "Intermediate native turn result"
+		}
 	}
 	if parseErr != nil {
 		return s.reject(observation, "malformed "+event.Type+" payload: "+parseErr.Error())
 	}
 	observation.Model = s.model
 	return s.observe(observation)
+}
+
+// Called only after a clean native process exit and a complete stream. A parent
+// query that answered after a task notice can finish in the same turn, without
+// re-initialization. Pending work or an unanswered notice remains incomplete.
+func (s *streamDecoder) finish() {
+	if s.mainResultSeen && s.continuationResults == 0 && len(s.activeTasks) == 0 && len(s.pendingNotifications) > 0 && s.notificationsHandled && s.inlineResultSeen {
+		s.finalSeen = true
+	}
 }
 
 // Native initialization reports connection state, not document retrieval or

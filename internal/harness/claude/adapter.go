@@ -387,6 +387,9 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	}
 	if output.err == nil && ctx.Err() == nil {
 		output.finish()
+		if waitErr == nil && output.err == nil && ctx.Err() == nil {
+			protocol.finish()
+		}
 	}
 	if output.err != nil {
 		stopProcessGroup(cmd)

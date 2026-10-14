@@ -31,6 +31,7 @@ func TestMain(m *testing.M) {
 
 func fixture(mode string) {
 	apiError := strings.HasPrefix(mode, "api_error_nonzero")
+	repeatedInit := strings.HasPrefix(mode, "image_reinit_") || strings.HasPrefix(mode, "image_background_")
 	if mode == "grandchild" {
 		time.Sleep(350 * time.Millisecond)
 		_ = os.WriteFile(os.Getenv("AGENT_HOST_FIXTURE_MARKER"), []byte("still alive"), 0600)
@@ -68,6 +69,9 @@ func fixture(mode string) {
 	write := func(v any) { body, _ := json.Marshal(v); fmt.Println(string(body)) }
 	if mode != "missing_init" && mode != "api_error_nonzero_missing_init" {
 		init := map[string]any{"type": "system", "subtype": "init", "session_id": session, "model": "claude-fixture"}
+		if repeatedInit {
+			init["uuid"] = "first"
+		}
 		if strings.HasPrefix(mode, "mcp_") {
 			var config struct {
 				Servers map[string]json.RawMessage `json:"mcpServers"`
@@ -101,10 +105,26 @@ func fixture(mode string) {
 		// A native input acknowledgment must not journal image payload bytes.
 		fmt.Print(string(prompt))
 	}
+	if strings.HasPrefix(mode, "image_background_") {
+		fixtureBackgroundContinuation(mode, session, write)
+		return
+	}
+	if strings.HasPrefix(mode, "image_sync_") {
+		fixtureSynchronousTask(mode, session, write)
+		return
+	}
 	write(map[string]any{"type": "stream_event", "session_id": session,
 		"event": map[string]any{"type": "message_start", "message": map[string]any{"model": "claude-resolved"}}})
 	write(map[string]any{"type": "stream_event", "session_id": session,
 		"event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": "hello"}}})
+	if repeatedInit {
+		write(map[string]any{"type": "system", "subtype": "task_notification", "session_id": session,
+			"task_id": "background", "status": "completed"})
+		write(map[string]any{"type": "system", "subtype": "init", "session_id": session,
+			"model": "claude-fixture", "uuid": "refreshed"})
+		write(map[string]any{"type": "result", "subtype": "success", "session_id": session,
+			"is_error": false, "result": "background task result", "origin": map[string]string{"kind": "task-notification"}})
+	}
 	if mode == "stream_gate" {
 		deadline := time.Now().Add(4 * time.Second)
 		for {
@@ -125,7 +145,7 @@ func fixture(mode string) {
 		fmt.Println("{malformed")
 		return
 	}
-	if mode == "missing_final" {
+	if mode == "missing_final" || mode == "image_reinit_missing_final" {
 		return
 	}
 	text, model := "hello", "claude-resolved"
@@ -137,7 +157,7 @@ func fixture(mode string) {
 	if mode == "mismatch" || mode == "api_error_nonzero_mismatched_session" {
 		session = "other-session"
 	}
-	final := map[string]any{"type": "result", "subtype": "success", "session_id": session, "is_error": mode == "error" || apiError, "result": text}
+	final := map[string]any{"type": "result", "subtype": "success", "session_id": session, "is_error": mode == "error" || mode == "image_reinit_error" || apiError, "result": text}
 	if mode == "structured" {
 		final["structured_output"] = map[string]any{"candidates": []any{}}
 	}
@@ -156,7 +176,7 @@ func fixture(mode string) {
 	} else {
 		write(final)
 	}
-	if mode == "duplicate" {
+	if mode == "duplicate" || mode == "image_reinit_duplicate_final" {
 		write(final)
 	}
 	if mode == "nonzero" {
@@ -165,6 +185,138 @@ func fixture(mode string) {
 	if apiError {
 		os.Exit(1)
 	}
+}
+
+func fixtureBackgroundContinuation(mode, session string, write func(any)) {
+	continuationBeforeMain := mode == "image_background_continuation_first" || strings.HasPrefix(mode, "image_background_duplicate_before_main")
+	if mode != "image_background_no_call" {
+		write(map[string]any{"type": "assistant", "session_id": session,
+			"message": map[string]any{"model": "claude-resolved", "content": []any{map[string]any{
+				"type": "tool_use", "id": "agent", "name": "Agent", "input": map[string]any{"run_in_background": true}}}}})
+	}
+	write(map[string]any{"type": "system", "subtype": "task_started", "session_id": session,
+		"task_id": "background", "tool_use_id": "agent", "task_type": "local_agent"})
+	main := map[string]any{"type": "result", "subtype": "success", "session_id": session,
+		"is_error": mode == "image_background_main_error", "result": "waiting for Agent"}
+	if mode == "image_background_early_main" || mode == "image_background_pending" || mode == "image_background_duplicate_main" || mode == "image_background_inline_missing_result" {
+		write(main)
+	}
+	if mode == "image_background_duplicate_main" {
+		write(main)
+		return
+	}
+	if mode == "image_background_pending" {
+		return
+	}
+	taskID := "background"
+	toolID := "agent"
+	if mode == "image_background_unmatched_notice" {
+		taskID = "unmatched"
+	}
+	if mode == "image_background_wrong_tool" {
+		toolID = "other-tool"
+	}
+	write(map[string]any{"type": "system", "subtype": "task_notification", "session_id": session,
+		"task_id": taskID, "tool_use_id": toolID, "status": "completed"})
+	if strings.HasPrefix(mode, "image_background_inline_") {
+		stream := map[string]any{"type": "stream_event", "session_id": session, "parent_tool_use_id": nil,
+			"event": map[string]any{"type": "message_start", "message": map[string]any{"model": "claude-resolved"}}}
+		switch mode {
+		case "image_background_inline_child":
+			stream["parent_tool_use_id"] = "child-agent"
+		case "image_background_inline_subagent":
+			stream["subagent_type"] = "Explore"
+		case "image_background_inline_missing_session":
+			delete(stream, "session_id")
+		}
+		write(stream)
+		if mode == "image_background_inline_missing_result" {
+			return
+		}
+		if mode == "image_background_inline_reinit" {
+			write(main)
+			write(map[string]any{"type": "system", "subtype": "init", "session_id": session,
+				"model": "claude-fixture", "uuid": "refreshed"})
+			write(map[string]any{"type": "result", "subtype": "success", "session_id": session,
+				"is_error": false, "result": "actual final answer", "origin": map[string]string{"kind": "task-notification"}})
+			return
+		}
+		main["result"] = "actual inline final answer"
+		write(main)
+		if mode == "image_background_inline_nonzero" {
+			os.Exit(7)
+		}
+		return
+	}
+	if mode == "image_background_missing_refresh" {
+		write(main)
+		return
+	}
+	write(map[string]any{"type": "system", "subtype": "init", "session_id": session,
+		"model": "claude-fixture", "uuid": "refreshed"})
+	if mode != "image_background_early_main" && mode != "image_background_missing_main" && !continuationBeforeMain {
+		write(main)
+	}
+	if mode == "image_background_missing_continuation" {
+		return
+	}
+	write(map[string]any{"type": "stream_event", "session_id": session,
+		"event": map[string]any{"type": "message_start", "message": map[string]any{"model": "claude-resolved"}}})
+	continuation := map[string]any{"type": "result", "subtype": "success", "session_id": session,
+		"is_error": mode == "image_background_continuation_error", "result": "actual final answer",
+		"origin": map[string]string{"kind": "task-notification"}}
+	write(continuation)
+	if strings.HasPrefix(mode, "image_background_duplicate_before_main") {
+		if mode == "image_background_duplicate_before_main_error" {
+			continuation["is_error"] = true
+			continuation["result"] = "duplicate failed result"
+		}
+		write(continuation)
+		return
+	}
+	if mode == "image_background_continuation_first" {
+		write(main)
+	}
+	if mode == "image_background_duplicate_continuation" {
+		write(continuation)
+	}
+}
+
+func fixtureSynchronousTask(mode, session string, write func(any)) {
+	write(map[string]any{"type": "assistant", "session_id": session,
+		"message": map[string]any{"model": "claude-resolved", "content": []any{map[string]any{
+			"type": "tool_use", "id": "agent", "name": "Agent", "input": map[string]any{"run_in_background": false}}}}})
+	write(map[string]any{"type": "system", "subtype": "task_started", "session_id": session,
+		"task_id": "synchronous", "tool_use_id": "agent", "task_type": "local_agent"})
+	if mode == "image_sync_stale_main" {
+		write(map[string]any{"type": "result", "subtype": "success", "session_id": session,
+			"is_error": false, "result": "waiting for Agent"})
+	}
+	write(map[string]any{"type": "system", "subtype": "task_notification", "session_id": session,
+		"task_id": "synchronous", "tool_use_id": "agent", "status": "completed"})
+	toolID := "agent"
+	toolResult := map[string]any{"status": "completed"}
+	switch mode {
+	case "image_sync_false":
+		toolResult["isAsync"] = false
+	case "image_sync_true":
+		toolResult["isAsync"] = true
+	case "image_sync_null":
+		toolResult["isAsync"] = nil
+	case "image_sync_invalid":
+		toolResult["isAsync"] = "false"
+	case "image_sync_async_launched":
+		toolResult["status"] = "async_launched"
+	case "image_sync_wrong_tool":
+		toolID = "other-tool"
+	}
+	write(map[string]any{"type": "user", "session_id": session, "tool_use_result": toolResult,
+		"message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": toolID, "content": "Agent completed"}}}})
+	if mode == "image_sync_stale_main" {
+		return
+	}
+	write(map[string]any{"type": "result", "subtype": "success", "session_id": session,
+		"is_error": false, "result": "actual final answer"})
 }
 
 func fixtureAdapter(t *testing.T, mode string) (*Adapter, harness.Request) {
@@ -231,6 +383,170 @@ func TestCompletionNeedsProtocolAndExitAgreement(t *testing.T) {
 			result, err := adapter.Run(context.Background(), request, nil)
 			if err == nil || result.Status != tc.status || !strings.Contains(err.Error(), tc.contains) {
 				t.Fatalf("result = %+v, err = %v", result, err)
+			}
+		})
+	}
+}
+
+func TestImageRunWithBackgroundInitializationRefreshRequiresSubmittedTurnResult(t *testing.T) {
+	for _, tc := range []struct{ mode, status, contains string }{
+		{"success", "completed", ""},
+		{"error", "failed", "unsuccessful"},
+		{"missing_final", "unknown", "missing final result"},
+		{"duplicate_final", "unknown", "after final result"},
+	} {
+		for _, resume := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/resume=%t", tc.mode, resume), func(t *testing.T) {
+				adapter, request := fixtureAdapter(t, "image_reinit_"+tc.mode)
+				request.Resume = resume
+				request.Images = []harness.Image{{MediaType: "image/png", Data: []byte("fixture image")}}
+				var observations []harness.Observation
+				result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
+					observations = append(observations, o)
+					return nil
+				})
+				if (err != nil) != (tc.contains != "") || result.Status != tc.status || result.Model != "claude-resolved" || result.NativeSessionID != request.NativeSessionID {
+					t.Fatalf("image run outcome changed after native initialization refresh: %+v, %v", result, err)
+				}
+				if tc.contains != "" && !strings.Contains(err.Error(), tc.contains) {
+					t.Fatalf("native failure gate changed: %v", err)
+				}
+				if tc.mode == "missing_final" && result.Text != "" {
+					t.Fatalf("background result became submitted task completion: %+v", result)
+				}
+				if tc.mode == "success" && (result.Text != "hello" || result.ExitCode != 0) {
+					t.Fatalf("submitted turn result lost: %+v", result)
+				}
+				initializations, refreshes := 0, 0
+				for _, observation := range observations {
+					if observation.Type == "init" {
+						initializations++
+					}
+					if strings.Contains(string(observation.Raw), `"uuid":"refreshed"`) {
+						if observation.Type != "native" || observation.Model != "claude-resolved" {
+							t.Fatalf("initialization refresh restarted execution or replaced resolved model: %+v", observation)
+						}
+						refreshes++
+					}
+				}
+				if initializations != 1 || refreshes != 1 {
+					t.Fatalf("initialization evidence lost or normalized twice: init=%d refresh=%d", initializations, refreshes)
+				}
+			})
+		}
+	}
+}
+
+func TestImageBackgroundContinuationRetainsFinalAnswerAndCompletionGates(t *testing.T) {
+	for _, tc := range []struct{ mode, status, text, contains string }{
+		{"early_main", "completed", "actual final answer", ""},
+		{"delayed_main", "completed", "actual final answer", ""},
+		{"continuation_first", "completed", "actual final answer", ""},
+		{"continuation_error", "failed", "actual final answer", "unsuccessful"},
+		{"main_error", "failed", "waiting for Agent", "unsuccessful"},
+		{"missing_continuation", "unknown", "waiting for Agent", "missing final result"},
+		{"missing_main", "unknown", "actual final answer", "missing final result"},
+		{"pending", "unknown", "waiting for Agent", "missing final result"},
+		{"missing_refresh", "unknown", "waiting for Agent", "missing final result"},
+		{"unmatched_notice", "unknown", "waiting for Agent", "missing final result"},
+		{"wrong_tool", "unknown", "waiting for Agent", "missing final result"},
+		{"no_call", "unknown", "waiting for Agent", "after final result"},
+		{"duplicate_main", "unknown", "waiting for Agent", "duplicate submitted turn result"},
+		{"duplicate_continuation", "unknown", "actual final answer", "after final result"},
+		{"duplicate_before_main", "unknown", "actual final answer", "duplicate native continuation result"},
+		{"duplicate_before_main_error", "unknown", "actual final answer", "duplicate native continuation result"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, "image_background_"+tc.mode)
+			request.Images = []harness.Image{{MediaType: "image/png", Data: []byte("fixture image")}}
+			var observations []harness.Observation
+			result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
+				observations = append(observations, o)
+				return nil
+			})
+			if (err != nil) != (tc.contains != "") || result.Status != tc.status || result.Text != tc.text {
+				t.Fatalf("background continuation changed task outcome: %+v, %v", result, err)
+			}
+			if tc.contains != "" && !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("background continuation lost failure gate: %v", err)
+			}
+			if tc.status == "completed" || tc.status == "failed" {
+				if result.Model != "claude-resolved" || result.ExitCode != 0 {
+					t.Fatalf("native model or process outcome changed: %+v", result)
+				}
+				initializations, finals := 0, 0
+				for _, observation := range observations {
+					if observation.Type == "init" {
+						initializations++
+					}
+					if observation.Type == "result" {
+						finals++
+					}
+				}
+				if initializations != 1 || finals != 1 {
+					t.Fatalf("native continuation restarted execution or completed twice: init=%d finals=%d", initializations, finals)
+				}
+			}
+		})
+	}
+}
+
+func TestImageSynchronousTaskRequiresCorrelatedCompletedToolResult(t *testing.T) {
+	for _, mode := range []string{"absent", "false", "true", "null", "invalid", "async_launched", "wrong_tool", "stale_main"} {
+		t.Run(mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, "image_sync_"+mode)
+			request.Images = []harness.Image{{MediaType: "image/png", Data: []byte("fixture image")}}
+			var observations []harness.Observation
+			result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
+				observations = append(observations, o)
+				return nil
+			})
+			completed := mode == "absent" || mode == "false"
+			if completed {
+				if err != nil || result.Status != "completed" || result.Text != "actual final answer" || result.Model != "claude-resolved" || result.ExitCode != 0 {
+					t.Fatalf("correlated synchronous completion rejected: %+v %v", result, err)
+				}
+			} else if err == nil || result.Status != "unknown" || !strings.Contains(err.Error(), "missing final result") {
+				t.Fatalf("unrelated or asynchronous tool result completed the task: %+v %v", result, err)
+			}
+			if mode == "stale_main" && result.Text != "waiting for Agent" {
+				t.Fatalf("earlier waiting evidence lost: %+v", result)
+			}
+			initializations, finals := 0, 0
+			for _, observation := range observations {
+				if observation.Type == "init" {
+					initializations++
+				}
+				if observation.Type == "result" {
+					finals++
+				}
+			}
+			if initializations != 1 || completed && finals != 1 || !completed && finals != 0 {
+				t.Fatalf("synchronous native events restarted or prematurely completed execution: init=%d finals=%d", initializations, finals)
+			}
+		})
+	}
+}
+
+func TestImageInlineTaskNotificationRequiresParentResponseAndCleanExit(t *testing.T) {
+	for _, tc := range []struct{ mode, status, text, contains string }{
+		{"complete", "completed", "actual inline final answer", ""},
+		{"child", "unknown", "actual inline final answer", "missing final result"},
+		{"subagent", "unknown", "actual inline final answer", "missing final result"},
+		{"missing_session", "unknown", "actual inline final answer", "missing final result"},
+		{"missing_result", "unknown", "waiting for Agent", "missing final result"},
+		{"reinit", "completed", "actual final answer", ""},
+		{"nonzero", "failed", "actual inline final answer", "exit status 7"},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, "image_background_inline_"+tc.mode)
+			request.Images = []harness.Image{{MediaType: "image/png", Data: []byte("fixture image")}}
+			result, err := adapter.Run(context.Background(), request, nil)
+			if (err != nil) != (tc.contains != "") || result.Status != tc.status || result.Text != tc.text {
+				t.Fatalf("inline notification changed task outcome: %+v %v", result, err)
+			}
+			if tc.contains != "" && !strings.Contains(err.Error(), tc.contains) {
+				t.Fatalf("inline notification lost failure gate: %v", err)
 			}
 		})
 	}
