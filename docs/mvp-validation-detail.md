@@ -39,7 +39,7 @@ uses the same execution path. Input is limited to 16 KiB.
 | `--jev-provider typesafe\|custom` | Explicit decision provider; `typesafe` |
 | `--jev-endpoint URL` | Third-party gateway; required only for `custom` |
 | `--jev-model MODEL` | Pinned `jev-1.13.0` |
-| `--timeout DURATION` | Deadline per turn including finalization; `10m` |
+| `--timeout DURATION` | Deadline per turn including finalization; `1h` |
 
 `memory search`, `memory show`, and `run show` output inspection JSON.
 `run show` includes the retained context, decision, and event history.

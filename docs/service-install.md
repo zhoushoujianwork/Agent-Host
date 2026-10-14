@@ -111,3 +111,8 @@ provider and updates Agent references and tool allow rules. It leaves documents,
 channel databases and memory scopes intact. Existing runtimes from before unified
 configuration first need `migrate_config.py`, then this datasource migration.
 See the [datasource guide](datasource-plugins-design.md).
+
+Task execution uses a one-hour timeout (`1h`) in the supplied configuration.
+Set `profiles.<name>.execution.timeout` in `config/host.json` to override it;
+restart the service after changing this value. The deadline includes routing,
+execution and memory finalization. Timed-out tasks are never replayed automatically.

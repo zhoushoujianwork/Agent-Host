@@ -91,7 +91,7 @@ Options (place before positional IDs/queries):
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
-  --timeout DURATION    Per-turn deadline including memory (default 10m)
+  --timeout DURATION    Per-turn deadline including memory (default 1h)
 
 Credentials: TYPESAFE_API_KEY for typesafe; JEV_API_KEY for custom.
 Claude uses its native authentication/configuration. Configured channel instances
@@ -207,7 +207,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.reason, "reason", "", "Rejection, invalidation or restoration reason")
 	fs.StringVar(&o.expiresAt, "expires-at", "", "Experience expiration (RFC3339)")
 	fs.IntVar(&o.maxConcurrentConversations, "max-concurrent-conversations", 4, "Maximum simultaneous channel conversations (1-32)")
-	fs.DurationVar(&o.timeout, "timeout", 10*time.Minute, "Per-turn timeout")
+	fs.DurationVar(&o.timeout, "timeout", time.Hour, "Per-turn timeout")
 	if strings.HasPrefix(name, "assistance ") {
 		fs.StringVar(&o.discoveryConfig, "config", "", "Private selected-source discovery configuration")
 		fs.IntVar(&o.suggestionRevision, "revision", 0, "Expected suggestion revision from the private list")

@@ -8,7 +8,7 @@
         "model": "explicit-native-model",
         "jev_provider": "typesafe",
         "jev_model": "jev-latest",
-        "timeout": "10m"
+        "timeout": "1h"
       },
       "environment_file": "credentials/environment.json"
     }

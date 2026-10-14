@@ -198,7 +198,7 @@ agent/audience 分区。迁移工具在 execution.memory_scope 保存旧默认 w
         "model": "explicit-model",
         "jev_provider": "typesafe",
         "jev_model": "jev-latest",
-        "timeout": "10m"
+        "timeout": "1h"
       },
       "environment_file": "credentials/environment.json"
     }
