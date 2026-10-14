@@ -9,6 +9,75 @@
 状态：统一布局、配置加载和现有部署迁移已实现。[主设计](configuration-layout.md)决定范围和用户行为。
 以下说明区分已实现行为与后续扩展。
 
+## 工程开发配置（待实现）
+
+[共享工程记录](development-projects.md)由 Host 的开发协调能力管理，拟增加固定、
+可选的 `config/development.json`。它不属于 `datasource.plugins.*.json`，也不建立
+`channels.development.json`。现有 `host.json` 继续负责执行 profiles，`agents.json`
+继续负责角色及访问子集；不把目录配置复制到每个渠道或 Agent。
+以下是拟定合同，不是当前加载器接受的结构。
+
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "access": {
+    "channels": ["cli", "dingtalk", "feishu"],
+    "audiences": ["owner"]
+  },
+  "settings": {
+    "development_root": "~/workspace/development",
+    "lookup_roots": ["~/github", "~/gitlab"],
+    "clone_directory": "repositories",
+    "default_policy": {
+      "development_enabled": true,
+      "base_branch": null,
+      "validation_commands": [],
+      "publication": "on_request",
+      "merge": "explicit_current_head"
+    }
+  }
+}
+```
+
+同一[配置样例](examples/development-projects/development.example.json)保存在文档目录。
+`version` 是启动配置外壳版本；工程/任务快照中的 `schema_version` 是记录版本，
+两者不混用。`cli` 在此合同中表示本地任务入口，不新增 CLI 渠道 worker；
+也不改变现有数据源插件接受的 access 值。其他入口和群 audience 首期不支持。
+
+| settings 字段 | 拟定含义 |
+| --- | --- |
+| `development_root` | 用户级共享开发状态、工程记录、任务与 worktree 根目录；默认 `~/workspace/development`。 |
+| `lookup_roots` | 按需查找本地候选仓库的选定根；不自动登记或扩大 native 文件权限。 |
+| `clone_directory` | 开发根下的相对子目录；默认 `repositories`，拒绝绝对路径和越界。 |
+| `default_policy` | 新工程绑定的开发规则默认值；登记后保存独立规则与来源，不反向覆盖已有工程。 |
+
+`base_branch: null` 与空 `validation_commands` 表示尚未配置，不能视为无需检查。
+准备任务时确定目标分支，进入可交付状态前确定并执行项目要求的检查。
+全局默认的发布规则不代替本次操作授权；首期合并仍对应具体 PR/current head。
+凭证只保留私密配置引用或受控 provider 账户引用，不写入工程记录或原生提示词。
+
+拟加载顺序：识别可选固定文件 → 严格解码外壳 → 检查启用项的 settings/access
+→ 规范化目录 → 完成全部本地预检 → run 时准备共享开发状态 → 将同一配置身份传给
+CLI/渠道任务装配。普通 CLI 需要显式选择同一配置入口，不能仅凭 cwd 推断要加入的
+开发 workspace。各 runtime 记录相同规范根和 workspace 身份；不创建渠道私有副本。
+
+路径中的 `~` 仅按运行用户 home 展开，相对值按配置文件位置解析，不运行 shell。
+check 可检查已有路径/祖先的类型、所有权和访问条件，但不创建目录、初始化数据库、
+扫描仓库或连接远程。run 预检通过后才准备启用的共享状态；启动本身不 clone 或开发。
+缺省/关闭时不读取业务凭证、不创建共享开发状态、不挂载开发工具；关闭不删除历史。
+
+启用项的配置 fingerprint 包含共享根、可见范围及默认规则；开发任务装配再绑定
+具体项目规则和任务/worktree 身份。配置变更沿用重启生效，活动任务保留输入快照；
+恢复任务及任何后续发布/合并操作重新核对现行授权和已有回执，不能复用失效授权。
+角色、渠道和项目访问与 native tool policy 继续取交集；工程共享不合并私有记忆。
+
+实现时必须把 `development.json` 加入固定配置名称与预检/装配分支。目前
+`internal/cli/service_unified.go` 的未知文件检查仍会拒绝它；本次只更新设计和样例，
+不改变程序行为。需要验证关闭项无副作用、同一根跨 runtime 共享、错误目录无 fallback、
+严格字段/版本检查、访问过滤以及对既有配置的兼容。后文旧 `plugins.*`、`knowledge/`
+和首次迁移状态继续作为历史证据保留；当前记忆布局见[workspace 约定](workspace-layout.md)。
+
 ## 旧实现与本次变更
 
 - `service_channels.go` 扫描 `channels/channel-*.json`，读取 `runtime_root`。

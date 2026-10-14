@@ -6,9 +6,13 @@ recognized by the current binary. No user repositories or runtime data were move
 
 ## Roots and ownership
 
-Introduce an optional `development.json` in the existing user-maintained Host
-configuration directory. Its [example](examples/development-projects/development.example.json)
-defines one development root, selected lookup roots and default delivery policy.
+Introduce the optional Host-owned `config/development.json` described in the
+[unified configuration contract](configuration-layout-detail.md#工程开发配置待实现).
+Its [example](examples/development-projects/development.example.json) uses the
+existing `version`, `enabled`, `access`, `settings` envelope and defines one
+development root, selected lookup roots and default delivery policy.
+The current loader does not recognize this filename; do not install the example
+as live configuration before the planned loader extension is implemented.
 It is read-only during execution. Resolve `~` using the local runtime owner's
 home directory; resolve relative overrides against the configuration file,
 canonicalize them and never invoke a shell to expand paths.

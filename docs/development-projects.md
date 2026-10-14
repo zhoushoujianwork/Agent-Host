@@ -12,7 +12,9 @@ in its existing runtime. An Agent takes responsibility for a task; the project
 and its progress survive a change of Agent or channel.
 
 The default development workspace is `~/workspace/development/`, configurable
-locally. Existing repositories under `~/github`, `~/gitlab` or an explicitly
+through the proposed `config/development.json` in the
+[unified configuration layout](configuration-layout.md). Existing repositories
+under `~/github`, `~/gitlab` or an explicitly
 selected directory stay where they are. New, explicitly requested clones go to
 the shared workspace's `repositories/` directory. Feature work always uses a
 task worktree.

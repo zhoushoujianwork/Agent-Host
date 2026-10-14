@@ -14,6 +14,16 @@ credentials belong in the private `config/credentials/` directory. Plugin data
 lives in `datasource/plugins/<name>`, channel data in `channels/<name>`; DWS is an optional
 branch of the DingTalk channel, with state in `channels/dingtalk/dws`.
 
+## Proposed development configuration
+
+The [unified configuration design](../docs/configuration-layout.md) reserves an
+optional Host-owned `development.json` for shared project directories and delivery
+defaults. Its [documentation example](../docs/examples/development-projects/development.example.json)
+uses the `version`, `enabled`, `access`, `settings` envelope. This filename is not
+supported by the current loader: keep the example outside live configuration
+until the planned implementation is delivered. Generated project/task records
+belong to the shared development workspace, not `config/`.
+
 ## Legacy explicit runtime configuration
 
 Host configuration filenames identify the component that owns them. Keep
