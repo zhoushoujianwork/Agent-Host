@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "example": true,
+  "record_role": "generated_snapshot",
+  "revision": 1,
+  "exported_at": "2026-10-14T18:00:00+08:00",
+  "project_id": "agent-host",
+  "name": "Agent-Host",
+  "aliases": ["Agent Host"],
+  "description": "Host for project tasks, native harnesses and durable memory",
+  "checkout": {
+    "path": "/Users/alex/github/Agent-Host",
+    "ownership": "external"
+  },
+  "repository": {
+    "host": "github.com",
+    "namespace": "example",
+    "name": "Agent-Host",
+    "remote_name": "origin",
+    "remote_url": "https://github.com/example/Agent-Host.git",
+    "provider": "github"
+  },
+  "memory_references": [],
+  "policy": {
+    "development_enabled": true,
+    "base_branch": "main",
+    "validation_commands": ["make check"],
+    "publication": "on_request",
+    "merge": "explicit_current_head"
+  },
+  "visibility": "owner_private"
+}

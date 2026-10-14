@@ -23,6 +23,10 @@ requests](development-workflow.md): recognize implementation intent, keep a
 feature's work in one owned worktree, verify and commit it, then deliver an
 authorized PR/merge. The Host owns this durable delivery lifecycle; native
 harnesses retain their model/tool loops. This workflow is not implemented.
+Its proposed [engineering records and workspace layout](development-projects.md)
+share development progress across authorized Agent/channel runtimes, retain
+existing checkouts in place and reserve a default directory for requested clones.
+Shared operational records do not combine private conversations or memory.
 
 The [configuration and plugin startup](configuration-layout.md) centralizes
 editable configuration, separates channel/plugin runtime data and loads enabled

@@ -69,3 +69,10 @@ Host 不把配置文件和生成 Skill 写进项目代码库。
 角色、用户资料或正式记忆变化影响下一次任务的会话选择；活动任务保留其输入快照。
 缓存可重建，清理时应跳过活动任务。尚未提供自动缓存清理器、记忆编辑草稿导入、
 手写 config/skills 新挂载入口或自动日记。
+
+## 后续开发工程 workspace（待实现）
+
+[工程记录与共享 workspace 方案](development-projects.md)约定：已有仓库原地登记，
+显式要求的新 clone 默认进入 `~/workspace/development/repositories/`；工程记录、
+开发任务进度与 worktree 由同一全局开发 workspace 管理。Agent 和渠道仍保留各自
+会话、原始证据和本轮上下文，只引用共享任务。该方案尚未改变当前运行目录或数据。

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "example": true,
+  "record_role": "generated_snapshot",
+  "revision": 1,
+  "exported_at": "2026-10-14T18:00:00+08:00",
+  "task_id": "dev_csv_export",
+  "project_id": "agent-host",
+  "title": "Add CSV export",
+  "goal": "Export run history as CSV from the CLI",
+  "acceptance_conditions": [
+    "CSV preserves commas, quotes and line breaks",
+    "The configured project checks pass"
+  ],
+  "phase": "preparing",
+  "blocker": null,
+  "visibility": "owner_private",
+  "writer": null,
+  "workspace": {
+    "relative_path": "projects/agent-host/worktrees/dev_csv_export",
+    "branch": "codex/dev_csv_export",
+    "base_branch": "main",
+    "base_commit": null,
+    "head_commit": null,
+    "preparation_status": "not_started"
+  },
+  "validation": {
+    "status": "not_run",
+    "candidate_commit": null,
+    "receipts": []
+  },
+  "pull_request": null,
+  "source_references": [],
+  "authorization_references": [],
+  "artifacts": []
+}

@@ -6,6 +6,11 @@ compatible native conversations. This proposal adds a durable delivery process.
 See the [implementation notes](development-workflow-detail.md) for boundaries,
 recovery and validation.
 
+The [engineering records and workspace proposal](development-projects.md)
+defines shared project/task records, reuse of existing local checkouts and a
+default location for explicitly requested clones. Agent contexts reference that
+shared progress while retaining their own native conversations.
+
 ## Goal and usage
 
 Tell Agent-Host what to build in a project. It identifies the requested change,
@@ -78,9 +83,11 @@ requiring new workflow commands. A conversation reset leaves its work intact.
 
 ## First scope and implementation order
 
-Start with one registered local Git repository, GitHub and the current Claude
-adapter through owner-private chat or CLI. GitHub is proposed first because this
-repository uses it. Configure the target branch, checks and publication policy.
+Start with one bound local Git repository per task, GitHub and the current Claude
+adapter through owner-private chat or CLI. Bind an existing selected checkout or
+an explicitly requested clone through the shared project registry. GitHub is
+proposed first because this repository uses it. Configure the target branch,
+checks and publication policy.
 
 1. **Intent and continuity:** bind the feature, project and acceptance conditions.
 2. **Local development:** prepare worktrees, implement, validate and commit;
@@ -89,6 +96,7 @@ repository uses it. Configure the target branch, checks and publication policy.
 4. **Merge and closeout:** authorized merge, verify the result and clean up safely.
    Validate the full path in an authorized test repository before rollout.
 
-The first release includes all four steps. GitLab, discovery/import,
+The first release includes all four steps plus selected-local-repository lookup
+and explicit clone onboarding. GitLab PR delivery, broad remote discovery,
 cross-repository development, automatic merge policies, group collaboration and
 multiple coding agents follow later.

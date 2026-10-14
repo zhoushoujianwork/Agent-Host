@@ -46,12 +46,14 @@ proceed with a short acknowledgment; require clarification only when the target,
 scope or authority is material and missing. Implementation planning happens
 inside the native harness; no mandatory additional planning agent is needed.
 
-P0 changes one registered Git repository. An explicit unregistered path can be
-inspected with existing access, but activation of managed development needs a
-local project binding. Do not silently register a scanned directory, clone an
-inferred remote, switch to another repository or execute an uncertain write in
-the default workspace. Current general routing behavior remains delivered
-behavior; this new gate is planned for managed development.
+P0 changes one bound Git repository. The [shared engineering records](development-projects.md)
+add selected-local-path binding and explicitly requested clones to the initial
+scope. A clear development request may bind its verified local target under
+configured policy; directory discovery alone does not activate projects.
+Activation still needs that binding before editing. Do not clone an inferred
+remote, switch repositories or execute an uncertain write in the default
+workspace. Current general routing behavior remains delivered behavior; this
+new gate is planned for managed development.
 
 ## A development task spans multiple runs
 
@@ -85,12 +87,13 @@ native session can receive the task's cited requirements and verified evidence.
 
 ## Worktree preparation and lifecycle
 
-Worktrees are durable working material, not rebuildable context cache. Configure
-one shared writable development root outside registered source checkouts, for
-example `~/.agent-host/development/worktrees/<repository-key>/<task-id>/`.
-Channel state records refer to it; channels resolving the same common Git
-directory share repository locking. Task context/Skill snapshots stay under
-the existing cache, with their own retention rules.
+Worktrees are durable working material, not rebuildable context cache. The
+[engineering record layout](development-projects.md) selects the configurable
+default `~/workspace/development/`, with worktrees under
+`projects/<project-id>/worktrees/<task-id>/`. Shared development state owns task
+progress; channel state retains original evidence and task references. Channels
+resolving the same common Git directory share repository locking. Task
+context/Skill snapshots stay under the existing cache with their own retention.
 
 Preparation should establish these invariants:
 
