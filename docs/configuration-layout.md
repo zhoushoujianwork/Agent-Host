@@ -1,7 +1,8 @@
 # Configuration and plugin startup
 
 状态：统一配置加载、渠道 bot/DWS 可选项和部署迁移已实现。使用方式见[运行指南](service-install.md)。
-动态工程登记与共享工程运行目录是待实现扩展；不新增人工启用配置。
+本地工程查找、自动登记和共享执行回执已实现；不新增人工启用配置。
+clone、新工程、持久开发任务和 worktree/PR/MR 生命周期仍待实现。
 实现约定见[详细稿](configuration-layout-detail.md)；数据源分类与实例规则见
 [数据源插件设计](datasource-plugins-design.md)。
 
@@ -39,9 +40,10 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 │   └── ...                         # 其他插件需要的运行状态
 ├── memory/                         # 已迁移文件后端的正式知识、Skill 和版本
 ├── cache/                          # 可重建检索索引和本轮上下文视图
-├── projects/                       # 待实现：Runtime 自动登记的工程与开发进度
-│   ├── state.db                    # Host 级工程/任务记录
-│   └── <project-id>/               # 记录、任务、worktree；新 clone/新工程可含 repository
+├── projects/                       # Runtime 自动登记的工程与执行回执
+│   ├── state.db                    # Host 级工程登记与执行记录
+│   ├── registry.lock               # 登记更新与视图导出锁
+│   └── <project-id>/               # project.json、PROJECT.md、tasks/<run-id>/ 回执
 ├── cli-state/                      # 普通终端聊天的现有状态
 └── backups/                        # 迁移备份和旧部署材料
 ```
@@ -87,29 +89,33 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 私人邮件和渠道内 DWS 个人业务工具默认仅向 owner 私聊提供；启用本身不授予发送消息
 等业务操作的授权。配置修改通过重启 `make run` 生效，本期不做热加载。
 
-## 动态工程登记与运行目录（待实现）
+## 动态工程登记与运行目录
 
-[工程记录方案](development-projects.md)属于 Runtime 的任务管理：现有入口收到
-明确的项目开发请求后，Host 定位工程并自动记录目录、任务和后续进度。
+[工程记录](development-projects.md)属于 Runtime：CLI 和通用渠道路由先在有限
+本地候选中选择工程，再自动登记目录、来源和执行回执。只读项目问题也可登记
+已选工程；目录盘点不登记全部候选。
 不要求用户先 enable、手工登记项目或创建 `config/development.json`。
 
 | 职责 | 位置 |
 | --- | --- |
 | 模型、执行 profile、provider 环境引用 | 现有 `config/host.json` |
 | 角色、既有授权与渠道身份 | 现有 Agent/渠道配置 |
-| 工程目录、请求来源、任务进度、提交和 PR 关联 | Runtime 生成的 `projects/` |
+| 工程目录、请求来源、执行/验收/记忆状态回执 | Runtime 生成的 `projects/` |
 
 优先复用用户电脑上已有工程，包括当前请求的目录、已知工程位置及可访问的
-`~/github`、`~/gitlab` 候选；已有仓库原地使用。如果需要 clone 已确定的远程工程，
-或用户要求创建新工程，Runtime 在 `.agent-host/projects/<project-id>/repository/`
-准备源码，再建立任务 worktree。来源不明或多个工程匹配时补问，不猜测替代工程。
+`~/github`、`~/gitlab` Git 候选；只查 Git 元数据，已有仓库原地使用。
+未来需要 clone 已确定的远程工程或创建新工程时，计划在
+`.agent-host/projects/<project-id>/repository/` 准备源码，再建立任务 worktree；
+这部分及 PR/MR 生命周期尚未实现。
 
-同一 Host 的各入口与 Agent 引用相同工程登记和进度，不各自保存一份工程配置。
+同一 Host 的 CLI/渠道状态目录共享工程登记；任意自定义状态 home 保持独立。
+`tasks/<run-id>/` 当前是有来源的执行回执，不是跨多轮的功能开发任务。
+共享回执不保存原始输入、输出和上下文，入口保留兼容工程镜像与原始证据。
 角色、原生会话和私人记忆仍保留原归属；动态登记不扩大工具、资料或发布/合并权限。
-隐藏目录中的源码、worktree 和进度是持久运行资源，不随普通上下文缓存清理。
+工程登记和回执是持久运行资源，不随普通上下文缓存清理。
 
-Runtime 绑定与恢复约定见[详细稿](configuration-layout-detail.md#动态工程登记与运行记录待实现)。
-这一增量尚未实现；现有模型、渠道和数据源组件的启用规则保持原用途。
+Runtime 绑定与后续恢复方案见[详细稿](configuration-layout-detail.md#动态工程登记与运行记录)。
+现有模型、渠道和数据源组件的启用规则保持原用途。
 
 ## 知识与记忆
 
@@ -118,7 +124,7 @@ Runtime 绑定与恢复约定见[详细稿](configuration-layout-detail.md#动�
 未迁移的 runtime 仍使用兼容的 SQLite 记忆后端；后端选择与迁移回执不能由目录存在推断。
 [workspace 目录方案](workspace-layout.md)补充 Agent 指令、用户 `USER.md`、手写 Skill
 与任务上下文视图的归属。config 为运行期只读的用户输入，生成内容写入 memory、
-cache 或所属数据源运行目录；拟新增的工程运行记录写入 Host 的 `projects/`。
+cache 或所属数据源运行目录；工程运行记录写入 Host 的 `projects/`。
 已迁移布局取消顶层 knowledge，并保留原快照来源和授权。
 
 有来源的本地材料由 `datasource.plugins.local-documents.json` 声明读取范围，
@@ -130,7 +136,7 @@ cache 或所属数据源运行目录；拟新增的工程运行记录写入 Host
 文件后端的正式记忆由来源发布清单决定，不由运行数据库或生成视图替代。
 迁移后的渠道通过执行配置 `memory_scope` 保留原默认记忆范围；新渠道默认使用
 稳定的 `channel:<名称>:default`，保证目录变化不再改变新渠道的记忆身份。
-知识读取不会自动成为记忆。统一加载和拟新增的共享工程状态均不合并
+知识读取不会自动成为记忆。统一加载和共享工程状态均不合并
 钉钉、飞书及不同 Agent 的私有会话或记忆；工程进度共享与记忆授权保持独立。
 
 ## 本期交付与验证

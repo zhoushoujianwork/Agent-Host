@@ -490,6 +490,22 @@ type explicitMatch struct {
 	start    int
 }
 
+// ReferencedProjects bounds a discovery inventory to mentioned candidates.
+// A mention is not an execution decision; callers must still use Decide.
+func ReferencedProjects(text string, projects []state.Project) []state.Project {
+	matched := make(map[string]bool)
+	for _, match := range explicitMatches(text, projects) {
+		matched[match.id] = true
+	}
+	result := []state.Project{}
+	for _, p := range projects {
+		if matched[p.ID] {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
 func explicitMatches(text string, projects []state.Project) []explicitMatch {
 	lower := strings.ToLower(text)
 	var found []explicitMatch

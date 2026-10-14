@@ -9,40 +9,47 @@
 状态：统一布局、配置加载和现有部署迁移已实现。[主设计](configuration-layout.md)决定范围和用户行为。
 以下说明区分已实现行为与后续扩展。
 
-## 动态工程登记与运行记录（待实现）
+## 动态工程登记与运行记录
 
 [工程记录](development-projects.md)改为请求触发的 Runtime 状态，不新增
 `development.json`、开发能力 enabled 字段或人工项目启用步骤。现有 `host.json`
 仍负责执行 profiles，Agent/渠道配置仍负责角色、身份和现有授权。
 工程登记不是数据源插件，不使用 `datasource.plugins.*.json` 外壳。
 
-`ROOT` 由现有 Host 启动上下文确定，通常为受管理的 `.agent-host/`；
-Host launcher/supervisor 把同一根传给 CLI/渠道 workers，不由 native cwd 决定。
-登记和任务状态放 `ROOT/projects/state.db`，记录文件及必要源码放
-`ROOT/projects/<project-id>/`。不同 Host 根属于不同实例，不能自动合并登记。
+已实现的 `internal/projectruntime.RootForState` 将 `ROOT/cli-state`、
+`ROOT/channels/<name>/state` 和旧 `ROOT/state` 归入同一 `ROOT`；任意其他
+自定义状态 home 自身作为根，保持独立。native cwd 不决定根目录。
+登记和执行回执放 `ROOT/projects/state.db`，生成视图放
+`ROOT/projects/<project-id>/`。不同 Host 根不能自动合并登记。
 
-触发顺序：明确开发意图 → 检查当前任务/已知目录 → 在允许范围内有限查找本地工程
-→ 身份明确后原子登记请求与路径 → 必要时准备已确定远程的 clone 或明确的新工程
-→ 建立任务 worktree → 装配原生执行。已有本地工程优先，不自动搬动或复制。
+已实现顺序：在已知目录、`~/github`、`~/gitlab` 和当前 workspace 查找 Git 候选
+→ 路由选定工程 → 原子登记来源与路径并更新入口兼容工程镜像 → 装配原生执行
+→ 持续生成有来源的执行回执。只读取 Git 元数据，不搬动、复制或 clone。
+查找限制为三层目录和 2,048 次目录探查，遇到 checkout 停止下钻，跳过隐藏、依赖
+与构建目录；目录预算耗尽或边界外直接出现 checkout 时显式报错。
 目录查找提示来自当前请求、Runtime 观察和常见本地位置，不需要用户声明 enable。
 
-首次开发请求按需创建工程状态；普通对话、设计讨论或只读盘点不登记全部候选。
-启动预检不扫描用户电脑、不 clone、不执行任务。恢复已有状态先核对实际 Git/PR
-与 writer，保留失败和未知结果，不重复执行原请求。
+首次路由选定工程时按需创建登记；只读项目问题可登记目标，但不会登记全部候选。
+启动预检不 clone、不执行任务。未来 clone/新工程准备、持久功能任务、单 writer
+worktree、PR/MR 恢复与合并仍待实现；执行回执不能视作这些能力已交付。
 
-工程记录中的源码路径、远程身份、分支、检查要求和来源均由 Runtime 维护，
-不是用户必须填写的启动配置。项目规则提供检查和开发约定，但内容不能授予新权限。
-任务保留输入和来源快照；后续发布/合并仍核对真实操作授权及当前提交。
+当前工程身份来自 canonical Git common-directory 路径 hash；symlink 与同库
+worktree 共享身份，已有 ID/历史 memory scope 保留。移动仓库可能改变派生身份，
+尚不支持移动对账。登记保留 primary checkout，选定 worktree 保留实际执行 cwd。
+项目规则不能授予新权限；未来发布/合并仍核对真实操作授权及当前提交。
 
-工程/任务快照使用 `schema_version`、revision 和导出时间，由数据库状态生成，
-不新增一套 `version/enabled/settings` 配置。共享登记不合并渠道原始证据、原生会话
-或私人记忆；各入口 status 与 task context 仍按请求者、Agent、audience 和权限过滤。
-固定配置扫描器无需为了开发登记接受额外配置文件；实现应接入任务协调与 Runtime
-装配路径，且不影响现有组件的启用语义。
+`project.json`/`PROJECT.md` 和 `tasks/<run-id>/task.json`/`TASK.md` 由数据库
+生成；更新与原子导出由 `registry.lock` 串行化，目录/文件采用 owner 私有权限。
+JSON 的 `version` 是生成记录版本，不是 `version/enabled/settings` 启动配置。
+任务文件当前是 `execution_receipt`：来源 state home/run ID、Agent/audience、
+entry/message/session 引用、cwd、时间及独立执行/验收/记忆状态。
+不复制原始 Input/Output、context、事件或凭证；共享登记不合并私有会话或记忆。
+固定配置扫描器无需为了开发登记接受额外配置文件；当前入口已接入项目路由与
+Runtime 装配路径，不影响现有组件的启用语义。
 
-目录和记录样例见[工程记录详细稿](development-projects-detail.md)。需要验证无人工
-配置即可登记、优先本地复用、必要 clone/新工程落入隐藏目录、跨入口复用同一任务、
-单 writer、受众过滤及重启后的去重/恢复。本次只更新设计，不实现上述运行行为。
+实现边界与后续功能任务样例见[工程记录详细稿](development-projects-detail.md)。
+自动化覆盖无人工启用、身份/scope 兼容、共享登记去重、并发导出及来源隐私。
+真实本地候选查找已找到 POP；clone、跨轮功能任务、单 writer 和 PR/MR 验收仍待实现。
 后文旧 `plugins.*`、`knowledge/` 和首次迁移状态仍为历史证据；当前记忆布局见
 [workspace 约定](workspace-layout.md)。
 

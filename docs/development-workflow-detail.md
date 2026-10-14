@@ -1,8 +1,10 @@
 # Project development workflow: implementation notes
 
-Status: proposed, not implemented. The [main proposal](development-workflow.md)
-owns scope and user-facing decisions. These notes identify the minimum reliable
-implementation boundaries; exact schemas and interfaces follow during development.
+Status: bounded local checkout discovery, selected-project enrollment and shared
+execution receipts are implemented. Managed feature tasks, worktree ownership
+and PR/MR delivery remain proposed. The [main proposal](development-workflow.md)
+owns scope and user-facing decisions; these notes keep future delivery boundaries
+separate from the current [registry implementation](development-projects-detail.md).
 
 ## Current foundation and missing behavior
 
@@ -10,8 +12,8 @@ Current source checks on 2026-10-14 establish these extension points:
 
 | Foundation | Current boundary | Proposed extension |
 | --- | --- | --- |
-| `internal/routing/router.go`, `Decision` | Registered project selection, reasons, evidence and source-linked continuation. | Independently identify development action and continuation of a development task. |
-| `internal/state/types.go`, `Project` | Stable identity, registered cwd, memory scope, description and aliases. | Runtime repository enrollment and observed delivery requirements. |
+| `internal/routing/router.go`, `Decision` | Project selection over registered and bounded local candidates, reasons, evidence and source-linked continuation. | Independently identify development action and continuation of a development task. |
+| `internal/state/types.go`, `Project`; `internal/projectruntime` | Automatic enrollment, shared project identity, execution receipts and entry-local compatibility mirrors. | Durable feature tasks and observed delivery requirements. |
 | `internal/assembly/runtime.go`, `Runtime` | Separates project memory identity from cwd; fingerprints execution configuration. | Substitute task worktree as execution cwd while retaining project identity/scope. |
 | `internal/channel/project.go`, `routedSession` | Binds conversation to project set, cwd, configuration and access set. | Add development-task/worktree identity to compatible native sessions. |
 | `internal/host/host.go`, native invocation | Starts the runner with the session's saved cwd. | Prepare the managed workspace before any editing invocation. |
@@ -47,9 +49,10 @@ scope or authority is material and missing. Implementation planning happens
 inside the native harness; no mandatory additional planning agent is needed.
 
 P0 changes one bound Git repository. The [shared engineering records](development-projects.md)
-add request-driven local lookup and automatic enrollment, plus needed clones and
-explicitly requested new projects. A clear development request binds its verified
-target without an enable step; directory discovery alone does not enroll projects.
+already provide request-driven local lookup, automatic selected-target enrollment
+and source-linked execution receipts. Needed clones and explicitly requested new
+projects remain proposed. Routing can select a target for a read-only request;
+directory discovery alone does not enroll projects or authorize editing.
 Activation still needs that binding before editing. Do not clone an inferred
 remote, switch repositories or execute an uncertain write in the default
 workspace. Current general routing behavior remains delivered behavior; this

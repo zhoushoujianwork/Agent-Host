@@ -13,6 +13,7 @@ import (
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/history"
 	"agent-host/internal/knowledge"
+	"agent-host/internal/projectruntime"
 	"agent-host/internal/state"
 )
 
@@ -28,6 +29,9 @@ func resolveProjectSet(ctx context.Context, store *state.Store, o *options, exec
 		p, err := store.Project(ctx, id)
 		if err != nil {
 			return err
+		}
+		if workspace := o.runtimeWorkspaces[p.ID]; workspace != "" {
+			p.Workspace = workspace
 		}
 		o.projects = append(o.projects, state.ProjectRef{ID: p.ID, Name: p.Name, Workspace: p.Workspace, Scope: p.Scope})
 		seen[id] = true
@@ -68,6 +72,20 @@ func resolveProjectSet(ctx context.Context, store *state.Store, o *options, exec
 	}
 	if !execute {
 		return nil
+	}
+	selected := make([]state.Project, 0, len(o.projects))
+	for _, ref := range o.projects {
+		p, err := store.Project(ctx, ref.ID)
+		if err != nil {
+			return err
+		}
+		p.Workspace = ref.Workspace
+		selected = append(selected, p)
+	}
+	if !o.projectRoutingComplete {
+		if err := enrollRuntimeProjects(ctx, store, o, selected, projectruntime.Origin{Entry: "cli", AgentID: o.agentID, AudienceID: o.audienceID}); err != nil {
+			return err
+		}
 	}
 	binary, err := exec.LookPath(o.binary)
 	if err != nil {

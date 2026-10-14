@@ -17,6 +17,12 @@ func (s *Service) routeTask(ctx context.Context, m state.ChannelMessage) ([]stri
 	if err != nil {
 		return nil, "", routing.Decision{}, err
 	}
+	if s.PrepareProjects != nil {
+		projects, err = s.PrepareProjects(ctx, m, projects)
+		if err != nil {
+			return nil, "", routing.Decision{}, err
+		}
+	}
 	if len(projects) == 0 {
 		return nil, "", routing.Decision{Kind: "default", Reason: "No registered projects are available; the native agent handles the request in its default workspace."}, nil
 	}
@@ -47,6 +53,33 @@ func (s *Service) routeTask(ctx context.Context, m state.ChannelMessage) ([]stri
 	case "project":
 		if len(decision.ProjectIDs) == 0 {
 			return nil, "", decision, errors.New("project routing returned an empty project set")
+		}
+		selected := make([]state.Project, 0, len(decision.ProjectIDs))
+		seen := make(map[string]bool, len(decision.ProjectIDs))
+		for _, id := range decision.ProjectIDs {
+			if seen[id] {
+				return nil, "", decision, errors.New("project routing returned duplicate project IDs")
+			}
+			seen[id] = true
+			found := false
+			for _, project := range projects {
+				if project.ID == id {
+					selected = append(selected, project)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, "", decision, errors.New("project routing selected an unavailable project")
+			}
+		}
+		if decision.PrimaryID != "" && !seen[decision.PrimaryID] {
+			return nil, "", decision, errors.New("project routing selected an unavailable primary project")
+		}
+		if s.EnrollProjects != nil {
+			if err := s.EnrollProjects(ctx, m, selected); err != nil {
+				return nil, "", decision, err
+			}
 		}
 		return decision.ProjectIDs, decision.PrimaryID, decision, nil
 	case "default":

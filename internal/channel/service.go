@@ -63,6 +63,10 @@ type Service struct {
 	SelectAgent     func(context.Context, dingtalk.Message) (AgentSelection, error)
 	ResolveAgent    func(context.Context, state.ChannelMessage) (*Service, error)
 	Projects        func(context.Context) ([]state.Project, error)
+	// Runtime lookup may expose local candidates without registering them. Only
+	// projects selected by a validated routing decision are enrolled.
+	PrepareProjects func(context.Context, state.ChannelMessage, []state.Project) ([]state.Project, error)
+	EnrollProjects  func(context.Context, state.ChannelMessage, []state.Project) error
 	Replier         Replier
 	Reactor         Reactor
 	APIReactor      APIReactor

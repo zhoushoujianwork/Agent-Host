@@ -14,14 +14,18 @@ credentials belong in the private `config/credentials/` directory. Plugin data
 lives in `datasource/plugins/<name>`, channel data in `channels/<name>`; DWS is an optional
 branch of the DingTalk channel, with state in `channels/dingtalk/dws`.
 
-## Proposed runtime project records
+## Runtime project records
 
-The [engineering project proposal](../docs/development-projects.md) enrolls a
-resolved project automatically when development is requested. There is no
-`development.json` or manual enable step. Generated records, progress and
-Host-created clones/new projects belong under the current Host's `projects/`
-runtime directory, outside `config/`. Existing model, channel and credential
-configuration retains its purpose. Dynamic enrollment is not implemented yet.
+The [engineering project records](../docs/development-projects.md) automatically
+enroll selected local targets through existing CLI/channel routing. Host looks
+for Git checkouts in bounded local roots, including `~/github` and `~/gitlab`;
+there is no `development.json`, enable flag or manual registration requirement.
+The shared `projects/state.db` and generated project/`tasks/<run-id>/` views live
+outside `config/`. Task views are source-linked execution receipts and omit
+original conversation text/context; private evidence and memory stay entry-local.
+Managed clones/new projects, multi-run feature tasks, owned worktrees and PR/MR
+delivery remain proposed. Model, channel and credential configuration retains
+its existing purpose.
 
 ## Legacy explicit runtime configuration
 

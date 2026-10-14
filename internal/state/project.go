@@ -111,6 +111,55 @@ func (s *Store) Projects(ctx context.Context) ([]Project, error) {
 	return projects, wrap("list projects", rows.Err())
 }
 
+// MirrorRuntimeProject installs the shared runtime identity in this entry's
+// compatibility catalog without moving historical memory or changing owners.
+func (s *Store) MirrorRuntimeProject(ctx context.Context, p Project) error {
+	if err := validateProjectID(p.ID); err != nil {
+		return err
+	}
+	path, err := CanonicalWorkspace(p.Workspace)
+	if err != nil {
+		return err
+	}
+	if p.Scope == "" {
+		return errors.New("runtime project scope is required")
+	}
+	p.Workspace = path
+	if p.CreatedAt.IsZero() {
+		p.CreatedAt = time.Now().UTC()
+	}
+	p.UpdatedAt = time.Now().UTC()
+	aliases, err := json.Marshal(p.Aliases)
+	if err != nil {
+		return err
+	}
+	if len(p.Aliases) == 0 {
+		aliases = []byte("[]")
+	}
+	return wrap("mirror runtime project", s.transaction(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, "SELECT "+projectColumns+" FROM projects WHERE id=? OR workspace=? OR scope=?", p.ID, path, p.Scope)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			old, err := scanProject(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			if old.ID != p.ID || old.Workspace != p.Workspace || old.Scope != p.Scope {
+				rows.Close()
+				return fmt.Errorf("runtime project conflicts with local project %q", old.ID)
+			}
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO projects(id,name,workspace,scope,created_at,updated_at,description,aliases) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,aliases=excluded.aliases,updated_at=excluded.updated_at`, p.ID, p.Name, path, p.Scope, p.CreatedAt.Format(time.RFC3339Nano), p.UpdatedAt.Format(time.RFC3339Nano), p.Description, aliases)
+		return err
+	}))
+}
+
 // RegisterProject adopts an exact historical directory scope without modifying
 // any run, memory revision, candidate or evidence payload.
 func (s *Store) RegisterProject(ctx context.Context, id, name, workspace string) (Project, error) {

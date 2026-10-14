@@ -1,10 +1,68 @@
 # Runtime engineering records: implementation notes
 
-Status: proposed. The [main document](development-projects.md) owns scope and
-defaults. Linked examples are illustrative generated records, not startup
-configuration. No user repository or runtime state is changed by this design.
+Status: local discovery, automatic enrollment and shared execution receipts are
+implemented. The [main document](development-projects.md) owns scope and defaults.
+The feature-task examples describe the proposed later lifecycle, not the current
+execution-receipt schema or startup configuration.
 
-## Host root and lifecycle
+## Delivered registry and execution receipts
+
+`internal/projectruntime` derives the shared root from `ROOT/cli-state`,
+`ROOT/channels/<name>/state` and legacy `ROOT/state`. Other custom state homes use
+their own home as the root. The native execution cwd cannot choose this root.
+
+Request-time discovery inspects Git metadata under `~/github`, `~/gitlab`, the
+enclosing Git checkout of the current cwd, or immediate children of a non-Git
+workspace. Lookup-root discovery is bounded to three directory levels and 2,048
+directory probes; it stops at checkout roots and skips hidden, dependency and
+build trees. A direct checkout beyond the depth boundary or exhausted directory
+budget produces an explicit error. Unrelated non-Git source trees do not require
+an unrestricted recursive walk. Discovery never reads source contents or remote
+configuration, clones repositories or enrolls the entire inventory.
+
+CLI and common channel routing enroll only selected targets. A project question
+may be read-only; enrollment alone does not create a business development task.
+`ROOT/projects/state.db` owns project and run-receipt records. Registry updates
+and exports share a short OS advisory lock at `projects/registry.lock`; SQLite
+transactions enforce identity/scope uniqueness. Owner-private generated JSON and
+Markdown views are replaced atomically. Entry-local project rows mirror selected
+identities for existing routing, sessions and memory compatibility.
+
+New IDs are `local-` plus a hash of the canonical Git common-directory path, with
+scope `project:<id>`. Symlink aliases and linked worktrees share identity; existing
+registered IDs/scopes, including historical directory scopes, are preserved.
+The path hash does not survive a repository move without reconciliation.
+The shared registry retains its primary checkout. CLI requests and verified
+continuations can retain an existing worktree as their execution cwd. Channel
+state still requires the exact registered checkout; divergent worktree paths
+fail explicitly until managed writer bindings are implemented.
+
+`project.json` exports version, project metadata, canonical common-directory and
+enrollment origins (including source state home); `PROJECT.md` is a concise
+location/identity view. Each
+`tasks/<run-id>/task.json` and `TASK.md` is an `execution_receipt` containing source
+state home/run ID, project IDs, Agent/audience, entry/message/session references,
+workspace, timestamps and separate execution/acceptance/memory statuses. Original
+Input/Output, context, events and credentials remain in original entry state.
+Receipt views do not establish feature acceptance, checks or PR delivery and do
+not expand another audience's access to original evidence.
+
+Package tests cover identity, compatibility scopes, limits, source references,
+private-content exclusion and concurrent exports. Real local-root discovery found
+POP among 172 candidates without enrolling the inventory. Two real isolated Host
+CLI requests on 2026-10-14 then passed from empty registries, without manual
+registration or a target workspace: the authentication overview completed in
+150.836 seconds and the final login lookup in 94.361 seconds. Both recorded
+`/Users/mikas/gitlab/pop`, project `local-8bcf1749e300231acf7cc3ac` and completed
+source-linked receipts; acceptance stayed `unverified` and memory `unchanged`.
+The source checkout remained clean at `1b58f98bafc0cba7e7a85a377685f60d1092a563`.
+Channel wiring was validated by automated fixtures, not a live message. This
+does not establish worktree/PR lifecycle acceptance or general discovery quality.
+
+The following sections describe the proposed full development lifecycle; their
+feature-task fields, clone preparation and writer operations are not delivered.
+
+## Proposed development lifecycle
 
 `ROOT` is the current Host's already resolved runtime root, normally the managed
 `.agent-host/` directory. Derive `ROOT/projects` from that identity; do not
@@ -29,7 +87,8 @@ Publication and merge grants retain their original authenticated source.
 
 ## Paths and ownership
 
-The registry owns `ROOT/projects/state.db` and `ROOT/projects/locks/`.
+The proposed writer lifecycle extends `ROOT/projects/state.db` and adds
+`ROOT/projects/locks/`; the delivered registry lock is `registry.lock`.
 Each stable project ID owns a record directory at `ROOT/projects/<project-id>/`:
 
 - `external`: record the existing checkout's canonical absolute path; no source
@@ -100,10 +159,11 @@ there is no `project enable`, per-project enable flag or component-config step.
 Inventory without a development request does not enroll all candidates. Existing
 authenticated entry/audience/tool permissions still apply to actual operations.
 
-Stable project ID is independent of path, name and Agent. Preserve prior IDs and
-memory associations when adopting the referenced existing record; allocate a
-new ID for a new binding. Multiple unrelated clones/remotes remain candidates
-until a primary source is clear. Repository evidence includes canonical common
+Preserve prior IDs and memory associations when adopting a verified existing
+record; new IDs currently derive from canonical common-directory paths. A move
+requires explicit reconciliation rather than silently claiming path independence.
+Allocate a new ID for a new binding. Multiple unrelated clones/remotes remain
+candidates until a primary source is clear. Repository evidence includes canonical common
 Git directory plus sanitized host/namespace/remote identity. Handle equivalent
 transports without erasing host/port or case-sensitive paths. Never export tokens
 or raw credential-helper output.
@@ -147,10 +207,11 @@ recovery rather than an invented clean slate.
 
 ## Compatibility and acceptance
 
-Current `internal/cli/project.go` and `internal/state/project.go` persist projects
-in the selected `state.Store`; `internal/cli/service_unified.go` assigns separate
-channel state homes. Dynamic Host-wide enrollment is new behavior, not delivered
-catalog functionality.
+`internal/cli/project_runtime.go` connects shared discovery/enrollment and run
+receipts to existing CLI/channel routing. `internal/state/project.go` retains the
+entry-local compatibility mirror; `internal/cli/service_unified.go` assigns
+separate channel state homes. These shared operational records are delivered;
+the durable business-task and writer lifecycle below remains proposed.
 
 On a development request, adopt a referenced legacy binding after verifying its
 identity and scope. Preserve IDs, evidence and memory associations; surface ID,

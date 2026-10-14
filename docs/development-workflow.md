@@ -1,18 +1,19 @@
 # Project development through worktrees and pull requests
 
-Status: proposed next priority; no managed development workflow is implemented.
-Current [project routing](smart-project-routing.md) selects directories and
-compatible native conversations. This proposal adds a durable delivery process.
+Status: the managed worktree/PR delivery workflow remains proposed. Local
+checkout discovery, automatic selected-project enrollment and source-linked
+execution receipts are implemented. Current [project routing](smart-project-routing.md)
+selects directories and compatible native conversations; it does not yet own a
+durable business development task or PR/MR lifecycle.
 See the [implementation notes](development-workflow-detail.md) for boundaries,
 recovery and validation.
 
-The [engineering records and workspace proposal](development-projects.md)
-defines request-triggered project/task records, automatic enrollment and local
-checkout reuse, with needed clones/new projects under `.agent-host/projects/`.
-Agent contexts reference that
-shared progress while retaining their own native conversations.
+The [engineering records](development-projects.md) retain shared project records
+and execution receipts under `.agent-host/projects/`, with no manual enablement.
+Managed clones/new projects and multi-run feature progress are proposed next.
+Agents retain their own native conversations and private memory.
 
-## Goal and usage
+## Proposed goal and usage
 
 Tell Agent-Host what to build in a project. It identifies the requested change,
 develops it in a dedicated Git worktree, verifies the result, and delivers a PR
@@ -98,7 +99,8 @@ GitHub is proposed first because this repository uses it.
 4. **Merge and closeout:** authorized merge, verify the result and clean up safely.
    Validate the full path in an authorized test repository before rollout.
 
-The first release includes all four steps plus local-repository lookup, automatic
-enrollment and needed clone/new-project preparation. GitLab PR delivery, broad remote discovery,
+Local-repository lookup and automatic enrollment are delivered foundations.
+The proposed managed-development release adds all four steps and needed
+clone/new-project preparation. GitLab MR delivery, broad remote discovery,
 cross-repository development, automatic merge policies, multi-contributor collaboration and
 multiple coding agents follow later.

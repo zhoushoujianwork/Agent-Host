@@ -23,12 +23,15 @@ requests](development-workflow.md): recognize implementation intent, keep a
 feature's work in one owned worktree, verify and commit it, then deliver an
 authorized PR/merge. The Host owns this durable delivery lifecycle; native
 harnesses retain their model/tool loops. This workflow is not implemented.
-Its proposed [engineering records and workspace layout](development-projects.md)
-automatically enroll resolved development targets across existing entries,
-reuse local checkouts and retain shared engineering state plus needed clones/new
-projects under the current Host's `.agent-host/projects/` runtime area. No manual
-development enablement is required.
-Shared operational records do not combine private conversations or memory.
+Its [engineering records and workspace layout](development-projects.md) now
+implements bounded local Git discovery, automatic selected-target enrollment
+across CLI/common channel routing and shared source-linked execution receipts
+under `.agent-host/projects/`. Existing checkouts stay in place; no manual
+enablement or registration is required. These receipts describe execution,
+acceptance and memory separately, not a durable feature-task or PR lifecycle.
+Managed clones/new projects, owned worktrees and PR/MR delivery remain proposed.
+Shared records exclude original conversation text/context and do not combine
+private conversations or memory.
 
 The [configuration and plugin startup](configuration-layout.md) centralizes
 editable configuration, separates channel/plugin runtime data and loads enabled
@@ -206,10 +209,13 @@ separate from task acceptance. A durable reaction outbox updates progress on
 the original message independently of native execution and final answer delivery.
 The [intelligent routing extension](smart-project-routing.md)
 implements automatic selection over registered projects and project-set execution.
+Request-time bounded local Git candidates now extend this catalog; only selected
+targets enter the shared Runtime registry and entry-local compatibility mirror.
 Reliable project associations select their registered environments; all other
-valid requests run in the configured agent's default workspace. An empty catalog
-skips the classifier and starts execution directly. No new Host project question
-or waiting task is created. The native assistant asks for business details when
+valid requests run in the configured agent's default workspace. An empty eligible
+catalog after local lookup skips the classifier and starts execution directly.
+No new Host project question or waiting task is created. The native assistant
+asks for business details when
 needed. Default execution does not expand project or knowledge access; invalid
 configuration, unavailable selected directories and provider errors still fail
 explicitly. Default-workspace handoffs and empty-catalog execution keep normal
@@ -238,9 +244,11 @@ questions, excluding prior replies and execution results.
 Pending or failed memory finalization also remains inspectable without blocking
 a new conversation.
 Parallel project sets use a neutral cwd;
-unassociated tasks retain the configured default workspace. Local and remote project
-discovery remain planned. Earlier routing revisions passed separate automated,
-bounded native and live-DingTalk acceptance recorded in the routing guide;
+unassociated tasks retain the configured default workspace. Bounded local
+checkout discovery and shared enrollment are implemented; remote discovery,
+clone preparation and the managed worktree/PR workflow remain planned.
+Earlier routing revisions passed separate automated, bounded native and
+live-DingTalk acceptance recorded in the routing guide;
 those records do not establish acceptance of the current default-execution policy.
 Historical live owner messages using the former project-switch commands verify
 project switching, native continuation, project-local reset and scoped memory
@@ -307,8 +315,9 @@ inside the harness, and profile data cannot broaden identity or audience grants.
    project-set execution and default execution without a Host project question.
    Earlier automated, native and live private-chat validation is preserved in the
    [routing guide](smart-project-routing.md).
-   Local/GitHub/GitLab discovery remains planned.** Joint tasks retain scoped
-   existing knowledge; automatic new memory attribution is deferred.
+   Bounded local Git checkout discovery and shared selected-target enrollment
+   are implemented; remote GitHub/GitLab discovery remains planned.** Joint tasks
+   retain scoped existing knowledge; automatic new memory attribution is deferred.
 7. Add external knowledge and everyday experience: first Dokki/Confluence
    runtime search/read tools, then bounded DWS conversation intake and reviewed
    lessons. **Dokki/Confluence tools and optional bounded DWS collection/topic
