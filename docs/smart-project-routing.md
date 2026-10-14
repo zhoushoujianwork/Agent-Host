@@ -135,3 +135,7 @@ accounts or organizations are later increments. Discovery will propose candidate
 activation and preparation of missing local checkouts remain explicit operations.
 Remote execution, automatic worktrees, per-project model profiles and multi-agent
 orchestration remain outside this increment.
+
+The proposed [development workflow](development-workflow.md) makes worktrees and
+PR delivery the next priority for implementation requests, with project binding
+and authorization checked before editing. It is not current routing behavior.

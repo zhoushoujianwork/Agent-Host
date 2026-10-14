@@ -18,6 +18,12 @@ The [datasource plugin configuration](datasource-plugins-design.md) loads local
 Markdown, Dokki, Confluence and Email from separate `datasource.plugins.*.json`
 files, with namespaced sources and preserved Host memory boundaries.
 
+The next proposed priority is [project development through worktrees and pull
+requests](development-workflow.md): recognize implementation intent, keep a
+feature's work in one owned worktree, verify and commit it, then deliver an
+authorized PR/merge. The Host owns this durable delivery lifecycle; native
+harnesses retain their model/tool loops. This workflow is not implemented.
+
 The [configuration and plugin startup](configuration-layout.md) centralizes
 editable configuration, separates channel/plugin runtime data and loads enabled
 built-in capabilities at startup. DingTalk bot and DWS are independent channel
