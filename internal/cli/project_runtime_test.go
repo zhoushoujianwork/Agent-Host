@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -303,5 +304,69 @@ func TestCLIDefaultStateStaysInInvocationDirectory(t *testing.T) {
 	o, _, err = parse("chat", []string{"--home", explicit}, io.Discard)
 	if err != nil || o.home != explicit {
 		t.Fatal("explicit state selection changed", err)
+	}
+}
+
+// Long-term use of automatic enrollment accumulates projects past
+// routing.MaxProjects. An exact, explicitly named request must keep working:
+// the surplus of unrelated enrolled projects is trimmed, never the request's
+// own target, and never silently beyond the documented bound.
+func TestRuntimeCandidatesCapSurvivesSurplusEnrolledProjects(t *testing.T) {
+	store, o, pop := runtimeFixture(t)
+	o.retrievalQuery = "查一下项目 pop 的认证接口"
+	if err := resolveOptions(t.Context(), store, &o, true); err != nil {
+		t.Fatal("enroll pop", err)
+	}
+	root := filepath.Dir(filepath.Dir(pop))
+	extraRoot := filepath.Join(root, "extra-repositories")
+	if err := os.MkdirAll(extraRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < routing.MaxProjects+10; i++ {
+		dir := filepath.Join(extraRoot, fmt.Sprintf("repo-%03d", i))
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+			t.Fatal(err, string(out))
+		}
+		dir, err := state.CanonicalWorkspace(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := fmt.Sprintf("extra-%03d", i)
+		if _, err := o.projectCatalog.Enroll(t.Context(), state.Project{ID: id, Name: id, Workspace: dir, Scope: "project:" + id}, projectruntime.Origin{Entry: "test"}); err != nil {
+			t.Fatal("enroll extra project", err)
+		}
+	}
+	known, err := o.projectCatalog.Projects(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(known) <= routing.MaxProjects {
+		t.Fatalf("fixture did not exceed MaxProjects: got %d", len(known))
+	}
+	candidates, err := runtimeCandidates(t.Context(), store, &o, "查一下项目 pop 的认证接口")
+	if err != nil {
+		t.Fatal("candidates for an exact request must not fail once enrollment grows", err)
+	}
+	if len(candidates) > routing.MaxProjects {
+		t.Fatalf("candidates exceed routing.MaxProjects: got %d", len(candidates))
+	}
+	found := false
+	for _, p := range candidates {
+		if p.Workspace == pop {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the explicitly requested project was trimmed instead of surplus enrollment", candidates)
+	}
+	o.projectID, o.routedQuery, o.projectIDs = "", "", nil
+	if err := resolveOptions(t.Context(), store, &o, true); err != nil {
+		t.Fatal("exact request failed after enrollment grew past the cap", err)
+	}
+	if o.workspace != pop {
+		t.Fatal("wrong workspace selected", o.workspace)
 	}
 }

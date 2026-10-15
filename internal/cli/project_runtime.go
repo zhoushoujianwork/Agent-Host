@@ -60,8 +60,19 @@ func runtimeCandidates(ctx context.Context, store *state.Store, o *options, text
 	if err != nil {
 		return nil, fmt.Errorf("discover local projects: %w", err)
 	}
-	for _, p := range routing.ReferencedProjects(text, discovered) {
+	referenced := routing.ReferencedProjects(text, discovered)
+	// Text references, the continuation task and the contextual checkout are
+	// never dropped: a decision cannot be reached without them. Everything
+	// else enrolled over time only fills the remaining semantic-routing budget.
+	required := map[string]bool{}
+	for _, p := range referenced {
 		byID[p.ID] = p
+		required[p.ID] = true
+	}
+	for _, recent := range o.projectRecent {
+		for _, id := range recent.ProjectIDs {
+			required[id] = true
+		}
 	}
 	// Supply the current checkout for contextual requests ("this project").
 	canonical, err := state.CanonicalWorkspace(workspace)
@@ -76,6 +87,7 @@ func runtimeCandidates(ctx context.Context, store *state.Store, o *options, text
 		if canonical == p.Workspace || strings.HasPrefix(canonical, p.Workspace+string(filepath.Separator)) {
 			p.Description = strings.TrimSpace(p.Description + " Current execution checkout.")
 			byID[p.ID] = p
+			required[p.ID] = true
 		}
 	}
 	result := []state.Project{}
@@ -83,7 +95,38 @@ func runtimeCandidates(ctx context.Context, store *state.Store, o *options, text
 		result = append(result, p)
 	}
 	slices.SortFunc(result, func(a, b state.Project) int { return strings.Compare(a.ID, b.ID) })
-	return result, nil
+	return capProjects(result, required)
+}
+
+// capProjects bounds the candidate set at routing.MaxProjects without
+// silently dropping anything the current request actually needs: references,
+// the continuation task and the contextual checkout always survive. Any
+// surplus is trimmed from the rest, in deterministic alphabetical order, so
+// growth in enrolled-but-unrelated projects never blocks an unrelated request.
+func capProjects(projects []state.Project, required map[string]bool) ([]state.Project, error) {
+	if len(projects) <= routing.MaxProjects {
+		return projects, nil
+	}
+	kept := make([]state.Project, 0, routing.MaxProjects)
+	var fillable []state.Project
+	for _, p := range projects {
+		if required[p.ID] {
+			kept = append(kept, p)
+		} else {
+			fillable = append(fillable, p)
+		}
+	}
+	if len(kept) > routing.MaxProjects {
+		return nil, fmt.Errorf("project routing supports at most %d projects; this request alone needs %d", routing.MaxProjects, len(kept))
+	}
+	for _, p := range fillable {
+		if len(kept) >= routing.MaxProjects {
+			break
+		}
+		kept = append(kept, p)
+	}
+	slices.SortFunc(kept, func(a, b state.Project) int { return strings.Compare(a.ID, b.ID) })
+	return kept, nil
 }
 
 func enrollRuntimeProjects(ctx context.Context, store *state.Store, o *options, projects []state.Project, origin projectruntime.Origin) error {
