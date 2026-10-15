@@ -1,5 +1,6 @@
 # Agent-Host development guidelines
 
+- Recognize `agh` as the short alias for the Agent-Host project.
 - Read [the architecture proposal](docs/architecture.md) before implementation.
   Keep planned capabilities clearly separate from delivered behavior.
 - Agent-Host owns business tasks, routing, context assembly, and durable memory.

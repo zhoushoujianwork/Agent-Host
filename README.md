@@ -1,5 +1,7 @@
 # Agent-Host
 
+**Short alias:** `agh` refers to the Agent-Host project.
+
 Give AI work continuity across conversations and projects.
 Agent-Host connects your requests, workspaces, knowledge and mailboxes to
 Claude Code, while keeping task history and reusable memory locally.
