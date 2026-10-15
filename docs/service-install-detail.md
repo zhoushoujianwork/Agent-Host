@@ -67,7 +67,8 @@ workbench memory API returned 3 memories, 1 candidate and 2 channels. Old channe
 memory/revision/evidence and original derived tables remain identical to the
 stopped backup. The final isolated history receipt is
 `.agent-host/validation/file-memory-history-20261013-final/report.json`; cutover
-backup is `.agent-host/backups/file-memory-cutover-20261013`.
+backup is `.agent-host/backups/file-memory-cutover-20261013.tar.gz.age`
+(an encrypted directory archive for manual historical recovery).
 
 The default Agent now uses user-maintained AGENTS/SOUL/IDENTITY through
 instructions_dir, preserving the prior CLAUDE.md role text. No owner USER was

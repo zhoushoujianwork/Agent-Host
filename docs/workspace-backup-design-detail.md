@@ -170,3 +170,24 @@ The retired external archive directory was removed after a new internal archive
 passed isolated restore verification. Audit and cleanup receipts are retained in
 `validation/backup-directory-audit-20261015.json` and
 `validation/backup-directory-cleanup-20261015.json`.
+
+The six retained historical directories were subsequently converted into ordinary
+directory tar archives with the same age encryption key. Before removing each
+directory, decryption and tar-member verification checked every file checksum,
+size and permission mode against the original, including empty directories.
+The 597 verified members occupied 412,365,659 bytes before compression and
+156,258,819 bytes as encrypted archives. The conversion receipt is
+`validation/legacy-backup-compression-20261015.json`.
+
+| Archive prefix | Historical recovery purpose |
+| --- | --- |
+| `config-names-20261013T062858Z` | Configuration files before renaming |
+| `datasource-config-20261013T105814Z` | Configuration and email data before the datasource migration |
+| `file-memory-cutover-20261013` | SQLite memory databases and owner notes before file-memory cutover |
+| `global-plugins-20261015T024349Z` | Agent and datasource settings before global plugin changes |
+| `gtm-skilllab-group-20261014T030854Z` | Agent configuration before the group-agent change |
+| `unified-config-20261013T103321Z` | Full legacy channel/runtime state before configuration consolidation |
+
+Each filename ends in `.tar.gz.age`. These snapshots preserve historical layouts
+for manual recovery and are not inputs to the current logical `backup restore`
+command. Automatic retention does not prune them.

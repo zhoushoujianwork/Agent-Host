@@ -105,7 +105,7 @@ Private evidence is retained under
 Email 共用迁移后的单一账本，渠道默认 memory_scope 未变化。
 
 迁移报告、备份和原生验证事件保存在 ignored
-`.agent-host/backups/datasource-config-20261013T105814Z/`。两边渠道数据库及
+`.agent-host/backups/datasource-config-20261013T105814Z.tar.gz.age`。两边渠道数据库及
 Email ledger 的 SHA-256 在停止状态下前后一致。重新启动后钉钉 Stream、
 飞书文本和会议入口均产生新的连接事件；工作台返回 HTTP 200。
 隔离原生运行成功完成 `mcp__email__list_accounts`、`mcp__email__check_account`
