@@ -63,14 +63,22 @@ general authorization to switch accounts.
 
 ## Observe before expanding
 
-The latest check of the original `--cli-profile` incident found only the older
-invalid-profile recovery lesson active. Explicit historical backfill through the
-running Host's external-memory interface was withheld twice (support 0.65, then
-0.56 after one manual narrowing, below 0.80). The exact flag correction is still
-not recallable. A fresh isolated native probe passed, but this does not establish
-that the original production correction has been learned. Admission of this real
-case remains an open effectiveness gap; old completed runs are not automatically
-backfilled.
+The original `--cli-profile` correction initially failed both evidence assessment
+and comparison with an older credential-recovery lesson. Judgment policy v5
+clarifies faithful command templates and compatible conditional procedures,
+while retaining the 0.80 threshold. Literal duplicates of an active reviewed
+procedure reuse its identity; conflicted records stay quarantined.
+
+The specific correction is now active after an explicit audited recovery, with
+its original evidence and failed receipts preserved. Normal recall and the
+local console projection were verified. This one historical backfill does not
+establish automatic recovery of old runs or general business effectiveness.
+
+Open the local workbench's Memory page and search `tccli`. The correction is
+named `tccli cbs DescribeDisks: --profile command template`; active items show
+**可供召回**. Scope/source filters still apply. Conflicted items can also appear,
+but are not reusable. An excluded submission with no published record is not
+an active memory merely because receipt processing completed.
 
 An isolated real-model probe has demonstrated automatic learning, recall changing
 from zero to one for a short request, and actual Skill invocation. A stricter

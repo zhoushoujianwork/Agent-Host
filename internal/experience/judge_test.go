@@ -217,3 +217,47 @@ func TestComparisonProviderFailureIsNotIndependent(t *testing.T) {
 		t.Fatalf("out=%+v err=%v", out, err)
 	}
 }
+
+func TestComparisonRecognizesExactProcedureWithoutModelVote(t *testing.T) {
+	for _, status := range []string{"active", "conflicted"} {
+		t.Run(status, func(t *testing.T) {
+			candidate := fixtureCandidate()
+			m := fixtureMemory("exact", "reviewed_experience")
+			m.Text, m.Conditions = state.ExperienceText(candidate.Draft), candidate.Draft.Conditions
+			m.Steps, m.Avoid, m.Status = candidate.Draft.Steps, candidate.Draft.Avoid, status
+			f := &fakeEvaluator{fn: func(context.Context, any, map[string]jev.Question) (jev.Response, error) {
+				t.Fatal("literal identity must not depend on a model vote")
+				return jev.Response{}, nil
+			}}
+			out, err := (&JevJudge{client: f}).Compare(t.Context(), candidate, []state.Memory{m})
+			if err != nil || f.calls != 0 {
+				t.Fatal(out, err)
+			}
+			if status == "active" && (len(out.DuplicateIDs) != 1 || len(out.ConflictIDs) != 0) || status == "conflicted" && (len(out.DuplicateIDs) != 0 || len(out.ConflictIDs) != 1) {
+				t.Fatal("identity bypassed lifecycle eligibility", out)
+			}
+			if !strings.Contains(string(out.Audit), "exact_procedure_identity") || strings.Contains(string(out.Audit), `"response"`) || out.Model != "" {
+				t.Fatal("Host check was presented as model evidence")
+			}
+		})
+	}
+}
+
+func TestExactProcedureStillChecksOtherRelationsAndProvenance(t *testing.T) {
+	candidate := fixtureCandidate()
+	exact := fixtureMemory("exact", "reviewed_experience")
+	exact.Text, exact.Conditions = state.ExperienceText(candidate.Draft), candidate.Draft.Conditions
+	exact.Steps, exact.Avoid = candidate.Draft.Steps, candidate.Draft.Avoid
+	assertion := exact
+	assertion.ID, assertion.Kind, assertion.SourceType = "assertion", "constraint", "user_statement"
+	f := &fakeEvaluator{fn: func(_ context.Context, _ any, questions map[string]jev.Question) (jev.Response, error) {
+		if len(questions) != 1 || questions["m1"].Type != "choice" {
+			t.Fatal("exact procedure skipped a different source or relation", questions)
+		}
+		return jev.Response{Model: "fixture", Answers: map[string]jev.Answer{"m1": answer("conflict", .99)}}, nil
+	}}
+	out, err := (&JevJudge{client: f}).Compare(t.Context(), candidate, []state.Memory{exact, assertion})
+	if err != nil || strings.Join(out.DuplicateIDs, ",") != "exact" || strings.Join(out.ConflictIDs, ",") != "assertion" || f.calls != 1 {
+		t.Fatal(out, err)
+	}
+}

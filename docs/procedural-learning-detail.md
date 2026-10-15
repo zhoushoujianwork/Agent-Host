@@ -3,8 +3,10 @@
 Status: lightweight MVP implemented on 2026-10-15; broader mechanisms below
 remain a proposal unless explicitly listed as delivered. The
 [main design](procedural-learning.md) defines scope and delivery order.
-The original analysis was read-only. MVP observations use isolated memory and a
-local command surrogate; production historical memory is not rewritten.
+The original analysis was read-only. Initial MVP observations use isolated
+memory and a local command surrogate. The follow-up below explicitly backfills
+one original case and recovers its quarantined records; raw source evidence is
+preserved.
 
 ## MVP implementation and observation
 
@@ -148,6 +150,70 @@ not infer a generally calibrated error probability from Jev's scores. Automatic
 historical backfill and external-proposal refinement are not delivered by this
 MVP. Further changes should use this failed case as evidence and preserve the
 existing admission boundary.
+
+### Admission fix and audited production recovery
+
+The follow-up reproduced the original assessment failure using the unchanged
+v2 judge and exactly the previously withheld submission: support 0.62. The
+extraction policy required complete parameterized commands, but assessment did
+not explicitly distinguish faithful syntax abstraction from unsupported claims
+about future values. Clarifying this contract changed observed support to 0.81
+in the first focused probe and 0.82 in the running Host. The threshold stayed
+0.80. This is evidence for a policy mismatch, not an explanation of the model's
+internal reasoning or a general reliability estimate.
+
+That production attempt, receipt `7e0c0081-7493-4e07-8190-958fdfd4d6f6`, passed
+assessment but quarantined both the new lesson and the old profile-recovery
+lesson: comparison chose independent with probability 0.77. A focused unchanged
+comparison reproduced the false quarantine at 0.65. The revised comparison
+instructions distinguish compatible syntax and conditional recovery guidance
+from incompatible advice under overlapping conditions. A real-provider probe
+then admitted the original template at 0.83 and judged the compatible pair
+independent at 0.94. An invented option, a universal success guarantee and a
+failed command presented as successful remained ineligible. A contradictory
+procedure also remained quarantined, although its chosen relation was weakly
+independent (0.54); this does not prove correct semantic conflict classification.
+
+After these checks, existing `memory restore` commands explicitly recovered the
+old lesson to active revision 3 and the new lesson
+`10abf12f-e0f7-49b2-b8e1-9f2efd9421a7` to active revision 2. The reason records
+the live report's digest and the successful reassessment/comparison. This was
+audited local repair under the user's fix request, not automatic publication or
+an edit to database/manifests. Failed receipts and previous revisions remain.
+Both channels reconnected; ordinary recall/read returned the correction with
+its full `--profile`, `--region`, quoted `--DiskIds` template and external
+evidence attribution. The console's `/api/memories` returned both active rows.
+
+A final normal resubmission exposed a separate exact-duplicate bug: receipt
+`19175bb1-932f-4eb2-8da7-ec1b547063c1` failed with a uniqueness error instead
+of reusing the active record. Judgment policy v5 now recognizes literal identity
+of the complete reviewed procedure text, conditions, steps and avoidance notes
+before asking the model about other relations. The audit identifies this as a
+Host identity check without inventing a model response or probability. It
+preserves source type, checks other potential conflicts, and never promotes a
+conflicted exact match. Publication still checks eligibility, source identity
+and the current generation.
+
+Focused live checks live in `internal/experience/judge_live_test.go`. Opt in
+with `AGENT_HOST_LIVE_ASSESSMENT=1`, the selected submission in
+`AGENT_HOST_LIVE_ASSESSMENT_INPUT`, configured environment/endpoint/model via
+`AGENT_HOST_LIVE_ASSESSMENT_ENV`, `AGENT_HOST_LIVE_ASSESSMENT_ENDPOINT` and
+`AGENT_HOST_LIVE_ASSESSMENT_MODEL`, and a new output filename in
+`AGENT_HOST_LIVE_ASSESSMENT_REPORT`. Optional
+`AGENT_HOST_LIVE_COMPARISON_INPUT` supplies the selected existing memory for
+compatible/contradictory comparison checks. No command is executed or memory
+published by these tests; exported results omit private evidence bodies.
+Deterministic regressions cover exact active/conflicted records, source type,
+other conflicts and truthful audit attribution. Exact staged-tree checks and
+runtime receipts remain in the ignored validation directory; unrelated object
+retrieval work in the shared checkout was excluded from the build.
+
+The console lookup offload worker failed at its explicit budget limit. Metadata:
+exit 1, profile `cc`, model `claude-sonnet-5[1m]`, 8 turns, estimated worker cost
+USD 0.293325 (not verified billing or parent cost), measured elapsed 75.393 s,
+session `662a7bb8-8f80-4b99-bcef-39f4f958d674`. Its incomplete output was not
+used as proof. Local source inspection and the actual console HTTP projection
+established visibility and external-source evidence handling.
 
 ## Evidence scope and limits
 
