@@ -29,7 +29,7 @@ Keep the existing memory loop for Host-run tasks.
 | Source | How it enters Agent-Host | What the agent receives |
 | --- | --- | --- |
 | Dokki | Read-only MCP tools provided globally by enabled datasource plugins | Search results and source documents, requested during execution |
-| Confluence | Runtime tools with its own source and credentials | Search/read pages; create/update pages when requested by the user |
+| Confluence | Runtime tools with its own source and credentials | Search/read pages and blogs; authorized create/update, preferring the personal blog for managed content |
 | Local Markdown | Explicit files/directories under a configured source root, available globally through enabled datasource plugins | Bounded search results and document excerpts with relative references |
 | Daily DWS conversations | Optional system collection of explicitly selected conversations and local topic review | Bounded owner-private evidence export after explicit acceptance; learning remains planned; no general DWS task MCP |
 
@@ -155,7 +155,7 @@ agent-host chat --knowledge-config /absolute/private/path/knowledge.json \
 ```
 
 The allow rules explicitly permit these two named MCP instances, including
-Confluence page creation and updates;
+Confluence page and blog creation and updates;
 native permissions still govern other tools. `check` validates local configuration,
 not remote authentication. The managed service uses the same file through
 `knowledge_config` in its private `service.json`. Existing sessions rotate when

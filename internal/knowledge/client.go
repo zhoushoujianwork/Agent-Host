@@ -468,7 +468,7 @@ func (c *sourceClient) searchConfluence(ctx context.Context, query, mode string,
 	}
 	cql := query
 	if mode == "keyword" {
-		cql = "type = page and text ~ " + strconv.Quote(query)
+		cql = "type in (page, blogpost) and text ~ " + strconv.Quote(query)
 	}
 	params := url.Values{"cql": {cql}, "limit": {strconv.Itoa(limit)}, "start": {strconv.Itoa(start)}}
 	result, err := c.confluenceREST(ctx, "/content/search?"+params.Encode())
@@ -502,6 +502,10 @@ func (c *sourceClient) searchConfluence(ctx context.Context, query, mode string,
 }
 
 func (c *sourceClient) readConfluencePage(ctx context.Context, id string, offset, limit int, expectedDigest string) (map[string]any, error) {
+	return c.readConfluenceContent(ctx, id, offset, limit, expectedDigest, "page")
+}
+
+func (c *sourceClient) readConfluenceContent(ctx context.Context, id string, offset, limit int, expectedDigest, kind string) (map[string]any, error) {
 	if !pageID.MatchString(id) {
 		return nil, errors.New("Confluence page ID must be numeric")
 	}
@@ -513,7 +517,7 @@ func (c *sourceClient) readConfluencePage(ctx context.Context, id string, offset
 	if err != nil {
 		return nil, err
 	}
-	if stringValue(result, "id") != id || stringValue(result, "type") != "page" {
+	if stringValue(result, "id") != id || stringValue(result, "type") != kind {
 		return nil, errors.New("Confluence page identity mismatch")
 	}
 	body, _ := result["body"].(map[string]any)
@@ -526,7 +530,7 @@ func (c *sourceClient) readConfluencePage(ctx context.Context, id string, offset
 	if err != nil {
 		return nil, err
 	}
-	coverage["page_id"] = id
+	coverage[kind+"_id"] = id
 	retainUpstreamCoverage(coverage, result)
 	compact := compactIdentity(result)
 	compact["content"], compact["content_encoding"], compact["content_format"] = excerpt, encoding, "confluence_storage"

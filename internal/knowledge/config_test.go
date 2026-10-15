@@ -180,7 +180,7 @@ func TestKnowledgeSecretsExcludedFromHintsResolvedJSONAndErrors(t *testing.T) {
 			t.Fatal("navigation hint exposed private source configuration")
 		}
 	}
-	if !reflect.DeepEqual(selected[0].Hint().Tools, []string{"search_confluence", "read_confluence_page", "create_confluence_page", "update_confluence_page"}) {
+	if !reflect.DeepEqual(selected[0].Hint().Tools, []string{"search_confluence", "read_confluence_page", "create_confluence_page", "update_confluence_page", "read_confluence_blogpost", "create_confluence_blogpost", "update_confluence_blogpost"}) {
 		t.Fatal("Confluence hint does not expose the supported tools")
 	}
 	const secret = "secret-that-must-not-appear"

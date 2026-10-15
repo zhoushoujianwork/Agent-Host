@@ -42,7 +42,7 @@ func TestConfluenceRetrievalRetainsPageAndQueryEvidence(t *testing.T) {
 		switch r.URL.Path {
 		case "/wiki/rest/api/content/search":
 			searches.Add(1)
-			if r.URL.Query().Get("start") != "20" || r.URL.Query().Get("limit") != "5" || r.URL.Query().Get("cql") != `type = page and text ~ "deployment"` {
+			if r.URL.Query().Get("start") != "20" || r.URL.Query().Get("limit") != "5" || r.URL.Query().Get("cql") != `type in (page, blogpost) and text ~ "deployment"` {
 				t.Errorf("unexpected bounded query: %s", r.URL.RawQuery)
 			}
 			fmt.Fprint(w, `{"results":[{"id":"42","title":"Deployment","_links":{"webui":"/pages/viewpage.action?pageId=42"}}],"size":1,"_links":{"base":"https://wiki.example.test/wiki","next":"/rest/api/content/search?start=25"}}`)

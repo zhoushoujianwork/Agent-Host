@@ -133,7 +133,7 @@ policy changes. No stronger revocation guarantee is claimed.
 | Source | Delivered tools |
 | --- | --- |
 | Dokki | `list_dokki_workspaces`, `search_dokki`, `read_dokki_resource` |
-| Confluence | `search_confluence`, `read_confluence_page`, `create_confluence_page`, `update_confluence_page` |
+| Confluence | `search_confluence`, `read_confluence_page`, `create_confluence_page`, `update_confluence_page`, `read_confluence_blogpost`, `create_confluence_blogpost`, `update_confluence_blogpost` |
 | Local Markdown | `search_local_markdown`, `read_local_markdown` |
 
 Tool names use `mcp__knowledge_<source-name>__<tool>`. Dispatch enforces the
@@ -143,7 +143,20 @@ and response size, refuse redirects, and report status/connection/timeout errors
 without source-response error bodies or credentials. There are no automatic
 retries, alternate providers or credential fallbacks.
 
-### Confluence page writes
+### Confluence page and blog writes
+
+Automatically managed notes and reports use the authenticated user's personal
+blog by default. Page tools remain available for explicit page requests.
+`create_confluence_blogpost` takes `title`, full storage-XHTML `content` and an
+optional `space_key`. When omitted, it reads `/user/current`, derives the
+personal space key, and verifies `/space/{key}` is that personal space before
+sending a write. Missing personal-space access or an identity mismatch fails
+explicitly; no other destination is selected. Blog posts have no parent page.
+`read_confluence_blogpost` provides the same bounded excerpt and version metadata
+as page reads; `update_confluence_blogpost` takes the same arguments as page
+updates. Each read/write validates the expected upstream content type, keeping
+page and blog identities distinct. Keyword search includes pages and blog posts;
+caller-supplied CQL remains unchanged.
 
 `create_confluence_page` takes `space_key`, `title`, full storage-XHTML `content`
 and optional numeric `parent_id`. It sends `POST /rest/api/content`.
@@ -158,7 +171,8 @@ The API follows [Atlassian's REST examples](https://developer.atlassian.com/serv
 The existing source binding and PAT are revalidated per call. Write tools advertise
 `readOnlyHint=false`, `idempotentHint=false`, with `destructiveHint=true` for
 full-body updates. Connector version v5 changes native session compatibility so
-new tool availability is assembled after restart. Writes return compact page
+new tool availability is assembled after restart. Version v6 adds personal-blog
+tools and guidance to native session compatibility. Writes return compact content
 identity, URL and version plus a source receipt marked `coverage=write_response`
 and `content_verified=false`. Read back to establish saved content. Transport,
 HTTP and malformed-response failures do not trigger a retry; even a failed result
@@ -168,13 +182,18 @@ Automated coverage includes MCP create/update/readback, Unicode bodies, parent
 placement, version conflicts, argument validation, output annotations, bounded
 bodies, rejected redirects and explicit failures without retries or credential
 leaks. The opt-in live test requires `AGH_CONFLUENCE_WRITE_LIVE=1`,
-`AGH_CONFLUENCE_CONFIG` (one configured source) and `AGH_CONFLUENCE_SPACE` (an
-authorized test space); it leaves a clearly named acceptance page in that space.
+`AGH_CONFLUENCE_CONFIG` (one configured source), optional
+`AGH_CONFLUENCE_LIVE_KIND=blogpost` (default `page`) and
+`AGH_CONFLUENCE_SPACE` (required for page tests, optional for blog tests). It
+leaves clearly named acceptance content in the selected space.
 On 2026-10-15, the owner's personal space passed create, exact body readback,
 update to version 2, exact updated title/body readback and stale-version HTTP 409
-rejection. The retained [test page](https://confluence.zhihuiya.com/pages/viewpage.action?pageId=298113920)
-records that bounded acceptance; this does not establish general native-agent
-write quality or permissions in other spaces.
+rejection. A subsequent personal-blog test passed automatic owner-space resolution,
+create/readback, update/readback and stale-version rejection. Its
+[retained blog post](https://confluence.zhihuiya.com/pages/viewpage.action?pageId=298113941)
+preserves the same test body; the original test page was moved to the recoverable
+trash after the content matched. These bounded checks do not establish general
+native-agent write quality or permissions in other spaces.
 
 Results retain source IDs, human-facing links, bodies and upstream revision,
 pagination/truncation metadata when available. Dokki metadata/content identity

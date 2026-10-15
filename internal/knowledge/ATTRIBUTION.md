@@ -12,7 +12,7 @@ included in [memgov-LICENSE](memgov-LICENSE). No upstream `NOTICE` file was pres
 in the inspected source tree.
 
 Agent-Host modifies these files to expose standalone Dokki retrieval and
-Confluence retrieval/page-write tools. Source configuration and credentials are resolved locally
+Confluence retrieval and page/blog-write tools. Source configuration and credentials are resolved locally
 for each operation against a pinned launch binding. Advanced Confluence dispatch,
 exports and memgov runtime/database integration are excluded. The modified source
 files identify their origin and changes in their headers.

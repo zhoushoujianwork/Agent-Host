@@ -12,11 +12,25 @@ import (
 )
 
 func TestConfluenceMCPCreateUpdateAndReadback(t *testing.T) {
+	for _, kind := range []string{"page", "blogpost"} {
+		t.Run(kind, func(t *testing.T) { testConfluenceMCPCreateUpdateAndReadback(t, kind) })
+	}
+}
+
+func testConfluenceMCPCreateUpdateAndReadback(t *testing.T, kind string) {
 	version := 0
 	title, content := "", ""
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer fixture-private-token" {
 			t.Error("missing credential")
+		}
+		if r.URL.Path == "/wiki/rest/api/user/current" {
+			fmt.Fprint(w, `{"username":"owner"}`)
+			return
+		}
+		if r.URL.Path == "/wiki/rest/api/space/~owner" {
+			fmt.Fprint(w, `{"key":"~owner","type":"personal"}`)
+			return
 		}
 		switch r.Method {
 		case http.MethodPost, http.MethodPut:
@@ -24,12 +38,15 @@ func TestConfluenceMCPCreateUpdateAndReadback(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatal(err)
 			}
-			if body["type"] != "page" || r.Header.Get("Content-Type") != "application/json" {
+			if body["type"] != kind || r.Header.Get("Content-Type") != "application/json" {
 				t.Error("incorrect write payload")
 			}
 			if r.Method == http.MethodPost {
-				if r.URL.Path != "/wiki/rest/api/content" || body["space"].(map[string]any)["key"] != "~owner" || body["ancestors"].([]any)[0].(map[string]any)["id"] != "7" {
+				if r.URL.Path != "/wiki/rest/api/content" || body["space"].(map[string]any)["key"] != "~owner" {
 					t.Error("incorrect create target")
+				}
+				if kind == "page" && body["ancestors"].([]any)[0].(map[string]any)["id"] != "7" || kind == "blogpost" && body["ancestors"] != nil {
+					t.Error("incorrect parent placement")
 				}
 			} else if r.URL.Path != "/wiki/rest/api/content/42" || body["id"] != "42" || body["version"].(map[string]any)["number"] != float64(version+1) {
 				w.WriteHeader(http.StatusConflict)
@@ -45,7 +62,7 @@ func TestConfluenceMCPCreateUpdateAndReadback(t *testing.T) {
 		default:
 			t.Error("unexpected method")
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "42", "type": "page", "title": title, "version": map[string]any{"number": version}, "body": map[string]any{"storage": map[string]any{"value": content}}, "_links": map[string]any{"webui": "/pages/viewpage.action?pageId=42"}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "42", "type": kind, "title": title, "version": map[string]any{"number": version}, "body": map[string]any{"storage": map[string]any{"value": content}}, "_links": map[string]any{"webui": "/pages/viewpage.action?pageId=42"}})
 	}))
 	defer server.Close()
 	config, source := mcpFixtureSource(t, "confluence", server.URL+"/wiki/rest/api")
@@ -55,6 +72,12 @@ func TestConfluenceMCPCreateUpdateAndReadback(t *testing.T) {
 		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_confluence_page","arguments":{"id":"42","expected_version":1,"title":"Updated","content":"<p>更新</p>"}}}`,
 		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"read_confluence_page","arguments":{"id":"42"}}}`,
 		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"update_confluence_page","arguments":{"id":"42","expected_version":1,"title":"Stale","content":"stale"}}}`,
+	}
+	if kind == "blogpost" {
+		for i := range requests {
+			requests[i] = strings.ReplaceAll(requests[i], "_confluence_page", "_confluence_blogpost")
+			requests[i] = strings.ReplaceAll(requests[i], `"space_key":"~owner","parent_id":"7",`, "")
+		}
 	}
 	var output bytes.Buffer
 	if err := Serve(context.Background(), config, source.Source.Name, source.Fingerprint, strings.NewReader(strings.Join(requests, "\n")), &output); err != nil {
@@ -77,6 +100,7 @@ func TestConfluenceWritesRejectInvalidArgumentsBeforeNetwork(t *testing.T) {
 	defer server.Close()
 	c := fixtureClient("confluence", server.URL)
 	cases := []struct{ name, args string }{
+		{"create_confluence_blogpost", `{"title":"T","content":"","parent_id":"7"}`},
 		{"create_confluence_page", `{"space_key":"X","title":"T"}`},
 		{"create_confluence_page", `{"space_key":"X","title":"T","content":"","id":""}`},
 		{"create_confluence_page", `{"space_key":"X","title":"T","content":"","parent_id":"../7"}`},
@@ -93,6 +117,44 @@ func TestConfluenceWritesRejectInvalidArgumentsBeforeNetwork(t *testing.T) {
 	}
 	if _, err := c.writeConfluencePage(context.Background(), confluenceWriteArgs{SpaceKey: "X", Title: "T", Content: strings.Repeat("x", maxConfluenceWriteBytes+1)}, false); err == nil {
 		t.Error("oversized body accepted")
+	}
+}
+
+func TestConfluencePersonalBlogLookupFailsBeforeWriting(t *testing.T) {
+	for _, response := range []string{`{}`, `{"username":""}`, `{"username":"owner"}`} {
+		t.Run(response, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Error("invalid identity triggered a write")
+				}
+				if strings.HasSuffix(r.URL.Path, "/user/current") {
+					fmt.Fprint(w, response)
+				} else {
+					fmt.Fprint(w, `{"key":"~someone-else","type":"personal"}`)
+				}
+			}))
+			defer server.Close()
+			c := fixtureClient("confluence", server.URL)
+			if _, err := callSourceTool(context.Background(), c.source, "create_confluence_blogpost", json.RawMessage(`{"title":"T","content":""}`)); err == nil {
+				t.Fatal("invalid personal space identity accepted")
+			}
+		})
+	}
+}
+
+func TestConfluenceBlogReadAndUpdateRejectPageIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"id":"42","type":"page","title":"T","version":{"number":2},"body":{"storage":{"value":"wrong kind"}}}`)
+	}))
+	defer server.Close()
+	c := fixtureClient("confluence", server.URL)
+	for _, tc := range []struct{ name, args string }{
+		{"read_confluence_blogpost", `{"id":"42"}`},
+		{"update_confluence_blogpost", `{"id":"42","title":"T","content":"","expected_version":1}`},
+	} {
+		if _, err := callSourceTool(context.Background(), c.source, tc.name, json.RawMessage(tc.args)); err == nil {
+			t.Errorf("wrong content kind accepted for %s", tc.name)
+		}
 	}
 }
 

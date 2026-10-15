@@ -82,7 +82,7 @@ func TestMCPOnlyAdvertisesAndDispatchesSelectedTools(t *testing.T) {
 				t.Fatalf("listing/isolation triggered network or malformed replies: %s", output.String())
 			}
 			tools := replies[1]["result"].(map[string]any)["tools"].([]any)
-			want := 4
+			want := 7
 			if provider == "dokki" {
 				want = 3
 			}

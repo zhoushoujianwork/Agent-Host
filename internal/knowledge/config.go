@@ -20,7 +20,7 @@ import (
 	"agent-host/internal/componentconfig"
 )
 
-const ConnectorVersion = "knowledge-v5:confluence-page-writes"
+const ConnectorVersion = "knowledge-v6:confluence-personal-blog"
 
 type Source struct {
 	ConfigPath        string   `json:"-"`
@@ -60,7 +60,7 @@ type Hint struct {
 }
 
 func (r ResolvedSource) Hint() Hint {
-	tools := []string{"search_confluence", "read_confluence_page", "create_confluence_page", "update_confluence_page"}
+	tools := []string{"search_confluence", "read_confluence_page", "create_confluence_page", "update_confluence_page", "read_confluence_blogpost", "create_confluence_blogpost", "update_confluence_blogpost"}
 	if r.Source.Provider == "dokki" {
 		tools = []string{"list_dokki_workspaces", "search_dokki", "read_dokki_resource"}
 	} else if r.Source.Provider == "local_markdown" {

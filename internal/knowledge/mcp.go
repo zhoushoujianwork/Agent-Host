@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strings"
 )
 
 type mcpTool struct {
@@ -61,10 +62,13 @@ func toolsFor(provider string) []mcpTool {
 		}
 	case "confluence":
 		return []mcpTool{
-			readTool("search_confluence", "Search visible Confluence content: keyword mode searches pages; CQL mode retains the supplied filter. Results cover this query and window, not all company knowledge. Read relevant pages and cite source_url.", inputSchema(map[string]any{"query": field("string"), "query_mode": field("string"), "limit": field("integer"), "start": field("integer")}, "query")),
+			readTool("search_confluence", "Search visible Confluence content: keyword mode searches pages and blog posts; CQL mode retains the supplied filter. Results cover this query and window, not all company knowledge. Read relevant content and cite source_url.", inputSchema(map[string]any{"query": field("string"), "query_mode": field("string"), "limit": field("integer"), "start": field("integer")}, "query")),
 			readTool("read_confluence_page", "Read a Confluence page by numeric ID, retaining source URL and upstream version when available."+excerptInstructions, readSchema("id")),
 			confluenceWriteTool(false),
 			confluenceWriteTool(true),
+			readTool("read_confluence_blogpost", "Read a Confluence blog post by numeric ID, retaining source URL and upstream version."+excerptInstructions, readSchema("id")),
+			confluenceContentWriteTool(false, "blogpost"),
+			confluenceContentWriteTool(true, "blogpost"),
 		}
 	default:
 		return nil
@@ -92,7 +96,7 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 	}
 	c := newSourceClient(source)
 	switch name {
-	case "create_confluence_page", "update_confluence_page":
+	case "create_confluence_page", "update_confluence_page", "create_confluence_blogpost", "update_confluence_blogpost":
 		var args confluenceWriteArgs
 		if err := decodeStrictJSON(arguments, &args); err != nil {
 			return nil, errors.New("invalid knowledge tool arguments")
@@ -100,7 +104,12 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 		// Enforce the distinct create/update schemas before any network operation.
 		var fields map[string]json.RawMessage
 		_ = json.Unmarshal(arguments, &fields)
-		schema := confluenceWriteTool(name == "update_confluence_page").InputSchema
+		kind := "page"
+		if strings.HasSuffix(name, "_blogpost") {
+			kind = "blogpost"
+		}
+		update := strings.HasPrefix(name, "update_")
+		schema := confluenceContentWriteTool(update, kind).InputSchema
 		for key := range fields {
 			if schema["properties"].(map[string]any)[key] == nil {
 				return nil, errors.New("invalid knowledge tool arguments")
@@ -111,7 +120,7 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 				return nil, errors.New("invalid knowledge tool arguments")
 			}
 		}
-		return c.writeConfluencePage(ctx, args, name == "update_confluence_page")
+		return c.writeConfluenceContent(ctx, args, update, kind)
 	case "search_local_markdown":
 		args := struct {
 			Query string `json:"query"`
@@ -173,7 +182,7 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 			return nil, errors.New("invalid knowledge tool arguments")
 		}
 		return c.searchConfluence(ctx, args.Query, args.Mode, args.Limit, args.Start)
-	case "read_confluence_page":
+	case "read_confluence_page", "read_confluence_blogpost":
 		args := struct {
 			ID             string `json:"id"`
 			Offset         int    `json:"offset"`
@@ -183,7 +192,11 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 		if err := decodeStrictJSON(arguments, &args); err != nil {
 			return nil, errors.New("invalid knowledge tool arguments")
 		}
-		return c.readConfluencePage(ctx, args.ID, args.Offset, args.Limit, args.ExpectedDigest)
+		kind := "page"
+		if name == "read_confluence_blogpost" {
+			kind = "blogpost"
+		}
+		return c.readConfluenceContent(ctx, args.ID, args.Offset, args.Limit, args.ExpectedDigest, kind)
 	}
 	return nil, errors.New("unknown knowledge tool")
 }
