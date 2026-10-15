@@ -83,6 +83,24 @@ The environment file supplies only the configured provider values to child
 processes. Reports refuse overwrite. Observe natural tasks after deployment
 before claiming reduced business error rates or adding automatic revision.
 
+The local DingTalk/Feishu runtime was updated at 11:30 Asia/Singapore on
+2026-10-15 from source commit `19fd85c`. Fresh channel connection events and
+workbench HTTP 200 were verified after restart. Neither channel had an active
+task at restart. The rollout receipt and initial natural-task sample are retained
+under `.agent-host/validation/procedural-learning-mvp-rollout-20261015.json`
+and the corresponding `*-post-rollout.json` files. No natural post-rollout task
+had completed at this initial check; isolated probes are not counted as business
+samples.
+
+`make check` passed before parallel unrelated development made the shared
+working copy temporarily unbuildable. The exact feature tree was then exported
+to a temporary snapshot. Its initial parallel check hit existing three-second
+Feishu subprocess fixture deadlines; the unchanged full check passed with
+`GOFLAGS=-p=1`, followed by a successful build. The deployed binary's SHA-256 is
+`56af237ceede8b28a4faafecd1bbf016c129e75bd72e6d8c66846e53901186cb`.
+Unrelated working-copy edits were preserved. No test assertion or model-provider
+fallback was used to obtain a passing result.
+
 ## Evidence scope and limits
 
 Read-only inspection covered the current DingTalk and Feishu channel state
