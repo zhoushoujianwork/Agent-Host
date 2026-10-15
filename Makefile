@@ -1,4 +1,4 @@
-.PHONY: build install run package check viewer help
+.PHONY: build install uninstall-service run package check viewer help
 
 .DEFAULT_GOAL := help
 
@@ -18,6 +18,9 @@ build:
 install: build
 	$(PYTHON) -B tools/install.py $(INSTALL_ARGS)
 
+uninstall-service:
+	$(PYTHON) -B -m tools.service.autostart uninstall --config-dir "$(CONFIG_DIR)"
+
 # Historical local packaging utility; normal distribution uses source commits.
 package:
 	python3 -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
@@ -35,7 +38,8 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  install Build and link the CLI and memory skill for detected agents' \
+		'  install Build/link CLI and skills; start configured channels automatically at login' \
+		'  uninstall-service Stop and remove automatic startup; retain configuration and state' \
 		'  run     Start or restart enabled channels in the foreground' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
@@ -52,6 +56,8 @@ help:
 		'  RUNTIME_ROOT=/absolute/runtime selects an explicit legacy runtime' \
 		'  --viewer-port PORT Shared workbench port (default: 8765)'  \
 		'Install options: INSTALL_ARGS="--agents codex,claude --bin-dir /absolute/bin"' \
+		'  INSTALL_ARGS=--no-autostart Install CLI and skills only' \
+		'  INSTALL_ARGS="--config-dir /absolute/ROOT/config" Select background runtime' \
 		'Examples:' \
 		'  make viewer' \
 		"  make viewer VIEWER_ARGS='--home /path/to/isolated-home --port 0'" \
@@ -69,6 +75,7 @@ check:
 	$(PYTHON) -B tools/install_test.py
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py
 	python3 -B tools/service/install_test.py
+	python3 -B tools/service/autostart_test.py
 	python3 -B tools/service/run_test.py
 	python3 -B tools/service/migrate_config_test.py
 	python3 -B tools/service/migrate_datasource_test.py

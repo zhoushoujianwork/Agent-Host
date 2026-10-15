@@ -26,7 +26,10 @@ installer links the built executable into `~/.local/bin` and the complete source
 skill into each detected supported client's skill directory. Detection checks
 the configured client directory or its command on PATH. `--agents` explicitly
 selects supported clients, including those not detected; it limits the set rather
-than adding to autodetection. It never starts a service or edits connections.
+than adding to autodetection. It never edits memory connections. When private
+runtime configuration exists, it also registers and starts the user service;
+`--no-autostart` skips this. See the
+[service lifecycle details](service-install-detail.md#source-checkout-automatic-startup).
 
 | Client | Default skill directory | Supported override |
 | --- | --- | --- |

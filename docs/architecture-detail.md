@@ -28,8 +28,10 @@ The [main architecture document](architecture.md) governs scope and priorities.
 The [service installation details](service-install-detail.md) define the macOS
 user-service lifecycle, private runtime configuration and production/test
 isolation. `internal/cli/service.go` composes existing channel behavior with an
-isolated native profile; `tools/service/install.py` owns OS installation and
-startup verification. No provider or channel protocol moves into the installer.
+isolated native profile; `tools/service/autostart.py` owns current source-checkout
+OS registration and startup verification. `tools/service/install.py` retains the
+legacy isolated-runtime installer. No provider or channel protocol moves into
+the installer.
 The [conversation/input details](channel-conversations-detail.md) describe the
 bounded concurrent scheduler, native image and file inputs, callback quotes and
 schema v11 capability storage. Their validation is separate from historical

@@ -123,11 +123,22 @@ class InstallTests(unittest.TestCase):
     def test_main_exit_code_distinguishes_preserved_skill_and_cli_conflicts(self):
         # Patch only the install result; main's path and argument validation stay real.
         with patch.object(INSTALL, "install", return_value=[("codex", "preserved", "custom")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main([]), 0)
+            self.assertEqual(INSTALL.main(["--no-autostart"]), 0)
         with patch.object(INSTALL, "install", return_value=[("cli", "preserved", "custom")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main([]), 1)
+            self.assertEqual(INSTALL.main(["--no-autostart"]), 1)
         with patch.object(INSTALL, "install", return_value=[("claude", "failed", "error")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main([]), 1)
+            self.assertEqual(INSTALL.main(["--no-autostart"]), 1)
+
+    def test_main_registers_configured_service_and_reports_failure(self):
+        with patch.object(INSTALL, "install", return_value=[]), \
+                patch("service.autostart.install", return_value=self.home / "service") as start, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)]), 0)
+            self.assertEqual(start.call_args.args[1], self.root)
+        with patch.object(INSTALL, "install", return_value=[]), \
+                patch("service.autostart.install", side_effect=RuntimeError("not ready")), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)]), 1)
 
 
 if __name__ == "__main__":

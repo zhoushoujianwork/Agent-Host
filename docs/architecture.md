@@ -270,14 +270,19 @@ recall in an isolated runtime using the existing bot; the
 [platform record](runtime-assembly-detail.md#live-dingtalk-acceptance-with-dws)
 keeps this separate from production state and remaining live scenarios.
 Production latency remains to be evaluated.
-The [project-local runtime](service-install.md) starts through `make run` in
-the foreground; invoking it again checks configuration and gracefully replaces
-the same managed instance. The Go CLI scans private `.agent-host/config/channels.*.json` configurations and
+The [project-local runtime](service-install.md) supports automatic user-login
+startup through `make install` on macOS and Linux with user systemd, and foreground
+startup through `make run`. Reinstallation checks configuration and restarts the
+background service; foreground restart gracefully replaces the same managed
+instance. The Go CLI scans private `.agent-host/config/channels.*.json` configurations and
 supervises Feishu and DingTalk concurrently in separate worker processes.
 Their credentials, state, logs, workspace and native profiles live
 under `.agent-host/channels/<name>`, with editable configuration in
-`.agent-host/config` and shared email operation state in `.agent-host/datasource/plugins/email`. The former system service was removed; historical data was
-retained in the ignored project area. Ordinary CLI uses `.agent-host/cli-state`. Deployment evidence remains distinct from offline tests.
+`.agent-host/config` and shared email operation state in `.agent-host/datasource/plugins/email`.
+The source-checkout user service replaces the retired isolated system deployment;
+historical data remains in the ignored project area. Service managers retry failed
+processes without replaying tasks. Ordinary CLI uses `.agent-host/cli-state`.
+Deployment evidence remains distinct from offline tests.
 
 The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local
 `lark-cli` profile to connect authorized meetings to the same host execution path.

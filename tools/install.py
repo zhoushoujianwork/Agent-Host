@@ -94,6 +94,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agents", help="Comma-separated supported agents; default: detect locally")
     parser.add_argument("--bin-dir", type=Path, default=Path.home() / ".local" / "bin")
+    parser.add_argument("--no-autostart", action="store_true", help="Install CLI and skills only")
+    parser.add_argument("--config-dir", type=Path, help="Private runtime config directory for automatic startup")
     args = parser.parse_args(argv)
     selected = None
     if args.agents is not None:
@@ -102,6 +104,8 @@ def main(argv=None):
             parser.error("--agents must contain only: " + ", ".join(AGENTS))
     if not args.bin_dir.is_absolute():
         parser.error("--bin-dir must be an absolute path")
+    if args.config_dir is not None and not args.config_dir.is_absolute():
+        parser.error("--config-dir must be an absolute path")
     try:
         rows = install(Path(__file__).resolve().parents[1], Path.home(), os.environ,
                        args.bin_dir, selected)
@@ -117,8 +121,24 @@ def main(argv=None):
         print(f"CLI directory is not on PATH: {args.bin_dir}. Add it to PATH or use the checkout's bin/agent-host.")
     if any(status == "preserved" for _, status, _ in rows):
         print("Existing custom targets were preserved; resolve them explicitly to replace an installation.")
-    return int(any(status == "failed" or name == "cli" and status == "preserved"
-                   for name, status, _ in rows))
+    failed = any(status == "failed" or name == "cli" and status == "preserved"
+                 for name, status, _ in rows)
+    if failed:
+        return 1
+    if not args.no_autostart:
+        from service import autostart
+        repo = Path(__file__).resolve().parents[1]
+        config = args.config_dir or repo / ".agent-host/config"
+        if args.config_dir is None and not (config / "host.json").is_file():
+            print("Autostart not configured: prepare .agent-host/config, then rerun make install.")
+        else:
+            try:
+                target = autostart.install(repo, config, Path.home(), os.environ)
+            except (OSError, ValueError, RuntimeError) as error:
+                print(f"Autostart failed: {error}", file=sys.stderr)
+                return 1
+            print(f"Autostart installed and all enabled channels connected: {target}")
+    return 0
 
 
 if __name__ == "__main__":

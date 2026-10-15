@@ -5,6 +5,11 @@ This page keeps additional commands, configuration notes and implementation guid
 
 ## Runtime and credentials
 
+`make install` also enables background startup at user login when private runtime
+configuration exists, using macOS launchd or Linux user systemd. Rerun it to
+restart after updates. `make uninstall-service` removes background startup;
+`INSTALL_ARGS=--no-autostart` installs only the CLI and skills.
+
 `make run` invokes the Go CLI to start enabled `.agent-host/config/channels.*.json`
 configurations, with visible foreground logs and one shared workbench. Channel
 state lives in `.agent-host/channels/<name>/`; explicit legacy entry points remain.

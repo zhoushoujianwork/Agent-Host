@@ -67,10 +67,15 @@ make install
 `make install` builds the CLI, links it into `~/.local/bin`, and installs the
 memory skill for detected Codex, Claude Code, OpenCode, Gemini CLI, Cursor and
 GitHub Copilot setups. It reports each result and preserves custom installations.
+With private runtime configuration in place, it also starts the enabled channels
+and enables automatic startup at login on macOS or Linux with user systemd.
+Use `make uninstall-service` to stop and remove that service, or
+`make install INSTALL_ARGS=--no-autostart` for CLI and skills only.
 Use `make build` to compile only. Installation options and connection setup are
 in the [external memory guide](docs/external-memory-skill-design.md).
 
-After preparing your private configuration, start the channel service:
+After preparing your private configuration, rerun `make install` for background
+operation. For a foreground session, remove automatic startup first, then run:
 
 ```sh
 make run

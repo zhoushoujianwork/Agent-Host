@@ -1,5 +1,49 @@
 # Runtime implementation and migration details
 
+## Source-checkout automatic startup
+
+The [main guide](service-install.md) defines installation and removal.
+`tools/install.py` calls `tools/service/autostart.py` after successful CLI/skill
+linking when runtime configuration exists. Explicit `--config-dir` requires a
+valid configuration; an unconfigured default checkout reports setup pending.
+`--no-autostart` bypasses OS registration.
+
+The installer checks `agent-host service check --config-dir` before stopping the
+previous service. It preserves definitions owned by another checkout and rejects
+symlink targets. It writes owner-only definitions atomically. Only executable
+discovery PATH and HOME are supplied to launchd; provider secrets remain in the
+existing private configuration. The service invokes the checkout binary directly
+with `service run --restart`, explicit configuration/viewer/Python paths and
+`--no-browser`. It does not rebuild at login.
+
+macOS uses `~/Library/LaunchAgents/com.agent-host.source.plist`, `RunAtLoad` and
+`KeepAlive.SuccessfulExit=false`, following [Apple's LaunchAgent lifecycle](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
+Linux uses `$XDG_CONFIG_HOME/systemd/user/agent-host.service` (default
+`~/.config/systemd/user`), `WantedBy=default.target` and
+[`Restart=on-failure`](https://github.com/systemd/systemd/blob/main/man/systemd.service.xml).
+Both wait 30 seconds between failure restarts and allow 45 seconds for shutdown.
+They use existing runtime locks and verified same-runtime replacement; no task
+replay is introduced. User lingering is not enabled by the installer.
+
+Readiness requires fresh `channel.connected` events from every enabled channel
+after registration begins, plus a running service for one second, within a
+60-second deadline. Old log events cannot satisfy this check. Errors leave the
+definition and private logs available for inspection and report failure.
+Removal stops/unregisters only this checkout's service and retains runtime data,
+CLI links and skill links. Linux supervisor diagnostics use the user journal;
+macOS uses `ROOT/logs/autostart.stdout.log` and `autostart.stderr.log`.
+
+Offline tests cover both OS definitions, escaping, repeat installation, preflight
+failure preservation, foreign/symlink rejection, registration errors, fresh
+per-channel readiness and removal. Linux registration remains unverified on a
+real Linux host; macOS live verification is recorded separately below.
+
+On 2026-10-15, `make check` passed and `make install` registered the macOS
+LaunchAgent for this checkout. Both Feishu and DingTalk emitted fresh connection
+events, launchd reported the supervisor running and the workbench returned HTTP
+200. A fresh Feishu message entered processing after startup. Login after a full
+reboot and forced-crash recovery were not exercised.
+
 ## Foreground restart through make run
 
 `make run` supplies `service run --restart` for both `CONFIG_DIR` and explicit
@@ -37,7 +81,8 @@ workbench returned HTTP 200. Private evidence is retained in
 
 The [main guide](service-install.md) defines the current project-local workflow.
 The old system installation instructions below are retained as historical
-reference for prior evidence; `make install` is no longer a Make target.
+reference for prior evidence; current `make install` uses the source-checkout
+installer described above.
 
 ## Unified configuration runtime
 

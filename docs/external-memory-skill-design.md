@@ -80,7 +80,11 @@ Copilot setups. Existing custom targets are preserved; each outcome is reported.
 New sessions can discover the skill. Keep this checkout in place, since the
 installed links point to its source and built binary.
 
-Start or restart the owning Host with `make run`, then configure one connection:
+With private channel configuration in place, `make install` also starts the Host
+and enables automatic user-login startup on macOS or Linux with user systemd.
+Use `INSTALL_ARGS=--no-autostart` for CLI/skills only. See the
+[runtime guide](service-install.md) for foreground operation and service removal.
+Then configure one connection:
 
 ```sh
 bin/agent-host memory connection add --connection default --home /absolute/host/state --agent default

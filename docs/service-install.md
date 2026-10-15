@@ -1,6 +1,7 @@
 # Project-local runtime
 
-Run enabled channels and built-in capabilities with `make run`. Editable
+Install automatic startup with `make install`, or run enabled channels in the
+foreground with `make run`. Editable
 configuration lives in `.agent-host/config/`; channel data lives in
 `.agent-host/channels/<name>/`, plugin data in `.agent-host/datasource/plugins/<name>/`,
 learned knowledge in `.agent-host/memory/`, and rebuildable indexes/task views in
@@ -12,7 +13,12 @@ See the [configuration guide](configuration-layout.md) and
 ## Configure and check
 
 `make install` builds and links the CLI and external memory skill into detected
-local agents. It reports installed/skipped targets and preserves custom skills.
+local agents. When `.agent-host/config/host.json` exists, it also installs and
+starts a user service: macOS LaunchAgent or Linux user systemd. It checks the
+configuration first and confirms that every enabled channel connects. Without
+configuration, it installs the CLI and skills and explains how to finish setup.
+Use `INSTALL_ARGS=--no-autostart` for CLI and skills only. Other platforms require
+that option; automatic startup is not implemented there.
 See the [memory skill setup](external-memory-skill-design.md#setup-and-first-release).
 Continue below to configure and start channel services with `make run`.
 
@@ -54,9 +60,25 @@ can select a different execution profile; provider environments remain isolated.
 ## Start and observe
 
 ```sh
+make install
+# Stop and remove automatic startup, keeping configuration, memory and state:
+make uninstall-service
+# Run manually in a terminal:
 make run
 make run RUN_ARGS=--no-browser
 ```
+
+Automatic startup runs at user login and retries failed processes after 30
+seconds. It keeps the checkout in place, uses the existing private configuration,
+and opens no browser. On Linux, a working user systemd session is required;
+continuing after logout or starting before login requires separately configured
+user lingering. macOS starts after login, not before it.
+
+After code or configuration changes, rerun `make install` to rebuild and restart
+the background service. Use `make uninstall-service` before switching to manual
+foreground operation. A custom runtime uses
+`INSTALL_ARGS="--config-dir /absolute/ROOT/config"`; removal uses the matching
+`CONFIG_DIR=/absolute/ROOT/config`.
 
 Repeating `make run` checks the new configuration, gracefully stops the same
 running instance, waits for its runtime locks to be released, and starts the
@@ -74,7 +96,11 @@ The [memory workbench](../tools/run-viewer/README.md#memory-workspace) forwards
 owner review actions to the corresponding running Host. Channel databases and
 native sessions remain independent. Enabled datasource plugins are global;
 Email shares one operation ledger across configured channels. No automatic task
-replay, crash restart or login-time service is installed.
+replay is performed. With `make install`, the service manager restarts the
+supervisor after failures. Supervisor output goes to
+`.agent-host/logs/autostart.*.log` on macOS and
+`journalctl --user -u agent-host.service` on Linux. Channel logs remain under
+their existing runtime directories.
 
 Ordinary CLI chat keeps `.agent-host/cli-state`. To inspect channel records, select
 the relevant `--home`; migrated default memories retain the original scope:
