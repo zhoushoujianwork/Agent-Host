@@ -16,6 +16,13 @@ The same versioned Go rules process both saved text and incoming questions.
 They identify explicit service names, source-declared aliases and a small topic
 vocabulary. Original statements and reviewed evidence remain unchanged.
 
+An external entry can also retain an explicit system, service or project subject
+from user-provided context. This keeps a statement such as "The namespace is ops"
+linked to its object without rewriting the original quote. Recall/read expose
+the association and its source. Existing active memories can receive a versioned,
+audited correction through `memory associate`; private evidence stays in Host
+storage. See the [protocol](../skills/agent-host-memory/references/protocol.md#preserve-the-object).
+
 ```mermaid
 flowchart LR
     W[Eligible memory text] --> A[Source-linked object and topic annotations]
@@ -71,7 +78,7 @@ accuracy or scale measurement. Reports and validation details are in the
 ## Scope and limits
 
 This increment supports explicit service names, positive parenthetical aliases,
-several configuration properties and credential rotation. It does not perform
+explicit attributed context associations, several configuration properties and credential rotation. It does not perform
 general entity extraction, arbitrary paraphrase understanding, pronoun
 resolution or vector search. Model-based admission and human experience review
 remain separate decisions; Jev thresholds are unchanged.

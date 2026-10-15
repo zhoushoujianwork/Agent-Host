@@ -25,6 +25,7 @@ const externalMemoryUsage = `External agent memory (local running Host, file-mem
   agent-host memory receipt --connection NAME --key IDEMPOTENCY_KEY
   agent-host memory recall --connection NAME --query TEXT
   agent-host memory read --connection NAME --memory ID [--revision N]
+  agent-host memory associate --connection NAME --memory ID --revision N --input FILE_OR_DASH
 
 All output is JSON. --json is accepted for explicitness. --connections FILE
 overrides ~/.config/agent-host/memory-connections.json. --connection defaults to
@@ -40,7 +41,7 @@ type externalProfile struct {
 }
 
 func isExternalMemoryCommand(s string) bool {
-	return s == "connection" || s == "submit" || s == "receipt" || s == "recall" || s == "read"
+	return s == "connection" || s == "submit" || s == "receipt" || s == "recall" || s == "read" || s == "associate"
 }
 
 func loadExternalProfiles(path string) (map[string]externalProfile, error) {
@@ -204,9 +205,9 @@ func runExternalMemory(ctx context.Context, args []string, in io.Reader, out, er
 	if command != "connection-add" && (home != "" || a.Agent != "" || a.Project != "" || checkpoint) {
 		return errors.New("scope and checkpoint options are for connection add only")
 	}
-	if command == "submit" {
+	if command == "submit" || command == "associate" {
 		if input == "" {
-			return errors.New("submit requires --input FILE or -")
+			return fmt.Errorf("%s requires --input FILE or -", command)
 		}
 		reader := in
 		if input != "-" {
@@ -224,19 +225,31 @@ func runExternalMemory(ctx context.Context, args []string, in io.Reader, out, er
 		if len(b) > state.MaxExternalBytes {
 			return errors.New("submission exceeds 64 KiB")
 		}
-		var submission state.ExternalSubmission
 		d := json.NewDecoder(bytes.NewReader(b))
 		d.DisallowUnknownFields()
-		if err := d.Decode(&submission); err != nil {
-			return err
+		if command == "associate" {
+			if a.Memory == "" || a.Revision < 1 {
+				return errors.New("associate requires --memory and a positive expected --revision")
+			}
+			if err := d.Decode(&a.Objects); err != nil {
+				return err
+			}
+			if d.Decode(new(any)) != io.EOF {
+				return errors.New("association requires one JSON array")
+			}
+		} else {
+			var submission state.ExternalSubmission
+			if err := d.Decode(&submission); err != nil {
+				return err
+			}
+			if d.Decode(new(any)) != io.EOF {
+				return errors.New("submission must contain one JSON object")
+			}
+			if err := submission.Validate(); err != nil {
+				return err
+			}
+			a.Submission = &submission
 		}
-		if d.Decode(new(any)) != io.EOF {
-			return errors.New("submission must contain one JSON object")
-		}
-		if err := submission.Validate(); err != nil {
-			return err
-		}
-		a.Submission = &submission
 	}
 	if command == "receipt" && ((a.Receipt == "") == (a.Key == "")) {
 		return errors.New("receipt requires exactly one of --receipt or --key")

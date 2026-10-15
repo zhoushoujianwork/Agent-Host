@@ -82,6 +82,55 @@ receipt; changing the payload under that key fails. Failed decisions stay failed
 after resolving the cause, a deliberate new attempt uses a new key. Do not replay
 the business task. A failed transport alone is not a reason to generate a new key.
 
+## Preserve the object
+
+An exact statement can omit its subject (for example, "The namespace is ops").
+When a user identifies the subject in surrounding conversation, include optional
+item metadata such as:
+
+```json
+"objects": [{"name": "Bastion", "kind": "system", "evidence_id": "subject-1"}]
+```
+
+Include `subject-1` as a separate `role=user` entry in the submission's evidence,
+with the exact excerpt identifying Bastion, its author and observation time.
+Do not add it to the statement's `evidence_ids`: that still contains exactly the
+one verbatim statement. Kinds are `system`, `service`, or `project`; at most three
+objects per item. The name must occur exactly in the subject excerpt. Context
+associations are caller-attributed assertions, not independently verified facts.
+They neither grant permissions nor bypass admission. A duplicate with differing
+object context fails explicitly rather than silently discarding the association.
+
+To correct the associations of an existing active memory at the user's request,
+write a JSON array (replacing its current explicit associations):
+
+```json
+[{
+  "name": "Bastion",
+  "kind": "system",
+  "source": {"entry": "codex", "observed_at": "2026-10-15T04:00:00Z"},
+  "evidence": {
+    "id": "subject-1", "role": "user", "author": "local-owner",
+    "text": "These deployment facts concern Bastion.",
+    "observed_at": "2026-10-15T04:00:00Z"
+  }
+}]
+```
+
+Use actual conversation/turn IDs in `source` when available. Then call:
+
+```sh
+agent-host memory associate --memory MEMORY_ID --revision CURRENT_REVISION --input /absolute/objects.json
+```
+
+The owning Host checks the connection, scope, active status, expected revision,
+and evidence shape, then writes a new audited memory revision. It does not rerun
+admission or reactivate disabled records. A timeout requires read-back before
+retry; a stale revision is an explicit error. The original statement and its
+admission evidence remain unchanged. Read returns the association evidence inside
+`memory.objects`; recall returns object names/kinds for navigation. A known bare
+object name can resolve through the same scoped registry; ambiguous names abstain.
+
 ## Proposed procedures
 
 Use `kind=procedure`, omit `text`, and provide `procedure` with `title`, `summary`,

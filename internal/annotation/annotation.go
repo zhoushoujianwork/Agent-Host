@@ -13,13 +13,14 @@ import (
 	"unicode/utf8"
 )
 
-const Version = "entity-topic-v2"
+const Version = "entity-topic-v3"
 
 type Span struct {
 	Text   string `json:"text"`
 	Start  int    `json:"start"`
 	End    int    `json:"end"`
 	Method string `json:"method"`
+	Source string `json:"source,omitempty"`
 }
 
 type Object struct {
@@ -111,6 +112,7 @@ func Extract(scope, text string) Annotation {
 func Resolve(scope, text string, records []Annotation) Query {
 	q := Query{Annotation: Extract(scope, text), ResolvedIDs: []string{}, Ambiguous: []string{}, Unknown: []string{}, text: text}
 	known := map[string]bool{}
+	kinds := map[string]string{}
 	aliases := map[string]map[string]bool{}
 	for _, a := range records {
 		for _, o := range a.Objects {
@@ -118,6 +120,12 @@ func Resolve(scope, text string, records []Annotation) Query {
 			// accidentally supplied annotations from another workspace.
 			if o.ID == objectID(scope, o.Kind, o.Name) {
 				known[o.ID] = true
+				kinds[o.ID] = o.Kind
+				key := canonical(o.Name)
+				if aliases[key] == nil {
+					aliases[key] = map[string]bool{}
+				}
+				aliases[key][o.ID] = true
 			}
 		}
 	}
@@ -173,7 +181,7 @@ func Resolve(scope, text string, records []Annotation) Query {
 		resolveName(&q, text[m.start:m.end], aliases[m.name], false)
 		if len(aliases[m.name]) == 1 {
 			for id := range aliases[m.name] {
-				q.resolvedObjects = append(q.resolvedObjects, Object{ID: id, Name: text[m.start:m.end], Kind: "service", Span: sourceSpan(text, m.start, m.end, "resolved-explicit-alias")})
+				q.resolvedObjects = append(q.resolvedObjects, Object{ID: id, Name: text[m.start:m.end], Kind: kinds[id], Span: sourceSpan(text, m.start, m.end, "resolved-explicit-alias")})
 			}
 		}
 		end = m.end
@@ -656,6 +664,9 @@ func bindTopics(a *Annotation, text string) {
 		t.ObjectIDs = nil
 		previous := -1
 		for j, o := range a.Objects {
+			if o.Span.Start < 0 {
+				continue
+			}
 			if o.Span.End <= t.Span.Start && (previous < 0 || o.Span.Start > a.Objects[previous].Span.Start) {
 				previous = j
 			}

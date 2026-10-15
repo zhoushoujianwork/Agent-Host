@@ -115,7 +115,20 @@ func TestExternalMemoryCLIEndToEndAcrossConnectionsAndRestart(t *testing.T) {
 		t.Fatal(receipt)
 	}
 	id := receipt["results"].([]any)[0].(map[string]any)["memory_id"].(string)
-	read, err := call("", "read", "--connection", "same-scope", "--memory", id, "--revision", "1")
+	objects := []state.MemoryObject{{Name: "Bastion", Kind: "system", Source: state.ExternalSource{Entry: "test", ObservedAt: now}, Evidence: state.ExternalEvidence{ID: "context", Author: "owner", Role: "user", Text: "This distribution fact concerns Bastion.", ObservedAt: now}}}
+	objectJSON, _ := json.Marshal(objects)
+	linked, err := call(string(objectJSON), "associate", "--connection", "same-scope", "--memory", id, "--revision", "1", "--input", "-")
+	if err != nil || linked["revision"] != float64(2) {
+		t.Fatal(linked, err)
+	}
+	recalled, err := call("", "recall", "--connection", "same-scope", "--query", "Bastion")
+	if err != nil || len(recalled["items"].([]any)) != 1 {
+		t.Fatal(recalled, err)
+	}
+	if len(recalled["items"].([]any)[0].(map[string]any)["objects"].([]any)) != 1 {
+		t.Fatal("object missing from recall", recalled)
+	}
+	read, err := call("", "read", "--connection", "same-scope", "--memory", id, "--revision", "2")
 	if err != nil || read["supporting_evidence"].(map[string]any)["role"] != "external_agent_supplied_evidence" {
 		t.Fatal(read, err)
 	}

@@ -35,7 +35,7 @@ type annotatedMemory struct {
 }
 
 func rawAnnotation(ctx context.Context, tx *sql.Tx, m Memory) error {
-	a := annotation.Extract(m.Scope, m.Text)
+	a := objectAnnotation(m, annotation.Extract(m.Scope, m.Text))
 	payload, err := json.Marshal(a)
 	if err != nil {
 		return err
@@ -175,6 +175,11 @@ func registryHasAliases(records []annotation.Annotation) bool {
 		if len(record.Aliases) > 0 {
 			return true
 		}
+		for _, o := range record.Objects {
+			if o.Span.Method == "explicit-object-context" {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -197,7 +202,8 @@ func rebuildTerms(ctx context.Context, tx *sql.Tx, scope string, partition ...st
 			registry = []annotation.Annotation{item.Annotation}
 		}
 		query := annotation.Resolve(scope, item.Memory.Text, registry)
-		for _, key := range annotation.QueryKeys(query) {
+		keys := append(annotation.QueryKeys(query), annotation.Keys(objectAnnotation(item.Memory, annotation.Canonical(query)))...)
+		for _, key := range keys {
 			if _, err = tx.ExecContext(ctx, "INSERT INTO memory_terms(memory_id,term) VALUES(?,?) ON CONFLICT DO NOTHING", item.Memory.ID, key); err != nil {
 				return wrap("index memory annotation", err)
 			}
@@ -293,7 +299,7 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 			}
 			memoryQuery := annotation.Resolve(scope, item.Memory.Text, registry)
 			memoryQueries[item.Memory.ID] = memoryQuery
-			current := annotation.Canonical(memoryQuery)
+			current := objectAnnotation(item.Memory, annotation.Canonical(memoryQuery))
 			canonical[item.Memory.ID] = current
 			for _, object := range current.Objects {
 				if !resolved[object.ID] {

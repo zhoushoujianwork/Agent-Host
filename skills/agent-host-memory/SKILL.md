@@ -32,6 +32,13 @@ Host memories as new evidence.
 
 - A statement retains an exact user excerpt with author and observation time.
   Keep generated summaries out of the statement field.
+- Preserve the subject when it comes from conversation context. Supply the item's
+  `objects` with the explicit system/service/project name and a cited user excerpt
+  that identifies that subject. Do not guess a subject from cwd or invent a name
+  in the exact statement. Recall/read show the retained associations separately.
+  At the user's request, `memory associate` can correct an existing active record's
+  object context with a current revision and attributed user evidence; see the
+  protocol. This changes metadata, not admission or the original statement.
 - A procedure proposes a short lesson with conditions, steps, and cited external
   tool call/result excerpts, including explicit error status. Preserve failure
   and uncertainty. Assistant claims alone cannot establish successful execution.

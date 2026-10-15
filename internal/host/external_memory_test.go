@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +75,49 @@ func externalHost(t *testing.T) (*Host, state.ExternalConnection) {
 		t.Fatal(err)
 	}
 	return &Host{Store: s, Decider: &externalDecider{}, Judge: externalJudge{eligible: true}}, c
+}
+
+func TestExternalObjectContextPreservesStatementAndRetrievesSubject(t *testing.T) {
+	h, c := externalHost(t)
+	r := submitExternal(t, h, c, "plain", false)
+	v := r.Submission
+	v.Key = "with-object"
+	now := time.Now().UTC()
+	v.Evidence = append(v.Evidence, state.ExternalEvidence{ID: "object", Role: "user", Author: "owner", Text: "This statement concerns Bastion.", ObservedAt: now})
+	v.Items[0].Objects = []state.ExternalObject{{Name: "Bastion", Kind: "system", EvidenceID: "object"}}
+	r, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = processedExternal(t, h, r)
+	if r.Results[0].Status != "published" {
+		t.Fatal(r.Results)
+	}
+	m, err := h.Store.Memory(t.Context(), r.Results[0].MemoryID)
+	if err != nil || m.Text != v.Items[0].Text || len(m.Objects) != 1 || m.Objects[0].Evidence.ID != "object" {
+		t.Fatal(m, err)
+	}
+	matches, err := h.Store.Search(t.Context(), c.Scope, "Bastion", 10)
+	if err != nil || len(matches) != 1 || matches[0].ID != m.ID {
+		t.Fatal(matches, err)
+	}
+	h.Decider = &externalDecider{duplicate: m.ID}
+	v.Key = "different-object-duplicate"
+	v.Items[0].Objects[0].Name = "Billing"
+	v.Evidence[1].Text = "This statement concerns Billing."
+	duplicate, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duplicate = processedExternal(t, h, duplicate)
+	if duplicate.Results[0].Status != "failed" || !strings.Contains(duplicate.Results[0].Reason, "object context differs") {
+		t.Fatal("lost object on deduplication", duplicate.Results)
+	}
+	v.Key = "bad-context"
+	v.Items[0].Objects[0].EvidenceID = "missing"
+	if _, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v); err == nil {
+		t.Fatal("accepted unknown object evidence")
+	}
 }
 func submitExternal(t *testing.T, h *Host, c state.ExternalConnection, key string, procedure bool) state.ExternalReceipt {
 	t.Helper()

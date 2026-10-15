@@ -61,6 +61,7 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 		return p, err
 	}
 	m := state.Memory{ID: ID(), AgentID: r.Connection.AgentID, AudienceID: state.OwnerAudienceID, Scope: r.Connection.Scope, Status: "active", Revision: 1, ExternalReceiptID: r.ID, CreatedAt: time.Now().UTC(), EvidenceIDs: append([]string(nil), item.EvidenceIDs...)}
+	m.Objects = r.Submission.ItemObjects(index)
 	switch item.Kind {
 	case "statement":
 		if h.Decider == nil {

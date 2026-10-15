@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -59,6 +60,25 @@ type ExternalItem struct {
 	Text        string           `json:"text,omitempty"`
 	EvidenceIDs []string         `json:"evidence_ids"`
 	Procedure   *ExperienceDraft `json:"procedure,omitempty"`
+	Objects     []ExternalObject `json:"objects,omitempty"`
+}
+
+type ExternalObject struct {
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	EvidenceID string `json:"evidence_id"`
+}
+
+func (v ExternalSubmission) ItemObjects(index int) []MemoryObject {
+	var out []MemoryObject
+	for _, o := range v.Items[index].Objects {
+		for _, e := range v.Evidence {
+			if e.ID == o.EvidenceID {
+				out = append(out, MemoryObject{Name: o.Name, Kind: o.Kind, Source: v.Source, Evidence: e})
+			}
+		}
+	}
+	return out
 }
 
 type ExternalSubmission struct {
@@ -117,7 +137,14 @@ func (v ExternalSubmission) Validate() error {
 		}
 		available[e.ID] = e
 	}
-	for _, item := range v.Items {
+	for index, item := range v.Items {
+		objects := v.ItemObjects(index)
+		if len(objects) != len(item.Objects) {
+			return errors.New("object context references unknown evidence")
+		}
+		if err := validateMemoryObjects(objects); err != nil {
+			return err
+		}
 		if len(item.EvidenceIDs) < 1 || len(item.EvidenceIDs) > 16 {
 			return errors.New("items require 1–16 evidence references")
 		}
@@ -398,6 +425,9 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 					if (r.Submission.Items[index].Kind == "procedure") != (m.SourceType == "reviewed_experience") {
 						return errors.New("external duplicate cannot change source evidence type")
 					}
+					if proposed := r.Submission.ItemObjects(index); len(proposed) > 0 && !sameObjectIdentities(m.Objects, proposed) {
+						return errors.New("duplicate object context differs; explicitly associate the existing memory after review")
+					}
 					if p.Result.MemoryID == "" {
 						p.Result.MemoryID = m.ID
 						p.Result.Revision = m.Revision
@@ -409,6 +439,9 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 					return errors.New("external memory source attribution is invalid")
 				}
 				item := r.Submission.Items[index]
+				if !reflect.DeepEqual(m.Objects, r.Submission.ItemObjects(index)) {
+					return errors.New("external publication changed object context")
+				}
 				if !slices.Equal(m.EvidenceIDs, item.EvidenceIDs) {
 					return errors.New("external publication changed evidence references")
 				}

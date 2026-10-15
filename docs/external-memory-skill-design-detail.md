@@ -6,6 +6,14 @@ in the skill's [protocol reference](../skills/agent-host-memory/references/proto
 
 ## Ownership and connections
 
+External items may now cite explicit object context independently of their exact
+statement/tool evidence. `memory associate` applies an explicitly requested
+correction to an existing active record through the same scoped owning worker,
+with optimistic revision checks and audited file-memory publication. Recall
+includes names, kinds, scoped IDs and query resolution; read includes attributed
+context evidence. See [object retrieval](object-retrieval-detail.md) and the
+[payload examples](../skills/agent-host-memory/references/protocol.md#preserve-the-object).
+
 `make install` builds first, then runs `tools/install.py`. This user-local
 installer links the built executable into `~/.local/bin` and the complete source
 skill into each detected supported client's skill directory. Detection checks

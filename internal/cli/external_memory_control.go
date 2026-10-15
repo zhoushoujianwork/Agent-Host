@@ -25,6 +25,7 @@ type externalMemoryRequest struct {
 	Memory     string                    `json:"memory,omitempty"`
 	Revision   int                       `json:"revision,omitempty"`
 	Submission *state.ExternalSubmission `json:"submission,omitempty"`
+	Objects    []state.MemoryObject      `json:"objects,omitempty"`
 }
 
 type externalMemoryControl struct {
@@ -178,6 +179,8 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 				var receipt state.ExternalReceipt
 				receipt, err = x.store.ExternalReceipt(ctx, c.ID, a.Receipt, a.Key)
 				value = externalReceiptView(receipt)
+			case "associate":
+				value, err = s.AssociateMemoryObjects(ctx, c.Scope, a.Memory, a.Revision, a.Objects)
 			case "recall":
 				if a.Query == "" {
 					err = errors.New("recall requires a query")
@@ -193,9 +196,13 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 						if len(text) > 160 {
 							text = text[:160]
 						}
-						items = append(items, map[string]any{"id": m.ID, "revision": m.Revision, "kind": m.Kind, "snippet": string(text), "external_receipt_id": m.ExternalReceiptID})
+						objects := []map[string]string{}
+						for _, o := range m.Objects {
+							objects = append(objects, map[string]string{"id": o.ID(m.Scope), "name": o.Name, "kind": o.Kind})
+						}
+						items = append(items, map[string]any{"id": m.ID, "revision": m.Revision, "kind": m.Kind, "snippet": string(text), "external_receipt_id": m.ExternalReceiptID, "objects": objects})
 					}
-					value = map[string]any{"items": items, "connection": c, "bounded": true}
+					value = map[string]any{"items": items, "connection": c, "bounded": true, "query_analysis": result.Query}
 				}
 			case "read":
 				var m state.Memory

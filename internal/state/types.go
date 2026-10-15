@@ -79,6 +79,7 @@ type Memory struct {
 	RevisionDecision  json.RawMessage `json:"revision_decision,omitempty"`
 	Entities          []string        `json:"entities,omitempty"`
 	EvidenceIDs       []string        `json:"evidence_ids,omitempty"`
+	Objects           []MemoryObject  `json:"objects,omitempty"`
 	ExpiresAt         *time.Time      `json:"expires_at,omitempty"`
 	ReviewNote        string          `json:"review_note,omitempty"`
 }

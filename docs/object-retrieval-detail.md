@@ -27,7 +27,22 @@ rows; a user statement cannot claim experience provenance through them.
 
 ## Representation and rules
 
-The current rule version is `entity-topic-v2`. The P0 native acceptance exposed
+The current rule version is `entity-topic-v3`. V3 adds explicit context objects
+with scoped IDs and user-evidence provenance in `Memory.Objects`. New external
+items cite a subject excerpt; `memory associate` updates an active record using
+an expected revision and normal atomic publication. It cannot change the original
+statement, admission evidence, scope or lifecycle status. Exact object-name
+presence validates source shape, not the semantic truth of a caller assertion.
+
+Context mentions use negative offsets and `span.source` to reference separate
+evidence instead of pretending the name occurred in the memory statement. Derived
+indexes include these IDs even when the original statement omits the name. A
+single explicit subject can bind otherwise unbound properties; several subjects
+do not receive guessed property relationships. Active canonical names also
+participate in bounded name resolution; name collisions abstain. This is explicit
+context support, not general model-based entity extraction or pronoun resolution.
+
+The P0 native acceptance exposed
 that a readiness "success token" was incorrectly filtered as an authentication
 credential. V2 excludes specifically named success/readiness/liveness response
 tokens from credential classification, while a separate bearer/access token
@@ -35,6 +50,12 @@ retains its type. Writable startup rebuilds outdated annotations/indexes by
 Agent/audience partition without rewriting source memory or revisions.
 The original retrieval evidence below remains historical; P0 checks this new
 case and real fresh-session recall separately.
+
+V3 validation covers subject-free statements, object/property isolation, name
+collisions, unchanged source text, stale revisions, scope/partition boundaries,
+invalidation, file-cache rebuild and external submit/associate/recall/read. Local
+runtime read-back verified two existing facts resolve to one user-confirmed
+system object. This does not establish general entity-extraction accuracy.
 
 An annotation retains object mentions,
 explicit aliases and topics, each with source text, UTF-8 byte offsets and a
