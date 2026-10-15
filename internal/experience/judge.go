@@ -186,6 +186,11 @@ Distinguish reusable command syntax from a claim about future execution. A param
 	return finish("eligible_for_human_review", nil)
 }
 
+// SameProcedure checks literal procedural identity, not lifecycle eligibility.
+func SameProcedure(draft state.ExperienceDraft, m state.Memory) bool {
+	return m.SourceType == "reviewed_experience" && m.Kind == "procedure" && m.Text == state.ExperienceText(draft) && m.Conditions == draft.Conditions && slices.Equal(m.Steps, draft.Steps) && slices.Equal(m.Avoid, draft.Avoid)
+}
+
 // Compare checks all eligible records supplied by the caller in one scope.
 // Uncertain relations quarantine knowledge instead of picking a newer winner.
 func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, existing []state.Memory) (Relations, error) {
@@ -232,7 +237,7 @@ func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, exist
 		known[m.ID] = true
 		key := fmt.Sprintf("m%d", i)
 		memories[key] = m
-		if m.SourceType == "reviewed_experience" && m.Kind == "procedure" && m.Text == state.ExperienceText(candidate.Draft) && m.Conditions == candidate.Draft.Conditions && slices.Equal(m.Steps, candidate.Draft.Steps) && slices.Equal(m.Avoid, candidate.Draft.Avoid) {
+		if SameProcedure(candidate.Draft, m) {
 			exact[key] = m
 		} else {
 			questions[key] = relationQuestion(key)

@@ -69,6 +69,12 @@ clarifies faithful command templates and compatible conditional procedures,
 while retaining the 0.80 threshold. Literal duplicates of an active reviewed
 procedure reuse its identity; conflicted records stay quarantined.
 
+Submitting the identical active procedure again returns the existing record
+without a fresh model vote or merging the incoming evidence. Changed or
+withdrawn lessons do not qualify for this reuse path. The real-case repeat
+completed successfully and returned the same revision, with one active console
+record and unchanged supporting evidence.
+
 The specific correction is now active after an explicit audited recovery, with
 its original evidence and failed receipts preserved. Normal recall and the
 local console projection were verified. This one historical backfill does not

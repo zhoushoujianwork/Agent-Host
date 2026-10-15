@@ -217,9 +217,9 @@ func TestExternalHostProviderFailureAndProcedureEvidence(t *testing.T) {
 		t.Fatal("external procedure cannot be mounted", err)
 	}
 	h.Judge = externalJudge{eligible: false}
-	withheld := processedExternal(t, h, submitExternal(t, h, c, "unsupported", true))
-	if withheld.Results[0].Status != "excluded" {
-		t.Fatal(withheld)
+	reused := processedExternal(t, h, submitExternal(t, h, c, "already-admitted", true))
+	if reused.Results[0].Status != "published" || reused.Results[0].Reason != "duplicate_existing_memory" || reused.Results[0].MemoryID != m.ID {
+		t.Fatal("identical active knowledge was reassessed instead of reused", reused)
 	}
 }
 

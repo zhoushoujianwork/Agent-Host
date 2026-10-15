@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"agent-host/internal/experience"
 	"agent-host/internal/memory"
 	"agent-host/internal/state"
 )
@@ -87,6 +88,17 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 			return p, errors.New("external procedure assessment provider is unavailable")
 		}
 		draft := *item.Procedure
+		for _, known := range existing {
+			if known.Scope != r.Connection.Scope || known.Status != "active" || disabled[known.ID] || known.ExpiresAt != nil && !known.ExpiresAt.After(time.Now()) || !experience.SameProcedure(draft, known) {
+				continue
+			}
+			// Reuse already-admitted knowledge without changing its evidence or
+			// claiming that the incoming excerpts received a fresh assessment.
+			p.DuplicateIDs = []string{known.ID}
+			p.Result.Status, p.Result.Reason = "published", "duplicate_existing_memory"
+			p.Result.Audit, _ = json.Marshal(map[string]any{"policy": "reuse-active-reviewed-procedure-v1", "memory_id": known.ID, "revision": known.Revision, "evidence_basis": "existing active reviewed procedure; incoming evidence not reassessed or merged"})
+			return p, nil
+		}
 		assessment, err := h.Judge.Assess(ctx, draft, r.Submission.ToolEvidence())
 		p.Result.Audit = assessment.Audit
 		if err != nil {

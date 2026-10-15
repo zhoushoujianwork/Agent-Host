@@ -194,6 +194,35 @@ preserves source type, checks other potential conflicts, and never promotes a
 conflicted exact match. Publication still checks eligibility, source identity
 and the current generation.
 
+The v5 normal repeat, receipt `579fc65c-3303-405d-90f5-c94fc8d80f73`, was
+withheld during fresh evidence assessment despite the identical procedure being
+active. Exact comparison alone therefore did not make repeat submissions
+reliable. The external Host now recognizes an identical active reviewed
+procedure before reassessing it and returns an existing-memory reference.
+The audit policy `reuse-active-reviewed-procedure-v1` explicitly states that
+incoming evidence was not reassessed or merged. Source, scope, lifecycle,
+expiration, object context and publication-generation checks remain. New or
+changed content still takes the ordinary assessment path. A regression proves
+reuse under an abstaining judge, unchanged original evidence/revision, rejection
+of changed claims and no revival of a withdrawn memory. One older test expected
+fresh rejection for identical already-admitted content; its expectation now
+checks reuse, while the new changed-content case retains the rejection check.
+
+At 14:13 Asia/Singapore the final local restart used
+`make run RUN_ARGS=--no-browser`; both channels emitted fresh connection events.
+Normal submission receipt `0206b799-74ca-4e11-9967-2d032283b6d7` completed as
+`published/duplicate_existing_memory`, referencing the existing correction at
+revision 2. Its stored audit identifies the reuse policy above. Ordinary recall
+and revision-specific read succeeded. `/api/memories` returned exactly one
+active copy of that ID, and its original external evidence still pointed to
+receipt `7e0c0081-7493-4e07-8190-958fdfd4d6f6`. No source command was replayed.
+The final combined-checkout `make check` passed. Reports are retained as
+`tccli-active-reuse-rollout-20261015.json` and
+`tccli-active-reuse-outcome-20261015.json` in the ignored validation directory.
+This verifies known-record reuse and the recovered case, not reliable automatic
+admission of every new lesson; the earlier probabilistic abstentions remain
+evidence of that limitation.
+
 Focused live checks live in `internal/experience/judge_live_test.go`. Opt in
 with `AGENT_HOST_LIVE_ASSESSMENT=1`, the selected submission in
 `AGENT_HOST_LIVE_ASSESSMENT_INPUT`, configured environment/endpoint/model via
