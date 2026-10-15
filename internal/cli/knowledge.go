@@ -24,6 +24,7 @@ Configuration and provider token files must be owner-private (0600 or 0400).
 check validates local files only; no remote search or authentication is performed.
 Enabled datasource.plugins.* configurations are global across channels, Agents,
 projects and audiences. Legacy direct configurations retain their selectors.
+With users.json, non-owner/shared tasks also require explicit user/source grants.
 Legacy default means unregistered cwd. Local sources require explicit relative paths.
 Native permissions apply. The internal serve command runs only pinned MCP instances.
 `

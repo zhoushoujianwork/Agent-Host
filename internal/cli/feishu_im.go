@@ -11,7 +11,7 @@ import (
 )
 
 func feishuIMConfig(cfg feishumeeting.Config) feishu.Config {
-	return feishu.Config{Profile: cfg.Profile, AppID: cfg.AppID, TenantID: cfg.TenantID, BotOpenID: cfg.BotOpenID, OwnerOpenID: cfg.OwnerOpenID}
+	return feishu.Config{Profile: cfg.Profile, AppID: cfg.AppID, TenantID: cfg.TenantID, BotOpenID: cfg.BotOpenID, OwnerOpenID: cfg.OwnerOpenID, AllowPrivateUsers: cfg.AllowPrivateUsers}
 }
 
 // Source kind selects the reply transport, independent of task text and agent.
@@ -43,6 +43,15 @@ func (c agentCatalog) selectFeishuAgent(account string, message channel.Message)
 	}
 	if _, err := c.definition(id); err != nil {
 		return channel.AgentSelection{}, err
+	}
+	if c.users != nil {
+		private, err := c.privateAudience(userAccount{Channel: state.ReplyTargetFeishu, AccountID: account, TenantID: message.TenantID, SenderID: message.SenderID})
+		if err != nil {
+			return channel.AgentSelection{}, err
+		}
+		if message.ConversationType == "1" {
+			audience = private
+		}
 	}
 	return channel.AgentSelection{AgentID: id, AudienceID: audience}, nil
 }

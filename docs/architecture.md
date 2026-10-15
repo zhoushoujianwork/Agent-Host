@@ -13,6 +13,13 @@ instructions and profiles to read-only runtime configuration, learned knowledge
 and skills to memory, source snapshots to datasource plugin storage, and scoped
 task context views to cache. It removes the separate top-level knowledge directory
 in the target layout while preserving execution cwd and channel state.
+An optional `config/users.json` now resolves multiple private channel users,
+initializes `users/<id>/USER.md` on verified first contact, selects optional
+`config/users/<id>/USER.md` overrides and grants external sources explicitly for
+non-owner/shared tasks. Local account receipts are durable, backed-up Host state;
+memory and native sessions retain separate audience/source partitions. Without
+this registry the owner-only private path remains compatible. Automated isolation
+tests are distinct from pending live multi-person channel acceptance.
 The [lightweight workspace backup](workspace-backup-design.md) retains current
 configuration, memory state and required source evidence in encrypted compressed
 tar archives. Compact restore verification, daily supervisor scheduling and
@@ -314,7 +321,9 @@ meeting evidence.
 The [issue #1 plan](release-follow-up.md#issue-1-delivery-plan) includes native
 skills from eligible execution procedures and explicit per-person reply
 preferences. File-memory Claude Skill mounting is implemented; broader per-person
-profiles remain planned. Optional owner USER configuration is a narrower binding. They reuse scoped, source-linked memory and
+profiles now have an optional explicit account registry and per-user USER files.
+Automatic profile editing and account-link verification workflows remain planned.
+They reuse scoped, source-linked memory and
 depend on the publication/blacklist increment; native skill execution remains
 inside the harness, and profile data cannot broaden identity or audience grants.
 

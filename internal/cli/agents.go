@@ -48,6 +48,8 @@ type agentCatalog struct {
 	DefaultAgent  string            `json:"default_agent"`
 	Agents        []agentDefinition `json:"agents"`
 	GroupBindings []agentBinding    `json:"group_bindings,omitempty"`
+	users         *userCatalog
+	ownerID       string
 }
 
 var agentIdentifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -118,7 +120,9 @@ func loadAgents(path string) (agentCatalog, error) {
 		}
 		groups[b.ConversationID] = true
 	}
-	return c, nil
+	var err error
+	c.users, err = loadUsers(filepath.Dir(path))
+	return c, err
 }
 
 func (c agentCatalog) definition(id string) (agentDefinition, error) {
@@ -143,6 +147,15 @@ func (c agentCatalog) selectAgent(account string, m dingtalk.Message) (channel.A
 	}
 	if _, err := c.definition(id); err != nil {
 		return channel.AgentSelection{}, err
+	}
+	if c.users != nil {
+		private, err := c.privateAudience(userAccount{Channel: "dingtalk", AccountID: account, TenantID: m.TenantID, SenderID: m.SenderID})
+		if err != nil {
+			return channel.AgentSelection{}, err
+		}
+		if m.ConversationType == "1" {
+			audience = private
+		}
 	}
 	return channel.AgentSelection{AgentID: id, AudienceID: audience}, nil
 }
@@ -306,7 +319,15 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	if id == "" && audience == "" && message.ConversationType != "2" {
 		id, audience = "default", "owner"
 	}
-	if provider != "dingtalk" && (message.Channel != provider || message.AccountID != parent.ClientID) || audience == "" || message.ConversationType == "2" && audience != channel.Key("group-audience-v1", provider, parent.ClientID, message.TenantID, message.ConversationID) || message.ConversationType != "2" && audience != "owner" {
+	expectedPrivate := state.OwnerAudienceID
+	if message.ConversationType != "2" && agents.users != nil {
+		var err error
+		expectedPrivate, err = agents.privateAudience(userAccount{Channel: provider, AccountID: parent.ClientID, TenantID: message.TenantID, SenderID: message.SenderID})
+		if err != nil {
+			return nil, err
+		}
+	}
+	if (provider != "dingtalk" || agents.users != nil) && (message.Channel != provider || message.AccountID != parent.ClientID) || audience == "" || message.ConversationType == "2" && audience != channel.Key("group-audience-v1", provider, parent.ClientID, message.TenantID, message.ConversationID) || message.ConversationType != "2" && audience != expectedPrivate {
 		return nil, errors.New("message has an incompatible audience binding")
 	}
 	a, err := agents.definition(id)
@@ -316,6 +337,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	o, err := a.options(base, audience, message.ConversationType == "2", true)
 	if err != nil {
 		return nil, err
+	}
+	if err := agents.userOptions(&o, audience, message.ConversationType == "2"); err != nil {
+		return nil, fmt.Errorf("load user profile: %w", err)
 	}
 	owner := parent.OwnerID != "" && message.SenderID == parent.OwnerID
 	o.hostInstructions += "\n\n" + channelAuthorizationInstructions(parent.OwnerID, owner)

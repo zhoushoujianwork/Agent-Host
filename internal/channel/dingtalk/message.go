@@ -23,12 +23,13 @@ const (
 )
 
 type Config struct {
-	ClientID        string
-	RobotCode       string
-	ClientSecret    string `json:"-"`
-	CorpID          string
-	OwnerUserID     string
-	WorkspaceConfig string `json:"-"`
+	ClientID          string
+	RobotCode         string
+	ClientSecret      string `json:"-"`
+	CorpID            string
+	OwnerUserID       string
+	AllowPrivateUsers bool
+	WorkspaceConfig   string `json:"-"`
 }
 
 func ValidateConfig(cfg Config) error {
@@ -171,7 +172,7 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 	if callback.ChatbotCorpID != cfg.CorpID || callback.SenderCorpID != cfg.CorpID {
 		return message, reject("enterprise identity does not match")
 	}
-	if callback.ConversationType == "1" && callback.SenderStaffID != cfg.OwnerUserID {
+	if callback.ConversationType == "1" && callback.SenderStaffID != cfg.OwnerUserID && !cfg.AllowPrivateUsers {
 		return message, reject("sender is not the configured owner")
 	}
 	if callback.SenderID == "" || callback.SenderID == callback.ChatbotUserID {

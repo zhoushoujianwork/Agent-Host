@@ -5,6 +5,13 @@ conversation, including groups. Users configure the sources or mailboxes and
 set `enabled: true`; no effective-scope configuration is required. Restart
 `make run` after changing configuration.
 
+With the optional [multi-user registry](workspace-layout.md#multiple-users-and-external-knowledge),
+non-owner users and shared conversations additionally require exact source grants
+in `users.json`; they receive none by default. Owner access and installations
+without the registry retain the existing policy. Grants cover the whole reachable
+source and are applied before credential resolution; they do not impersonate the
+requesting person in the upstream service.
+
 The supported plugins are `local-documents`, `dokki`, `confluence` and `email`.
 Each has one `.agent-host/config/datasource.plugins.<name>.json` file containing
 `version`, `enabled` and `settings`. A plugin can contain multiple sources or
@@ -17,7 +24,7 @@ define which documents the local adapter can read.
 
 Confluence supports creating and updating pages and blog posts when authorized
 by the user. Automatically managed notes and reports default to the authenticated
-user's personal blog; regular pages remain available when requested. Blog creation
+connector account's personal blog; regular pages remain available when requested. Blog creation
 can resolve the personal space automatically, without per-user configuration.
 Updates require the content's current version and replace its title and complete
 body. Read back the content to verify the result; a failed or uncertain write must

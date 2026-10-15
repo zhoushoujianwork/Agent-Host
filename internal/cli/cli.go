@@ -73,6 +73,7 @@ Usage:
   agent-host service check --root ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH
   agent-host knowledge check --config ABSOLUTE_PATH
+  agent-host users list|check --config-dir ABSOLUTE_CONFIG_DIRECTORY
   agent-host email --help
   agent-host discovery --help
   agent-host assistance --help
@@ -111,6 +112,8 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 
 type options struct {
 	debugNonOwner                                                                      bool
+	userKnowledgeRestricted                                                            bool
+	userKnowledgeSources                                                               []string
 	procedureRecallHints                                                               []state.ProcedureRecallHint
 	recallBinding                                                                      string
 	retrievalQuery, skillFingerprint                                                   string
@@ -386,6 +389,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if args[0] == "backup" {
 		return runBackup(ctx, args[1:], out, errout)
 	}
+	if args[0] == "users" {
+		return runUsers(args[1:], out, errout)
+	}
 	if args[0] == "project" {
 		return runProject(ctx, args[1:], out, errout)
 	}
@@ -508,8 +514,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		if err != nil {
 			return err
 		}
-		o, err = a.options(o, o.audienceID, o.audienceID != "owner", true)
+		o, err = a.options(o, o.audienceID, state.PrivateUserID(o.audienceID) == "", true)
 		if err != nil {
+			return err
+		}
+		if err := catalog.userOptions(&o, o.audienceID, state.PrivateUserID(o.audienceID) == ""); err != nil {
 			return err
 		}
 	}

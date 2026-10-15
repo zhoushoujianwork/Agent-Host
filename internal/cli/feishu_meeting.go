@@ -172,6 +172,13 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	if err != nil {
 		return err
 	}
+	agents.ownerID = cfg.OwnerOpenID
+	if cfg.IMChat {
+		if err := agents.users.validateOwner(state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID, cfg.OwnerOpenID); err != nil {
+			return err
+		}
+	}
+	cfg.AllowPrivateUsers = agents.users != nil
 	if _, err := exec.LookPath("lark-cli"); err != nil {
 		return errors.New("lark-cli is unavailable")
 	}

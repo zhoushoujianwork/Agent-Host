@@ -86,6 +86,12 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 		if name == "host.json" || name == "agents.json" || name == "CLAUDE.md" {
 			continue
 		}
+		if name == "users.json" {
+			if _, err := loadUsers(directory); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if name == "backup.json" {
 			if _, err := privateServicePath(filepath.Join(directory, name), false); err != nil {
 				return nil, err
@@ -263,6 +269,13 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		return layout, c, nil, errors.New("execution profiles must not reference plugin configuration")
 	}
 	c.AgentsConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.AgentsConfig)
+	if _, err := os.Lstat(filepath.Join(directory, "users.json")); err == nil {
+		if c.AgentsConfig == "" || filepath.Dir(c.AgentsConfig) != directory {
+			return layout, c, nil, errors.New("users.json requires an execution agents_config in the same configuration directory")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return layout, c, nil, err
+	}
 	c.DiscoveryConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.DiscoveryConfig)
 	if c.MemoryScope == "" {
 		c.MemoryScope = "channel:" + id + ":default"

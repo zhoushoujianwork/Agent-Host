@@ -216,6 +216,11 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	if err != nil {
 		return err
 	}
+	agents.ownerID = cfg.OwnerUserID
+	if err := agents.users.validateOwner("dingtalk", cfg.ClientID, cfg.CorpID, cfg.OwnerUserID); err != nil {
+		return err
+	}
+	cfg.AllowPrivateUsers = agents.users != nil
 	if _, err := exec.LookPath(o.binary); err != nil {
 		return errors.New("configured Claude executable is unavailable")
 	}

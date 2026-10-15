@@ -11,11 +11,12 @@ import (
 )
 
 type Config struct {
-	Profile     string `json:"profile"`
-	AppID       string `json:"app_id"`
-	TenantID    string `json:"tenant_id"`
-	BotOpenID   string `json:"bot_open_id"`
-	OwnerOpenID string `json:"owner_open_id"`
+	Profile           string `json:"profile"`
+	AppID             string `json:"app_id"`
+	TenantID          string `json:"tenant_id"`
+	BotOpenID         string `json:"bot_open_id"`
+	OwnerOpenID       string `json:"owner_open_id"`
+	AllowPrivateUsers bool   `json:"-"`
 }
 
 var (

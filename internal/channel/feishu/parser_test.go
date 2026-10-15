@@ -72,6 +72,25 @@ func TestOwnerPrivateIntakeRetainsOriginalReplyTargetAndSourceTime(t *testing.T)
 	}
 }
 
+func TestMultiUserPrivateIntakeRequiresOptInAndVerifiedTenant(t *testing.T) {
+	event := fixtureEvent()
+	eventSender(event)["sender_id"] = map[string]any{"open_id": "ou_colleague"}
+	cfg := fixtureConfig()
+	if m, err := (Parser{Config: cfg}).Parse(fixtureRaw(t, event)); err != nil || m.ID != "" {
+		t.Fatal("owner-only default changed", m, err)
+	}
+	cfg.AllowPrivateUsers = true
+	if m, err := (Parser{Config: cfg}).Parse(fixtureRaw(t, event)); err != nil || m.SenderID != "ou_colleague" {
+		t.Fatal(m, err)
+	}
+	for _, tenant := range []string{"", "other-tenant"} {
+		eventSender(event)["tenant_key"] = tenant
+		if m, err := (Parser{Config: cfg}).Parse(fixtureRaw(t, event)); err != nil || m.ID != "" {
+			t.Fatal("unverified tenant admitted", m, err)
+		}
+	}
+}
+
 func TestGroupUsesStructuredBotMentionAndStripsOnlyOwnLeadingKeys(t *testing.T) {
 	event := groupFixture()
 	eventMessage(event)["content"] = `{"text":"  @_user_1 /status  "}`

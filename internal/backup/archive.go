@@ -190,7 +190,7 @@ func decodeArchive(path string, key *age.X25519Identity) (payload, error) {
 		if strings.HasPrefix(f.Path, "recovery/") && !sources[f.Path] {
 			return p, errors.New("unlisted recovery source")
 		}
-		if !strings.HasPrefix(f.Path, "workspace/config/") && !strings.HasPrefix(f.Path, "workspace/datasource/plugins/local-documents/sources/") && !strings.HasPrefix(f.Path, "recovery/") {
+		if !strings.HasPrefix(f.Path, "workspace/config/") && !strings.HasPrefix(f.Path, "workspace/users/") && !strings.HasPrefix(f.Path, "workspace/datasource/plugins/local-documents/sources/") && !strings.HasPrefix(f.Path, "recovery/") {
 			return p, errors.New("unexpected archive member")
 		}
 	}

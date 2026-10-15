@@ -24,6 +24,7 @@ type Config struct {
 	IMChat               bool          `json:"im_chat,omitempty"`
 	IMReactions          bool          `json:"im_reactions,omitempty"`
 	OwnerOpenID          string        `json:"owner_open_id,omitempty"`
+	AllowPrivateUsers    bool          `json:"-"`
 }
 
 var (

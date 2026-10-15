@@ -76,7 +76,8 @@ instructions_file 与 instructions_dir 互斥，USER 不得同时被选作 Agent
 在所选 Agent 的 `user_file` 显式配置；该配置仅对可信 owner 的私人任务装配。
 同一人工用户文件可供指定私人渠道使用，但不合并这些渠道的学习域。
 首期不根据平台昵称或 USER 中的自述跨平台关联用户，也不加载群成员私人资料。
-未来 per-person profile 仍遵循独立设计与验证，不能因该目录存在就宣称已支持。
+The optional users.json registry now enables per-person profiles as described below;
+without it, this legacy owner-only binding remains unchanged.
 
 用户文件适合写沟通方式、长期偏好与必要背景；不放凭证、工具许可或任务授权。
 自动学到的偏好保留在相应 memory domain 的版本化 entries，带陈述与时间依据。
@@ -111,7 +112,7 @@ USER 原文的示例结构如下，仅用于展示，不是已生成的实际用
 角色和 USER 在启动时加载；任务使用这份已加载配置并核对正式记忆快照，再生成视图：
 
 1. AGENTS/SOUL/IDENTITY 来自所选 Agent 配置；无可选文件就省略，不虚构身份。
-2. USER 只在 owner 私人任务中生成：已配置资料与当前适用学习偏好的有界集合。
+2. USER 在已识别用户的私人任务中生成：已配置资料与当前适用学习偏好的有界集合。
 3. MEMORY 收集适用事实、决策、约束的有界摘要，保留 ID/revision/来源，按数据装配。
 4. skills 只含此任务授权且适用的包；知识来源与 native 挂载引用写入 manifest。
 
@@ -128,7 +129,7 @@ Host 不能重排 native system/user 的全部优先关系。
 
 任务视图使用 Host 创建的 run ID，目录只发布一次，不覆盖已有视图。manifest
 保存 Agent、audience、scope/project、执行 cwd、配置原文摘要及已召回记忆的
-ID/revision/source-run/evidence-ID。USER 包含显式配置和本次 owner 学习偏好，
+ID/revision/source-run/evidence-ID。USER 包含显式配置和本次私人用户学习偏好，
 MEMORY 使用归属明确的数据封装；群域不生成 USER。生成前再次检查记忆范围、
 生效状态和到期时间，沿用 8 项/12 KiB 记忆正文预算。
 提供配置文件与实际注入分别可观察；这些文件不依靠 cwd 自动发现来生效。
@@ -227,77 +228,130 @@ datasource/plugins/<plugin>/sources/<source-id>/snapshots/<snapshot-id>/
 本地停机迁移、双渠道重新连接与历史对照已完成，详见
 [文件记忆验证](file-memory-design-detail.md#已完成验证与边界)。
 
-## Proposed: multi-user recording and retrieval
+## Multi-user recording and retrieval
 
-This section supports the [main design](workspace-layout.md#proposed-multiple-users-and-external-knowledge).
-It is proposed behavior, not a description of the current owner-only loader.
-No new configuration fields or identity database format are committed here.
+This section implements the [main design](workspace-layout.md#multiple-users-and-external-knowledge).
+The optional `users.json` registry is loaded beside the selected `agents.json` at
+startup. Without that registry, the existing owner-only behavior is preserved.
+Its exact version-1 shape is shown in [the example](../config/users.example.json).
 
-### Identity and record ownership
+### Identity, profiles and ownership
 
-Host resolves an authenticated sender using provider/channel, tenant and stable
-account ID, then maps that account to an internal user ID. Host creates safe local
-IDs; message text, nicknames and external IDs do not become filesystem paths.
-Verified account links may share a profile across channels, but do not by
-themselves merge historical learning domains or change their visibility.
+Each user has a safe `id`, optional `accounts` and optional `knowledge_sources`.
+An account contains exact `channel` (`dingtalk` or `feishu`), `account_id` (bot/app),
+`tenant_id` and `sender_id` (staff ID or Open ID). Duplicate bindings, unsafe IDs,
+unknown fields and malformed private files fail explicitly. Linking accounts is a
+trusted local operator action after verifying both belong to the person; the Host
+does not verify that ownership remotely or accept identity links from chat text.
 
-Separate the speaker, the subject of a claim and the audience allowed to read it.
-For example, Alice reporting a hobby of Bob records Alice as the source and Bob as
-the subject; it must not silently edit the USER.md profile of Bob. Retain the originating task,
-source locator, time and verification status alongside selected learned records.
-User, group and project ownership must compose with existing Agent/source scope
-checks; a shared project ID alone must not authorize private memory access.
+A new authenticated account without a configured binding gets a deterministic
+`u-<32 hex digits>` ID derived from all four account fields. It gets no owner
+profile or owner-private MCPs. Account observations publish immutable, synced
+receipts at `users/<user-id>/accounts/<account-sha256>.json`; concurrent workers
+publish complete records without overwriting other observations. These are durable
+Host records and enter encrypted backups; unfinished receipt files are excluded.
+Channel receipts retain source message and time evidence. `users list` distinguishes
+configured bindings from historical observations and never prints profile text.
 
-Identity/profile binding storage is durable Host state, not rebuildable cache.
-Its precise schema and lifecycle will be decided during implementation. Preserve
-legacy owner bindings and provenance until an explicit migration is verified.
-Unresolved or conflicting bindings fail private-context selection explicitly;
-Host may continue with permitted conversation context without guessing identity.
+The legacy owner uses audience `owner`. Other private users use `user:<user-id>`;
+groups and meetings keep their existing shared audience identities. Existing
+Agent, audience, source and project partitions still constrain memory, history,
+Skills and native sessions. A verified cross-channel profile binding does not
+merge separate source stores or import old memory. Account rebinding makes a new
+future partition; incompatible queued audience bindings fail without task replay.
+The configured channel owner cannot be rebound to another person or acquired by
+a non-owner account through a user alias.
 
-### Profile and learned memory writes
+Only registered user IDs can load conventional `config/users/<id>/USER.md` files.
+A missing configured file uses the Host-created default described below; loading
+never copies another person’s profile.
+Existing profile files use the same 16 KiB, UTF-8, private ownership and no-symlink
+checks as legacy owner profiles. Agent `user_file` remains an owner-only fallback;
+a registered owner profile overrides it. Profiles are startup snapshots, and their
+content participates in runtime compatibility so edits after restart rotate native
+sessions. Other private channel users use the restricted `dontAsk` read-tool
+profile; owner approval runs remain separate from their native sessions. Only managed native settings are copied to their separate
+profile directories, not owner instructions or conversation history. Directory
+layout and prompt policy do not provide OS filesystem sandboxing.
 
-`config/users/<user-id>/USER.md` holds explicitly maintained profile information,
-including hobbies and response preferences. It grants no tools or permissions.
-A user may request an edit to their own profile through a future authorized
-profile-management operation. Normal learning and retrieval never rewrite config.
-The current explicit configuration/restart behavior remains until that operation
-is implemented; this proposal does not introduce automatic hot reload.
+Task manifests record the private `user_id`; group or meeting provenance rejects
+USER injection even if a caller supplies an audience resembling a private user.
+Learned preferences in a private task can appear in its derived USER view, but
+normal learning still publishes only versioned local memory. A statement about
+another person remains attributed to the source speaker/task; it cannot silently
+edit that person’s explicit profile.
 
-Inferred preferences remain versioned learned memory with source evidence and
-visibility, not confirmed USER settings. A task USER.md is a bounded derived view
-of the permitted explicit profile and applicable learned preferences. It is not
-another save location. Explicit profile corrections take precedence over inferred
-preferences; the future correction flow must also invalidate conflicting learned
-records so removed settings cannot return through recall or session history.
+### Explicit profile corrections
 
-### Retrieval, cache and publication
+An operator edits the intended person’s USER.md, checks configuration and restarts
+the service. To withdraw a previously learned preference, also use the existing
+`memory invalidate --agent AGENT --audience user:ID --home CHANNEL_STATE
+--reason REASON MEMORY_ID` path for each conflicting record in each affected
+source. Use audience `owner` for legacy owner records. This preserves historical
+evidence and excludes the record from recall; the associated memory generation
+and explicit profile change invalidate compatible native-session reuse.
+Automatic identification of natural-language conflicts, runtime profile-edit
+MCPs and hot reload are not implemented. Deleting profile text alone is not a
+request to delete independently learned records or old execution evidence.
 
-Host first selects permitted profile and local memory for the task. The runtime
-Agent can search/read Confluence through MCP when supporting detail or current
-knowledge is needed, including direct requests to consult Confluence. Search
-results, cached bodies and reads must all obey the requesting user’s visibility;
-shared connector credentials are not a substitute for per-user authorization.
-If that authorization cannot be established, do not expose the source.
+### External retrieval and grants
 
-Optional retrieved-page cache entries retain source instance, page ID, URL,
-version, fetch time, content digest and access scope. Cache keys must avoid
-cross-user disclosure; refresh or revalidate before relying on current facts.
-Retention limits and refresh mechanics remain implementation decisions. These
-copies are rebuildable, unlike explicitly retained datasource evidence snapshots.
-Neither cached bodies nor full external collections are injected into every task.
+`knowledge_sources` authorizes exact names such as `confluence:team-notes`.
+`group_knowledge_sources` authorizes the shared conversations in multi-user mode.
+Both default to no sources for non-owner/shared audiences. The owner retains
+existing source access; existing installations without users.json retain their
+legacy source policy. New grants intersect existing source selection, filtering
+before credential resolution. Missing/ungranted sources do not grant access to
+another source. Normal source pinning, fingerprints and execution-time validation
+still apply. Email, DWS and owner-context tools remain owner-only.
 
-When an authorized task publishes a report, preserve its URL/version and source
-execution reference. Task output may link to that report. Selective local learning
-may retain a concise conclusion, applicability and source link, while the detailed
-report remains external. Creating or updating a page must not automatically mark
-claims as verified, create memory, replay tasks or publish private profile data.
+A grant authorizes the entire configured source reachable through its credential.
+There is no per-person Confluence impersonation or additional remote page ACL.
+Operators must grant only sources whose complete reachable contents are suitable
+for the recipient, using appropriately scoped remote credentials. Tools keep their
+existing explicit write behavior; profiles, retrieval and generated reports do not
+authorize automatic publication.
 
-### Acceptance before rollout
+No full external collection or AGH-authored blog is automatically injected or
+imported. Existing on-demand MCP search/read/write and source receipts remain.
+Optional version-aware external-page caching is not implemented. Future caches
+must retain identity/source/version boundaries and remain distinct from durable
+evidence snapshots. Useful selected local lessons may cite a report, but the
+report cannot count as independent confirmation of the originating task.
 
-Verify two users sharing one Agent cannot recall one another’s private profile or
-memory, group tasks exclude private context, and equal nicknames do not link users.
-Verify explicit cross-channel linking preserves provenance without implicit domain
-merges, profile corrections do not return through recall/history, and Confluence
-search/read/cache respect the same audience boundary. Preserve source/version and
-task links through report updates. Missing plugins must leave local profiles and
-memory functional. None of these multi-user acceptance checks is claimed complete.
+### Validation and remaining scope
+
+Automated tests cover two private users with independent profiles/native paths,
+unknown account stability across reloads, explicit cross-channel account binding,
+owner compatibility, forged-audience rejection, duplicate/unsafe profile rejection,
+group exclusion, source grants before credentials, local inspection, concurrent
+identity receipts and encrypted backup/restore. Memory isolation, fresh-session
+recall and explicit correction/invalidation are exercised with file and SQLite
+backends. Both channel parsers test opt-in private intake and foreign-tenant denial.
+
+Live multi-person DingTalk/Feishu round trips, broad-scale identity lookup and
+remote source-permission audits remain unverified. Automatic account merging,
+profile-management MCPs, automatic preference-conflict matching, shared-project
+cross-user memory publication and external-page cache lifecycle remain outside
+this increment. No historical owner data is migrated or deleted.
+
+## Automatic first-contact profile
+
+When `users.json` enables multi-user intake, verified DingTalk/Feishu selection
+resolves a stable Host ID, initializes `users/<id>/USER.md`, then records the
+account receipt. Unknown accounts use the existing application/tenant/sender
+digest; configured owners retain `owner`. Chat names and text do not select paths.
+
+The template contains only the Host ID, empty background/interests/preferences
+sections and a statement that profiles cannot grant permissions. A private
+temporary file is synced and atomically linked without replacing an existing
+profile. Existing files must pass private regular-file and size checks; linked
+profiles fail explicitly. Repeat/concurrent messages preserve operator edits.
+Configuration stays read-only. Explicit configured profiles override the runtime
+default. The default is read into a bounded per-task snapshot; groups/meetings
+never receive it. `users list` reports the effective profile path without text.
+
+Regression checks cover both channel identities, owner/new-user creation,
+concurrent publication, configured override, edit preservation, group exclusion,
+symlink rejection and unchanged configuration. Multi-person live acceptance
+remains separate from owner-account live checks.

@@ -139,7 +139,13 @@ func assemblyConfig(o options) assembly.Configuration {
 }
 
 func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
+	if o.userKnowledgeRestricted && len(o.userKnowledgeSources) == 0 {
+		return nil, nil
+	}
 	if globalKnowledgePlugins(o) {
+		if o.userKnowledgeRestricted {
+			return knowledge.SelectManyGranted(knowledgePaths(o), nil, nil, "", "", o.userKnowledgeSources)
+		}
 		return knowledge.SelectMany(knowledgePaths(o), nil, nil, "", "")
 	}
 	ids := make([]string, 0, len(o.projects))
@@ -182,6 +188,9 @@ func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
 			}
 		}
 		names = filtered
+	}
+	if o.userKnowledgeRestricted {
+		return knowledge.SelectManyGranted(paths, ids, names, audience, o.knowledgeChannel, o.userKnowledgeSources)
 	}
 	return knowledge.SelectMany(paths, ids, names, audience, o.knowledgeChannel)
 }

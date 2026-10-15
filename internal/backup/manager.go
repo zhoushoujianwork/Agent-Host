@@ -272,6 +272,9 @@ func collect(ctx context.Context, root string) (payload, error) {
 			if d.IsDir() {
 				return nil
 			}
+			if base == filepath.Join(root, "users") && (strings.HasPrefix(d.Name(), ".account-") || strings.HasPrefix(d.Name(), ".profile-")) {
+				return nil // Unpublished identity receipt, never recovery authority.
+			}
 			b, e := privateRead(path)
 			if e != nil {
 				return e
@@ -387,19 +390,20 @@ func collect(ctx context.Context, root string) (payload, error) {
 			return p, e
 		}
 	}
-	snapshotRoot := filepath.Join(root, "datasource", "plugins", "local-documents", "sources")
-	if _, e = os.Lstat(snapshotRoot); e == nil {
-		files, e := scan(snapshotRoot)
-		if e != nil {
-			return p, e
-		}
-		for name, b := range files {
-			if e = p.add(name, b); e != nil {
+	for _, retainedRoot := range []string{filepath.Join(root, "datasource", "plugins", "local-documents", "sources"), filepath.Join(root, "users")} {
+		if _, e = os.Lstat(retainedRoot); e == nil {
+			files, e := scan(retainedRoot)
+			if e != nil {
 				return p, e
 			}
+			for name, b := range files {
+				if e = p.add(name, b); e != nil {
+					return p, e
+				}
+			}
+		} else if !errors.Is(e, os.ErrNotExist) {
+			return p, e
 		}
-	} else if !errors.Is(e, os.ErrNotExist) {
-		return p, e
 	}
 	configAfter, e := scan(filepath.Join(root, "config"))
 	if e != nil {

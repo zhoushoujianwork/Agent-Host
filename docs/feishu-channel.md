@@ -27,6 +27,12 @@ non-owner execution and support correlated owner approval replies in IM groups.
 Bare-profile provider credentials and live approval acceptance remain separate
 requirements; meetings do not send approval prompts.
 
+The optional [users.json registry](workspace-layout.md#multiple-users-and-external-knowledge)
+also enables private questions from other authenticated same-tenant users. Each
+has a separate private audience and profile; non-owner/shared tasks need explicit
+external-source grants. Without the registry the table retains its owner-only
+private default. Multi-person live acceptance remains pending.
+
 Owner private chat uses the owner's audience. Each group and meeting has its
 own public audience and conversation history; an owner asking in a group or
 meeting does not bring private-chat permissions into that shared conversation.

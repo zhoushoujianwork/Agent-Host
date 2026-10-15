@@ -23,6 +23,12 @@ The [instance guide](agent-instances.md) describes the default assistant and
 explicit group bindings. Same-group members share context; different groups
 and private conversations retain separate learned memory and native sessions.
 
+The optional [users.json registry](workspace-layout.md#multiple-users-and-external-knowledge)
+also enables other authenticated same-enterprise private senders, each with a
+separate user audience, local memory, profile selection and native history.
+Without it, private intake remains owner-only. Multi-person live acceptance is
+pending; the new isolation path has automated coverage.
+
 Messages in each conversation run in order; different audiences can run
 concurrently, up to four by default. Conversations sharing an agent/audience
 memory partition also stay serial. A turn holds its place through memory

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "id": "alice",
+      "accounts": [
+        {
+          "channel": "dingtalk",
+          "account_id": "your-bot-client-id",
+          "tenant_id": "your-enterprise-id",
+          "sender_id": "alice-staff-id"
+        }
+      ],
+      "knowledge_sources": []
+    },
+    {
+      "id": "bob",
+      "accounts": [
+        {
+          "channel": "feishu",
+          "account_id": "cli_your_application",
+          "tenant_id": "your-tenant-key",
+          "sender_id": "ou_bob"
+        }
+      ],
+      "knowledge_sources": []
+    }
+  ],
+  "group_knowledge_sources": []
+}

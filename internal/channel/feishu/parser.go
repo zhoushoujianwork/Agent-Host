@@ -89,7 +89,7 @@ func (p Parser) Parse(raw []byte) (channel.Message, error) {
 	}
 	switch chatType {
 	case "p2p":
-		if from != p.Config.OwnerOpenID || senderTenant != "" && senderTenant != p.Config.TenantID {
+		if from != p.Config.OwnerOpenID && !p.Config.AllowPrivateUsers || senderTenant != "" && senderTenant != p.Config.TenantID || from != p.Config.OwnerOpenID && senderTenant != p.Config.TenantID {
 			return channel.Message{}, nil
 		}
 	case "group":

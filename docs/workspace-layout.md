@@ -2,6 +2,7 @@
 
 状态：2026-10-13 本期已实现并完成本地迁移。
 2026-10-14 新增共享工程登记与执行回执；worktree/PR/MR 生命周期仍待实现。
+2026-10-15: Optional multi-user profiles, identity receipts and source grants implemented.
 配套[文件记忆方案](file-memory-design.md)；实现细节见[详细稿](workspace-layout-detail.md)。
 沿用名称 `.agent-host/`。
 
@@ -13,10 +14,10 @@
 ```text
 .agent-host/
 ├── config/
-│   ├── host.json、agents.json、channels.*.json、datasource.plugins.*.json
+│   ├── host.json、agents.json、users.json、channels.*.json、datasource.plugins.*.json
 │   ├── agents/default/              # 用户维护 AGENTS、SOUL、IDENTITY
 │   ├── agents/ops/                  # 用户复制模板后注册的运维角色
-│   ├── users/owner/USER.md           # 显式绑定的私人资料，可选
+│   ├── users/<user-id>/USER.md       # 每个人独立的显式私人资料，可选
 │   ├── skills/                      # 手写 Skill 保留位置；新挂载入口待实现
 │   └── credentials/
 ├── memory/
@@ -27,6 +28,7 @@
 │   └── workspaces/<run-id>/          # 本次上下文与 native-skills 包
 ├── channels/<channel>/              # state、workspace、native、logs；钉钉可含 dws
 ├── datasource/plugins/<plugin>/     # 插件运行数据及来源持久快照
+├── users/<user-id>/                # Host-created USER.md and verified account receipts
 ├── projects/                        # 共享工程登记与执行回执；源码保持原位
 ├── cli-state/
 ├── backup-state/                    # Automatic backup lock and health receipt
@@ -44,50 +46,73 @@ from exports. See the [backup and recovery guide](workspace-backup-design.md).
 顶层 `knowledge/` 已退出本地运行布局。owner_notes 的 14 份原文已迁入
 local-documents 插件快照，摘要及原授权保持一致。数据源读取不会自动把资料变成记忆。
 
-## Proposed: multiple users and external knowledge
+## Multiple users and external knowledge
 
-Design agreed on 2026-10-15; not yet implemented. Current profile loading remains
-limited to an explicitly bound trusted owner. This proposal does not enable the
-unfinished Confluence memory backend: durable memory stays local.
+Implemented on 2026-10-15 with automated isolation tests. Live multi-person channel
+acceptance remains pending. Durable memory stays local; Confluence is a knowledge
+source and publishing destination, not a replacement for memory storage.
 
-AGH identifies the person independently of the selected Agent. Each person has
-one Host user ID and a profile at `config/users/<user-id>/USER.md`; Agent role
+AGH identifies each person independently of the selected Agent. Each person has
+one Host user ID. First verified contact creates `users/<user-id>/USER.md` with
+empty personal sections. An optional `config/users/<user-id>/USER.md` overrides
+that default; Agent role
 instructions stay under `config/agents/<agent-id>/`. Hobbies, background and
-explicit communication preferences belong in the user profile. Several Agents
-may serve the same person without copying that profile into each Agent.
+explicit communication preferences belong in that person’s profile. Several
+Agents can use the same profile without copying it into their role directories.
 
 | Record | Where it belongs | How it is used |
 | --- | --- | --- |
-| Channel account to Host user mapping | Host-managed identity records; exact storage to be decided | Resolve the sender before selecting private context |
-| Explicit user profile | `config/users/<user-id>/USER.md` | Load only for that identified user in an allowed private task |
-| Learned facts, preferences, decisions and procedures | Local versioned `memory/` | Recall by authorized user, group or project scope and existing Agent boundaries |
-| Detailed findings, verified experience and task reports | Confluence pages/blogs, when authorized | Search/read through MCP as needed; retain source-task links |
-| Retrieved source copies and task context | Rebuildable cache and task views | Keep source/version metadata; never become memory merely by being cached |
+| Verified account bindings | `config/users.json` | Explicitly associate platform accounts with a person |
+| Observed account receipts | `users/<user-id>/accounts/` | Preserve identity provenance across restarts; included in backups |
+| Automatic default profile | `users/<user-id>/USER.md` | Created once from verified identity; private tasks only, never overwrites edits |
+| Explicit profile | `config/users/<user-id>/USER.md` | Select only for that person’s private tasks |
+| Learned facts, preferences, decisions and procedures | Local versioned `memory/` | Recall within existing Agent, audience and project/source boundaries |
+| Detailed findings, experience and task reports | Authorized Confluence pages/blogs | Search/read on demand; preserve source-task links |
+| Task context and source copies | Rebuildable cache or explicit datasource snapshots | Keep source/version metadata; retrieval does not automatically create memory |
 
-Use a stable platform account ID within its channel/tenant namespace, never a
-display name, to identify a sender. Link accounts across channels only through a
-verified binding. Unresolved identities receive no existing private profile;
-they can still be answered using context allowed for the current conversation.
-A statement about another person is a sourced claim, not a confirmed profile edit.
+To enable multi-user private conversations:
 
-Private user memory, group knowledge and project/team knowledge have distinct
-visibility. Being in the same group or using the same Agent does not merge users.
-Group tasks exclude private USER content by default. Host enforces these rules
-before retrieval, context assembly and publication; Markdown cannot grant access.
+1. Configure the execution profile’s `agents_config` to select `agents.json`.
+2. Place [users.example.json](../config/users.example.json) as `config/users.json`
+   beside that file, replacing example accounts with verified account IDs. An
+   empty `users` array also works: new same-enterprise/tenant senders get stable
+   generated IDs and a new empty private profile.
+3. Add optional `config/users/<user-id>/USER.md` files and register those user IDs
+   in `users.json`. Keep directories private (0700) and files private (0600).
+4. Run `agent-host users check --config-dir /absolute/path/to/config`, then the
+   normal service check and restart. Use `users list` with the same flag to see
+   configured and observed accounts without printing profile content.
 
-External knowledge is retrieved on demand. Do not preload all Confluence posts or
-automatically re-import AGH-authored posts into memory. Keep a short local lesson
-or reference only after deliberate selection based on evidence and usefulness;
-publishing a report is not independent confirmation of its claims. A shared
-Confluence credential does not grant every AGH user access to its full results.
+Without `users.json`, existing owner-only private intake remains unchanged.
+With it, DingTalk and Feishu accept other authenticated same-enterprise/tenant
+private senders. Stable channel/application/tenant/account IDs determine identity;
+display names and chat claims cannot link accounts. Explicit operator-verified
+bindings can share a profile across channels; they do not merge historical memory.
+The configured channel owner retains the legacy owner partition and privileges.
+Other private users use restricted read tools and separate native profiles;
+owner approval remains required for dangerous operations.
 
-Implementation order: first identity resolution and private-user isolation, then
-explicit profile management and scoped learning, then permission-aware external
-retrieval and bounded caching. Keep existing owner bindings until an explicit,
-verified migration maps them; do not infer owners of historical records.
-Acceptance requires separate private conversations for two people, safe group
-context, verified account linking, profile corrections and source traceability.
-See the [detailed recording rules](workspace-layout-detail.md#proposed-multi-user-recording-and-retrieval).
+Private memory and group/project knowledge have separate visibility. A shared
+Agent or project does not merge users. Group/meeting tasks exclude private USER
+content. In multi-user mode, non-owner users and shared conversations get only
+explicitly granted knowledge sources; the default is none. Grants authorize the
+whole configured source reachable through its credential, not remote impersonation
+of the person. Do not grant a broad owner-private source to other users.
+
+Confluence remains on-demand MCP search/read/write. Do not preload all posts or
+automatically re-import AGH-authored reports into memory. Select a concise local
+lesson or reference only when useful and supported by evidence. Publication is
+not independent verification. Optional external-page caching remains future work;
+there is no new full-corpus cache or automatic publication in this increment.
+
+Profile edits are explicit operator maintenance. Configured profiles reload on
+restart; generated defaults are read for each task. Neither file grants permissions;
+ordinary learning never rewrites USER.md. When correcting a learned preference,
+invalidate its conflicting local memory records as well. Automatic conflict
+matching and account-link verification workflows remain future work. Existing
+records are preserved; rebinding an account changes future selection without
+silently migrating old memory or replaying queued work.
+See the [recording and validation details](workspace-layout-detail.md#multi-user-recording-and-retrieval).
 
 ## 默认助手与运维模板
 

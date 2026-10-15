@@ -71,6 +71,19 @@ func ResolveNames(sources []Source, names []string) ([]string, error) {
 }
 
 func SelectMany(paths, ids, names []string, audience, channel string) ([]ResolvedSource, error) {
+	return selectMany(paths, ids, names, audience, channel, nil)
+}
+
+// SelectManyGranted intersects normal source selection with exact Host grants
+// before opening credentials. An empty grant list deliberately selects nothing.
+func SelectManyGranted(paths, ids, names []string, audience, channel string, grants []string) ([]ResolvedSource, error) {
+	if len(grants) == 0 {
+		return nil, nil
+	}
+	return selectMany(paths, ids, names, audience, channel, grants)
+}
+
+func selectMany(paths, ids, names []string, audience, channel string, grants []string) ([]ResolvedSource, error) {
 	sources, err := Catalog(paths, channel)
 	if err != nil {
 		return nil, err
@@ -94,6 +107,9 @@ func SelectMany(paths, ids, names []string, audience, channel string) ([]Resolve
 	}
 	var selected []ResolvedSource
 	for _, source := range sources {
+		if grants != nil && !slices.Contains(grants, source.Name) {
+			continue
+		}
 		if globalSource(source) {
 			r, err := resolve(source)
 			if err != nil {

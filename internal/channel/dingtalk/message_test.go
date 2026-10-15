@@ -49,6 +49,23 @@ func TestParsePreservesTextAndOwnerIdentity(t *testing.T) {
 	}
 }
 
+func TestMultiUserPrivateIntakeRequiresOptInAndSameEnterprise(t *testing.T) {
+	raw := callbackPayload(t, func(m map[string]any) { m["senderStaffId"] = "colleague" })
+	if _, err := Parse(raw, testConfig, testNow); err == nil {
+		t.Fatal("owner-only default changed")
+	}
+	cfg := testConfig
+	cfg.AllowPrivateUsers = true
+	m, err := Parse(raw, cfg, testNow)
+	if err != nil || m.SenderID != "colleague" || m.ConversationType != "1" {
+		t.Fatal(m, err)
+	}
+	raw = callbackPayload(t, func(m map[string]any) { m["senderStaffId"], m["senderCorpId"] = "colleague", "other-enterprise" })
+	if _, err := Parse(raw, cfg, testNow); err == nil {
+		t.Fatal("foreign enterprise admitted")
+	}
+}
+
 func TestAddressedTextConsumesOnlyOneGroupAddressToken(t *testing.T) {
 	for _, tc := range []struct {
 		name, kind, text, want string
