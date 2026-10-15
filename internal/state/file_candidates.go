@@ -82,6 +82,43 @@ func (s *Store) RestoreMemory(ctx context.Context, id, reason string) error {
 	})
 }
 
+// UndoMemoryRestoration reverses only the latest explicit restoration, retaining
+// both the mistaken restoration and its correction in the revision history.
+func (s *Store) UndoMemoryRestoration(ctx context.Context, id, reason string) error {
+	if strings.TrimSpace(reason) == "" {
+		return errors.New("undoing restoration requires a reason")
+	}
+	return s.memoryTransaction(ctx, func(tx *sql.Tx) error {
+		m, err := s.readMemory(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		var decision struct {
+			Policy string `json:"policy"`
+		}
+		if json.Unmarshal(m.RevisionDecision, &decision) != nil || decision.Policy != "explicit-local-restoration-v1" || m.Status != "active" || m.Revision < 2 {
+			return errors.New("latest memory revision is not an explicit restoration")
+		}
+		var payload []byte
+		if err := tx.QueryRowContext(ctx, "SELECT payload FROM memory_revisions WHERE memory_id=? AND revision=?", m.ID, m.Revision-1).Scan(&payload); err != nil {
+			return err
+		}
+		var previous Memory
+		if err := json.Unmarshal(payload, &previous); err != nil {
+			return err
+		}
+		if previous.ID != m.ID || previous.AgentID != m.AgentID || previous.AudienceID != m.AudienceID || previous.Scope != m.Scope || previous.Text != m.Text || (previous.Status != "invalidated" && previous.Status != "conflicted") {
+			return errors.New("previous revision is not the disabled source of this restoration")
+		}
+		restoredRevision := m.Revision
+		m.Status = previous.Status
+		m.Revision++
+		m.ReviewNote = reason
+		m.RevisionDecision, _ = json.Marshal(map[string]any{"policy": "undo-local-restoration-v1", "reason": reason, "reverted_restoration_revision": restoredRevision, "restored_status": previous.Status})
+		return persistMemory(ctx, tx, m, false)
+	})
+}
+
 // DisabledMemories supplies the complete bounded blacklist for admission, not
 // recall. Too many disabled records excludes publication explicitly.
 func (s *Store) DisabledMemories(ctx context.Context, scope string, limit int) ([]Memory, error) {

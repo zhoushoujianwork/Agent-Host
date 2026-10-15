@@ -105,10 +105,21 @@ func TestReviewInputValidationPrecedesModelCredentials(t *testing.T) {
 		{[]string{"memory", "accept", "--expires-at", "yesterday", "candidate"}, "expires-at"},
 		{[]string{"memory", "reject", "candidate"}, "reason"},
 		{[]string{"memory", "invalidate", "memory"}, "reason"},
+		{[]string{"memory", "restore", "--undo", "memory"}, "reason"},
 	} {
 		err := Run(context.Background(), tc.args, nil, io.Discard, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("%v: %v", tc.args, err)
 		}
+	}
+}
+
+func TestUndoFlagIsRestrictedToRestoration(t *testing.T) {
+	o, pos, err := parse("memory restore", []string{"--undo", "--reason", "mistaken restoration", "memory"}, io.Discard)
+	if err != nil || !o.undoRestore || len(pos) != 1 || pos[0] != "memory" {
+		t.Fatalf("restoration undo arguments: %+v %v %v", o, pos, err)
+	}
+	if _, _, err := parse("memory invalidate", []string{"--undo", "memory"}, io.Discard); err == nil {
+		t.Fatal("undo accepted for another operation")
 	}
 }

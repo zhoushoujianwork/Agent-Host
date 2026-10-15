@@ -38,7 +38,7 @@ Usage:
   agent-host memory accept [--note TEXT] [--expires-at RFC3339] [options] CANDIDATE_ID
   agent-host memory reject --reason TEXT [options] CANDIDATE_ID
   agent-host memory invalidate --reason TEXT [options] MEMORY_ID
-  agent-host memory restore --reason TEXT [options] MEMORY_ID
+  agent-host memory restore [--undo] --reason TEXT [options] MEMORY_ID
   agent-host memory migrate --home PATH --memory-root PATH --memory-cache PATH --memory-source ID
   agent-host memory verify --home PATH
   agent-host memory rollback --home PATH
@@ -144,6 +144,7 @@ type options struct {
 	allowedTools                                                                       []string
 	runFilter, status, note, reason, expiresAt                                         string
 	noTools                                                                            bool
+	undoRestore                                                                        bool
 	oneShot                                                                            bool
 	timeout                                                                            time.Duration
 }
@@ -209,6 +210,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.status, "status", "pending", "Candidate status or all")
 	fs.StringVar(&o.note, "note", "", "Acceptance note")
 	fs.StringVar(&o.reason, "reason", "", "Rejection, invalidation or restoration reason")
+	if name == "memory restore" {
+		fs.BoolVar(&o.undoRestore, "undo", false, "Undo only the latest explicit restoration")
+	}
 	fs.StringVar(&o.expiresAt, "expires-at", "", "Experience expiration (RFC3339)")
 	fs.IntVar(&o.maxConcurrentConversations, "max-concurrent-conversations", 4, "Maximum simultaneous channel conversations (1-32)")
 	fs.DurationVar(&o.timeout, "timeout", time.Hour, "Per-turn timeout")
@@ -714,7 +718,11 @@ func localReview(ctx context.Context, s *state.Store, command string, o options,
 	}
 	var changeErr error
 	if command == "memory restore" {
-		changeErr = s.RestoreMemory(ctx, id, o.reason)
+		if o.undoRestore {
+			changeErr = s.UndoMemoryRestoration(ctx, id, o.reason)
+		} else {
+			changeErr = s.RestoreMemory(ctx, id, o.reason)
+		}
 	} else {
 		changeErr = s.InvalidateMemory(ctx, id, o.reason)
 	}

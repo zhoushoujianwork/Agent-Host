@@ -76,6 +76,9 @@ source-key 从明确的来源名生成。domain-id 同时包含来源、scope、
 
 `memory invalidate --reason REASON ID` 禁用；`memory restore --reason REASON ID`
 显式恢复未到期的禁用或冲突记录。二者生成新版本，保留原因与历史。
+`memory restore --undo --reason REASON ID` reverses only the latest explicit
+restoration, returning to its previous disabled or conflicted status in a new
+audited revision. Later changes prevent undo; original evidence remains intact.
 等价禁用经验的重复准入在候选、陈述和发布检查中受阻；不确定关系不自动启用。
 
 ## 检索、任务视图与原生 Skill
