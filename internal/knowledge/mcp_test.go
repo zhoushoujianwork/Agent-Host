@@ -54,7 +54,7 @@ func decodeMCPReplies(t *testing.T, raw []byte) []map[string]any {
 	return replies
 }
 
-func TestMCPOnlyAdvertisesAndDispatchesSelectedReadTools(t *testing.T) {
+func TestMCPOnlyAdvertisesAndDispatchesSelectedTools(t *testing.T) {
 	for _, provider := range []string{"dokki", "confluence"} {
 		t.Run(provider, func(t *testing.T) {
 			var requests atomic.Int64
@@ -82,7 +82,7 @@ func TestMCPOnlyAdvertisesAndDispatchesSelectedReadTools(t *testing.T) {
 				t.Fatalf("listing/isolation triggered network or malformed replies: %s", output.String())
 			}
 			tools := replies[1]["result"].(map[string]any)["tools"].([]any)
-			want := 2
+			want := 4
 			if provider == "dokki" {
 				want = 3
 			}
@@ -91,8 +91,9 @@ func TestMCPOnlyAdvertisesAndDispatchesSelectedReadTools(t *testing.T) {
 			}
 			for _, item := range tools {
 				tool := item.(map[string]any)
-				if !toolAllowed(provider, tool["name"].(string)) || tool["annotations"].(map[string]any)["readOnlyHint"] != true {
-					t.Fatalf("unselected/non-read-only tool: %#v", tool)
+				write := strings.HasPrefix(tool["name"].(string), "create_") || strings.HasPrefix(tool["name"].(string), "update_")
+				if !toolAllowed(provider, tool["name"].(string)) || tool["annotations"].(map[string]any)["readOnlyHint"] != !write {
+					t.Fatalf("unselected tool or incorrect write annotation: %#v", tool)
 				}
 			}
 			for _, reply := range replies[2:] {

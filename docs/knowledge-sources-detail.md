@@ -31,7 +31,7 @@ candidate publication. Original calls/results remain in the run journal.
 | Component | Delivered responsibility |
 | --- | --- |
 | `internal/knowledge/config.go` | Private local configuration, project selection, source/credential fingerprints, per-call binding validation |
-| `internal/knowledge/client.go`, `mcp.go` | Source HTTP protocols, read-only tool dispatch, MCP stdio, bounded responses and attributed receipts |
+| `internal/knowledge/client.go`, `mcp.go`, `confluence_write.go` | Source HTTP protocols, source-specific dispatch including Confluence writes, MCP stdio, bounded responses and attributed receipts |
 | `internal/knowledge/local.go` | Explicit Markdown scope, rooted file access, bounded search and document digests |
 | `internal/assembly` | Source catalog and source fingerprint in native session compatibility |
 | `internal/harness/claude` | Exact native MCP mounts, strict ambient exclusion and connected-server initialization checks |
@@ -133,7 +133,7 @@ policy changes. No stronger revocation guarantee is claimed.
 | Source | Delivered tools |
 | --- | --- |
 | Dokki | `list_dokki_workspaces`, `search_dokki`, `read_dokki_resource` |
-| Confluence | `search_confluence`, `read_confluence_page` |
+| Confluence | `search_confluence`, `read_confluence_page`, `create_confluence_page`, `update_confluence_page` |
 | Local Markdown | `search_local_markdown`, `read_local_markdown` |
 
 Tool names use `mcp__knowledge_<source-name>__<tool>`. Dispatch enforces the
@@ -142,6 +142,39 @@ advanced Confluence exports cannot be invoked. HTTP requests use bounded time
 and response size, refuse redirects, and report status/connection/timeout errors
 without source-response error bodies or credentials. There are no automatic
 retries, alternate providers or credential fallbacks.
+
+### Confluence page writes
+
+`create_confluence_page` takes `space_key`, `title`, full storage-XHTML `content`
+and optional numeric `parent_id`. It sends `POST /rest/api/content`.
+`update_confluence_page` takes numeric `id`, `title`, full `content` and
+`expected_version` from a prior page read. It sends `PUT /rest/api/content/{id}`
+with `version.number = expected_version + 1`; stale versions fail with HTTP 409.
+Updates do not move pages or change spaces. Empty content is allowed when
+explicitly supplied. Body size is bounded to 128 KiB before sending. Only these
+typed operations are exposed; there is no arbitrary HTTP dispatcher.
+The API follows [Atlassian's REST examples](https://developer.atlassian.com/server/confluence/confluence-rest-api-examples/).
+
+The existing source binding and PAT are revalidated per call. Write tools advertise
+`readOnlyHint=false`, `idempotentHint=false`, with `destructiveHint=true` for
+full-body updates. Connector version v5 changes native session compatibility so
+new tool availability is assembled after restart. Writes return compact page
+identity, URL and version plus a source receipt marked `coverage=write_response`
+and `content_verified=false`. Read back to establish saved content. Transport,
+HTTP and malformed-response failures do not trigger a retry; even a failed result
+may follow an applied write, so inspect the target first.
+
+Automated coverage includes MCP create/update/readback, Unicode bodies, parent
+placement, version conflicts, argument validation, output annotations, bounded
+bodies, rejected redirects and explicit failures without retries or credential
+leaks. The opt-in live test requires `AGH_CONFLUENCE_WRITE_LIVE=1`,
+`AGH_CONFLUENCE_CONFIG` (one configured source) and `AGH_CONFLUENCE_SPACE` (an
+authorized test space); it leaves a clearly named acceptance page in that space.
+On 2026-10-15, the owner's personal space passed create, exact body readback,
+update to version 2, exact updated title/body readback and stale-version HTTP 409
+rejection. The retained [test page](https://confluence.zhihuiya.com/pages/viewpage.action?pageId=298113920)
+records that bounded acceptance; this does not establish general native-agent
+write quality or permissions in other spaces.
 
 Results retain source IDs, human-facing links, bodies and upstream revision,
 pagination/truncation metadata when available. Dokki metadata/content identity

@@ -15,6 +15,12 @@ original material on demand. It does not load all documents at startup. Answers
 retain source links, dates and uncertainty. Configured local file paths still
 define which documents the local adapter can read.
 
+Confluence also supports creating and updating pages when requested by the user.
+Updates require the page's current version and replace its title and complete
+body. Read back the page to verify the result; a failed or uncertain write must
+be inspected before retrying. Existing Confluence configuration is sufficient,
+subject to the account's upstream permissions.
+
 Existing `access`, source `projects`/`audiences`, and Agent plugin/source lists
 are obsolete for datasource plugins and no longer restrict availability. Current
 examples omit them; older files remain readable during migration. Account

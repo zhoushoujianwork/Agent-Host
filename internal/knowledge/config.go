@@ -1,4 +1,4 @@
-// Package knowledge provides owner-configured, read-only runtime knowledge tools.
+// Package knowledge provides owner-configured runtime source tools.
 package knowledge
 
 import (
@@ -20,7 +20,7 @@ import (
 	"agent-host/internal/componentconfig"
 )
 
-const ConnectorVersion = "knowledge-v4:global-datasource"
+const ConnectorVersion = "knowledge-v5:confluence-page-writes"
 
 type Source struct {
 	ConfigPath        string   `json:"-"`
@@ -60,7 +60,7 @@ type Hint struct {
 }
 
 func (r ResolvedSource) Hint() Hint {
-	tools := []string{"search_confluence", "read_confluence_page"}
+	tools := []string{"search_confluence", "read_confluence_page", "create_confluence_page", "update_confluence_page"}
 	if r.Source.Provider == "dokki" {
 		tools = []string{"list_dokki_workspaces", "search_dokki", "read_dokki_resource"}
 	} else if r.Source.Provider == "local_markdown" {

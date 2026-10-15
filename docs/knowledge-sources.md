@@ -29,7 +29,7 @@ Keep the existing memory loop for Host-run tasks.
 | Source | How it enters Agent-Host | What the agent receives |
 | --- | --- | --- |
 | Dokki | Read-only MCP tools provided globally by enabled datasource plugins | Search results and source documents, requested during execution |
-| Confluence | The same runtime tool path, with its own source and credentials | Search results and source pages, requested during execution |
+| Confluence | Runtime tools with its own source and credentials | Search/read pages; create/update pages when requested by the user |
 | Local Markdown | Explicit files/directories under a configured source root, available globally through enabled datasource plugins | Bounded search results and document excerpts with relative references |
 | Daily DWS conversations | Optional system collection of explicitly selected conversations and local topic review | Bounded owner-private evidence export after explicit acceptance; learning remains planned; no general DWS task MCP |
 
@@ -86,7 +86,7 @@ can add stronger evidence without rewriting what the original discussion proved.
 ## Decisions for this extension
 
 - **Mount tools, retrieve content on demand.** Reuse memgov's concrete Dokki and
-  Confluence connector logic in Agent-Host's own read-only MCP process. Enabled
+  Confluence connector logic in Agent-Host's own MCP process. Enabled
   datasource plugins are mounted globally
   at native session startup; tool use happens later. Effective configuration
   changes replace incompatible native sessions.
@@ -154,7 +154,8 @@ agent-host chat --knowledge-config /absolute/private/path/knowledge.json \
   -m 'Find the relevant API documentation and cite the original pages.'
 ```
 
-The allow rules explicitly permit only these two named read-only MCP instances;
+The allow rules explicitly permit these two named MCP instances, including
+Confluence page creation and updates;
 native permissions still govern other tools. `check` validates local configuration,
 not remote authentication. The managed service uses the same file through
 `knowledge_config` in its private `service.json`. Existing sessions rotate when

@@ -83,7 +83,7 @@ Agent-Host/
 | `internal/channel/dingtalk` | Owner DM and enterprise group-mention admission, supported media/quotes, bounded media downloads, Stream lifecycle, safe ACKs and HTTP replies |
 | `internal/routing` | Explicit identities and bounded tool-free project-set classification |
 | `internal/assembly` | Task context, workspace, and agent configuration |
-| `internal/knowledge` | Private source selection, pinned credentials, read-only MCP and attributed retrieval results |
+| `internal/knowledge` | Private source selection, pinned credentials, source MCP retrieval and Confluence page writes with attributed receipts |
 | `internal/state` | Durable state, atomic derived indexes, scoped retrieval and recovery bookkeeping |
 
 Keep APIs private until external consumers justify public contracts. Add

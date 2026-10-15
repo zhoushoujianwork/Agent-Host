@@ -1,6 +1,6 @@
 // Adapted from github.com/zhoushoujianwork/memgov/plugins/data/knowledge
 // (Apache-2.0; see memgov-LICENSE). Modified for Agent-Host's source pinning,
-// strict protocol validation and baseline read-only tools only.
+// strict protocol validation and source-specific read/write tools.
 package knowledge
 
 import (
@@ -63,6 +63,8 @@ func toolsFor(provider string) []mcpTool {
 		return []mcpTool{
 			readTool("search_confluence", "Search visible Confluence content: keyword mode searches pages; CQL mode retains the supplied filter. Results cover this query and window, not all company knowledge. Read relevant pages and cite source_url.", inputSchema(map[string]any{"query": field("string"), "query_mode": field("string"), "limit": field("integer"), "start": field("integer")}, "query")),
 			readTool("read_confluence_page", "Read a Confluence page by numeric ID, retaining source URL and upstream version when available."+excerptInstructions, readSchema("id")),
+			confluenceWriteTool(false),
+			confluenceWriteTool(true),
 		}
 	default:
 		return nil
@@ -90,6 +92,26 @@ func callSourceTool(ctx context.Context, source ResolvedSource, name string, arg
 	}
 	c := newSourceClient(source)
 	switch name {
+	case "create_confluence_page", "update_confluence_page":
+		var args confluenceWriteArgs
+		if err := decodeStrictJSON(arguments, &args); err != nil {
+			return nil, errors.New("invalid knowledge tool arguments")
+		}
+		// Enforce the distinct create/update schemas before any network operation.
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(arguments, &fields)
+		schema := confluenceWriteTool(name == "update_confluence_page").InputSchema
+		for key := range fields {
+			if schema["properties"].(map[string]any)[key] == nil {
+				return nil, errors.New("invalid knowledge tool arguments")
+			}
+		}
+		for _, key := range schema["required"].([]string) {
+			if fields[key] == nil {
+				return nil, errors.New("invalid knowledge tool arguments")
+			}
+		}
+		return c.writeConfluencePage(ctx, args, name == "update_confluence_page")
 	case "search_local_markdown":
 		args := struct {
 			Query string `json:"query"`

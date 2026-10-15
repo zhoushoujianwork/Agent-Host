@@ -1,6 +1,6 @@
 // Adapted from github.com/zhoushoujianwork/memgov/plugins/data/knowledge
-// (Apache-2.0; see memgov-LICENSE). Modified for Agent-Host's pinned, read-only
-// sources and attributed retrieval receipts; advanced Confluence tools omitted.
+// (Apache-2.0; see memgov-LICENSE). Modified for Agent-Host's pinned sources,
+// attributed receipts and explicit Confluence page writes.
 package knowledge
 
 import (
@@ -402,11 +402,15 @@ func (c *sourceClient) readDokkiResource(ctx context.Context, id string, offset,
 }
 
 func (c *sourceClient) confluenceREST(ctx context.Context, path string) (map[string]any, error) {
+	return c.confluenceRequest(ctx, http.MethodGet, path, nil)
+}
+
+func (c *sourceClient) confluenceRequest(ctx context.Context, method, path string, body any) (map[string]any, error) {
 	base := strings.TrimRight(c.source.Source.Endpoint, "/")
 	if !strings.HasSuffix(base, "/rest/api") {
 		base += "/rest/api"
 	}
-	result, err := c.request(ctx, http.MethodGet, base+path, nil)
+	result, err := c.request(ctx, method, base+path, body)
 	if err != nil {
 		return nil, err
 	}
