@@ -66,6 +66,34 @@ func TestProjectRegistrationCanonicalIdentityAndValidation(t *testing.T) {
 	}
 }
 
+func TestRuntimeMirrorPreservesIdentityAndRejectsOwnershipChanges(t *testing.T) {
+	s, _ := testStore(t)
+	workspace, err := CanonicalWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := Project{ID: "local-fixture", Name: "Fixture", Workspace: workspace, Scope: "project:local-fixture"}
+	if err := s.MirrorRuntimeProject(testContext, p); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.MirrorRuntimeProject(testContext, p); err != nil {
+		t.Fatal("idempotent mirror", err)
+	}
+	for _, change := range []func(*Project){
+		func(p *Project) { p.ID = "other" }, func(p *Project) { p.Scope = "different" }, func(p *Project) { p.Workspace = t.TempDir() },
+	} {
+		other := p
+		change(&other)
+		if err := s.MirrorRuntimeProject(testContext, other); err == nil {
+			t.Fatal("ownership change accepted", other)
+		}
+	}
+	got, err := s.Project(testContext, p.ID)
+	if err != nil || got.Workspace != workspace || got.Scope != p.Scope {
+		t.Fatal(got, err)
+	}
+}
+
 func TestProjectAdoptsLegacyScopeAndMoveRetainsExactHistory(t *testing.T) {
 	s, _ := testStore(t)
 	path, err := CanonicalWorkspace(t.TempDir())

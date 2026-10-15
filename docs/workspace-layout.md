@@ -1,6 +1,7 @@
 # Host 目录与 workspace 文件约定
 
 状态：2026-10-13 本期已实现并完成本地迁移。
+2026-10-14 新增共享工程登记与执行回执；worktree/PR/MR 生命周期仍待实现。
 配套[文件记忆方案](file-memory-design.md)；实现细节见[详细稿](workspace-layout-detail.md)。
 沿用名称 `.agent-host/`。
 
@@ -26,6 +27,7 @@
 │   └── workspaces/<run-id>/          # 本次上下文与 native-skills 包
 ├── channels/<channel>/              # state、workspace、native、logs；钉钉可含 dws
 ├── datasource/plugins/<plugin>/     # 插件运行数据及来源持久快照
+├── projects/                        # 共享工程登记与执行回执；源码保持原位
 ├── cli-state/
 ├── backup-state/                    # Automatic backup lock and health receipt
 └── backups/                         # Automatic archives and historical rollback data
@@ -75,10 +77,18 @@ Host 不把配置文件和生成 Skill 写进项目代码库。
 缓存可重建，清理时应跳过活动任务。尚未提供自动缓存清理器、记忆编辑草稿导入、
 手写 config/skills 新挂载入口或自动日记。
 
-## 后续开发工程 workspace（待实现）
+## Shared engineering records and future development workspace
 
-[工程记录与共享 workspace 方案](development-projects.md)约定：开发请求触发 Runtime
-自动登记，优先查找并原地复用本地工程，不要求人工 enable。必要的新 clone 或用户
-要求的新工程进入当前 Host 的 `.agent-host/projects/<project-id>/repository/`；
-工程记录、进度与 worktree 同属 `projects/`。Agent 和渠道仍保留各自会话、原始证据
-和本轮上下文，只引用共享任务。该方案尚未改变当前运行目录或数据。
+[Engineering records](development-projects.md) now automatically enroll selected
+local Git targets through existing CLI/channel routing. Bounded lookup prefers
+existing `~/github`, `~/gitlab` and current-workspace checkouts; code stays in place
+and no enable flag/manual registration is required. `projects/state.db` retains
+shared project records and source-linked `tasks/<run-id>/` execution receipts.
+Their generated JSON/Markdown views omit original conversation text and context;
+Agent/audience evidence, native conversations and private memory stay separate.
+
+Managed clones/new repositories under `projects/<project-id>/repository/`,
+multi-run feature tasks, owned worktrees and PR/MR delivery remain proposed.
+The current-worktree execution cwd remains separate from the registry primary
+checkout. Shared engineering records are durable runtime material, not context
+cache; ordinary cache cleanup must not remove them.

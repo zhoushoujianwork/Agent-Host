@@ -18,6 +18,7 @@ import (
 	"agent-host/internal/event"
 	"agent-host/internal/host"
 	"agent-host/internal/knowledge"
+	"agent-host/internal/projectruntime"
 	"agent-host/internal/state"
 )
 
@@ -191,6 +192,7 @@ func (a agentDefinition) projects(ctx context.Context, store *state.Store) ([]st
 
 func (a agentDefinition) options(base options, audience string, group, prepare bool) (options, error) {
 	o := base
+	o.projectAllowlist = a.Projects
 	o.agentID, o.audienceID = a.ID, audience
 	o.hostInstructions = host.ChannelInstructions(a.role, group)
 	o.contextFiles = append([]assembly.ContextFile(nil), a.contextFiles...)
@@ -328,6 +330,8 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	child.Store, child.ResolveAgent, child.SelectAgent = store, nil, nil
 	child.SelectMessageAgent = nil
 	child.Projects = func(ctx context.Context) ([]state.Project, error) { return a.projects(ctx, store) }
+	o.runtimeWorkspaces = make(map[string]string)
+	configureChannelRuntimeProjects(&child, store, o, provider)
 	resolve := func(ctx context.Context, ids []string, primary string) (channel.Host, assembly.Runtime, error) {
 		for _, id := range ids {
 			if a.Projects != nil && !slices.Contains(a.Projects, id) {
@@ -335,6 +339,7 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 			}
 		}
 		selected := o
+		selected.projectRoutingComplete = true
 		selected.projectIDs = append([]string(nil), ids...)
 		selected.projectID, selected.projectName, selected.scope = "", "", ""
 		selected.workspace, selected.primaryProject = o.defaultWorkspace, primary
@@ -362,4 +367,26 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	child.Host = composeHost(store, o, client, sink)
 	child.Scope = o.defaultScope
 	return &child, nil
+}
+
+// All channel adapters use the same local lookup and runtime enrollment path.
+// An explicit Agent allowlist restricts both candidates and enrollment.
+func configureChannelRuntimeProjects(service *channel.Service, store *state.Store, base options, entry string) {
+	service.PrepareProjects = func(ctx context.Context, m state.ChannelMessage, _ []state.Project) ([]state.Project, error) {
+		selected := base
+		text := m.Text
+		for _, supplement := range m.Supplements {
+			text += "\n" + supplement.Text
+		}
+		return runtimeCandidates(ctx, store, &selected, text)
+	}
+	service.EnrollProjects = func(ctx context.Context, m state.ChannelMessage, projects []state.Project) error {
+		for _, project := range projects {
+			if base.projectAllowlist != nil && !slices.Contains(base.projectAllowlist, project.ID) {
+				return errors.New("project is not configured for this agent")
+			}
+		}
+		selected := base
+		return enrollRuntimeProjects(ctx, store, &selected, projects, projectruntime.Origin{Entry: entry, AgentID: m.AgentID, AudienceID: m.AudienceID, MessageID: m.MessageID})
+	}
 }

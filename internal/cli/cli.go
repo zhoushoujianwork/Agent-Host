@@ -4,6 +4,7 @@ package cli
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,6 +21,7 @@ import (
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/harness"
 	"agent-host/internal/knowledge"
+	"agent-host/internal/projectruntime"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 	"agent-host/internal/terminal"
@@ -139,6 +141,14 @@ type options struct {
 	projects                                                                           []state.ProjectRef
 	additionalDirectories                                                              []string
 	workspaceExplicit                                                                  bool
+	projectAutomatic, projectRoutingComplete                                           bool
+	projectAllowlist                                                                   []string
+	projectCatalog                                                                     *projectruntime.Catalog
+	projectRouter                                                                      routing.Decider
+	projectRecent                                                                      []routing.TaskContext
+	previousWorkspaces                                                                 map[string]string
+	runtimeWorkspaces                                                                  map[string]string
+	routedQuery                                                                        string
 	home, workspace, format, model, binary, provider, jevModel, resume, message        string
 	jevEndpoint                                                                        string
 	dingtalkConfig                                                                     string
@@ -492,6 +502,21 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if command == "chat" && o.oneShot {
 		o.retrievalQuery = o.message
 	}
+	if command == "chat" && o.resume != "" {
+		if err := store.SessionCanResume(ctx, o.resume); err != nil {
+			return err
+		}
+		previous, err := store.LatestSessionRun(ctx, o.resume)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			rememberRoutingRun(&o, previous)
+		}
+	}
+	if command == "chat" && len(o.projectIDs) == 0 {
+		o.projectAutomatic = true
+	}
 	if err := resolveOptions(ctx, store, &o, command == "chat"); err != nil {
 		return err
 	}
@@ -517,7 +542,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		return err
 	}
 	var s state.Session
-	if store.FileMemoryEnabled() && o.resume != "" && !o.oneShot {
+	if o.resume != "" && !o.oneShot {
 		// Interactive input is not known yet. Inspect the owned session now;
 		// compare its exact runtime after reading the first task, before dispatch.
 		s, err = store.Session(ctx, o.resume)
@@ -560,7 +585,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
 		defer cancel()
-		_, err := h.Run(turnCtx, s, input)
+		run, err := h.Run(turnCtx, s, input)
+		if run.ID != "" {
+			rememberRoutingRun(&o, run)
+		}
 		return err
 	}
 	if o.oneShot {
@@ -743,15 +771,34 @@ func localReview(ctx context.Context, s *state.Store, command string, o options,
 
 // Inspection resolves identity without requiring the project's current files.
 func resolveOptions(ctx context.Context, store *state.Store, o *options, execute bool) error {
+	if execute && !o.projectRoutingComplete && o.retrievalQuery != "" && (o.projectAutomatic || o.projectID == "" && len(o.projectIDs) == 0) {
+		if err := autoResolveProject(ctx, store, o); err != nil {
+			return err
+		}
+	}
 	if len(o.projectIDs) > 1 {
 		return resolveProjectSet(ctx, store, o, execute)
 	}
-	p, err := routing.Resolve(ctx, store, o.projectID, o.workspace)
+	var p state.Project
+	var err error
+	if (o.projectRoutingComplete || o.projectAutomatic) && o.projectID == "" {
+		p = state.Project{Name: "Default workspace", Workspace: o.workspace, Scope: o.workspace}
+	} else {
+		p, err = routing.Resolve(ctx, store, o.projectID, o.workspace)
+	}
 	if err != nil {
 		return err
 	}
 	if p.ID == "" && o.defaultScope != "" {
 		p.Scope = o.defaultScope
+	}
+	if workspace := o.runtimeWorkspaces[p.ID]; p.ID != "" && workspace != "" {
+		p.Workspace = workspace
+	}
+	if execute && !o.projectRoutingComplete && p.ID != "" {
+		if err := enrollRuntimeProjects(ctx, store, o, []state.Project{p}, projectruntime.Origin{Entry: "cli", AgentID: o.agentID, AudienceID: o.audienceID}); err != nil {
+			return err
+		}
 	}
 	o.projectID, o.projectName, o.scope, o.workspace = p.ID, p.Name, p.Scope, p.Workspace
 	o.projects = nil

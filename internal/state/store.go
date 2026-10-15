@@ -664,6 +664,19 @@ func (s *Store) SessionCanResume(ctx context.Context, id string) error {
 	return sessionCanResume(ctx, s.db, id)
 }
 
+// LatestSessionRun returns the latest owned task as routing evidence. It never
+// reads a native transcript or grants permission to resume failed execution.
+func (s *Store) LatestSessionRun(ctx context.Context, id string) (Run, error) {
+	if _, err := s.Session(ctx, id); err != nil {
+		return Run{}, err
+	}
+	var runID string
+	if err := s.db.QueryRowContext(ctx, "SELECT id FROM runs WHERE session_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", id).Scan(&runID); err != nil {
+		return Run{}, err
+	}
+	return s.Run(ctx, runID)
+}
+
 func sessionCanResume(ctx context.Context, q rowQuerier, id string) error {
 	if _, err := readSession(ctx, q, id); err != nil {
 		return err

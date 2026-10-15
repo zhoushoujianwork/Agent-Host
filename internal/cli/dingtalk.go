@@ -147,6 +147,7 @@ func loadBotConfig(path string) (dingtalk.Config, error) {
 }
 
 func composeHost(store *state.Store, o options, client *jev.Client, sink event.Sink) *host.Host {
+	sink = runtimeReceiptSink(store.WithPartition(o.agentID, o.audienceID), o, sink)
 	if o.scope == "" {
 		o.scope = o.workspace
 	}
@@ -297,6 +298,8 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	observe := func(kind, message string) error { return emitChannel(kind, message, "", nil) }
 	profile := channel.Key("dingtalk-owner-v1", cfg.ClientID, cfg.CorpID, cfg.OwnerUserID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
 	service := &channel.Service{Downloader: &dingtalk.MediaDownloader{Config: cfg}, MediaRoot: filepath.Join(o.home, "attachments"), Store: store, Host: composeHost(store, o, client, sink), Router: routing.New(client), Replier: dingtalk.Replier{}, Reactor: &dingtalk.Reactor{Config: cfg, RobotCode: cfg.RobotCode}, ClientID: cfg.ClientID, Scope: o.scope, Profile: profile, Timeout: o.timeout, MaxConcurrentConversations: o.maxConcurrentConversations, Observe: observe}
+	o.runtimeWorkspaces = make(map[string]string)
+	configureChannelRuntimeProjects(service, store, o, "dingtalk")
 	service.SelectAgent = func(ctx context.Context, m dingtalk.Message) (channel.AgentSelection, error) {
 		return agents.selectAgent(cfg.ClientID, m)
 	}
@@ -313,6 +316,10 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	}
 	service.ResolveHost = func(ctx context.Context, projectID string) (channel.Host, assembly.Runtime, error) {
 		selected := o
+		selected.projectRoutingComplete = true
+		selected.projectID, selected.projectName, selected.scope, selected.primaryProject = "", "", "", ""
+		selected.projectIDs = nil
+		selected.workspace = o.defaultWorkspace
 		if projectID != "" {
 			selected.projectID = projectID
 			selected.projectIDs = []string{projectID}
@@ -325,6 +332,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	}
 	service.ResolveProjects = func(ctx context.Context, ids []string, primaryID string) (channel.Host, assembly.Runtime, error) {
 		selected := o
+		selected.projectRoutingComplete = true
 		selected.projectIDs = append([]string(nil), ids...)
 		selected.primaryProject = primaryID
 		selected.projectID, selected.projectName, selected.scope = "", "", ""
