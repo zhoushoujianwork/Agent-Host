@@ -508,6 +508,7 @@ function memoryCard(value, record, isCandidate = false) {
   const draft = isCandidate ? value.draft || {} : value;
   const expired = !isCandidate && value.status === "active" && value.expires_at && Date.parse(value.expires_at) <= Date.now();
   node.append(badge(expired ? "expired" : value.status), dom("div", "memory-id", value.id));
+  if (value.external_receipt_id) node.append(dom("p", "note", `External agent supplied evidence · receipt ${value.external_receipt_id}`));
   const summary = value.source_type === "reviewed_experience" && array(value.steps).length
     ? (value.text || "").split("\n").slice(1, 2).join("\n") : value.text;
   node.append(dom("h3", "", isCandidate ? draft.title || "候选提案" : (value.text || "记忆").split("\n")[0]),

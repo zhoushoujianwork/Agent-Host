@@ -644,6 +644,15 @@ func (s *Store) enableFileMemory(ctx context.Context, c FileMemoryConfig) error 
 	if _, err = db.ExecContext(ctx, fileIndexSchema); err != nil {
 		return fail(err)
 	}
+	var externalTables bool
+	if err = db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM runtime.sqlite_master WHERE name='external_memory_receipts')").Scan(&externalTables); err != nil {
+		return fail(err)
+	}
+	if externalTables {
+		if _, err = db.ExecContext(ctx, "CREATE TEMP TRIGGER file_external_receipts_update AFTER UPDATE ON runtime.external_memory_receipts BEGIN INSERT INTO file_operation_log VALUES('external_memory_receipts',NEW.id,OLD.payload,NEW.payload); END;"); err != nil {
+			return fail(err)
+		}
+	}
 	old := s.db
 	s.db = db
 	s.files = f
@@ -960,7 +969,7 @@ func (s *Store) recoverFileOperations(ctx context.Context, tx *sql.Tx, m fileMan
 		return err
 	}
 	for _, op := range m.Operations {
-		if op.Table != "runs" && op.Table != "candidates" {
+		if op.Table != "runs" && op.Table != "candidates" && op.Table != "external_memory_receipts" {
 			return errors.New("invalid file-memory recovery operation")
 		}
 		var payload []byte
@@ -982,6 +991,14 @@ func (s *Store) recoverFileOperations(ctx context.Context, tx *sql.Tx, m fileMan
 				return err
 			}
 			if err := writeRun(ctx, tx, run); err != nil {
+				return err
+			}
+		} else if op.Table == "external_memory_receipts" {
+			var receipt ExternalReceipt
+			if err := json.Unmarshal(op.After, &receipt); err != nil {
+				return err
+			}
+			if err := writeExternalReceipt(ctx, tx, receipt); err != nil {
 				return err
 			}
 		} else {

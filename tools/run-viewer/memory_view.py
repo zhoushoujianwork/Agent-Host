@@ -106,6 +106,32 @@ def decision_summary(record):
 
 def memory_catalog(catalog):
     database, db_records, db_total, run_total, filter_info = database_rows(catalog)
+    external = {}
+    imported = [m for m, _ in database if m.get("external_receipt_id")]
+    if imported:
+        conn = catalog.connection()
+        try:
+            for memory in imported:
+                row = conn.execute("SELECT payload FROM external_memory_receipts WHERE id=?",
+                                   (memory["external_receipt_id"],)).fetchone()
+                if row is None:
+                    raise ValueError("external memory receipt is missing")
+                receipt = object_payload(row[0])
+                binding = receipt["connection"]
+                if any(binding.get(k) != memory.get(k, "default" if k == "agent_id" else "owner")
+                       for k in ("scope", "agent_id", "audience_id")):
+                    raise ValueError("external receipt does not match memory attribution")
+                ids = set(memory.get("evidence_ids") or [])
+                evidence = [e for e in receipt["submission"]["evidence"] if e["id"] in ids]
+                if len(evidence) != len(ids):
+                    raise ValueError("external memory evidence is missing")
+                external[memory["id"]] = {
+                    "role": "external_agent_supplied_evidence", "receipt_id": receipt["id"],
+                    "source": receipt["submission"]["source"], "received_at": receipt["received_at"],
+                    "evidence": evidence, "digest": receipt["digest"],
+                    "coverage": "Selected excerpts supplied by an external agent; not Host-observed execution."}
+        finally:
+            conn.close()
     db_source = catalog.memory_source()
     groups = {}
     if database or db_records:
@@ -183,6 +209,7 @@ def memory_catalog(catalog):
                           "annotation": annotation, "annotation_origin": annotation_origin,
                           "annotation_record_key": annotation_record,
                           "origin_run": run_brief(origin) if origin else None,
+                          "external_evidence": external.get(memory["id"]) if source["kind"] == "database" else None,
                           "decision": decision_summary(origin) if origin and memory.get("source_type") == "user_statement" else None,
                           "uses": uses})
         for record in records:

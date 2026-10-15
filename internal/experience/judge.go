@@ -150,6 +150,15 @@ func (j *JevJudge) Assess(ctx context.Context, draft state.ExperienceDraft, evid
 			"uncertain":   "The cited observations are ambiguous or insufficient to confidently decide support for every factual claim and demonstrated step.",
 		}},
 	}
+	for _, e := range selected {
+		if e.Provenance == "external_agent_supplied" {
+			input["evidence_provenance"] = "External agent supplied call/result excerpts; Host did not observe this execution. Preserve this attribution in the lesson and do not describe it as Host-verified execution."
+			q := questions["support"]
+			q.Instructions = fmt.Sprint(q.Instructions) + " When evidence_provenance is present, the observation pairs were supplied by an external agent. Assess only what these excerpts report, without treating synthetic sequence numbers as independent verification."
+			questions["support"] = q
+			break
+		}
+	}
 	response, err := j.evaluate(ctx, &audit, "assess", input, questions)
 	if err != nil {
 		return finish("assessment_failed", fmt.Errorf("assess experience candidate: %w", err))

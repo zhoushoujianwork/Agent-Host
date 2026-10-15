@@ -1,130 +1,138 @@
 # External agent memory skill: implementation notes
 
-Status: proposed interfaces, not implemented commands. Scope decisions live in
-the [main design](external-memory-skill-design.md).
+Implemented 2026-10-15. Scope and usage live in the
+[main design](external-memory-skill-design.md); command and payload examples live
+in the skill's [protocol reference](../skills/agent-host-memory/references/protocol.md).
 
-## Current foundation and gaps
+## Ownership and connections
 
-Inspected on 2026-10-15, including an existing dirty working tree. Implementation
-references describe current source, not a new delivery or validation claim.
+`internal/cli/external_memory.go` is a transport-only client. It connects to the
+owning Host's existing `memory-control.sock` at `/external-memory`, using POST
+over a private Unix socket. The managed DingTalk and Feishu workers serve this
+endpoint through `startManagedMemoryControl`. There is no remote HTTP listener
+and no second writable database connection in the client.
 
-| Foundation | Reuse and required change |
-| --- | --- |
-| `internal/cli/cli.go` | Existing memory search/show and candidate controls; no external submission command. |
-| `internal/assistance/mcp.go` | Scoped search/read/evidence patterns; binding requires an active owner Host run and one project. An external entry needs its own admitted binding. |
-| `internal/cli/memory_control.go` | Owner-private Unix socket and single Host writer; currently accepts actions on existing candidates/memories only. Add ingestion operations through the owning runtime. |
-| `internal/host/experience.go` | Extraction, Jev assessment, and publication are coupled to run processing. Factor reusable admission logic without fabricating a native run. |
-| `internal/host/file_memory.go` | Existing comparison and blacklist admission behavior should apply to imports too. |
-| `internal/state/file_memory.go` | Reuse authoritative publication and derived retrieval, extending evidence readers for external receipts. |
+`memory connection add` explicitly selects a running Host state home, a configured
+Agent and optionally an allowed registered project. The Host derives the private
+audience and exact scope. It stores an immutable admitted binding; the client
+stores an alias in `~/.config/agent-host/memory-connections.json` with mode 0600.
+`--connections FILE` selects an alternate alias file. The default alias is
+`AGENT_HOST_MEMORY_CONNECTION`, or `default` when unset.
 
-Do not invoke `chat` as a storage workaround, fabricate a successful Host run,
-or call an existing run-bound MCP with an invented run ID. A receipt needs a
-first-class external source that survives through candidates, memory records,
-evidence reads, and the workbench. Existing run evidence must remain readable.
+Every call rechecks the admitted binding against current Agent/project
+configuration. Payload contents cannot supply a scope or audience. Revocation
+blocks intake, recall, read and receipt lookup. A revoked or changed binding
+requires a new alias; it cannot be silently repointed. Several aliases may share
+the same admitted memory partition while keeping submission receipts separate.
+This is a same-OS-user interface, not isolation against arbitrary local file access.
 
-## Connection and proposed CLI surface
+The first release requires explicit file-memory migration. It never changes
+backends implicitly or falls back to another runtime. Existing offline memory
+commands remain compatible. A schema-v15 migration adds external connections and
+receipts without rewriting native runs, candidates or memory evidence.
 
-Start with a local Unix socket served by the Host that owns the target state.
-The CLI is a transport client and does not open a second writable Store. Reuse
-the service's locking and private socket permissions. A stored connection alias
-resolves the endpoint and a Host-configured binding to Agent, owner audience,
-and one project/default scope. Validate the binding on every operation; request
-content cannot override it. Do not infer project identity solely from cwd.
+## Evidence and selection
 
-Illustrative command names, to finalize during implementation:
+`internal/state/external_memory.go` validates versioned, bounded JSON submissions.
+Each has a stable key, source entry and observation time, optional real native
+conversation/turn IDs, 1–3 proposed items and 1–16 selected evidence excerpts.
+An envelope is at most 64 KiB; excerpts are at most 8 KiB and user statements
+at most 4 KiB. Unknown JSON fields and oversized submissions fail explicitly.
 
-```text
-agent-host memory connection show --connection NAME --json
-agent-host memory submit --connection NAME --input FILE --json
-agent-host memory receipt --connection NAME RECEIPT_ID --json
-agent-host memory recall --connection NAME --query TEXT --json
-agent-host memory read --connection NAME MEMORY_ID --json
-```
+A statement must equal one cited user excerpt exactly. `internal/host/external_memory.go`
+uses the existing memory Decider for category, durability and comparison. Author
+identities are retained as external attributions, not authenticated channel senders.
+Assistant summaries cannot impersonate user statements.
 
-Keep existing offline memory commands compatible. Connection setup explicitly
-selects a runtime and existing scope; unsupported backend/version fails with a
-clear message, without automatic migration or fallback to a different runtime.
-Initial recall returns memory, not arbitrary private conversation history.
-Read rechecks eligibility and revision, and returns supporting retained evidence
-or bounded evidence references. Revocation applies to receipt lookup as well.
+A procedure supplies a bounded `ExperienceDraft` with conditions, steps and
+evidence IDs. References must resolve to supplied tool call/result pairs with
+explicit error status. Existing Jev assessment checks support and durability;
+the existing Judge compares eligible proposals against current memory. The
+assessment includes explicit external provenance. No commands in these excerpts
+are executed. Failure lessons remain bounded by what their cited results report.
 
-## Submission and source semantics
+The Host reuses its current comparison, conflict quarantine and blacklist policy.
+The current bounded comparison policy and semantic equivalence remain
+model-dependent. Provider errors produce failed items without weaker admission.
+Imports cannot mark themselves accepted or expand access.
 
-Use a versioned JSON envelope read from a file or stdin, not text interpolated
-into shell commands. Suggested fields:
+## Publication and recovery
 
-| Field | Meaning |
-| --- | --- |
-| `schema_version`, `idempotency_key` | Protocol version and stable identity of one logical submission. |
-| `source` | Entry kind, external conversation/turn reference when available, and observation time. Missing native IDs stay missing; do not invent them. |
-| `items` | Proposed statement or procedure, applicability, and references into supplied evidence. |
-| `evidence` | Bounded excerpts, source-local IDs, author/role, timestamp, and optional tool command/result/exit status. |
+Intake persists the selected source envelope and a pending receipt before returning
+`ingestion_status=received`. One worker per owning Host processes pending receipts
+on startup and after intake. `processing_status` is separate from each item's
+`pending`, `published`, `excluded` or `failed` result. Partial success remains
+visible, and provider failure does not replay the business task.
 
-The Host adds authenticated local binding, receipt time, immutable evidence IDs,
-and content digest. Caller-supplied authorship and tool results are attributed
-claims. A digest proves the retained payload's identity, not its truth. Label
-external evidence explicitly in recall and the viewer. Retain the submitted,
-minimized excerpts; do not fetch arbitrary links or local paths from the payload.
-Any omitted/redacted source content must remain distinguishable from a complete
-transcript. Recalled Host memory is not fresh evidence for re-importing itself.
+Within a binding, the same key and canonical payload digest returns the existing
+receipt. Reusing a key with a different payload fails. Semantic duplicates with
+new keys still go through normal comparison and may refer to an existing memory.
+The receipt retains that submission's evidence and publication association.
 
-External agents may propose concise memories, but cannot mark them accepted,
-grant themselves scope, bypass a blacklist, or promote evidence strength. User
-statements remain attributed declarations. Host extraction/assessment handles
-procedures and checks evidence sufficiency, applicability, conflicts and existing
-memory. Unsupported claims are excluded with reasons rather than invented proof.
+`Store.FinishExternalItem` checks the comparison fingerprint and source binding,
+then uses the existing file-memory transaction. New memory has an
+`external_receipt_id`, original evidence references, and no `source_run_id`.
+The authoritative manifest journals the external receipt update alongside memory
+publication. On restart, receipt recovery runs before further operational writes;
+a crash after publication cannot cause duplicate publication. Snapshot changes
+fail explicitly instead of silently reassessing under different knowledge.
 
-## Receipt and recovery
+Graceful worker cancellation leaves unfinished items recoverable. A model failure
+is terminal for that item; after fixing its cause, the caller can deliberately
+submit a new attempt with a new key. Storage failures preserve unfinished work
+and are logged. Revoked bindings suppress queued work. This is a bounded worker,
+not a general retry scheduler.
 
-Persist evidence and a processing job before acknowledging receipt. A receipt
-contains separate ingestion and processing results plus per-item publication
-outcomes and memory IDs/revisions. For example, `received` means durable intake;
-`processing` means selection is unfinished; terminal items can be `published`,
-`excluded`, or `failed`. Partial publication must remain visible. Publication
-success requires authoritative memory visibility, not merely an extracted draft.
+Receipt responses omit source bodies, and receipt/read responses omit raw decision
+audits; the durable record retains them. Clients look up by receipt ID or original key after a transport
+timeout, and only resend the identical envelope/key when necessary. The skill
+polls at most six times over 30 seconds before reporting unfinished work.
 
-Deduplicate within the admitted binding using the idempotency key and digest.
-Same key/same payload returns the original receipt; same key/different payload
-returns a conflict. Persist publication associations so a crash after publication
-cannot duplicate it during recovery. Semantic duplicates with different keys
-still go through normal comparison. Disable/blacklist checks apply on retries.
+## Recall, native use and inspection
 
-On timeout, the client queries by the stable submission key before resending
-the same payload. It does not generate another key, silently queue uploads, or
-replay the user's business task. Host failures remain failed/pending receipts;
-bounded polling ends with an honest status and a receipt for later inspection.
-Implementation should define concrete payload, item, evidence and polling limits
-and return explicit size errors without silent truncation.
+`memory recall` returns at most ten scoped navigation items. `memory read`
+rechecks current eligibility and optional expected revision, and returns the full
+record plus supporting retained evidence. Search snippets do not prove a fact.
+Conflicted, disabled, expired and foreign-scope records cannot be read this way.
+Recall does not expose arbitrary private conversation history.
 
-## Skill packaging
+`ContextMemoryEvidence` supports both native-run and external-receipt sources.
+External reads explicitly report `external_agent_supplied_evidence`, original
+source/observation times, receipt time, payload digest and cited excerpts. Links
+are retained as source references; the Host does not fetch supplied links or paths.
+The same eligible memory can be recalled by an existing Host entry sharing its
+Agent, audience and scope. Native packages support receipt-based procedure
+provenance while retaining each harness's own execution and permissions.
 
-Proposed source location: `skills/agent-host-memory/SKILL.md` with one linked
-`references/protocol.md` for actual command examples, receipt semantics and
-payload shape. Prefer the Go CLI for deterministic transport and validation;
-add no wrapper script until it removes a demonstrated need for repeated logic.
+The workbench renders imported sources without inventing an origin run. Its
+evidence projection checks scope and shows only the memory's cited excerpts.
+Disabling remains available. Native-run restructuring is not offered for imports.
+File-backend rollback preserves imported records and their operational receipts;
+new external intake remains unavailable on the historical SQLite backend.
 
-The description should cover saving durable knowledge to Agent-Host and recalling
-it for current work. The body should give only the connection check, recall/read,
-selection/evidence, submit, and receipt workflow. Preserve the original task and
-permissions. Do not require a transcript scan, task execution by Host, or human
-review of every selected memory. Missing connection/CLI should produce a concrete
-setup requirement without altering native configuration automatically.
+## Validation
 
-Installation copies or links the source skill into the chosen entry's skill
-directory; never overwrite an unrelated existing skill. Publishing learned
-procedures as native executable Skills remains Host's existing separate path.
+Automated coverage includes local CLI/socket intake and key lookup, independent
+same-scope recall, foreign-scope and revoked-binding denial, changed-payload key
+conflicts, publication recovery after simulated SQL rollback, cache rebuild,
+blacklist/conflict handling, partial publication, provider failure, unsupported
+evidence, native procedure packaging, workbench projection and rollback.
 
-## Acceptance before claiming delivery
+Run `make check` and the skill-creator validator. Live native-entry acceptance
+is recorded separately from these deterministic checks; general model quality,
+remote access, group sharing and transcript synchronization remain outside this release.
 
-- Save an explicit decision from real Codex; inspect its receipt, memory, and
-  retained source; retrieve it in a fresh conversation with the same binding.
-- Recall it through an existing Host entry sharing that exact scope. Confirm
-  a different Agent/project/audience cannot retrieve it through this interface.
-- Replay a submission and recover a simulated crash without duplicate evidence
-  or publication; reject key reuse with changed content.
-- Verify missing evidence does not become verified procedural success; conflicting
-  and disabled memories retain the existing admission behavior.
-- Exercise partial publication, provider failure, unavailable Host, revoked
-  binding, unsupported backend, and oversized evidence without false success.
-- Run `make check` and skill validation once implementation and packaging exist.
-  Keep automated checks separate from real native-entry acceptance.
+### Bounded live acceptance, 2026-10-15
+
+The existing local file-memory Host upgraded from schema 14 to 15 and both
+DingTalk and Feishu reconnected. A fresh Codex evaluation context followed the
+installed skill to submit an exact standing user language preference. Real Jev
+selection published it as an active preference with retained external evidence.
+A second fresh Codex evaluation context independently searched, read, and answered
+from that memory. The existing Host CLI search found the same record, and the
+live workbench returned HTTP 200 with its external evidence projection.
+
+The local skill is linked to this source checkout, and the default connection
+targets the existing owner-private default Agent scope. Checkpoint collection is
+off. This proves one real statement round trip and fresh-context recall; it does
+not establish general procedure quality or a separate end-user chat's behavior.

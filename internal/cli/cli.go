@@ -30,6 +30,8 @@ const usage = `Agent-Host: native Claude chat with observable, source-linked mem
 Usage:
   agent-host chat [-m MESSAGE] [--resume SESSION] [options]
   agent-host memory search [options] QUERY
+  agent-host memory connection [add|show|revoke] [options]
+  agent-host memory submit|receipt|recall|read [--help] [options]
   agent-host memory show [options] MEMORY_ID
   agent-host memory candidates [--run RUN_ID] [--status pending|accepted|rejected|all] [options]
   agent-host memory candidate [options] CANDIDATE_ID
@@ -392,6 +394,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "memory" && len(args) > 1 && (args[1] == "migrate" || args[1] == "verify" || args[1] == "rollback") {
 		return runMemoryStorage(ctx, args[1:], out, errout)
+	}
+	if args[0] == "memory" && len(args) > 1 && isExternalMemoryCommand(args[1]) {
+		return runExternalMemory(ctx, args[1:], in, out, errout)
 	}
 	command := args[0]
 	args = args[1:]

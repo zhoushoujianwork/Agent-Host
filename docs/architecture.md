@@ -60,10 +60,11 @@ suite was not rerun for the retrieval change.
 
 ## Goal and usage
 
-The proposed [external agent memory skill](external-memory-skill-design.md)
-lets local external entries submit attributed evidence and recall scoped memory
-without moving their native execution into Host. External ingestion, connection
-bindings and its installable skill are not implemented by that proposal.
+The [external agent memory skill](external-memory-skill-design.md) lets local
+external entries submit attributed evidence and recall scoped memory without
+moving their native execution into Host. Local CLI connections, durable ingestion
+receipts and the source skill use the running file-memory Host; native-entry
+acceptance and general quality remain distinct from automated checks.
 
 Give AI work continuity across tasks and execution engines. A user submits a
 task through a channel; the host selects an agent configuration, supplies

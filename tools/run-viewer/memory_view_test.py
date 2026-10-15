@@ -56,6 +56,25 @@ class MemoryTests(unittest.TestCase):
         conn.commit()
         return conn
 
+    def test_external_memory_keeps_receipt_evidence_without_a_native_run(self):
+        conn = self.database()
+        conn.execute("CREATE TABLE external_memory_receipts(id TEXT PRIMARY KEY,payload TEXT)")
+        memory = json.loads(conn.execute("SELECT payload FROM memories WHERE id='m-a'").fetchone()[0])
+        memory.update(source_run_id="", external_receipt_id="external-1", evidence_ids=["u1"])
+        receipt = {"id": "external-1", "digest": "digest", "received_at": "2026-10-15T01:00:00Z",
+                   "connection": {"scope": "/project-a", "agent_id": "default", "audience_id": "owner"},
+                   "submission": {"source": {"entry": "codex"}, "evidence": [
+                       {"id": "u1", "role": "user", "text": "Selected original source"},
+                       {"id": "not-cited", "role": "user", "text": "Other evidence"}]}}
+        conn.execute("UPDATE memories SET payload=? WHERE id='m-a'", (json.dumps(memory),))
+        conn.execute("INSERT INTO external_memory_receipts VALUES(?,?)", (receipt["id"], json.dumps(receipt)))
+        conn.commit()
+        conn.close()
+        item = next(m for m in memory_catalog(self.catalog)["memories"] if m["memory"]["id"] == "m-a")
+        self.assertIsNone(item["origin_run"])
+        self.assertEqual(item["external_evidence"]["role"], "external_agent_supplied_evidence")
+        self.assertEqual([e["id"] for e in item["external_evidence"]["evidence"]], ["u1"])
+
     def file_backend(self, memories, generation=1):
         """Represent a published file snapshot beside deliberately stale SQL."""
         home = self.home.resolve()

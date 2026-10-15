@@ -77,7 +77,7 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 	files := map[string]string{}
 	allowed := map[string]bool{".claude-plugin/plugin.json": true}
 	for _, source := range manifest.Sources {
-		if !hostSkillName.MatchString(source.Name) || source.MemoryID == "" || source.Revision < 1 || source.SourceRunID == "" || source.Scope == "" || len(source.EvidenceIDs) == 0 {
+		if !hostSkillName.MatchString(source.Name) || source.MemoryID == "" || source.Revision < 1 || (source.SourceRunID == "" && source.ExternalReceiptID == "") || (source.SourceRunID != "" && source.ExternalReceiptID != "") || source.Scope == "" || len(source.EvidenceIDs) == 0 {
 			return manifest, errors.New("native skill source is incomplete")
 		}
 		path := "skills/" + source.Name + "/SKILL.md"

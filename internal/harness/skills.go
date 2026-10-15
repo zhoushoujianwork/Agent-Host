@@ -20,12 +20,13 @@ type SkillManifest struct {
 }
 
 type SkillSource struct {
-	Name        string   `json:"name"`
-	MemoryID    string   `json:"memory_id"`
-	Revision    int      `json:"revision"`
-	Scope       string   `json:"scope"`
-	SourceRunID string   `json:"source_run_id"`
-	EvidenceIDs []string `json:"evidence_ids"`
+	Name              string   `json:"name"`
+	MemoryID          string   `json:"memory_id"`
+	Revision          int      `json:"revision"`
+	Scope             string   `json:"scope"`
+	SourceRunID       string   `json:"source_run_id"`
+	ExternalReceiptID string   `json:"external_receipt_id,omitempty"`
+	EvidenceIDs       []string `json:"evidence_ids"`
 }
 
 type SkillFile struct {

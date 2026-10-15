@@ -39,11 +39,12 @@ type WorkspaceFile struct {
 }
 
 type WorkspaceMemory struct {
-	ID          string   `json:"id"`
-	Scope       string   `json:"scope"`
-	Revision    int      `json:"revision"`
-	SourceRunID string   `json:"source_run_id"`
-	EvidenceIDs []string `json:"evidence_ids,omitempty"`
+	ID                string   `json:"id"`
+	Scope             string   `json:"scope"`
+	Revision          int      `json:"revision"`
+	SourceRunID       string   `json:"source_run_id"`
+	ExternalReceiptID string   `json:"external_receipt_id,omitempty"`
+	EvidenceIDs       []string `json:"evidence_ids,omitempty"`
 }
 
 type WorkspaceManifest struct {
@@ -145,7 +146,7 @@ func MaterializeWorkspace(cacheRoot string, in WorkspaceInput) (WorkspaceView, e
 		if audience == state.OwnerAudienceID && memories[i].Kind == "preference" {
 			preferences = append(preferences, memories[i])
 		}
-		manifest.Memories = append(manifest.Memories, WorkspaceMemory{ID: memories[i].ID, Scope: memories[i].Scope, Revision: memories[i].Revision, SourceRunID: memories[i].SourceRunID, EvidenceIDs: append([]string(nil), memories[i].EvidenceIDs...)})
+		manifest.Memories = append(manifest.Memories, WorkspaceMemory{ID: memories[i].ID, Scope: memories[i].Scope, Revision: memories[i].Revision, SourceRunID: memories[i].SourceRunID, ExternalReceiptID: memories[i].ExternalReceiptID, EvidenceIDs: append([]string(nil), memories[i].EvidenceIDs...)})
 	}
 	if len(preferences) > 0 {
 		preferenceRaw, err := json.MarshalIndent(preferences, "", "  ")

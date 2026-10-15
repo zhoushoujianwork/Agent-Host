@@ -144,7 +144,7 @@ func renderSkillPackage(memories []state.Memory, identity SkillIdentity, now tim
 		if agent != identity.AgentID || audience != identity.AudienceID || !scopes[memory.Scope] {
 			return manifest, nil, fmt.Errorf("memory %s is outside native skill identity", memory.ID)
 		}
-		if memory.ID == "" || memory.Revision < 1 || memory.SourceRunID == "" || strings.TrimSpace(memory.Conditions) == "" || strings.TrimSpace(memory.Text) == "" || len(memory.EvidenceIDs) == 0 {
+		if memory.ID == "" || memory.Revision < 1 || (memory.SourceRunID == "" && memory.ExternalReceiptID == "") || (memory.SourceRunID != "" && memory.ExternalReceiptID != "") || strings.TrimSpace(memory.Conditions) == "" || strings.TrimSpace(memory.Text) == "" || len(memory.EvidenceIDs) == 0 {
 			return manifest, nil, fmt.Errorf("memory %s lacks native skill provenance or conditions", memory.ID)
 		}
 		selected = append(selected, memory)
@@ -181,7 +181,7 @@ func renderSkillPackage(memories []state.Memory, identity SkillIdentity, now tim
 			return manifest, nil, errors.New("native skill set exceeds its content budget")
 		}
 		files["skills/"+name+"/SKILL.md"] = body
-		manifest.Sources = append(manifest.Sources, harness.SkillSource{Name: name, MemoryID: memory.ID, Revision: memory.Revision, Scope: memory.Scope, SourceRunID: memory.SourceRunID, EvidenceIDs: append([]string(nil), memory.EvidenceIDs...)})
+		manifest.Sources = append(manifest.Sources, harness.SkillSource{Name: name, MemoryID: memory.ID, Revision: memory.Revision, Scope: memory.Scope, SourceRunID: memory.SourceRunID, ExternalReceiptID: memory.ExternalReceiptID, EvidenceIDs: append([]string(nil), memory.EvidenceIDs...)})
 	}
 	for relative, body := range files {
 		digest := sha256.Sum256(body)
@@ -194,7 +194,11 @@ func renderSkillPackage(memories []state.Memory, identity SkillIdentity, now tim
 }
 
 func renderSkill(memory state.Memory, name, sourceIdentity string) ([]byte, error) {
-	values := append([]string{memory.Text, memory.Conditions, memory.ID, memory.Scope, memory.SourceRunID, sourceIdentity}, memory.Steps...)
+	sourceRef := memory.SourceRunID
+	if memory.ExternalReceiptID != "" {
+		sourceRef = memory.ExternalReceiptID
+	}
+	values := append([]string{memory.Text, memory.Conditions, memory.ID, memory.Scope, sourceRef, sourceIdentity}, memory.Steps...)
 	values = append(values, memory.Avoid...)
 	values = append(values, memory.EvidenceIDs...)
 	for _, value := range values {
@@ -227,6 +231,9 @@ func renderSkill(memory state.Memory, name, sourceIdentity string) ([]byte, erro
 		}
 	}
 	body.WriteString("\n## Source evidence\n\n")
+	if memory.ExternalReceiptID != "" {
+		fmt.Fprintf(&body, "External receipt: %s. These excerpts were supplied by an external agent; Host did not observe their execution.\n", quote(memory.ExternalReceiptID))
+	}
 	fmt.Fprintf(&body, "Source store: %s\nMemory: %s, revision %d\nScope: %s\nSource run: %s\nEvidence IDs: %s\n", quote(sourceIdentity), quote(memory.ID), memory.Revision, quote(memory.Scope), quote(memory.SourceRunID), quote(strings.Join(memory.EvidenceIDs, ", ")))
 	if body.Len() > MaxSkillBytes {
 		return nil, fmt.Errorf("memory %s exceeds native skill content budget", memory.ID)

@@ -59,27 +59,28 @@ type Project struct {
 }
 
 type Memory struct {
-	SenderID         string          `json:"sender_id,omitempty"`
-	AgentID          string          `json:"agent_id,omitempty"`
-	AudienceID       string          `json:"audience_id,omitempty"`
-	ID               string          `json:"id"`
-	Scope            string          `json:"scope"`
-	Kind             string          `json:"kind"`
-	Text             string          `json:"text"`
-	Status           string          `json:"status"` // active, conflicted, or invalidated
-	Revision         int             `json:"revision"`
-	SourceRunID      string          `json:"source_run_id"`
-	CreatedAt        time.Time       `json:"created_at"`
-	SourceType       string          `json:"source_type,omitempty"` // user_statement or reviewed_experience
-	CandidateID      string          `json:"candidate_id,omitempty"`
-	Conditions       string          `json:"conditions,omitempty"`
-	Steps            []string        `json:"steps,omitempty"`
-	Avoid            []string        `json:"avoid,omitempty"`
-	RevisionDecision json.RawMessage `json:"revision_decision,omitempty"`
-	Entities         []string        `json:"entities,omitempty"`
-	EvidenceIDs      []string        `json:"evidence_ids,omitempty"`
-	ExpiresAt        *time.Time      `json:"expires_at,omitempty"`
-	ReviewNote       string          `json:"review_note,omitempty"`
+	SenderID          string          `json:"sender_id,omitempty"`
+	AgentID           string          `json:"agent_id,omitempty"`
+	AudienceID        string          `json:"audience_id,omitempty"`
+	ID                string          `json:"id"`
+	Scope             string          `json:"scope"`
+	Kind              string          `json:"kind"`
+	Text              string          `json:"text"`
+	Status            string          `json:"status"` // active, conflicted, or invalidated
+	Revision          int             `json:"revision"`
+	SourceRunID       string          `json:"source_run_id"`
+	ExternalReceiptID string          `json:"external_receipt_id,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	SourceType        string          `json:"source_type,omitempty"` // user_statement or reviewed_experience
+	CandidateID       string          `json:"candidate_id,omitempty"`
+	Conditions        string          `json:"conditions,omitempty"`
+	Steps             []string        `json:"steps,omitempty"`
+	Avoid             []string        `json:"avoid,omitempty"`
+	RevisionDecision  json.RawMessage `json:"revision_decision,omitempty"`
+	Entities          []string        `json:"entities,omitempty"`
+	EvidenceIDs       []string        `json:"evidence_ids,omitempty"`
+	ExpiresAt         *time.Time      `json:"expires_at,omitempty"`
+	ReviewNote        string          `json:"review_note,omitempty"`
 }
 
 type Run struct {
@@ -232,13 +233,14 @@ type ChannelReaction struct {
 
 // ToolEvidence binds a native call to its observed result in the run journal.
 type ToolEvidence struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Input     json.RawMessage `json:"input"`
-	Result    json.RawMessage `json:"result"`
-	IsError   bool            `json:"is_error"`
-	CallSeq   int64           `json:"call_seq"`
-	ResultSeq int64           `json:"result_seq"`
+	Provenance string          `json:"provenance,omitempty"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Input      json.RawMessage `json:"input"`
+	Result     json.RawMessage `json:"result"`
+	IsError    bool            `json:"is_error"`
+	CallSeq    int64           `json:"call_seq"`
+	ResultSeq  int64           `json:"result_seq"`
 }
 
 type ExperienceDraft struct {

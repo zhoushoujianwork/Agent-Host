@@ -1,7 +1,8 @@
 # External agent memory skill
 
-Status: proposal, 2026-10-15. No external ingestion command or installable skill
-is delivered by this document. [Implementation notes](external-memory-skill-design-detail.md).
+Status: implemented, 2026-10-15. Local connections, external intake, durable
+receipts, scoped recall/read and the source skill are available. Validation and
+operational limits are in the [implementation notes](external-memory-skill-design-detail.md).
 
 ## Goal and usage
 
@@ -18,8 +19,8 @@ can retrieve the decision and inspect its source.
 
 ## Recommended design
 
-Ship an `agent-host-memory` skill with a small CLI client backed by the running
-Host. The skill teaches when to recall, what is worth retaining, how to attach
+The [agent-host-memory skill](../skills/agent-host-memory/SKILL.md) uses a small
+CLI client backed by the running Host. It teaches when to recall, what to retain, how to attach
 evidence, and how to interpret the receipt. Host performs validation, comparison,
 blacklist checks, and publication. The skill never edits the memory files or
 database directly.
@@ -60,13 +61,21 @@ can be discovered normally without requiring explicit invocation every time.
 - Local CLI access assumes the same trusted OS user. It is not a sandbox for an
   untrusted agent with arbitrary local filesystem access.
 
-## First release and order
+## Setup and first release
 
-1. Add owner-private external ingestion, durable receipts, and restart-safe
-   publication to one configured Host using the file-memory backend.
-2. Expose scoped recall/read and receipt lookup through the same CLI connection.
-3. Package the skill in this repository and document source-based installation;
-   validate a real Codex save followed by recall in a fresh conversation.
+Build with `make build` and start or restart the owning Host with `make run`.
+Link or copy `skills/agent-host-memory` into the entry's skill directory, preserving
+any existing installation. Configure one connection to that running Host:
+
+```sh
+bin/agent-host memory connection add --connection default --home /absolute/host/state --agent default
+bin/agent-host memory connection show --connection default
+```
+
+Add `--project REGISTERED_PROJECT_ID` for an allowed registered project, or omit
+it for the Agent's default scope. Add `--checkpoint-save` only when automatic
+selected checkpoint submissions are wanted. Complete examples are in the
+skill's [protocol reference](../skills/agent-host-memory/references/protocol.md).
 
 The first release includes manual save and opt-in checkpoint save. It excludes
 remote public HTTP, group sharing, full transcript synchronization, background

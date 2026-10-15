@@ -600,6 +600,9 @@ func (s *Store) ContextMemoryEvidence(ctx context.Context, scope, id string, rev
 	if err != nil {
 		return nil, err
 	}
+	if m.ExternalReceiptID != "" {
+		return s.ExternalMemoryEvidence(ctx, m)
+	}
 	r, err := s.Run(ctx, m.SourceRunID)
 	if err != nil || r.Scope != scope || len(r.Projects) > 1 {
 		return nil, ErrContextUnavailable

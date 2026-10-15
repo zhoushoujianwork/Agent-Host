@@ -91,7 +91,7 @@ PRAGMA user_version=7;
 `
 
 func Open(home string, readOnly bool) (*Store, error) {
-	return open(home, readOnly, false)
+	return open(home, readOnly, false, false)
 }
 
 // OpenForProjectInspection opens project registration data without migrating
@@ -101,10 +101,17 @@ func Open(home string, readOnly bool) (*Store, error) {
 // the additive discovery migration. Other inspection stays
 // strict and this compatibility exception never permits writes.
 func OpenForProjectInspection(home string) (*Store, error) {
-	return open(home, true, true)
+	return open(home, true, true, false)
 }
 
-func open(home string, readOnly, projectInspection bool) (*Store, error) {
+// OpenForMemoryInspection lets startup verify schema-14 file publications before
+// the owning worker performs the additive external-receipt migration. It cannot
+// write operational state or use the new external-memory tables.
+func OpenForMemoryInspection(home string) (*Store, error) {
+	return open(home, true, false, true)
+}
+
+func open(home string, readOnly, projectInspection, memoryInspection bool) (*Store, error) {
 	if home == "" {
 		return nil, errors.New("state home is required")
 	}
@@ -164,7 +171,8 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 	}
 	if readOnly {
 		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
-		if version != SchemaVersion && !compatibleProjects {
+		compatibleMemory := memoryInspection && version == 14
+		if version != SchemaVersion && !compatibleProjects && !compatibleMemory {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
 	} else {
@@ -269,6 +277,11 @@ func open(home string, readOnly, projectInspection bool) (*Store, error) {
 			}
 			if version < 14 {
 				if _, err := tx.Exec(schemaChannelReactionV14); err != nil {
+					return err
+				}
+			}
+			if version < 15 {
+				if _, err := tx.Exec(schemaExternalMemoryV15); err != nil {
 					return err
 				}
 			}

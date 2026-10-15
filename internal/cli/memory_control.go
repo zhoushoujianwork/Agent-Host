@@ -20,6 +20,7 @@ import (
 // The managed Host remains the sole database writer. The browser projection
 // connects through an owner-private socket and never receives model credentials.
 type memoryControl struct {
+	external    *externalMemoryControl
 	store       *state.Store
 	publish     func(context.Context, state.Candidate, string) (state.Memory, error)
 	restructure func(context.Context, state.Memory, string) (state.Memory, error)
@@ -36,6 +37,10 @@ type memoryAction struct {
 }
 
 func (m *memoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/external-memory" && m.external != nil {
+		m.external.ServeHTTP(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	fail := func(code int, err error) {
 		w.WriteHeader(code)
@@ -162,7 +167,8 @@ func startMemoryControl(ctx context.Context, home string, control *memoryControl
 }
 
 func startManagedMemoryControl(ctx context.Context, store *state.Store, o options, client *jev.Client) (func(), error) {
-	return startMemoryControl(ctx, o.home, &memoryControl{store: store, publish: func(ctx context.Context, c state.Candidate, note string) (state.Memory, error) {
+	external := newExternalMemoryControl(store, o, client)
+	stop, err := startMemoryControl(ctx, o.home, &memoryControl{external: external, store: store, publish: func(ctx context.Context, c state.Candidate, note string) (state.Memory, error) {
 		selected := o
 		selected.agentID, selected.audienceID, selected.scope = c.AgentID, "owner", c.Scope
 		return composeHost(store, selected, client, nil).AcceptExperience(ctx, c.ID, note, nil)
@@ -171,4 +177,9 @@ func startManagedMemoryControl(ctx context.Context, store *state.Store, o option
 		selected.agentID, selected.audienceID, selected.scope = m.AgentID, "owner", m.Scope
 		return composeHost(store, selected, client, nil).RestructureExperience(ctx, m.ID, m.Revision, note)
 	}})
+	if err != nil {
+		return nil, err
+	}
+	stopExternal := external.start(ctx)
+	return func() { stop(); stopExternal() }, nil
 }

@@ -219,7 +219,7 @@ function renderCards(items) {
     [...new Set(topicList(item).map((t) => t.key))].slice(0, 3).forEach((key) => tags.append(tag(topics[key] || key)));
     if (!tags.childNodes.length) tags.append(tag("尚无对象或主题标注"));
     const foot = dom("div", "card-bottom");
-    foot.append(dom("span", "", memory.source_type === "reviewed_experience" ? "来自人工审核经验" : memory.source_type === "user_statement" ? "来自用户声明" : "来源类型未记录"), dom("strong", "", `已使用 ${item.uses.filter((use) => use.status === "injected").length} 次`));
+    foot.append(dom("span", "", memory.external_receipt_id ? "外部 Agent 提供的证据" : memory.source_type === "reviewed_experience" ? "来自人工审核经验" : memory.source_type === "user_statement" ? "来自用户声明" : "来源类型未记录"), dom("strong", "", `已使用 ${item.uses.filter((use) => use.status === "injected").length} 次`));
     card.append(top, dom("h3", "", memory.text.split("\n")[0]), tags, foot,
       dom("div", "card-proof", `MEM ${short(memory.id)} · REV ${memory.revision ?? "?"} · ${item.snapshot ? "ARCHIVED" : "CURRENT"}`), dom("span", "card-arrow", "↗"));
     card.addEventListener("click", () => openDetail(item)); $("memory-grid").append(card);
@@ -248,7 +248,7 @@ function renderCandidates() {
 function actionControls(body, item, candidate) {
   const actions = candidate ? item.candidate.status === "pending" ? ["accept", "reject"] : []
     : ["active", "conflicted"].includes(item.memory.status) ? ["invalidate"] : [];
-  if (!candidate && item.memory.status === "active" && item.memory.source_type === "reviewed_experience" && item.memory.kind === "procedure") actions.unshift("restructure");
+  if (!candidate && !item.memory.external_receipt_id && item.memory.status === "active" && item.memory.source_type === "reviewed_experience" && item.memory.kind === "procedure") actions.unshift("restructure");
   if (!actions.length) return;
   const box = section(body, "管理此记录");
   if (!item.can_manage || !state.data.mutation_token) {
@@ -326,13 +326,13 @@ function renderDetail(item) {
     const procedure = section(body, "适用条件与执行步骤"); procedure.append(dom("p", "", memory.conditions));
     const sequence = dom("ol"); list(memory.steps).forEach((step) => sequence.append(dom("li", "", step))); procedure.append(sequence);
     renderAvoid(body, memory.avoid);
-    if (memory.revision_decision) procedure.append(dom("p", "detail-note", `此版本从 R${memory.revision_decision.source_revision} 整理而来，重新检查了原始证据；旧版本与原始草稿保留。`));
+    if (memory.revision_decision?.source_revision) procedure.append(dom("p", "detail-note", `此版本从 R${memory.revision_decision.source_revision} 整理而来，重新检查了原始证据；旧版本与原始草稿保留。`));
   }
   const flow = section(body, "形成与使用记录");
   const injected = item.uses.filter((use) => use.status === "injected");
   const lifecycle = dom("div", "lifecycle");
   for (const [name, note, known] of [
-    ["来源执行", item.origin_run ? "源 Run 已关联" : "源 Run 未记录", !!item.origin_run],
+    ["来源证据", memory.external_receipt_id ? "外部回执已关联" : item.origin_run ? "源 Run 已关联" : "源 Run 未记录", !!item.origin_run || !!memory.external_receipt_id],
     ["Jev 准入", decision ? choices[decision.eligibility?.choice] || "已有判断" : "未观察到", !!decision],
     ["关系比较", decision ? decision.relations.length ? `${decision.relations.length} 条比较` : "无旧记忆" : "未观察到", !!decision],
     ["记忆保存", `已观察 R${memory.revision ?? "?"}`, true],
@@ -364,6 +364,10 @@ function renderDetail(item) {
   }
   if (!item.uses.length) usage.append(dom("p", "", "在已载入的执行记录中，尚未观察到该记忆的召回。"));
   const provenance = section(body, "原文与来源");
+  if (memory.external_receipt_id) {
+    provenance.append(dom("p", "detail-note", "External agent supplied evidence. Host retained and assessed these excerpts; it did not observe the original execution."));
+    provenance.append(dom("pre", "", JSON.stringify(item.external_evidence, null, 2)));
+  }
   kv(provenance, [["记忆 ID", memory.id], ["Agent 实例", memory.agent_id || "default"], ["受众分区", memory.audience_id || "owner"], ["声明成员", memory.sender_id || "历史记录未提供"], ["记忆命名空间", memory.scope], ["来源类型", memory.source_type], ["来源执行", memory.source_run_id], ["适用条件", memory.conditions || "未单独记录"], ["到期时间", memory.expires_at ? date(memory.expires_at) : "未设置"], ["数据源", item.source.name]]);
   if (item.origin_run) {const link = dom("a", "recall-link", "查看源执行与模型事件 →"); link.href = recordURL(item.origin_run.key); provenance.append(link);}
   if (item.annotation_record_key) {const link = dom("a", "recall-link", "查看同文输入标注 →"); link.href = recordURL(item.annotation_record_key); provenance.append(link);}

@@ -230,7 +230,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 			return layout, zero, nil, errors.New("file memory requires explicit memory migrate before startup")
 		}
 		c.WorkspaceCache = filepath.Join(filepath.Dir(directory), "cache")
-		store, err := state.Open(layout.State, true)
+		store, err := state.OpenForMemoryInspection(layout.State)
 		if err != nil {
 			return layout, zero, nil, err
 		}
