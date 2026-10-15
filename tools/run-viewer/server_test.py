@@ -388,6 +388,28 @@ class HTTPTests(unittest.TestCase):
         self.server.server_close()
         self.worker.join()
         CatalogTests.tearDown(self)
+
+    def test_backup_health_is_read_only_and_omits_recovery_key(self):
+        with urlopen(self.base + "/api/backup") as response:
+            self.assertEqual(json.load(response), {"enabled": False})
+        self.server.backup_root = self.root
+        (self.root / "config").mkdir()
+        (self.root / "backup-state").mkdir()
+        (self.root / "config/backup.json").write_text(json.dumps({
+            "enabled": True, "destination": "/backups", "identity_file": "private-key-location"}))
+        (self.root / "backup-state/status.json").write_text(json.dumps({
+            "last_success": "2026-10-15T00:00:00Z", "last_error": "", "latest": {"bytes": 1200}}))
+        with urlopen(self.base + "/api/backup") as response:
+            data = json.load(response)
+        self.assertTrue(data["enabled"])
+        self.assertEqual(data["destination"], "/backups")
+        self.assertEqual(data["latest"]["bytes"], 1200)
+        self.assertNotIn("identity_file", data)
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + "/api/backup", method="POST"))
+        self.assertEqual(error.exception.code, 405)
+        error.exception.close()
+
     def test_assets_api_headers_and_write_boundary(self):
         for asset in ("/", "/app.js", "/style.css"):
             with urlopen(self.base + asset) as response:

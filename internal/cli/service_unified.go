@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"agent-host/internal/backup"
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/email"
@@ -83,6 +84,15 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 			continue
 		}
 		if name == "host.json" || name == "agents.json" || name == "CLAUDE.md" {
+			continue
+		}
+		if name == "backup.json" {
+			if _, err := privateServicePath(filepath.Join(directory, name), false); err != nil {
+				return nil, err
+			}
+			if _, err := backup.LoadPolicy(filepath.Dir(directory)); err != nil {
+				return nil, fmt.Errorf("backup policy: %w", err)
+			}
 			continue
 		}
 		if !strings.HasSuffix(name, ".json") {

@@ -19,6 +19,10 @@ memories are viewable; existing owner memory controls keep their original scope.
 `RUN_ARGS='--viewer-port 9000'` overrides
 the fixed default. The workbench stops with the supervisor. See
 [project-local startup](../../docs/service-install.md) for headless startup.
+When a [workspace backup policy](../../docs/workspace-backup-design.md) is configured,
+the execution page shows its last success, archive size, verification time and
+failure status. It reads backup health without exposing the recovery key or
+creating/restoring archives from the browser.
 The commands below start a separate viewer for local inspection; use a different
 port when the managed workbench is already running.
 

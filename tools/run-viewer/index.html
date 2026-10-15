@@ -20,6 +20,7 @@
   <main>
     <header class="topbar"><span>运行空间 <span class="slash">/</span> 执行记录</span><div class="sync"><a class="button quiet" href="/memory.html">◇ 记忆工作台</a><span id="sync-state">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 每 5 秒刷新</label><button id="refresh" class="button quiet">↻ 刷新</button></div></header>
     <div id="error" class="error-banner" role="alert" hidden></div>
+    <div id="backup-status" class="snapshot-note" aria-live="polite" hidden></div>
     <div id="empty" class="empty" hidden><span>◇</span><h1>还没有执行记录</h1><p>运行一次 agent-host chat，或将实测报告目录传给查看器。</p></div>
     <div id="content" hidden>
       <div class="page-heading"><div><div class="eyebrow">EXECUTION TRACE</div><h1 id="run-title">执行详情</h1><div class="run-meta"><span id="run-id"></span><span id="run-time"></span><span id="source-badge"></span></div></div><div id="overall-status"></div></div>

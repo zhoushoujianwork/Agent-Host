@@ -28,6 +28,25 @@ const badge = (status, text) => dom("span", `badge ${tone(status)}`, text || lab
 const duration = (ms) => typeof ms !== "number" ? "—" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;
 const date = (value) => value && !Number.isNaN(Date.parse(value)) ? new Date(value).toLocaleString("zh-CN", {hour12: false}) : "时间未记录";
 const short = (value) => String(value || "").slice(0, 8);
+
+async function refreshBackupStatus() {
+  const node = $("backup-status");
+  try {
+    const response = await fetch("/api/backup");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const value = await response.json();
+    node.hidden = !value.enabled && !value.last_error;
+    if (node.hidden) return;
+    const point = value.latest;
+    const success = value.last_success && !value.last_success.startsWith("0001-") ? date(value.last_success) : "none";
+    node.textContent = `Backup: ${value.last_error ? "FAILED — " + value.last_error : "enabled"} · Last success: ${success} · ${point ? `${point.bytes} bytes · Verified: ${date(point.verified_at)} · ` : ""}${value.destination || ""}`;
+  } catch (error) {
+    node.hidden = false;
+    node.textContent = `Backup health unavailable: ${error.message}`;
+  }
+}
+refreshBackupStatus();
+setInterval(refreshBackupStatus, 30000);
 const phaseNames = {
   request: "接收请求", recall: "召回记忆", execute: "执行 Agent", remember: "判断用户陈述",
   persist: "保存陈述", evidence: "整理工具证据", extract: "提炼操作经验", assess: "Jev 筛选",

@@ -628,6 +628,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
+            elif target.path == "/api/backup":
+                root = getattr(self.server, "backup_root", None)
+                result = {"enabled": False}
+                if root is not None:
+                    policy_path = root / "config" / "backup.json"
+                    status_path = root / "backup-state" / "status.json"
+                    if policy_path.exists():
+                        policy = json.loads(policy_path.read_text())
+                        if status_path.exists():
+                            result = json.loads(status_path.read_text())
+                        result.update(enabled=policy.get("enabled", False), destination=policy.get("destination"))
+                self.send(200, result)
             elif target.path == "/api/memories":
                 result = self.server.catalog.memories()
                 result["mutation_token"] = getattr(self.server, "mutation_token", None)
@@ -700,6 +712,7 @@ def main():
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
     parser.add_argument("--all-chats", action="store_true", help="Show every Agent and chat partition in this local console")
     parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
+    parser.add_argument("--backup-root", type=Path, help="Host root for read-only backup health")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
     try:
@@ -715,6 +728,7 @@ def main():
         parser.error(str(error))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.catalog = catalog
+    server.backup_root = args.backup_root
     server.mutation_token = secrets.token_urlsafe(32)
     print(f"Execution viewer: http://127.0.0.1:{server.server_port}", flush=True)
     try:

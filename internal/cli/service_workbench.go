@@ -43,6 +43,9 @@ func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, pyt
 	}
 	childCtx, cancel := context.WithCancel(ctx)
 	args := []string{"-B", script, "--home", layout.State, "--no-reports", "--all-chats", "--port", fmt.Sprint(port)}
+	if directory := unifiedDirectory(layout.Root); directory != "" {
+		args = append(args, "--backup-root", filepath.Dir(directory))
+	}
 	if binary, err := os.Executable(); err == nil {
 		args = append(args, "--host-binary", binary)
 	} else {

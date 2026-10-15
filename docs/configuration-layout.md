@@ -24,6 +24,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 ├── config/                         # 人工维护的配置，唯一入口
 │   ├── host.json                   # 命名执行配置与 provider 环境文件引用
 │   ├── agents.json                 # Agent 角色和任务项目
+│   ├── backup.json                 # Optional encrypted backup policy
 │   ├── channels.dingtalk.json
 │   ├── channels.feishu.json
 │   ├── datasource.plugins.email.json
@@ -43,12 +44,18 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 │   ├── state.db                    # Host 级工程/任务记录
 │   └── <project-id>/               # 记录、任务、worktree；新 clone/新工程可含 repository
 ├── cli-state/                      # 普通终端聊天的现有状态
+├── backup-state/                   # Backup lock and last-success/failure receipt
 └── backups/                        # 迁移备份和旧部署材料
 ```
 
 插件的可编辑配置放 `config/datasource.plugins.<名称>.json`；`datasource/plugins/<名称>/` 保存运行时
 产生的数据，不再放一套独立配置。凭证输入与插件生成的令牌分别归入配置凭证目录
 和插件状态目录，加载器不会扫描它们作为组件配置。
+
+`backup.json` is a separate Host policy, validated at startup rather than decoded
+as a channel/plugin envelope. It schedules encrypted archives outside this root;
+the recovery key also stays outside the root and archive directory. See
+[workspace backup and recovery](workspace-backup-design.md).
 
 `workspace` 只保存任务文件和产物，不放账号登录态。关联项目的任务仍使用项目真实
 目录，不需要把项目代码搬入 `.agent-host/`。目录结构表达归属，不构成操作系统隔离。

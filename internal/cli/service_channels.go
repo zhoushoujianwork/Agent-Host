@@ -13,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"agent-host/internal/backup"
 )
 
 type channelRegistration struct {
@@ -224,6 +226,17 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 		fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
 	} else {
 		defer stop()
+	}
+	if filepath.Base(directory) == "config" {
+		backupCtx, cancelBackup := context.WithCancel(ctx)
+		backupDone := make(chan struct{})
+		go func() {
+			defer close(backupDone)
+			backup.Run(backupCtx, filepath.Dir(directory), func(err error) {
+				fmt.Fprintf(errout, "Automatic backup failed: %v\n", err)
+			})
+		}()
+		defer func() { cancelBackup(); <-backupDone }()
 	}
 	return superviseChannelProcesses(ctx, channels, binary, viewerPython, noBrowser, out, errout)
 }

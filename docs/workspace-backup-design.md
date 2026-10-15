@@ -1,6 +1,7 @@
 # Lightweight workspace backup
 
-Status: proposed; automatic backup and compact restore are not implemented.
+Status: implemented on 2026-10-15; encrypted compact export, isolated restore
+verification, daily supervisor scheduling and retention are available.
 See the [workspace layout](workspace-layout.md) and [implementation details](workspace-backup-design-detail.md).
 
 ## Goal
@@ -28,11 +29,29 @@ running and backups succeed. A manual backup is also available before important
 changes. Recovery points contain private information and credentials, so archives
 must be encrypted and the recovery key kept separately.
 
+## Use
+
+Archives are compressed tar files wrapped in age encryption: `.tar.gz.age`.
+Initialize once, then produce the first verified recovery point:
+
+```sh
+./bin/agent-host backup init --root /absolute/.agent-host \
+  --destination /another-disk/agent-host-backups --timezone Asia/Singapore
+./bin/agent-host backup create --root /absolute/.agent-host
+./bin/agent-host backup status --root /absolute/.agent-host
+```
+
+Initialization prints the separate recovery-key path, never its contents. Copy
+that key to independently protected storage. `make run` activates the daily job
+in the channel supervisor; it checks the deadline hourly and once at startup.
+The execution workbench shows backup health. The default local archive directory
+is `~/Agent-Host-Backups/<project>/`; it may share the source disk.
+
 ## What is retained
 
 | Keep | Leave out |
 | --- | --- |
-| Current Host/channel/Agent configuration, profiles and configured credential files | Binaries, build output and repository source available through Git |
+| Current Host/channel/Agent configuration, profiles and credential files under `config/` | Binaries, build output and repository source available through Git |
 | Latest published revision of each memory or Skill, including disabled/conflicted state that controls future learning | Superseded revisions, abandoned drafts and unpublished files |
 | Scope identities, source attribution and the evidence required by retained memory | Unrelated historical conversations, task logs and native sessions |
 | Retained local source snapshots and files required by those references | Rebuildable indexes, task context copies and caches |
@@ -44,29 +63,36 @@ rules so they do not silently become learnable again.
 External source directories are not recursively copied by default. For example,
 `patsnap_docs` currently points outside this repository. Keep its configuration
 and any retained evidence needed by memory; protect the complete external
-directory with its own backup or explicitly include it in this policy. Report
+directory with its own backup. External-directory inclusion is not implemented. Report
 external dependencies in every backup and restore preview.
 
 ## Recovery experience
 
 Select a recovery point and restore into a new, empty directory. The Host verifies
 the archive, restores configuration and memory, rebuilds indexes, and checks that
-the retained memory can be read. The preview lists missing external paths,
-credentials that need login again, and any path mappings needed on the new machine.
-Channels remain stopped until those checks pass and the owner starts the Host.
+the retained memory can be read. The inventory lists external paths to review;
+native account sessions may require login again on the new machine.
+Channels remain stopped until the owner reviews dependencies and starts the Host.
 Old tasks and outgoing messages are never replayed as part of recovery.
+
+```sh
+./bin/agent-host backup list --root /absolute/.agent-host
+./bin/agent-host backup verify --archive /backups/backup-HASH.tar.gz.age \
+  --identity /safe/recovery.key
+./bin/agent-host backup restore --archive /backups/backup-HASH.tar.gz.age \
+  --identity /safe/recovery.key --target /new/location/.agent-host
+```
+
+`verify` performs an isolated restore and prints the source/file inventory and
+external dependencies for review. `restore` requires a nonexistent target. It
+remaps paths inside the old Host root, retains logical memory scopes, and leaves
+automatic backups disabled in the restored configuration. Review external paths
+and renew native account logins before starting channels. Arbitrary external-path
+mapping and automatic account-session recovery are not provided.
 
 The backup is considered usable only after a restore check in an isolated
 directory. Verify every newly created archive without connecting channels, sending
 messages or running Skills. Keep older verified recovery points if verification fails.
-
-## Delivery order
-
-1. Implement compact export, archive verification and isolated restore together;
-   prove that current knowledge, Skills and disabled rules survive recovery.
-2. Add encryption, daily scheduling, retention and visible backup health.
-3. Configure this workspace's destination and recovery key, produce the first
-   verified backup, and record a successful recovery drill before enabling the policy.
 
 Full conversation recovery, external account sessions, full project checkout
 backup and cloud synchronization are outside the first increment. Existing

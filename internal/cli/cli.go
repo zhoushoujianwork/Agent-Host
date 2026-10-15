@@ -43,6 +43,7 @@ Usage:
   agent-host memory migrate --home PATH --memory-root PATH --memory-cache PATH --memory-source ID
   agent-host memory verify --home PATH
   agent-host memory rollback --home PATH
+  agent-host backup init|create|verify|restore|list|status [--root PATH] [--help]
   agent-host run show [options] RUN_ID
   agent-host run events [options] RUN_ID
   agent-host run retry-memory [options] RUN_ID
@@ -360,6 +361,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "feedback" {
 		return runFeedback(ctx, args[1:], out, errout)
+	}
+	if args[0] == "backup" {
+		return runBackup(ctx, args[1:], out, errout)
 	}
 	if args[0] == "project" {
 		return runProject(ctx, args[1:], out, errout)
