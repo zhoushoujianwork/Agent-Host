@@ -1,5 +1,40 @@
 # Runtime implementation and migration details
 
+## Foreground restart through make run
+
+`make run` supplies `service run --restart` for both `CONFIG_DIR` and explicit
+`RUNTIME_ROOT`. Direct service starts remain fail-on-duplicate unless they also
+request `--restart`. Internal worker mode cannot request a managed restart.
+
+The supervisor checks every enabled configuration and reads the source viewer
+assets before stopping an existing instance. A busy `run.lock` triggers inspection of
+the private `service.pid`: the live process must have the current user, matching
+Host executable and exact runtime `--root`. When its parent is the matching Host
+supervisor, SIGTERM goes to that parent so all workers and the workbench stop
+normally. Older standalone runners fall back to stopping the verified worker.
+An unrelated, missing or unverifiable PID is never signaled.
+
+The new process waits for the existing flock to become available, bounded by
+30 seconds and caller cancellation. Lock release follows worker/workbench cleanup;
+PID-file existence alone does not establish completion. Locks are retained through
+startup, so concurrent invocations cannot create duplicate runtime owners. No
+lock files are deleted and no forced SIGKILL or task replay is added.
+
+Regression tests use isolated subprocesses to verify a successful replacement,
+normal old-supervisor exit, invalid-preflight preservation, duplicate direct starts,
+state-file preservation, unrelated-PID rejection and bounded lock waiting.
+Production startup verification is recorded separately from these offline tests.
+
+On 2026-10-15, the 15 focused startup/restart tests and
+`make check GOFLAGS=-p=1` passed. An isolated source snapshot containing only
+this task's changes was built into the project binary. Two successive
+`make -o build run RUN_ARGS=--no-browser` invocations replaced the live supervisor
+without manual stopping; `-o build` reused that already verified binary to avoid
+including concurrent workspace changes. Each old runner exited with status 0,
+each worker PID changed, both channels produced fresh connection events, and the
+workbench returned HTTP 200. Private evidence is retained in
+`.agent-host/acceptance/make-restart-20261015T030705Z/`.
+
 The [main guide](service-install.md) defines the current project-local workflow.
 The old system installation instructions below are retained as historical
 reference for prior evidence; `make install` is no longer a Make target.

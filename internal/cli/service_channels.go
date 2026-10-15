@@ -94,24 +94,22 @@ func discoverServiceChannels(directory, fallback string) ([]configuredChannel, e
 }
 
 func lockChannelRuntime(root string) (*os.File, error) {
-	path := filepath.Join(root, "run.lock")
-	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-		if _, err := privateServicePath(path, false); err != nil {
-			return nil, err
-		}
-	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0600)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		return nil, errors.New("runtime already running; stop its current runner before restarting")
-	}
-	return f, nil
+	return lockChannelRuntimeForStart(context.Background(), root, "", false, io.Discard)
 }
 
 var channelViewerFiles = []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css"}
+
+func validateChannelViewerSource(source string) error {
+	if !filepath.IsAbs(source) {
+		return errors.New("viewer-source must be an absolute path")
+	}
+	for _, name := range channelViewerFiles {
+		if _, err := os.ReadFile(filepath.Join(source, name)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func prepareChannelViewer(root, source string) error {
 	if !filepath.IsAbs(source) {
@@ -165,7 +163,7 @@ func (w synchronizedChannelOutput) Write(p []byte) (int, error) {
 	return w.w.Write(p)
 }
 
-func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser bool, out, errout io.Writer) error {
+func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser, restart bool, out, errout io.Writer) error {
 	channels, err := discoverServiceChannels(directory, fallback)
 	if err != nil {
 		return err
@@ -196,7 +194,13 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 		if err := runService(ctx, []string{"check", "--root", channel.Root}, io.Discard, errout); err != nil {
 			return fmt.Errorf("channel %s: %w", channel.Name, err)
 		}
-		lock, err := lockChannelRuntime(channel.Root)
+	}
+	// Read assets before stopping the old instance; write only after locking.
+	if err := validateChannelViewerSource(viewerSource); err != nil {
+		return err
+	}
+	for _, channel := range channels {
+		lock, err := lockChannelRuntimeForStart(ctx, channel.Root, directory, restart, errout)
 		if err != nil {
 			return fmt.Errorf("channel %s: %w", channel.Name, err)
 		}

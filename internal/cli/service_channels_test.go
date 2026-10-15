@@ -147,7 +147,7 @@ func TestChannelsPreflightRejectsInvalidPeerBeforeAnyProcess(t *testing.T) {
 	writeBotJSON(t, filepath.Join(directory, "channel-one.json"), map[string]any{"enabled": true, "runtime_root": valid.Root})
 	writeBotJSON(t, filepath.Join(directory, "two.json"), map[string]any{"enabled": true, "runtime_root": invalid.Root})
 	os.Remove(filepath.Join(invalid.Config, "environment.json"))
-	err := runConfiguredChannels(context.Background(), "run", directory, "", "/absent/viewer", "python3", 8765, true, io.Discard, io.Discard)
+	err := runConfiguredChannels(context.Background(), "run", directory, "", "/absent/viewer", "python3", 8765, true, false, io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("invalid enabled peer accepted")
 	}

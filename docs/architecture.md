@@ -249,7 +249,8 @@ recall in an isolated runtime using the existing bot; the
 keeps this separate from production state and remaining live scenarios.
 Production latency remains to be evaluated.
 The [project-local runtime](service-install.md) starts through `make run` in
-the foreground. The Go CLI scans private `.agent-host/config/channels.*.json` configurations and
+the foreground; invoking it again checks configuration and gracefully replaces
+the same managed instance. The Go CLI scans private `.agent-host/config/channels.*.json` configurations and
 supervises Feishu and DingTalk concurrently in separate worker processes.
 Their credentials, state, logs, workspace and native profiles live
 under `.agent-host/channels/<name>`, with editable configuration in

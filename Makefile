@@ -20,9 +20,9 @@ package:
 
 run: build
 ifeq ($(SINGLE_RUNTIME),1)
-	./bin/agent-host service run --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+	./bin/agent-host service run --restart --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 else
-	./bin/agent-host service run --config-dir "$(CONFIG_DIR)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+	./bin/agent-host service run --restart --config-dir "$(CONFIG_DIR)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 endif
 
 help:
@@ -31,7 +31,7 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
-		'  run     Run all configured and enabled channels in the foreground' \
+		'  run     Start or restart enabled channels in the foreground' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
 		'  help    Print this usage guide (default target)' \

@@ -18,13 +18,13 @@ with mode `600`. Existing installations must migrate before using the new defaul
 | File | Purpose |
 | --- | --- |
 | `host.json` | Execution profiles, provider environments and explicit memory backend |
-| `agents.json` | Roles, project/source selection, plugin subsets, `instructions_dir` and optional owner `user_file` |
+| `agents.json` | Roles, task projects, `instructions_dir` and optional owner `user_file` |
 | `channels.dingtalk.json` | Channel enablement and independent `settings.bot`/`settings.dws` options |
 | `channels.feishu.json` | Feishu enablement and text/meeting settings |
-| `datasource.plugins.email.json` | Mailboxes and allowed channels; owner-private only |
-| `datasource.plugins.local-documents.json` | Local Markdown sources and grants |
-| `datasource.plugins.dokki.json` | Dokki sources and grants |
-| `datasource.plugins.confluence.json` | Confluence sources and grants |
+| `datasource.plugins.email.json` | Globally available mailboxes |
+| `datasource.plugins.local-documents.json` | Globally available local Markdown sources |
+| `datasource.plugins.dokki.json` | Globally available Dokki sources |
+| `datasource.plugins.confluence.json` | Globally available Confluence sources |
 | `credentials/` | Private provider environments and referenced credentials |
 
 Component files require `version: 1` and explicit `enabled`. A missing or disabled
@@ -53,16 +53,21 @@ make run
 make run RUN_ARGS=--no-browser
 ```
 
+Repeating `make run` checks the new configuration, gracefully stops the same
+running instance, waits for its runtime locks to be released, and starts the
+replacement. The previous terminal exits normally. Invalid configuration leaves
+the existing instance running. Different runtime directories are independent.
+
 The Go supervisor starts one worker per enabled channel and one shared workbench
 at `http://127.0.0.1:8765/`. It keeps source labels on records and memory. Terminal
 output is also appended to each channel's `logs/service.ndjson`. Ctrl-C stops
-workers and the workbench. Configuration changes take effect after restarting.
+workers and the workbench. Configuration changes take effect by running `make run` again.
 Use `CONFIG_DIR` to select another `ROOT/config`; use
 `RUN_ARGS='--viewer-port 9000'` to select another workbench port.
 
 The [memory workbench](../tools/run-viewer/README.md#memory-workspace) forwards
 owner review actions to the corresponding running Host. Channel databases and
-native sessions remain independent. Plugins are mounted only for eligible tasks;
+native sessions remain independent. Enabled datasource plugins are global;
 Email shares one operation ledger across configured channels. No automatic task
 replay, crash restart or login-time service is installed.
 
@@ -73,8 +78,10 @@ the relevant `--home`; migrated default memories retain the original scope:
 ./bin/agent-host feishu status --home "$PWD/.agent-host/channels/feishu/state"
 ```
 
-Legacy explicit `service --root` and `--channels-dir` entry points remain for
-unmigrated runtimes. The stopped-runtime migration and deployment evidence are
+Direct `service run` retains duplicate detection. Use `--restart` with managed
+startup (`--config-dir`, `--channels-dir`, or `--root` plus `--viewer-source`)
+to request the same restart behavior. Legacy entry points remain for unmigrated
+runtimes. The stopped-runtime migration and deployment evidence are
 recorded in the [details](service-install-detail.md#unified-configuration-runtime).
 
 ## File-memory migration

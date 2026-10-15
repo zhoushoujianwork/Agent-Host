@@ -27,7 +27,8 @@ const serviceUsage = `Managed channel runtime (DingTalk by default).
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
   agent-host service run --channels-dir ABSOLUTE_PATH --viewer-source ABSOLUTE_PATH [--no-browser]
 
-make run loads host.json, channels.NAME.json and datasource.plugins.NAME.json from ROOT/config.
+make run checks host.json, channels.NAME.json and datasource.plugins.NAME.json
+from ROOT/config, gracefully restarts the same instance, then runs in the foreground.
 Version 1 and explicit enabled are required; disabled components do not connect.
 DingTalk settings.bot and settings.dws are independently optional.
 Channel data lives under ROOT/channels/NAME and plugin state under ROOT/datasource/plugins/NAME.
@@ -118,7 +119,9 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	var viewerSource string
 	var viewerPort int
 	var noWorkbench bool
+	var restart bool
 	if command == "run" {
+		fs.BoolVar(&restart, "restart", false, "Gracefully restart the same managed runtime if already running")
 		fs.IntVar(&viewerPort, "viewer-port", 8765, "Fixed loopback port for the unified workbench")
 		fs.BoolVar(&noWorkbench, "no-workbench", false, "Internal worker mode: use the supervisor workbench")
 		fs.BoolVar(&noBrowser, "no-browser", false, "Do not open the default browser")
@@ -137,14 +140,17 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	if command == "run" && (viewerPort < 1 || viewerPort > 65535) {
 		return errors.New("viewer-port must be between 1 and 65535")
 	}
+	if restart && (noWorkbench || configDirectory == "" && channelsDirectory == "" && viewerSource == "") {
+		return errors.New("restart requires managed startup with config-dir, channels-dir or viewer-source")
+	}
 	if configDirectory != "" {
 		if channelsDirectory != "" || root != "" {
 			return errors.New("config-dir cannot be combined with root or channels-dir")
 		}
-		return runConfiguredChannels(ctx, command, configDirectory, "", viewerSource, viewerPython, viewerPort, noBrowser, out, errout)
+		return runConfiguredChannels(ctx, command, configDirectory, "", viewerSource, viewerPython, viewerPort, noBrowser, restart, out, errout)
 	}
 	if channelsDirectory != "" || viewerSource != "" {
-		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, out, errout)
+		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, restart, out, errout)
 	}
 	layout, config, environment, err := loadService(root)
 	if err != nil {
