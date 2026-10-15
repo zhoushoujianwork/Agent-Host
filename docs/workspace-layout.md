@@ -72,7 +72,9 @@ Agents can use the same profile without copying it into their role directories.
 
 To enable multi-user private conversations:
 
-1. Configure the execution profile’s `agents_config` to select `agents.json`.
+1. Configure each execution profile’s `agents_config` to select `agents.json` or
+   a separate `agents.<name>.json` in the same configuration directory. Separate
+   catalogs preserve channel-specific Agent roles and project allowlists.
 2. Place [users.example.json](../config/users.example.json) as `config/users.json`
    beside that file, replacing example accounts with verified account IDs. An
    empty `users` array also works: new same-enterprise/tenant senders get stable

@@ -86,6 +86,12 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 		if name == "host.json" || name == "agents.json" || name == "CLAUDE.md" {
 			continue
 		}
+		if strings.HasPrefix(name, "agents.") && strings.HasSuffix(name, ".json") && agentIdentifier.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, "agents."), ".json")) {
+			if _, err := loadAgents(filepath.Join(directory, name)); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if name == "users.json" {
 			if _, err := loadUsers(directory); err != nil {
 				return nil, err

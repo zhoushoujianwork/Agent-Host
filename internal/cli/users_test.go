@@ -286,6 +286,18 @@ func TestUnifiedServiceRecognizesUsersAndRequiresExplicitAgents(t *testing.T) {
 	if _, execution, _, err := loadService(channels[0].Root); err != nil || execution.AgentsConfig != filepath.Join(dir, "agents.json") {
 		t.Fatal(execution, err)
 	}
+	// Separate channel catalogs share the root identity registry without forcing
+	// a channel to inherit another channel's project allowlist.
+	profile.Execution.AgentsConfig = "agents.secondary.json"
+	hostConfig.Profiles["default"] = profile
+	writeBotJSON(t, filepath.Join(dir, "host.json"), hostConfig)
+	writeBotJSON(t, filepath.Join(dir, "agents.secondary.json"), agentCatalog{DefaultAgent: "default", Agents: []agentDefinition{{ID: "default", Name: "Assistant"}}})
+	if _, err := discoverUnifiedChannels(dir); err != nil {
+		t.Fatal("named agent catalog rejected", err)
+	}
+	if _, execution, _, err := loadService(channels[0].Root); err != nil || execution.AgentsConfig != filepath.Join(dir, "agents.secondary.json") {
+		t.Fatal(execution, err)
+	}
 }
 
 func TestUsersRejectDuplicateBindingsAndUnsafeProfiles(t *testing.T) {
