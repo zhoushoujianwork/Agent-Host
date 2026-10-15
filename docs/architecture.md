@@ -283,6 +283,12 @@ The source-checkout user service replaces the retired isolated system deployment
 historical data remains in the ignored project area. Service managers retry failed
 processes without replaying tasks. Ordinary CLI uses `.agent-host/cli-state`.
 Deployment evidence remains distinct from offline tests.
+The local production instance now uses an independent home-directory bundle,
+with copied executable, viewer, configuration and state. Its LaunchAgent and
+external-memory links no longer use development runtime paths. The former
+development configuration is archived and inactive; the
+[migration guide](service-install.md#separate-production-from-development)
+records retained history and verification.
 
 The [Feishu meeting text increment](feishu-meeting-channel.md) uses a local
 `lark-cli` profile to connect authorized meetings to the same host execution path.

@@ -10,6 +10,34 @@ All remain Git-ignored.
 See the [configuration guide](configuration-layout.md) and
 [implementation details](configuration-layout-detail.md).
 
+## Separate production from development
+
+The local production service was migrated to `~/.local/share/agent-host/` on
+2026-10-15. Its `bin/`, `config/`, `channels/`, `memory/`, `datasource/` and viewer
+assets are independent copies. The launch service, installed CLI, memory skill
+links and memory connection now use that directory. Rebuilding the development
+checkout does not update the production binary.
+
+The development checkout's former production configuration is archived under
+`.agent-host/retired-production/`; `.agent-host/production-migration.json` records
+its location. The default development configuration is absent, so ordinary
+`make run` cannot accidentally start the production channels. Prepare separate
+test configuration and test channel identities before running development channels.
+Automated tests continue using their isolated fixtures.
+
+Restart or remove the independent service from this checkout with:
+
+```sh
+python3 -B -m tools.service.autostart install --runtime-dir "$HOME/.local/share/agent-host"
+python3 -B -m tools.service.autostart uninstall --runtime-dir "$HOME/.local/share/agent-host"
+```
+
+These commands use the already copied production binary. Updating production
+requires explicitly replacing its verified artifacts and restarting; `make build`
+only builds the development checkout. The [migration details](service-install-detail.md#independent-runtime-relocation)
+describe preservation, verification and recovery. The source-bound setup below
+remains available for new installations.
+
 ## Configure and check
 
 `make install` builds and links the CLI and external memory skill into detected

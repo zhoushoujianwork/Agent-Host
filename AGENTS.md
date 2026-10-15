@@ -20,6 +20,10 @@
   affected documentation. Stage only files belonging to the current task.
 - Create a local commit after completing a development or maintenance task.
   A local commit does not authorize pushing, publishing, or creating a release.
+- Before operating a local service, check `.agent-host/production-migration.json`.
+  When present, it identifies a separately deployed production runtime. Keep
+  development configuration and channel identities separate; building or testing
+  the checkout must not implicitly update or restart that production runtime.
 - Distribution is source-only: users clone this repository, compile, and run
   locally. Publish authorized source updates through normal Git commits and
   pushes. Do not create GitHub Releases or upload binary distribution assets

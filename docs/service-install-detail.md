@@ -1,5 +1,55 @@
 # Runtime implementation and migration details
 
+## Independent runtime relocation
+
+The [main guide](service-install.md#separate-production-from-development) defines
+the production/development boundary. `tools/service/migrate_runtime.py` copies a
+stopped unified runtime to an absent destination. It acquires every channel's
+runtime and Host locks, and the development CLI lock, before taking a complete
+snapshot. Symlinks are copied as links; external accounts and document directories
+remain explicit external dependencies. Every regular copied file is hash-checked
+before transformation, and copied SQLite databases pass integrity checks.
+
+Configuration paths inside the old runtime are rebased; `memory_scope` remains a
+stable logical identity. Every memory revision retains its complete original
+payload bytes, including raw audit JSON. Only its `state_home` storage metadata
+changes, with updated revision metadata hashes in authoritative current and
+historical publication manifests. Domain mappings and file-memory receipts are
+updated consistently. Source IDs, logical scopes, content, revisions, evidence,
+publication generations and operation payload bytes remain unchanged. Derived
+indexes are rebuilt through `memory verify`, and both channel reports must match
+their source reports exactly except for the index location. Legacy empty/null
+manifest lists are supported.
+
+Development CLI state is copied as inactive history, with its physical marker
+paths updated. Its old database schema is not upgraded or treated as a running
+channel. That preserved snapshot requires the normal writable schema upgrade
+before future direct use. No original conversation/task tables are discarded.
+
+The bundle includes an independent executable, viewer, memory skill and service
+control scripts. `tools.service.autostart --runtime-dir ABSOLUTE_ROOT` uses
+`ROOT/bin/agent-host`, `ROOT/config` and `ROOT/tools/run-viewer`. Existing
+source-bound default behavior is retained when this option is absent.
+Migration does not start channels or edit user connection profiles itself; a
+failed partial destination is never reported as active and the source is kept.
+
+The 2026-10-15 local cutover stopped the source LaunchAgent, copied 2,070 files,
+verified all copied database files and preserved both channel memory digests.
+DingTalk retained 104 memories, 125 revisions and 10 evidence links; Feishu's empty
+memory publication remained unchanged. The independent LaunchAgent connected
+both channels and the workbench returned HTTP 200. Seven owned CLI/skill symlinks
+and the existing external-memory connection were switched to the new bundle.
+The original `config` was moved into the ignored `retired-production` directory;
+the development default cannot start the real channels. User/custom links were
+not replaced. Production receipts are `migration.json` and `activation.json`;
+the development receipt is `.agent-host/production-migration.json`.
+
+Pre-activation failures restored the original service. The stopped source data
+and archived configuration remain the pre-cutover recovery point. After new
+production activity, restoring that old snapshot alone would omit new data;
+move the latest production state back through a verified stopped migration when
+rolling back. No automatic replay or destructive source cleanup is performed.
+
 ## Source-checkout automatic startup
 
 The [main guide](service-install.md) defines installation and removal.

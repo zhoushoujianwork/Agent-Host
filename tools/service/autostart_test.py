@@ -1,6 +1,8 @@
 """Offline service lifecycle checks; never register services on the test host."""
 
 import json
+import contextlib
+import io
 from pathlib import Path
 import plistlib
 import subprocess
@@ -135,6 +137,12 @@ class AutostartTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "supports macOS and Linux"):
             self.install("win32")
         self.assertEqual(self.calls, [])
+
+    def test_runtime_dir_uses_independent_bundle_config(self):
+        with patch.object(AUTO, "install", return_value=self.home / "service") as install, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(AUTO.main(["install", "--runtime-dir", str(self.repo)]), 0)
+        self.assertEqual(install.call_args.args[:2], (self.repo, self.repo / "config"))
 
 
 if __name__ == "__main__":

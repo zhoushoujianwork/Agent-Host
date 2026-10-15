@@ -76,6 +76,7 @@ check:
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py
 	python3 -B tools/service/install_test.py
 	python3 -B tools/service/autostart_test.py
+	python3 -B tools/service/migrate_runtime_test.py
 	python3 -B tools/service/run_test.py
 	python3 -B tools/service/migrate_config_test.py
 	python3 -B tools/service/migrate_datasource_test.py

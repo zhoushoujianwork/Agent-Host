@@ -180,9 +180,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("install", "uninstall"))
     parser.add_argument("--config-dir", type=Path)
+    parser.add_argument("--runtime-dir", type=Path, help="Independent bundle containing bin, config and tools/run-viewer")
     args = parser.parse_args(argv)
-    repo = Path(__file__).resolve().parents[2]
-    config = args.config_dir or repo / ".agent-host/config"
+    repo = args.runtime_dir or Path(__file__).resolve().parents[2]
+    if not repo.is_absolute():
+        parser.error("--runtime-dir must be absolute")
+    config = args.config_dir or (repo / "config" if args.runtime_dir else repo / ".agent-host/config")
     if not config.is_absolute():
         parser.error("--config-dir must be absolute")
     try:

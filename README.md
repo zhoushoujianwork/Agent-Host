@@ -73,6 +73,8 @@ Use `make uninstall-service` to stop and remove that service, or
 `make install INSTALL_ARGS=--no-autostart` for CLI and skills only.
 Use `make build` to compile only. Installation options and connection setup are
 in the [external memory guide](docs/external-memory-skill-design.md).
+An existing service can be moved into an independent home-directory runtime;
+see [production/development separation](docs/service-install.md#separate-production-from-development).
 
 After preparing your private configuration, rerun `make install` for background
 operation. For a foreground session, remove automatic startup first, then run:
