@@ -89,11 +89,12 @@ Host evidence. Other settings and hooks are not inherited; helper-only auth is
 rejected rather than running a command. Already protected provider environment
 credentials remain supported. No credentials were copied or configured by this task.
 
-Both current channel native profiles lack provider auth environment settings.
-The user explicitly chose to retain bare mode and configure API/provider credentials
-separately. The real smoke observed only Read, then failed with “Not logged in”.
-This establishes partial startup inventory evidence, not a successful model/tool
-turn. No weaker permission mode or provider fallback was used.
+The native profiles lack provider auth settings, but the independently configured
+Host provider environment contains them. The first smoke omitted that environment
+and failed with “Not logged in”. On 2026-10-15, the smoke was rerun with the protected
+DingTalk environment loaded into the child process and passed: native inventory
+was Read, the actual Read call completed, and mutation targets stayed absent.
+No credentials were printed, weaker permission mode selected or provider fallback used.
 
 Official references: [CLI flags](https://code.claude.com/docs/en/cli-reference) and
 [permissions](https://code.claude.com/docs/en/permissions). Online documentation
@@ -146,6 +147,31 @@ channel policy; this change specifically removes member mutation/execution tools
 
 ## Validation and rollout
 
+### Ownerless local CLI debug mode
+
+`chat --debug-non-owner` selects the same restricted native profile with a fixed
+`debug-non-owner` audience and a trusted false owner envelope. It has no approval
+MCP or channel sender; it explains that an owner must submit blocked work through
+a configured channel. The flag is accepted only by chat, rejects `--no-tools` and
+`--allowed-tools`, and does not alter ordinary local CLI permissions. An audience
+name alone is not an execution permission setting.
+
+```bash
+./bin/agent-host chat --debug-non-owner \
+  --home /absolute/disposable-state \
+  --workspace /absolute/disposable-workspace \
+  -m "Read disposable.txt, then try to delete only that test file."
+```
+
+Supply the approved provider environment as for the configured channel. The test
+must use a fresh state home and an owned disposable target. A normal CLI resume
+cannot reuse the debug audience's session. The 2026-10-15 real CLI check recorded
+`dontAsk`, `restricted_read_only: true`, exactly one execute-phase Read call, an
+unchanged disposable file, and rejection of normal-mode resume without another run.
+Private evidence is under `.agent-host/acceptance/owner-debug-20261015T124719Z/`.
+
+### Scope of evidence
+
 Automated suites cover restricted argv/resume, inherited customization exclusion,
 auth settings safety, native inventory rejection, MCP proposal validation, provider
 mention/reply metadata, owner matching on both channels and meetings, durable
@@ -153,9 +179,22 @@ approval correlation, expiry/rebinding, duplicate/concurrent consumption, one-us
 run dispatch, workspace changes and notification/native failures.
 
 The opt-in `TestRestrictedNativeSmoke` uses disposable files and a temporary native
-profile; it requires protected API/provider auth to verify a complete read turn and
-rejected mutation attempts. It remains unaccepted locally because authentication
-is absent. No live group approval messages were sent, no services were restarted,
-and no live DingTalk/Feishu approval round trip is claimed. Configure credentials,
-then run the native smoke and bounded disposable-resource platform acceptance
-before treating this path as production-validated.
+profile; it passes with the approved provider environment. Production had no active
+channel runs, was backed up, preflighted and updated using only committed source
+`fb495a5`, then restarted. No unrelated working-tree changes were deployed.
+
+DWS resolved the configured bot's private identity by its exact robot code. The
+configured owner's real private request reached `bypassPermissions` with
+`restricted_read_only: false` and actual Read/Bash observations. The first plain
+`rm` prompted interactively and returned zero without removing the file; its
+following echo and the bot's deletion claim were a false positive. A separate
+explicit follow-up used `/bin/rm -f` and an absence check: the tool reported
+`ABSENCE_CONFIRMED` and the independent filesystem check confirmed removal. This
+is evidence that owner execution is available; the initial completion-verification
+mistake is retained rather than counted as successful deletion.
+
+No live group approval messages were sent and no DingTalk/Feishu member-to-owner
+approval round trip is claimed. DWS authenticates the configured owner, not a
+second member identity; the non-owner check is the explicit real CLI debug profile.
+Live group approval acceptance remains separate. Private deployment, DWS receipts,
+tool observations and the CLI summary share the acceptance directory above.

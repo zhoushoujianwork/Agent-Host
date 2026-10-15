@@ -86,6 +86,7 @@ Options (place before positional IDs/queries):
   --model MODEL         Claude model (default AGENT_HOST_MODEL or sonnet)
   --claude PATH         Native executable (default claude)
   --no-tools            Explicit tool-free Claude execution for controlled tests
+  --debug-non-owner     Chat only: simulate a non-owner with restricted read tools
   --allowed-tools LIST  Native permission allowlist; repeat or comma-separate
   --email-config PATH  Private managed mailbox configuration
   --dingtalk-workspace-config PATH  Private built-in DingTalk workspace configuration
@@ -100,8 +101,8 @@ Options (place before positional IDs/queries):
   --timeout DURATION    Per-turn deadline including memory (default 1h)
 
 Credentials: TYPESAFE_API_KEY for typesafe; JEV_API_KEY for custom.
-Claude uses its native authentication/configuration. Configured channel instances
-use permission bypass; ordinary local chat keeps native policy. Inspect commands
+Claude uses its native authentication/configuration. Channel tools depend on the
+verified owner; ordinary local chat keeps native policy. Inspect commands
 do not need model credentials.
 Interactive chat reads one line per turn; EOF exits. Ctrl-C cancels and exits.
 Memory holds attributed user statements and explicitly reviewed tool-based experiences.
@@ -109,6 +110,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	debugNonOwner                                                                      bool
 	procedureRecallHints                                                               []state.ProcedureRecallHint
 	recallBinding                                                                      string
 	retrievalQuery, skillFingerprint                                                   string
@@ -173,6 +175,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
+	if name == "chat" {
+		fs.BoolVar(&o.debugNonOwner, "debug-non-owner", false, "Simulate a non-owner with restricted read tools and no channel approval transport")
+	}
 	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
 	fs.StringVar(&o.defaultScope, "memory-scope", "", "Explicit durable default memory scope")
@@ -241,6 +246,12 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	if err := fs.Parse(args); err != nil {
 		return o, nil, err
+	}
+	if o.debugNonOwner {
+		if o.noTools || len(o.allowedTools) != 0 {
+			return o, nil, errors.New("debug-non-owner cannot be combined with no-tools or allowed-tools")
+		}
+		o.audienceID = "debug-non-owner"
 	}
 	projectExplicit := false
 	fs.Visit(func(f *flag.Flag) {
@@ -503,7 +514,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 	}
 	if command == "chat" && o.oneShot {
+		applyNonOwnerDebugPolicy(&o)
 		o.retrievalQuery = o.message
+	}
+	if command == "chat" && !o.oneShot {
+		applyNonOwnerDebugPolicy(&o)
 	}
 	if command == "chat" && o.resume != "" {
 		if err := store.SessionCanResume(ctx, o.resume); err != nil {

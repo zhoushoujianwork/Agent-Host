@@ -1,6 +1,8 @@
 # Owner-only dangerous operations
 
-Status: implemented in source with automated validation. Live channel acceptance is pending; the current bare-profile provider authentication needs separate configuration.
+Status: implemented in source with automated and real restricted-CLI validation.
+Live group approval acceptance remains pending. The independent production binary
+now contains the feature; a private DWS owner execution has been verified.
 
 Only the locally configured bot owner may authorize destructive operations
 (危险操作). Other senders can ask questions and request analysis, but cannot
@@ -110,9 +112,11 @@ Existing owner configuration is reused; no chat command can change it. This
 increment covers channel requests; ordinary
 local CLI permissions remain outside this increment.
 
-Bare mode skips the existing OAuth/keychain login. Configure protected API/provider
-credentials separately; missing authentication fails explicitly without permission
-fallback. The user chose to retain bare mode. No live service restart or approval
-message send was performed for this change.
+Bare mode skips OAuth/keychain login. Real CLI validation now passes with the
+existing protected DingTalk provider environment loaded explicitly. Missing auth
+still fails without fallback. Use `chat --debug-non-owner` to exercise the member
+profile locally; ordinary CLI remains unchanged. Production was backed up and
+updated from committed source `fb495a5` for a private DWS owner test. It allowed
+the owner to remove only the disposable target; group approval was not exercised.
 
 See [implementation details and system prompt](dangerous-operations-design-detail.md).

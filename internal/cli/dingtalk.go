@@ -164,6 +164,9 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	if o.contextExecutable != "" && !o.noTools {
 		h.Config.ContextHome, h.Config.ContextExecutable, h.Config.ContextConfig = o.home, o.contextExecutable, o.discoveryConfig
 	}
+	if o.debugNonOwner {
+		configureNonOwnerDebugHost(h)
+	}
 	return h
 }
 
