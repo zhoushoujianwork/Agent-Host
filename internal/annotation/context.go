@@ -41,7 +41,7 @@ func ResolveRecord(scope, text string, records []Annotation, objects []Object) Q
 // ContextObject has no offset in the memory statement. Its source excerpt is
 // stored separately; negative offsets prevent accidental textual attribution.
 func ContextObject(scope, kind, name, evidenceID string) Object {
-	return Object{ID: objectID(scope, kind, name), Name: name, Kind: kind,
+	return Object{ID: objectID(scope, kind, name), Name: DisplayName(kind, name), Kind: kind,
 		Span: Span{Text: name, Start: -1, End: -1, Method: "explicit-object-context", Source: evidenceID}}
 }
 

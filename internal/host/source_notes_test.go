@@ -119,6 +119,13 @@ func TestSourceNoteDoesNotEstablishAliasAuthority(t *testing.T) {
 }
 
 func TestSourceNotesCannotShadowAdmittedProcedureSubjects(t *testing.T) {
+	for _, kind := range []string{"tool", "project"} {
+		t.Run(kind, func(t *testing.T) { checkSourceNoteSubjectRecall(t, kind) })
+	}
+}
+
+func checkSourceNoteSubjectRecall(t *testing.T, noteKind string) {
+	t.Helper()
 	h, c := externalHost(t)
 	known := sourceNoteSubmission()
 	known.Key = "known-cbs-service"
@@ -135,10 +142,10 @@ func TestSourceNotesCannotShadowAdmittedProcedureSubjects(t *testing.T) {
 	}
 	procedureID := r.Results[0].MemoryID
 	quote := sourceNoteSubmission()
-	quote.Key = "different-cbs-tool"
+	quote.Key = "different-cbs-" + noteKind
 	quote.Items[0].Title = "tccli cbs historical note"
 	quote.Items[0].Text = strings.Repeat("tccli cbs DescribeDisks historical reference. ", 20)
-	quote.Items[0].Objects = []state.ExternalObject{{Name: "tccli", Kind: "tool", EvidenceID: "read"}, {Name: "cbs", Kind: "tool", EvidenceID: "read"}}
+	quote.Items[0].Objects = []state.ExternalObject{{Name: "tccli", Kind: "tool", EvidenceID: "read"}, {Name: "cbs", Kind: noteKind, EvidenceID: "read"}}
 	quote.Evidence[0].Tool.Result = mustNoteJSON(quote.Items[0].Text)
 	note, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), quote)
 	if err != nil {
@@ -157,7 +164,11 @@ func TestSourceNotesCannotShadowAdmittedProcedureSubjects(t *testing.T) {
 		t.Fatal("quotation displaced admitted knowledge at the recall limit", limited, err)
 	}
 	ambiguous, err := h.Store.Retrieve(t.Context(), c.Scope, "cbs", 10)
-	if err != nil || len(ambiguous.Query.Ambiguous) == 0 || len(ambiguous.Matches) != 0 {
+	if noteKind == "tool" {
+		if err != nil || len(ambiguous.Query.Ambiguous) != 0 || len(ambiguous.Query.ResolvedIDs) != 1 || len(ambiguous.Matches) != 2 {
+			t.Fatal("technical classifications split the same cbs identity", ambiguous, err)
+		}
+	} else if err != nil || len(ambiguous.Query.Ambiguous) == 0 || len(ambiguous.Matches) != 0 {
 		t.Fatal("caller query guessed between different cbs identities", ambiguous, err)
 	}
 }

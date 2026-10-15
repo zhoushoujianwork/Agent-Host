@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"agent-host/internal/annotation"
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/host"
 	"agent-host/internal/state"
@@ -204,7 +205,7 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 						}
 						objects := []map[string]string{}
 						for _, o := range m.Objects {
-							objects = append(objects, map[string]string{"id": o.ID(m.Scope), "name": o.Name, "kind": o.Kind})
+							objects = append(objects, map[string]string{"id": o.ID(m.Scope), "name": annotation.DisplayName(o.Kind, o.Name), "kind": o.Kind})
 						}
 						items = append(items, map[string]any{"id": m.ID, "revision": m.Revision, "kind": m.Kind, "snippet": string(text), "external_receipt_id": m.ExternalReceiptID, "objects": objects})
 					}

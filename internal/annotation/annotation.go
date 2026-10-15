@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-const Version = "entity-topic-v4"
+const Version = "entity-topic-v5"
 
 type Span struct {
 	Text   string `json:"text"`
@@ -321,6 +321,7 @@ func sourceSpan(text string, start, end int, method string) Span {
 func canonical(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
 
 func objectID(scope, kind, name string) string {
+	kind = IdentityKind(kind)
 	h := sha256.Sum256([]byte(scope + "\x00" + kind + "\x00" + canonical(name)))
 	return kind + "-" + hex.EncodeToString(h[:16])
 }

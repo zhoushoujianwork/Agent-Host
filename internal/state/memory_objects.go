@@ -32,15 +32,16 @@ func validateMemoryObjects(objects []MemoryObject) error {
 	}
 	seen := map[string]bool{}
 	for _, o := range objects {
-		key := o.Kind + ":" + strings.ToLower(o.Name)
+		key := annotation.IdentityKey(o.Kind, o.Name)
 		if !boundedExternalText(o.Name, 128) || o.Name != strings.TrimSpace(o.Name) || strings.ContainsAny(o.Name, "\r\n\t") || seen[key] || !validObjectKind(o.Kind) {
 			return errors.New("objects require unique bounded names and a supported entity kind")
 		}
 		seen[key] = true
 		e := o.Evidence
-		grounded := strings.Contains(e.Text, o.Name) || (o.Kind == "person" && o.Name == e.Author && e.Role == "user")
+		containsName := func(text string) bool { return strings.Contains(strings.ToLower(text), strings.ToLower(o.Name)) }
+		grounded := containsName(e.Text) || (o.Kind == "person" && strings.EqualFold(o.Name, e.Author) && e.Role == "user")
 		if e.Role == "tool" && e.Tool != nil {
-			grounded = grounded || strings.Contains(e.Tool.Name, o.Name) || strings.Contains(string(e.Tool.Input), o.Name) || strings.Contains(string(e.Tool.Result), o.Name)
+			grounded = grounded || containsName(e.Tool.Name) || containsName(string(e.Tool.Input)) || containsName(string(e.Tool.Result))
 		}
 		toolValid := e.Role == "tool" && e.Tool != nil && boundedExternalText(e.Tool.Name, 128) && json.Valid(e.Tool.Input) && json.Valid(e.Tool.Result) && e.Tool.IsError != nil
 		if (e.Role != "user" || e.Tool != nil) && !toolValid || !boundedExternalText(e.ID, 128) || !boundedExternalText(e.Author, 256) || !boundedExternalText(e.Text, 8192) || e.ObservedAt.IsZero() || !grounded || !boundedExternalText(o.Source.Entry, 64) || o.Source.ObservedAt.IsZero() || len(o.Source.Conversation) > 512 || len(o.Source.Turn) > 512 {
@@ -110,15 +111,18 @@ func objectAnnotation(m Memory, a annotation.Annotation) annotation.Annotation {
 }
 
 func sameObjectIdentities(a, b []MemoryObject) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	set := map[string]bool{}
+	left, right := map[string]bool{}, map[string]bool{}
 	for _, o := range a {
-		set[o.Kind+":"+strings.ToLower(o.Name)] = true
+		left[annotation.IdentityKey(o.Kind, o.Name)] = true
 	}
 	for _, o := range b {
-		if !set[o.Kind+":"+strings.ToLower(o.Name)] {
+		right[annotation.IdentityKey(o.Kind, o.Name)] = true
+	}
+	if len(left) != len(right) {
+		return false
+	}
+	for key := range right {
+		if !left[key] {
 			return false
 		}
 	}

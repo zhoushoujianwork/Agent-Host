@@ -16,6 +16,13 @@ The same versioned Go rules process both saved text and incoming questions.
 They identify explicit service names, source-declared aliases and a small topic
 vocabulary. Original statements and reviewed evidence remain unchanged.
 
+Object names ignore case. Within the same scope, system/service/tool labels share
+one technical identity: `cbs`, `CBS` and `CbS` resolve to **CBS**. Latin letters in
+object display names are uppercase, such as **TCCLI**; people retain their names.
+People, projects and organizations keep separate identity namespaces. This
+changes derived labels and indexes, preserving original commands and quotations.
+Use qualified names for distinct technical products that share an acronym.
+
 Every new native or external memory must identify a supported object before it
 can be published. Host extracts missing subjects from the admitted statement and
 its cited user/tool evidence using an isolated model call. Tools and products are

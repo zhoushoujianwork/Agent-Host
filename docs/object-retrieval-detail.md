@@ -27,15 +27,21 @@ rows; a user statement cannot claim experience provenance through them.
 
 ## Representation and rules
 
-The current rule version is `entity-topic-v4`. V4 removes generic English service
+The current rule version is `entity-topic-v5`. V5 unifies case variants and
+system/service/tool classifications into one scoped technical identity. It uses
+the existing system identity namespace; person, project and organization identity
+namespaces stay separate. Non-person display names uppercase ASCII Latin letters;
+original source spellings and kind classifications remain retained evidence.
+V4 removed generic English service
 phrases from the bounded textual registry and adds required source-grounded
 object resolution to every Host publication path (native statements, accepted
 or restructured native procedures, and external items). V3 added explicit context objects
 with scoped IDs and user-evidence provenance in `Memory.Objects`. New external
 items cite a subject excerpt; `memory associate` updates an active record using
 an expected revision and normal atomic publication. It cannot change the original
-statement, admission evidence, scope or lifecycle status. Exact object-name
-presence validates source shape, not the semantic truth of a caller assertion.
+statement, admission evidence, scope or lifecycle status. Object-name presence
+(case-insensitive in V5) validates source shape, not the semantic truth of a caller
+assertion.
 
 Context mentions use negative offsets and `span.source` to reference separate
 evidence instead of pretending the name occurred in the memory statement. Derived
@@ -87,9 +93,20 @@ system object. This does not establish general entity-extraction accuracy.
 
 An annotation retains object mentions,
 explicit aliases and topics, each with source text, UTF-8 byte offsets and a
-method. Object IDs derive from project scope, object kind and canonical spelling.
+method. Object IDs derive from project scope, identity family and canonical spelling.
 They do not merge identities based on fuzzy similarity. Topic-to-object links
 preserve supported subject/property relationships.
+
+V5 updates only derived annotations and term indexes. A writable startup rebuilds
+old V4 cache rows from retained memory, without changing source documents,
+evidence, revisions or publication generation. Restart all channel workers with
+`make run` to switch versions together. A rollback to the previous source commit
+and restart rebuilds the former derived representation from the same retained
+records. Do not mix writers with different annotation versions against one cache.
+Read-only retrieval refuses stale annotations rather than silently guessing.
+The console refresh clears a selected object only when a successful refresh no
+longer contains that object's old ID. API recall emits uppercase display names;
+raw memory/source evidence keeps its original spelling.
 
 Explicit Chinese service names ending in 服务 and supported Latin service-name
 forms establish source mentions. Grammatical prefixes and conjunctions are
@@ -170,6 +187,15 @@ the final supplied versions. Evaluation reports add `actual.query` and
 contains final context. Candidate decisions expose routes and rejection reasons.
 
 ## Validation
+
+The local V5 rollout on 2026-10-15 passed `make check` and the migration tests.
+Live queries for `cbs`, `CBS`, `CbS`, `tccli` and `TCCLI` resolved one identity per
+name and returned identical results across casing variants. The console showed
+one CBS entry (20 associated memories) and one TCCLI entry (12). All 499 captured
+retained source files kept identical SHA-256 digests after startup rebuilt the
+indexes. Local evidence is in
+`.agent-host/validation/object-casing-20261015.json`; these are bounded checks,
+not a general entity-resolution accuracy study.
 
 The fixed 42-case `memory-v2` suite preserves the original 26 cases as identical
 JSON objects and adds 16 recall cases. No expected result was changed to match

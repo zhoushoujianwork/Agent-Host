@@ -250,7 +250,12 @@ report are under `.agent-host/imports/memgov-20261015-final/` and
 checkpoint collection remains off and no documented source command was executed.
 
 The final tccli check caught a service/tool name collision for `cbs` that hid an
-active admitted procedure. A regression now checks both records remain retrievable,
+active admitted procedure. A V4 regression checked both records remain retrievable,
 the admitted procedure wins a one-item recall limit, and a bare ambiguous `cbs`
 query still abstains. This is a retrieval fix, not a memory rewrite or a new
 verification of the historical commands.
+
+V5 intentionally unifies those service/tool classifications into one technical
+identity, so a bare CBS query now resolves it. The regression still tests genuine
+ambiguity across separate families (for example project versus technical system),
+and keeps admitted procedures ahead of source quotations.

@@ -43,6 +43,9 @@ Host memories as new evidence.
   At the user's request, `memory associate` can correct an existing active record's
   object context with a current revision and attributed user evidence; see the
   protocol. This changes metadata, not admission or the original statement.
+  Host merges case variants and technical system/service/tool classifications,
+  and displays non-person Latin names in uppercase. Submit source spellings;
+  never uppercase quoted commands or source statements.
   `memory extract-objects` can repair an existing active record using only its
   retained evidence and expected revision, without replaying its source task.
 - A procedure proposes a short lesson with conditions, steps, and cited external

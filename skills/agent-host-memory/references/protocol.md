@@ -104,13 +104,19 @@ Include `subject-1` as a separate `role=user` or `role=tool` entry in the submis
 with the exact excerpt identifying Bastion, its author and observation time.
 Do not add it to the statement's `evidence_ids`: that still contains exactly the
 one verbatim statement. Kinds are `system`, `service`, `project`, `tool`, `person`,
-or `organization`; at most three objects per item. The name must occur exactly in
+or `organization`; at most three objects per item. The name must occur case-insensitively in
 the cited text or tool name/input/result. A person object may instead use the
 actual author field of user evidence. Tool citations require the same structured
 call/result and explicit error flag used below for procedures. Context
 associations are caller-attributed assertions, not independently verified facts.
 They neither grant permissions nor bypass admission. A duplicate with differing
 object context fails explicitly rather than silently discarding the association.
+
+Use the original source spelling in submitted metadata. Host matches names without
+case sensitivity and displays non-person Latin names in uppercase, such as CBS
+and TCCLI. Within one scope, system/service/tool classifications share a technical
+identity; person, project and organization identities remain separate. Original
+memory, metadata provenance and quoted command spelling stay retained.
 
 To correct the associations of an existing active memory at the user's request,
 write a JSON array (replacing its current explicit associations):

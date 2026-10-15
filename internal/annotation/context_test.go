@@ -24,7 +24,7 @@ func TestContextObjectsRemainScopedAndSourceLinked(t *testing.T) {
 	if q := Resolve("scope", "BastionBackup database", []Annotation{a}); len(q.ResolvedIDs) != 0 {
 		t.Fatal("name substring resolved", q)
 	}
-	other := WithContextObjects(Extract("scope", "The port is 22."), []Object{ContextObject("scope", "service", "Bastion", "other")})
+	other := WithContextObjects(Extract("scope", "The port is 22."), []Object{ContextObject("scope", "project", "Bastion", "other")})
 	if q := Resolve("scope", "Bastion database", []Annotation{a, other}); len(q.Ambiguous) != 1 || len(q.ResolvedIDs) != 0 {
 		t.Fatal("collision guessed", q)
 	}

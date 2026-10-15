@@ -36,6 +36,9 @@ type annotatedMemory struct {
 
 func rawAnnotation(ctx context.Context, tx *sql.Tx, m Memory) error {
 	a := objectAnnotation(m, annotation.Extract(m.Scope, m.Text))
+	for i := range a.Objects {
+		a.Objects[i].Name = annotation.DisplayName(a.Objects[i].Kind, a.Objects[i].Name)
+	}
 	if m.SourceType == SourceNoteSource {
 		// Quoted alias declarations are source content, not registry authority.
 		a.Aliases = nil

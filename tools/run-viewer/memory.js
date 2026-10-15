@@ -20,7 +20,14 @@ const candidateStatuses = {pending: "待处理", accepted: "已发布", rejected
 const sourceCandidates = () => list(state.data?.candidates).filter((item) => state.source === "all" || item.source.id === state.source);
 const text = (value) => String(value || "");
 const annotation = (item) => item.annotation || {};
-const objectList = (item) => list(annotation(item).objects);
+// Match the Host's display projection; keep original source data intact.
+const displayName = (object) => {
+  const name = text(object?.name);
+  if (object?.kind === "person") return name;
+  const normalized = name.split(/\s+/).filter(Boolean).join(" ");
+  return normalized.replace(/[a-z]/g, (c) => c.toUpperCase());
+};
+const objectList = (item) => list(annotation(item).objects).map((o) => ({...o, name: displayName(o)}));
 const topicList = (item) => list(annotation(item).topics);
 const tag = (value, className = "") => dom("span", `tag ${className}`, value);
 const short = (value, length = 8) => text(value).slice(0, length);
@@ -73,6 +80,7 @@ async function refresh() {
       option.value = source.id; $("source-filter").append(option);
     }
     $("source-filter").value = state.source;
+    if (state.object) state.object = objects(sourceItems()).find((o) => o.key === state.object.key) || null;
     $("error").hidden = true;
     $("sync-state").textContent = `已同步 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
     $("connection-state").textContent = "已连接 · 每 5 秒读取";
