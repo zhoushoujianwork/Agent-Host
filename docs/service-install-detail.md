@@ -30,6 +30,13 @@ The bundle includes an independent executable, viewer, memory skill and service
 control scripts. `tools.service.autostart --runtime-dir ABSOLUTE_ROOT` uses
 `ROOT/bin/agent-host`, `ROOT/config` and `ROOT/tools/run-viewer`. Existing
 source-bound default behavior is retained when this option is absent.
+The source installer reads `.agent-host/production-migration.json` and verifies
+the bundle's `migration.json` source/target provenance. For a verified migrated
+checkout it links the existing deployed CLI and skill, and skips source-bound
+service registration. Repeated `make install` therefore accepts the production
+links without copying development artifacts or restarting the service. Invalid
+receipts or unrelated CLI targets fail explicitly. An explicit `--config-dir`
+with autostart is rejected in this mode; test channels use `make run CONFIG_DIR=...`.
 Migration does not start channels or edit user connection profiles itself; a
 failed partial destination is never reported as active and the source is kept.
 

@@ -3,8 +3,10 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -123,22 +125,61 @@ class InstallTests(unittest.TestCase):
     def test_main_exit_code_distinguishes_preserved_skill_and_cli_conflicts(self):
         # Patch only the install result; main's path and argument validation stay real.
         with patch.object(INSTALL, "install", return_value=[("codex", "preserved", "custom")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main(["--no-autostart"]), 0)
+            self.assertEqual(INSTALL.main(["--no-autostart"], repo=self.repo), 0)
         with patch.object(INSTALL, "install", return_value=[("cli", "preserved", "custom")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main(["--no-autostart"]), 1)
+            self.assertEqual(INSTALL.main(["--no-autostart"], repo=self.repo), 1)
         with patch.object(INSTALL, "install", return_value=[("claude", "failed", "error")]), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main(["--no-autostart"]), 1)
+            self.assertEqual(INSTALL.main(["--no-autostart"], repo=self.repo), 1)
 
     def test_main_registers_configured_service_and_reports_failure(self):
         with patch.object(INSTALL, "install", return_value=[]), \
                 patch("service.autostart.install", return_value=self.home / "service") as start, \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)]), 0)
+            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)], repo=self.repo), 0)
             self.assertEqual(start.call_args.args[1], self.root)
         with patch.object(INSTALL, "install", return_value=[]), \
                 patch("service.autostart.install", side_effect=RuntimeError("not ready")), \
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)]), 1)
+            self.assertEqual(INSTALL.main(["--config-dir", str(self.root)], repo=self.repo), 1)
+
+    def test_migrated_install_retains_production_links_and_never_starts_service(self):
+        production = self.root / "production"
+        production.mkdir()
+        (production / "bin").mkdir()
+        deployed = production / "bin/agent-host"
+        deployed.write_bytes(self.binary.read_bytes())
+        deployed.chmod(0o700)
+        (production / "skills").mkdir()
+        shutil.copytree(self.skill, production / "skills" / INSTALL.SKILL)
+        deployed_bytes = deployed.read_bytes()
+        self.binary.write_text("#!/bin/sh\nprintf 'development-build\\n'\n")
+        source = self.repo.resolve() / ".agent-host"
+        source.mkdir()
+        (source / "production-migration.json").write_text(json.dumps({
+            "version": 1, "status": "active", "production_root": str(production.resolve())}))
+        (production / "migration.json").write_text(json.dumps({
+            "source_root": str(source), "target_root": str(production.resolve())}))
+        output = io.StringIO()
+        with patch.object(INSTALL.Path, "home", return_value=self.home), \
+                patch.dict(INSTALL.os.environ, self.env, clear=True), \
+                patch("service.autostart.install") as start, contextlib.redirect_stdout(output):
+            self.assertEqual(INSTALL.main(["--bin-dir", str(self.bin_dir), "--agents", "codex"], repo=self.repo), 0)
+            self.assertEqual(INSTALL.main(["--bin-dir", str(self.bin_dir), "--agents", "codex"], repo=self.repo), 0)
+            start.assert_not_called()
+        self.assertEqual((self.bin_dir / "agent-host").resolve(), deployed.resolve())
+        self.assertEqual((self.home / ".agents/skills" / INSTALL.SKILL).resolve(),
+                         (production / "skills" / INSTALL.SKILL).resolve())
+        self.assertEqual(deployed.read_bytes(), deployed_bytes)
+        self.assertNotEqual(deployed.read_bytes(), self.binary.read_bytes())
+        self.assertIn("development build was not deployed", output.getvalue())
+
+    def test_invalid_migration_receipt_fails_without_link_writes(self):
+        source = self.repo / ".agent-host"
+        source.mkdir()
+        (source / "production-migration.json").write_text('{"version":1,"status":"active","production_root":"relative"}')
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(INSTALL.main(["--bin-dir", str(self.bin_dir)], repo=self.repo), 1)
+        self.assertFalse(self.bin_dir.exists())
 
 
 if __name__ == "__main__":

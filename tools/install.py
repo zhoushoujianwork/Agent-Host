@@ -1,6 +1,7 @@
 """Link the source-built CLI and memory skill into supported local clients."""
 
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -9,6 +10,28 @@ import sys
 
 AGENTS = ("codex", "claude", "opencode", "gemini", "cursor", "copilot")
 SKILL = "agent-host-memory"
+
+
+def migrated_runtime(repo):
+    receipt = repo / ".agent-host/production-migration.json"
+    if not receipt.exists():
+        return None
+    try:
+        value = json.loads(receipt.read_text())
+        if not isinstance(value, dict):
+            raise ValueError("invalid production migration receipt")
+        root = Path(value["production_root"])
+        if value.get("version") != 1 or value.get("status") != "active" or not root.is_absolute():
+            raise ValueError("invalid production migration receipt")
+        root = root.resolve(strict=True)
+        provenance = json.loads((root / "migration.json").read_text())
+        if (not isinstance(provenance, dict) or
+                provenance.get("source_root") != str(repo / ".agent-host") or
+                provenance.get("target_root") != str(root)):
+            raise ValueError("production migration provenance does not match this checkout")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ValueError("cannot verify the migrated runtime; inspect .agent-host/production-migration.json") from error
+    return root
 
 
 def configured_path(env, key, default):
@@ -90,7 +113,7 @@ def install(repo, home, env, bin_dir, agents=None, which=shutil.which):
     return rows
 
 
-def main(argv=None):
+def main(argv=None, repo=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agents", help="Comma-separated supported agents; default: detect locally")
     parser.add_argument("--bin-dir", type=Path, default=Path.home() / ".local" / "bin")
@@ -106,15 +129,23 @@ def main(argv=None):
         parser.error("--bin-dir must be an absolute path")
     if args.config_dir is not None and not args.config_dir.is_absolute():
         parser.error("--config-dir must be an absolute path")
+    repo = (repo or Path(__file__).resolve().parents[1]).resolve(strict=True)
     try:
-        rows = install(Path(__file__).resolve().parents[1], Path.home(), os.environ,
+        production = migrated_runtime(repo)
+        if production and args.config_dir and not args.no_autostart:
+            raise ValueError("production is migrated; use make run CONFIG_DIR=... for a separate test runtime")
+        rows = install(production or repo, Path.home(), os.environ,
                        args.bin_dir, selected)
     except (ValueError, OSError) as error:
         print(f"Install failed: {error}", file=sys.stderr)
         return 1
     for name, status, target in rows:
         print(f"{name}: {status}: {target}")
-    print("\nLinks use this source checkout; keep it in place and rerun make install after moving it.")
+    if production:
+        print(f"\nLinks use the independent production runtime: {production}")
+        print("The development build was not deployed; production configuration and service were not changed.")
+    else:
+        print("\nLinks use this source checkout; keep it in place and rerun make install after moving it.")
     print("New skills are available in the next agent session; no memory connection was changed.")
     paths = [Path(p).expanduser().resolve() for p in os.environ.get("PATH", "").split(os.pathsep) if p]
     if args.bin_dir.resolve() not in paths:
@@ -125,9 +156,8 @@ def main(argv=None):
                  for name, status, _ in rows)
     if failed:
         return 1
-    if not args.no_autostart:
+    if not args.no_autostart and not production:
         from service import autostart
-        repo = Path(__file__).resolve().parents[1]
         config = args.config_dir or repo / ".agent-host/config"
         if args.config_dir is None and not (config / "host.json").is_file():
             print("Autostart not configured: prepare .agent-host/config, then rerun make install.")

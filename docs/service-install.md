@@ -17,6 +17,10 @@ The local production service was migrated to `~/.local/share/agent-host/` on
 assets are independent copies. The launch service, installed CLI, memory skill
 links and memory connection now use that directory. Rebuilding the development
 checkout does not update the production binary.
+After migration, `make install` recognizes the migration receipt and installs or
+retains links to the independent bundle. It succeeds without deploying the new
+development build or restarting production. Genuine custom-link conflicts still
+remain visible.
 
 The development checkout's former production configuration is archived under
 `.agent-host/retired-production/`; `.agent-host/production-migration.json` records

@@ -75,6 +75,8 @@ Use `make build` to compile only. Installation options and connection setup are
 in the [external memory guide](docs/external-memory-skill-design.md).
 An existing service can be moved into an independent home-directory runtime;
 see [production/development separation](docs/service-install.md#separate-production-from-development).
+After migration, `make install` retains the production links; deploying a new
+development build remains a separate explicit operation.
 
 After preparing your private configuration, rerun `make install` for background
 operation. For a foreground session, remove automatic startup first, then run:
