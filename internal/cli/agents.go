@@ -316,6 +316,7 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 		return nil, err
 	}
 	o.retrievalQuery = message.Text
+	o.recallBinding = message.Binding
 	for _, supplement := range message.Supplements {
 		o.retrievalQuery += "\n" + supplement.Text
 	}

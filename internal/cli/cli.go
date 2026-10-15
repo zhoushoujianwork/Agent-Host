@@ -103,6 +103,8 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	procedureRecallHints                                                               []state.ProcedureRecallHint
+	recallBinding                                                                      string
 	retrievalQuery, skillFingerprint                                                   string
 	skillsPreselected                                                                  bool
 	contextFiles                                                                       []assembly.ContextFile

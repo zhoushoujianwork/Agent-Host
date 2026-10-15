@@ -25,6 +25,7 @@ import (
 )
 
 type Config struct {
+	ProcedureRecallHints  []state.ProcedureRecallHint
 	ContextFiles          []assembly.ContextFile
 	UserProfile           string
 	WorkspaceCache        string
@@ -345,9 +346,14 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 					return fmt.Errorf("scope %s has %d memories; exceeds MVP comparison limit %d", project.Scope, len(all), memory.MaxExisting)
 				}
 			}
-			retrieval, err := h.Store.Retrieve(ctx, project.Scope, query, 16)
+			retrieval, hints, err := h.Store.RetrieveWithProcedureHints(ctx, project.Scope, query, h.Config.ProcedureRecallHints, 16)
 			if err != nil {
 				return err
+			}
+			if len(hints) > 0 {
+				if err := j.emit(event.Event{Type: "memory.procedure_hints.applied", Phase: "recall", Component: "memory.retrieval", Status: "completed", Message: "used recent same-conversation procedure titles for a short request with no direct matches", Data: map[string]any{"scope": project.Scope, "hints": hints, "matches": len(retrieval.Matches)}}); err != nil {
+					return err
+				}
 			}
 			if err := j.emit(event.Event{Type: "memory.query.analyzed", Phase: "recall", Component: "memory.annotation", Status: "completed", Message: fmt.Sprintf("scope=%s resolved objects=%d ambiguous=%v unknown=%v", project.Scope, len(retrieval.Query.ResolvedIDs), retrieval.Query.Ambiguous, retrieval.Query.Unknown), Data: map[string]any{"scope": project.Scope, "project_id": project.ID, "query": retrieval.Query, "annotation_version": annotation.Version}}); err != nil {
 				return err

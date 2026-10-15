@@ -225,7 +225,7 @@ func TestExtractionV2PolicyKeepsAssistantExplanationsAsUntrustedSource(t *testin
 		Policy string `json:"policy_version"`
 		Prompt string `json:"prompt"`
 	}
-	if err := json.Unmarshal(out.Audit, &audit); err != nil || audit.Policy != "reviewed-experience-extraction-v3" || !strings.Contains(audit.Prompt, run.Output) {
+	if err := json.Unmarshal(out.Audit, &audit); err != nil || audit.Policy != "reviewed-experience-extraction-v4" || !strings.Contains(audit.Prompt, run.Output) {
 		t.Fatalf("versioned exact prompt audit missing: %+v %v", audit, err)
 	}
 }

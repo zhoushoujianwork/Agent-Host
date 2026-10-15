@@ -105,6 +105,7 @@ func boundedState(input any) error {
 // Assess evaluates only the cited tool evidence. A high model probability is
 // a screening decision, not proof; eligible drafts still require human review.
 func (j *JevJudge) Assess(ctx context.Context, draft state.ExperienceDraft, evidence []state.ToolEvidence) (Assessment, error) {
+	evidence = LearningEvidence(evidence)
 	out := Assessment{Kind: "procedure"}
 	audit := j.audit()
 	finish := func(reason string, err error) (Assessment, error) {

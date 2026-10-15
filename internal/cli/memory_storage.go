@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 
 	"agent-host/internal/assembly"
 
@@ -88,12 +89,41 @@ func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) err
 		o.workspaceCache = filepath.Dir(config.CacheRoot)
 	}
 	o.memorySource = config.SourceID
+	o.procedureRecallHints = nil
+	partition := store.WithPartition(o.agentID, o.audienceID)
 	var scopes []string
 	for _, p := range o.projects {
 		scopes = append(scopes, p.Scope)
 	}
 	if len(scopes) == 0 {
 		scopes = []string{o.scope}
+	}
+	if o.recallBinding != "" && len(scopes) == 1 && o.retrievalQuery != "" && utf8.RuneCountInString(o.retrievalQuery) <= 80 {
+		recent, err := partition.RecentChannelRoutingContext(ctx, o.recallBinding, 3)
+		if err != nil {
+			return err
+		}
+		for _, message := range recent {
+			if message.ResolvedScope != scopes[0] || message.RunID == "" {
+				continue
+			}
+			candidates, err := partition.Candidates(ctx, scopes[0], message.RunID, "accepted")
+			if err != nil {
+				return err
+			}
+			for _, candidate := range candidates {
+				if candidate.MemoryID == "" || len(o.procedureRecallHints) == 3 {
+					continue
+				}
+				memory, err := partition.Memory(ctx, candidate.MemoryID)
+				if err != nil {
+					return err
+				}
+				if memory.Scope == scopes[0] && memory.Status == "active" && memory.Kind == "procedure" && (memory.ExpiresAt == nil || memory.ExpiresAt.After(time.Now())) {
+					o.procedureRecallHints = append(o.procedureRecallHints, state.ProcedureRecallHint{RunID: message.RunID, MemoryID: candidate.MemoryID})
+				}
+			}
+		}
 	}
 	o.memoryFingerprint, err = store.WithPartition(o.agentID, o.audienceID).MemoryFingerprint(ctx, scopes)
 	if err != nil {
@@ -103,7 +133,7 @@ func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) err
 	if o.skillsPreselected && !o.noTools {
 		var matches, persistent []state.Memory
 		for _, scope := range scopes {
-			r, err := store.WithPartition(o.agentID, o.audienceID).Retrieve(ctx, scope, o.retrievalQuery, 16)
+			r, _, err := partition.RetrieveWithProcedureHints(ctx, scope, o.retrievalQuery, o.procedureRecallHints, 16)
 			if err != nil {
 				return err
 			}

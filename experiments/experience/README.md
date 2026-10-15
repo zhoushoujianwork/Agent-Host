@@ -1,5 +1,17 @@
 # Live execution experience validation
 
+The lightweight [procedural learning MVP](../../docs/procedural-learning.md)
+adds an opt-in Go native probe and a read-only operational summary. Its exact
+commands, failed probes and limits are in the
+[validation record](../../docs/procedural-learning-detail.md#mvp-implementation-and-observation).
+
+```sh
+python3 -B experiments/experience/observe.py --home .agent-host/channels/dingtalk/state --limit 30
+```
+
+The older Python runner described below is historical documentation; `run.py`
+is not present in the current source checkout.
+
 This runner exercises the real built Host CLI, native Claude tool execution,
 and the explicitly selected company Jev endpoint inside a temporary Go project.
 It does not change a real repository or contact another user. A successful run

@@ -121,6 +121,9 @@ automatically; legacy SQLite tasks retain `memory accept`.
 Experience retains conditions and evidence strength; it is not independently
 verified truth. Execution completion, task acceptance, selection and memory
 persistence remain separate outcomes.
+The [procedural learning MVP](procedural-learning.md) adds complete command
+templates, one bounded refinement attempt for withheld corrections, short
+channel-follow-up recall hints and read-only observation of actual Skill use.
 The current retrieval path links requests and saved memory through source-linked
 service identities, explicit scoped aliases and bounded property/topic rules.
 SQLite object/topic indexes, current alias associations and full-text candidates

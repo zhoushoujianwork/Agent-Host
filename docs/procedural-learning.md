@@ -1,7 +1,8 @@
 # Learning from real operations
 
-Status: proposal based on local execution evidence inspected on 2026-10-15.
-This change documents a design; it does not change runtime learning behavior.
+Status: a lightweight MVP is implemented on 2026-10-15. It adds bounded draft
+refinement, complete command templates and recent-conversation recall hints.
+General business effectiveness remains under observation.
 See the [evidence and implementation detail](procedural-learning-detail.md).
 
 ## Goal and user experience
@@ -19,10 +20,9 @@ whether a later task used it, and what that use actually established.
 
 ## What the real cases show
 
-The existing system already preserves tool evidence, extracts procedures and
-avoidance notes, evaluates them, automatically publishes selected file-backed
-memory, and supplies scoped native Skills. The missing part is a reliable loop
-from a specific correction to successful reuse.
+The existing system preserves tool evidence, extracts procedures and avoidance
+notes, evaluates them, automatically publishes selected file-backed memory, and
+supplies scoped native Skills. The following historical cases motivated the MVP.
 
 | Observed case | What happened to the lesson |
 | --- | --- |
@@ -37,49 +37,55 @@ Publication, initial recall, actual use, and demonstrated benefit must be counte
 separately. Native conversation context can also carry information without a
 Host memory recall.
 
-## Proposed approach
+## MVP behavior
 
-1. **Learn small corrections.** Link a failed call, the changed command and its
-   observed result. Keep a working command shape and a separate pitfall, with
-   evidence for each claim. When a larger draft fails review, allow one bounded
-   attempt to remove unsupported claims and review the smaller lesson.
-2. **Find lessons when choosing tools.** Combine the current request with scoped
-   task context. Before an unfamiliar operation, use the existing memory access
-   path to search by tool, service and action. A short follow-up should not lose
-   the relevant context. Native adapters retain ownership of tool execution.
-3. **Distinguish durable rules from changing conditions.** CLI syntax is a
-   procedural lesson. A profile's observed availability is a dated environment
-   observation. A resource's state belongs to the current task. Recheck the
-   latter two; a previous successful profile is not universal authorization.
-4. **Close the loop with observed outcomes.** Record which memory revision was
-   offered and used, whether the same failure recurred, and whether the intended
-   check passed. Repeated incompatible results should trigger revision or
-   suspension of the affected applicability range, with evidence preserved.
+1. **Retain a complete successful command.** Extraction now requests a full
+   command template, including quoting and target selectors. Concrete values
+   become placeholders. Failed syntax belongs in the avoidance notes.
+2. **Allow one smaller lesson.** When an evidence assessment withholds a draft
+   citing both failure and later results, make at most one narrowing attempt per
+   task, using only its original cited evidence. Apply the unchanged admission
+   threshold and publication checks. Failures remain visible.
+3. **Help short channel follow-ups.** When a request of at most 80 characters has
+   no direct recall matches, retry retrieval using up to three active procedure
+   titles learned in the same conversation's three most recent routed tasks.
+   Recheck scope, current publication, expiry and applicability. Skill
+   preselection uses exactly the same fallback as execution.
+4. **Observe through existing evidence.** New learning and hint events explain
+   the processing outcome. A small read-only report links paired native Skill
+   invocations to mounted memory revisions and counts observed failures.
 
-For the observed CBS case, retain the narrow correction “this invocation used
-`--profile <profile>` successfully; `--cli-profile` was rejected.” Do not add
-credential inspection, account switching, or resource deletion to that syntax
-lesson. Build a separate full procedure only when its steps are supported.
+Normal use needs no additional configuration or approval. Known credential
+fields are redacted from learning inputs; original operational evidence stays
+intact. Syntax knowledge, dated account observations and current resource state
+keep their different evidence strength. A previous successful account is not
+general authorization to switch accounts.
 
-## Scope and implementation order
+## Observe before expanding
 
-**First increment:** sanitized correction episodes, small supported lessons,
-one bounded repair pass, and reasoned learning receipts. Reprocess selected
-historical evidence without replaying cloud operations.
+An isolated real-model probe has demonstrated automatic learning, recall changing
+from zero to one for a short request, and actual Skill invocation. A stricter
+probe found that remembering only the changed flag could still omit `DiskIds`;
+that result led to the complete-template requirement. The
+[validation record](procedural-learning-detail.md#mvp-implementation-and-observation)
+preserves passing probes, failures and remaining limits.
 
-**Second increment:** same-scope follow-up context and tool/action retrieval,
-using existing memory access and Skill infrastructure. Verify both a continued
-conversation and a fresh session.
+Inspect a bounded production sample without exporting task text or credentials:
 
-**Third increment:** revision-specific usage/outcome records, conflict repair,
-and repeated-failure feedback. Evaluate on the retained cases before expanding
-to other tools or larger history.
+```sh
+python3 -B experiments/experience/observe.py \
+  --home .agent-host/channels/dingtalk/state --limit 30
+```
 
-Success means a comparable new task uses the supported syntax before repeating
-the old error, produces a valid observed result, and records the linkage. It
-does not mean zero future exploration: versions, accounts and resource states
-can change. No new vector database, custom tool loop, automatic cloud replay,
-or model-weight training is required for this first scope.
+Check whether corrections become active memory, short follow-ups find them,
+native tasks actually invoke the Skill, and known errors recur. Publication
+counts are historical outcomes; a mounted or invoked Skill does not prove
+business success or a causal productivity gain.
+
+No new database schema, configuration switch or background learning worker is
+needed. Tool-time interception, general entity understanding, automatic conflict
+repair and outcome-driven revision remain later increments. Expand only after
+the observed sample identifies the next concrete gap.
 
 This proposal extends the [delivered experience pipeline](experience-memory.md)
 and [file memory/Skill backend](file-memory-design.md).

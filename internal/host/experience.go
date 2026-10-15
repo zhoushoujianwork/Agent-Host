@@ -38,6 +38,7 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 		return h.experienceFailure(j, err)
 	}
 	evidence = state.ExecutionExperienceEvidence(evidence)
+	evidence = experience.LearningEvidence(evidence)
 	if len(evidence) == 0 {
 		return h.finishCandidates(ctx, j, nil, json.RawMessage(`{"policy":"experience-v2","reason":"no_execution_experience_evidence"}`))
 	}
@@ -67,9 +68,12 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 	}
 	var candidates []state.Candidate
 	var assessments []experience.Assessment
+	refinementUsed := false
+	refinedCount := 0
 	if len(extraction.Drafts) > 0 {
 		err = j.phase(ctx, "assess", "memory.jev", h.Config.DecisionModel, func(ctx context.Context) error {
 			for _, draft := range extraction.Drafts {
+				model := extraction.Model
 				assessment, err := h.Judge.Assess(ctx, draft, evidence)
 				assessments = append(assessments, assessment)
 				status := "completed"
@@ -81,7 +85,54 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 					return err
 				}
 				if !assessment.Eligible {
-					continue
+					refiner, ok := h.Extractor.(experience.Refiner)
+					var reason struct {
+						Reason string `json:"reason"`
+					}
+					_ = json.Unmarshal(assessment.Audit, &reason)
+					cited, correction := correctionEvidence(draft, evidence)
+					if !ok || refinementUsed || !correction || (reason.Reason != "not_supported" && reason.Reason != "assessment_abstained_low_probability") {
+						continue
+					}
+					refinementUsed = true
+					refined, refineErr := refiner.Refine(ctx, run, draft, cited)
+					status := "completed"
+					if refineErr != nil {
+						status = "failed"
+					}
+					if emitErr := j.emit(event.Event{Type: "experience.refinement.completed", Phase: "assess", Component: "memory.extractor", Model: refined.Model, Status: status, Message: "one bounded narrowing attempt using the original cited correction evidence", Data: map[string]any{"original_draft": draft, "original_reason": reason.Reason, "extraction": refined}}); emitErr != nil {
+						return errors.Join(refineErr, emitErr)
+					}
+					if refineErr != nil {
+						return refineErr
+					}
+					if len(refined.Drafts) > 1 || strings.TrimSpace(refined.Model) == "" {
+						return errors.New("experience refinement requires a resolved model and at most one draft")
+					}
+					if len(refined.Drafts) == 0 {
+						continue
+					}
+					draft = refined.Drafts[0]
+					if err := experience.ValidateDraft(draft, cited); err != nil {
+						return err
+					}
+					assessment, err = h.Judge.Assess(ctx, draft, cited)
+					assessments = append(assessments, assessment)
+					status = "completed"
+					if err != nil {
+						status = "failed"
+					}
+					if emitErr := j.emit(event.Event{Type: "experience.refinement.assessed", Phase: "assess", Component: "memory.jev", Model: assessment.Model, Status: status, Message: fmt.Sprintf("refined candidate eligible=%t", assessment.Eligible), Data: map[string]any{"draft": draft, "assessment": assessment}}); emitErr != nil {
+						return errors.Join(err, emitErr)
+					}
+					if err != nil {
+						return err
+					}
+					if !assessment.Eligible {
+						continue
+					}
+					model = refined.Model
+					refinedCount++
 				}
 				entities, err := state.EvidenceEntitiesForRun(run, draft, evidence)
 				if err != nil {
@@ -91,7 +142,7 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 				if err != nil {
 					return err
 				}
-				candidates = append(candidates, state.Candidate{ID: ID(), RunID: run.ID, Scope: run.Scope, Draft: draft, Entities: entities, Status: "pending", Model: extraction.Model, Assessment: raw, CreatedAt: time.Now().UTC()})
+				candidates = append(candidates, state.Candidate{ID: ID(), RunID: run.ID, Scope: run.Scope, Draft: draft, Entities: entities, Status: "pending", Model: model, Assessment: raw, CreatedAt: time.Now().UTC()})
 			}
 			return nil
 		})
@@ -103,7 +154,34 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 	if err != nil {
 		return h.experienceFailure(j, err)
 	}
+	if err := j.emit(event.Event{Type: "experience.learning.summary", Phase: "assess", Component: "host", Status: "completed", Message: fmt.Sprintf("drafts=%d eligible=%d refined=%d; publication and reuse remain separate", len(extraction.Drafts), len(candidates), refinedCount), Data: map[string]any{"drafts": len(extraction.Drafts), "eligible": len(candidates), "refinement_attempted": refinementUsed, "refined_eligible": refinedCount, "assessments": len(assessments)}}); err != nil {
+		return h.experienceFailure(j, err)
+	}
 	return h.finishCandidates(ctx, j, candidates, audit)
+}
+
+func correctionEvidence(draft state.ExperienceDraft, evidence []state.ToolEvidence) ([]state.ToolEvidence, bool) {
+	refs := make(map[string]bool, len(draft.EvidenceIDs))
+	for _, id := range draft.EvidenceIDs {
+		refs[id] = true
+	}
+	var cited []state.ToolEvidence
+	failed, reported := false, false
+	var failureResultSeq int64
+	for _, item := range evidence {
+		if refs[item.ID] {
+			cited = append(cited, item)
+			failed = failed || item.IsError
+			if item.IsError {
+				failureResultSeq = item.ResultSeq
+			} else if failureResultSeq > 0 && item.CallSeq > failureResultSeq && len(item.Result) > 0 && string(item.Result) != "null" {
+				reported = true
+			}
+		}
+	}
+	// This detects only a possible correction. The unchanged evidence gate still
+	// decides whether the proposed successful path is actually supported.
+	return cited, failed && reported
 }
 
 func (h *Host) finishCandidates(ctx context.Context, j *journal, candidates []state.Candidate, audit json.RawMessage) error {

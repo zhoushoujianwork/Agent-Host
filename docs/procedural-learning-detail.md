@@ -1,8 +1,87 @@
 # Procedural learning: evidence and implementation detail
 
-Status: proposed implementation, inspected 2026-10-15. The
+Status: lightweight MVP implemented on 2026-10-15; broader mechanisms below
+remain a proposal unless explicitly listed as delivered. The
 [main design](procedural-learning.md) defines scope and delivery order.
-No changes to runtime behavior or production memory were made for this analysis.
+The original analysis was read-only. MVP observations use isolated memory and a
+local command surrogate; production historical memory is not rewritten.
+
+## MVP implementation and observation
+
+The MVP adds no schema migration, configuration mode or new service. It reuses
+native extraction, the unchanged 0.80 evidence threshold, candidate publication,
+scoped retrieval, native Skills and the existing event journal.
+
+- `experience.NativeExtractor.Refine` narrows one withheld draft using only its
+  cited observations, in a tool-free fresh invocation with no assistant/request
+  context. At most one refinement is attempted per run. A second failed gate
+  remains withheld; a provider failure becomes an explicit experience failure.
+- Extraction policy v4 requests a complete observed command template, including
+  target selectors and quoting. It must not reduce a CLI correction to just the
+  changed flag or rely on a previous native conversation for remaining arguments.
+- `experience.LearningEvidence` derives a view with known credential fields
+  redacted before extraction and assessment. Raw evidence remains unchanged.
+  JSON number precision is preserved; this is bounded pattern-based redaction,
+  not a general detector of every possible secret.
+- Channel assembly takes up to three eligible procedure references from the
+  three most recent routed tasks in the same authenticated conversation and
+  scope. Explicit native resets stop these history hints. Multi-project tasks
+  and CLI conversations do not gain this channel-specific fallback. Current
+  memory is rechecked before ordinary indexed retrieval. Only a short request
+  with no direct matches uses the titles; no extra retrieval model is invoked.
+- CLI Skill preselection and Host dispatch call the same
+  `RetrieveWithProcedureHints` path, preserving native runtime compatibility.
+- `experience.learning.summary`, `experience.refinement.completed`,
+  `experience.refinement.assessed` and `memory.procedure_hints.applied` expose
+  narrowing and recall outcomes. Existing publication/manifest/tool events
+  provide subsequent evidence without a separate usage table.
+
+`experiments/experience/observe.py` reads a bounded operational sample with a
+read-only SQLite connection. It reports learning counts, active/conflicted
+publication events, hint matches, recalled procedures, paired native Skill
+invocations with exact memory revisions, observed tool errors, and the specific
+`tccli --cli-profile` / `Unknown options` recurrence. It does not export task
+text, command bodies, results or credentials. Historical publication status is
+not a statement of current memory eligibility; process error flags can miss
+API errors hidden by a shell pipeline. Explicit Skill invocation is stronger
+than mounting alone but does not prove the lesson caused a successful outcome.
+
+Validation uses `internal/host/procedural_learning_live_test.go` with the real
+configured native model/Jev and an isolated file-memory Host. Its teaching
+runner replays two sanitized historical command/result shapes. Its fresh native
+session executes only a local CBS read surrogate, with fixture profile, region
+and resource ID. No cloud business operation or channel message is replayed.
+The reports live in the ignored `.agent-host/validation/` directory.
+
+| Probe | Observation |
+| --- | --- |
+| `procedural-learning-mvp-native-20261015-01.json` | Learning published, but native dispatch failed because the temporary fixture path was not canonical on macOS. The fixture was corrected; no provider substitution. |
+| `...-02.json` | Real-model learning and Skill invocation passed; direct recall 0, hinted recall 1, one lookup. This initial surrogate checked the profile flag; later validation tightened all target parameters. |
+| `...-03.json` | Stricter validation failed: three lookup/discovery calls. The Skill avoided the old profile flag but omitted a full command, and the first lookup lacked `DiskIds`. This prompted extraction policy v4. |
+| `...-04.json` | Policy v4 passed the stricter probe in 42.1 s: direct recall 0, hinted recall 1, a successful native Skill invocation, one correctly parameterized lookup and the observed `UNATTACHED` response. The surrogate validates the action, profile, region and parsed `DiskIds` JSON. |
+
+Controlled Go regressions additionally cover withheld → refined → reassessed →
+automatically published → fresh-session Skill assembly; one-attempt bounds;
+provider failure visibility; conversation/partition boundaries; invalidation;
+preselection compatibility; source/reference limits; and credential redaction.
+The live probes above admitted their initial lesson, so they do not independently
+establish live refinement accuracy. These are development observations on a
+known case, not held-out general accuracy or a causal productivity experiment.
+
+Opt in with explicit provider settings and a new report filename:
+
+```sh
+AGENT_HOST_LIVE_LEARNING=1 \
+AGENT_HOST_LIVE_LEARNING_ENV=/absolute/provider-environment.json \
+AGENT_HOST_LIVE_MODEL=MODEL \
+AGENT_HOST_LIVE_JEV_ENDPOINT=https://configured-gateway/v1/systemone \
+AGENT_HOST_LIVE_REPORT=/absolute/new-report.json \
+go test ./internal/host -run '^TestProceduralLearningNativeObservation$' -count=1 -v
+```
+
+The environment file supplies only the configured provider values to child
+processes. Reports refuse overwrite. Observe natural tasks after deployment
+before claiming reduced business error rates or adding automatic revision.
 
 ## Evidence scope and limits
 
@@ -202,8 +281,9 @@ experience evaluations. Run `make check` for each implementation increment.
 
 ## Investigation delegation record
 
-Both read-only offload attempts failed to return a completed report. The findings
-above were independently obtained and checked through targeted local reads.
+The two initial analysis offload attempts failed to return a completed report;
+the later bounded MVP fixture lookup completed. Important findings were checked
+independently through targeted local reads.
 Costs below are ESTIMATED worker USD cost, not verified billing or total task
 cost; they exclude the supervising agent. A missing cost is not zero.
 
@@ -211,3 +291,4 @@ cost; they exclude the supervising agent. A missing cost is not zero.
 | --- | --- | --- | --- | --- | --- |
 | Code pipeline | Budget exceeded / 1 | `cc` / `claude-sonnet-5[1m]` | 0.738951 | 109.653 s | `ad2d55a5-d33f-48bd-b7bb-7edeee34fc37` / 20 |
 | Runtime history | Timeout / 124 | `cc` / `claude-sonnet-5[1m]` | Unavailable | 240.260 s | Session unavailable / CLI reported 0 turns; completed work unavailable |
+| MVP fixture lookup | Completed / 0 | `cc` / `claude-sonnet-5[1m]` | 0.133182 | 59.817 s | `01433a59-05c8-48d2-a99b-6a8f3db2da66` / 10 |

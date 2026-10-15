@@ -154,6 +154,7 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
+	h.Config.ProcedureRecallHints = append([]state.ProcedureRecallHint(nil), o.procedureRecallHints...)
 	if o.historyEnabled && !o.noTools {
 		h.Config.HistoryHome, h.Config.HistoryExecutable = o.home, o.historyExecutable
 	}
