@@ -233,6 +233,7 @@ function renderList() {
     const top = dom("div", "record-top");
     top.append(dom("span", "", `${row.source.kind === "report" ? "归档" : "本机"} · ${short(row.id)}`), badge(row.execution_status));
     button.append(top, dom("div", "record-title", runLabels[row.label] || row.input || "未记录请求正文"));
+    button.append(dom("div", "record-bottom", `Agent ${row.agent_id || "default"} · ${row.audience_id === "owner" || !row.audience_id ? "私聊" : "群聊 " + short(row.audience_id)}`));
     const bottom = dom("div", "record-bottom");
     const project = row.projects?.length > 1 ? row.projects.map((p) => p.name || p.id).join(" + ") : row.project_name || row.project_id;
     bottom.append(dom("span", "", project ? `${row.source.name} · ${project}` : row.source.name), dom("span", "", row.created_at.slice(11, 16)));

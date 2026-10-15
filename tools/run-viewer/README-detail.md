@@ -280,3 +280,13 @@ and the atomic revision operation documented in
 [experience details](../../docs/experience-memory-detail.md#successful-procedures-and-avoidance-notes).
 The page renders successful steps separately from avoidance notes and preserves
 the prior version and extraction/assessment audit.
+
+### All-chat console view
+
+Managed startup passes `--all-chats`. This removes Agent/audience read filters
+for run lists, memory lists, candidates and archives. Project/workspace filters
+and existing bounded load limits still apply. Run details query memories using
+the selected run’s own Agent and audience. Action lookups retain the configured
+owner partition, and group/other-Agent rows do not advertise management controls.
+Regression coverage checks group and alternate-Agent listing, provenance links,
+partitioned run details, unchanged filtered mode, and denied group mutations.

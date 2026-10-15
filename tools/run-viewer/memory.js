@@ -116,7 +116,7 @@ function render() {
   const notice = $("snapshot-notice");
   notice.hidden = !items.some((item) => item.snapshot) && !state.data.truncated;
   notice.textContent = `${items.some((item) => item.snapshot) ? "归档快照：这里展示报告中观察到的记忆与关系。原始实验数据库已清理，历史 active 状态不代表当前仍有效。" : ""}${state.data.truncated ? ` 已载入最多 ${state.data.memory_limit} 条；观察总数 ${state.data.observed_total}，此视图并不完整。` : ""}`;
-  $("scope-note").textContent = `AGENT ${state.data.agent_id || "default"} · AUDIENCE ${state.data.audience_id || "owner"}${state.data.scope ? ` · ${state.data.project ? `PROJECT ${state.data.project} · ` : ""}MEMORY SCOPE ${state.data.scope}` : " · SOURCES KEPT SEPARATE"}`;
+  $("scope-note").textContent = `${state.data.all_chats ? "ALL AGENTS · ALL CHATS" : `AGENT ${state.data.agent_id || "default"} · AUDIENCE ${state.data.audience_id || "owner"}`}${state.data.scope ? ` · ${state.data.project ? `PROJECT ${state.data.project} · ` : ""}MEMORY SCOPE ${state.data.scope}` : " · SOURCES KEPT SEPARATE"}`;
   const visible = filteredItems();
   renderGraph(visible); renderRecall(); renderCards(visible);
   renderCandidates();
@@ -226,7 +226,8 @@ function renderCards(items) {
     if (!tags.childNodes.length) tags.append(tag("尚无对象或主题标注"));
     const foot = dom("div", "card-bottom");
     foot.append(dom("span", "", memory.external_receipt_id ? "外部 Agent 提供的证据" : memory.source_type === "reviewed_experience" ? "来自人工审核经验" : memory.source_type === "user_statement" ? "来自用户声明" : "来源类型未记录"), dom("strong", "", `已使用 ${item.uses.filter((use) => use.status === "injected").length} 次`));
-    card.append(top, dom("h3", "", memory.text.split("\n")[0]), tags, foot,
+    card.append(top, dom("h3", "", memory.text.split("\n")[0]), tags,
+      dom("div", "card-proof", `Agent ${memory.agent_id || "default"} · ${!memory.audience_id || memory.audience_id === "owner" ? "私聊" : "群聊 " + short(memory.audience_id)}`), foot,
       dom("div", "card-proof", `MEM ${short(memory.id)} · REV ${memory.revision ?? "?"} · ${item.snapshot ? "ARCHIVED" : "CURRENT"}`), dom("span", "card-arrow", "↗"));
     card.addEventListener("click", () => openDetail(item)); $("memory-grid").append(card);
   }

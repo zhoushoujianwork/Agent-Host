@@ -56,6 +56,47 @@ class MemoryTests(unittest.TestCase):
         conn.commit()
         return conn
 
+    def test_all_chats_shows_group_memory_without_cross_partition_detail_or_actions(self):
+        conn = self.database()
+        for name, agent, audience in (("group-a", "default", "group-a"),
+                                      ("group-b", "helper", "group-b")):
+            memory = {"id": name, "scope": "/project-a", "text": "Group experience " + name,
+                      "agent_id": agent, "audience_id": audience, "source_run_id": name,
+                      "status": "active", "revision": 1}
+            conn.execute("INSERT INTO memories VALUES(?,?,?)", (name, "/project-a", json.dumps(memory)))
+            conn.execute("INSERT INTO memory_annotations VALUES(?,?)", (name, json.dumps({})))
+            run = {"id": name, "scope": "/project-a", "created_at": "2026-10-15T01:00:00Z",
+                   "agent_id": agent, "audience_id": audience, "input": "Group question"}
+            conn.execute("INSERT INTO runs VALUES(?,?,?,?)", (name, run["scope"], run["created_at"], json.dumps(run)))
+            candidate = {"id": name, "run_id": name, "scope": "/project-a",
+                         "agent_id": agent, "audience_id": audience}
+            conn.execute("INSERT INTO candidates VALUES(?,?,?,?,?,?)",
+                         (name, "/project-a", name, json.dumps(candidate), agent, audience))
+        conn.commit()
+        conn.close()
+        catalog = server.Catalog(self.home, None, all_chats=True)
+        catalog.control_available = lambda: True
+        self.assertTrue(catalog.index()["all_chats"])
+        self.assertEqual(catalog.index()["database_count"], 3)
+        result = catalog.memories()
+        self.assertEqual(result["database_total"], 4)
+        self.assertEqual(len(result["candidates"]), 2)
+        for name in ("group-a", "group-b"):
+            item = next(item for item in result["memories"] if item["memory"]["id"] == name)
+            self.assertEqual(item["origin_run"]["id"], name)
+            self.assertFalse(item["can_manage"])
+            self.assertEqual([m["id"] for m in catalog.record("db:" + name)["memories"]], [name])
+            for action in ("invalidate", "accept"):
+                with self.assertRaises(KeyError):
+                    catalog.action("db:" + name, action, "reason", 1)
+        self.assertTrue(all(not item["can_manage"] for item in result["candidates"]))
+        self.assertEqual(self.catalog.index()["database_count"], 1)
+        self.assertEqual(memory_catalog(self.catalog)["database_total"], 2)
+        unified = server.MultiCatalog([f"test={self.home}"], all_chats=True)
+        self.assertTrue(unified.index()["all_chats"])
+        self.assertTrue(unified.memories()["all_chats"])
+        self.assertEqual(unified.record("test:db:group-b")["run"]["agent_id"], "helper")
+
     def test_external_memory_keeps_receipt_evidence_without_a_native_run(self):
         conn = self.database()
         conn.execute("CREATE TABLE external_memory_receipts(id TEXT PRIMARY KEY,payload TEXT)")

@@ -12,8 +12,11 @@ results remain separate.
 ## Start
 
 `make run` starts one shared workbench at `http://127.0.0.1:8765/` and opens it
-in the default browser. It displays all enabled channels, with source labels and
-separate execution/memory identities. `RUN_ARGS='--viewer-port 9000'` overrides
+in the default browser. It displays private and group chats from every Agent
+in all enabled channels, with channel and chat labels and separate execution/memory identities.
+Run details retain their own chat memory partition. Group and other-Agent
+memories are viewable; existing owner memory controls keep their original scope.
+`RUN_ARGS='--viewer-port 9000'` overrides
 the fixed default. The workbench stops with the supervisor. See
 [project-local startup](../../docs/service-install.md) for headless startup.
 The commands below start a separate viewer for local inspection; use a different
@@ -48,8 +51,9 @@ the same project history, or filters the historical directory scope when the
 workspace is unregistered. These two options are mutually exclusive; an unknown
 project ID is an explicit error. `--reports` selects another saved experience-report
 directory; archived records remain a separate source outside the project filters.
-Use `--agent ID --audience ID` to inspect a group or another instance. The default
-is `default` and `owner`; both database and archived records follow this partition,
+Use `--all-chats` to inspect every Agent and chat in a standalone viewer.
+Without that option, use `--agent ID --audience ID` to inspect a group or another
+instance. The default is `default` and `owner`; both database and archived records follow this partition,
 including memory and source-run links. IDs are available in local run records.
 Pass these options through `VIEWER_ARGS`. The server runs in the foreground;
 stop it with Ctrl-C. You can also run `python3 -B tools/run-viewer/server.py`

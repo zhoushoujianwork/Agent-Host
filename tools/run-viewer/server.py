@@ -202,7 +202,7 @@ def report_records(report, source):
 
 
 class Catalog:
-    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner", host_binary=None):
+    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner", host_binary=None, all_chats=False):
         if workspace and project:
             raise ValueError("--project and --workspace are mutually exclusive")
         self.database = Path(home).expanduser().resolve() / "state.db"
@@ -210,6 +210,7 @@ class Catalog:
         self.workspace = str(Path(workspace).expanduser().resolve()) if workspace else None
         self.project = project
         self.agent, self.audience = agent, audience
+        self.all_chats = all_chats
         self.host_binary = Path(host_binary).expanduser().resolve() if host_binary else ROOT / "bin" / "agent-host"
         if not agent or not audience:
             raise ValueError("agent and audience must be nonempty identifiers")
@@ -378,7 +379,7 @@ class Catalog:
             return [{"key": "db:" + c["id"], "candidate": c,
                      "source": {"id": "db", "kind": "database", "name": "本机 state.db"},
                      "origin_run": {"key": "db:" + c["run_id"]},
-                     "can_manage": self.control_available()} for (raw,) in rows for c in [decode(raw)]]
+                     "can_manage": self.control_available() and partition(c) == (self.agent, self.audience)} for (raw,) in rows for c in [decode(raw)]]
         finally:
             conn.close()
 
@@ -387,7 +388,7 @@ class Catalog:
         result["candidates"] = self.candidates()
         available = self.control_available()
         for item in result["memories"]:
-            item["can_manage"] = available and not item["snapshot"]
+            item["can_manage"] = available and not item["snapshot"] and partition(item["memory"]) == (self.agent, self.audience)
         return result
 
     def action(self, key, action, note, revision):
@@ -396,7 +397,7 @@ class Catalog:
         identifier = key[3:]
         conn = self.memory_connection() if action in {"invalidate", "restructure"} else self.connection()
         try:
-            context = self.filter_context(conn)
+            context = {**self.filter_context(conn), "all_chats": False}
             table = self.memory_table(conn) if action in {"invalidate", "restructure"} else "candidates"
             where, args = self.memory_filter(context, self.schema_version(conn), "m")
             row = conn.execute("SELECT m.payload FROM " + table + " m" + where + " AND m.id=?", args + (identifier,)).fetchone()
@@ -431,7 +432,7 @@ class Catalog:
         version = self.schema_version(conn) if conn else None
         result = {"project": self.project, "project_name": None,
                   "workspace": self.workspace, "scope": self.workspace,
-                  "agent_id": self.agent, "audience_id": self.audience}
+                  "agent_id": self.agent, "audience_id": self.audience, "all_chats": self.all_chats}
         if self.project or self.workspace:
             row = None
             if version is not None and version >= 7:
@@ -454,14 +455,14 @@ class Catalog:
             source = {"id": "report-" + hashlib.sha256(str(path).encode()).hexdigest()[:16],
                       "kind": "report", "name": path.name, "passed": report.get("passed")}
             for record in report_records(report, source).values():
-                if partition(record["run"]) == (self.agent, self.audience):
+                if self.all_chats or partition(record["run"]) == (self.agent, self.audience):
                     records[record["key"]] = record
         return records
 
     def run_filter(self, context):
         scope, project = context["scope"], context["project"]
-        condition = " WHERE " + partition_sql("runs.payload")
-        args = (self.agent, self.audience)
+        condition = " WHERE 1=1" if self.all_chats else " WHERE " + partition_sql("runs.payload")
+        args = () if self.all_chats else (self.agent, self.audience)
         if project:
             return (condition + " AND (scope=? OR EXISTS (SELECT 1 FROM json_each(runs.payload, '$.projects') "
                     "WHERE json_extract(value, '$.id')=?))", args + (scope, project))
@@ -470,7 +471,9 @@ class Catalog:
     def memory_filter(self, context, version, alias="m"):
         prefix = alias + "." if alias else ""
         condition = prefix + "agent_id=? AND " + prefix + "audience_id=?" if version >= 10 else partition_sql(prefix + "payload")
-        args = (self.agent, self.audience)
+        args = (context.get("agent_id", self.agent), context.get("audience_id", self.audience))
+        if context.get("all_chats", self.all_chats):
+            condition, args = "1=1", ()
         if context["scope"] is not None:
             condition += " AND " + prefix + "scope=?"
             args += (context["scope"],)
@@ -517,7 +520,7 @@ class Catalog:
             if row is None:
                 raise KeyError("run not found")
             run = decode(row[0])
-            if partition(run) != (self.agent, self.audience):
+            if not self.all_chats and partition(run) != (self.agent, self.audience):
                 raise KeyError("run outside configured agent or audience")
             member = any(p.get("id") == context["project"] for p in run.get("projects", [])) if context["project"] else False
             if scope is not None and run.get("scope") != scope and not member:
@@ -525,7 +528,7 @@ class Catalog:
             events = [decode(row[0]) for row in conn.execute("SELECT payload FROM events WHERE run_id=? ORDER BY seq", (run["id"],))]
             candidates = [] if schema == 1 else [decode(row[0]) for row in conn.execute("SELECT payload FROM candidates WHERE run_id=? ORDER BY rowid", (run["id"],))]
             scopes = sorted({p["scope"] for p in run.get("projects", [])}) or [run["scope"]]
-            memory_where, memory_args = self.memory_filter({"scope": None}, schema, "")
+            memory_where, memory_args = self.memory_filter({"scope": None, "all_chats": False, "agent_id": partition(run)[0], "audience_id": partition(run)[1]}, schema, "")
             memories = [decode(row[0]) for row in conn.execute(
                 "SELECT payload FROM " + self.memory_table(conn) + memory_where + " AND scope IN (" + ",".join("?" for _ in scopes) + ")", memory_args + tuple(scopes))]
             return {"key": key, "run": run, "events": events, "candidates": candidates, "memories": memories,
@@ -538,14 +541,15 @@ class Catalog:
 class MultiCatalog:
     """Combine channel projections without merging their underlying state."""
 
-    def __init__(self, sources, agent="default", audience="owner", host_binary=None):
+    def __init__(self, sources, agent="default", audience="owner", host_binary=None, all_chats=False):
         self.catalogs = {}
         self.agent, self.audience = agent, audience
+        self.all_chats = all_chats
         for source in sources:
             name, separator, home = source.partition("=")
             if not separator or not name or not home or name in self.catalogs:
                 raise ValueError("--channel-home requires a unique NAME=PATH")
-            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience, host_binary=host_binary)
+            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience, host_binary=host_binary, all_chats=all_chats)
 
     @staticmethod
     def qualify(value, channel):
@@ -574,7 +578,7 @@ class MultiCatalog:
         return {"records": rows, "database_present": any(index["database_present"] for index in indexes),
                 "database_count": sum(index["database_count"] for index in indexes),
                 "database_limit": RUN_LIMIT * len(indexes), "channels": list(self.catalogs),
-                "agent_id": self.agent, "audience_id": self.audience,
+                "agent_id": self.agent, "audience_id": self.audience, "all_chats": self.all_chats,
                 "default_key": next((row["key"] for row in rows if row["execution_status"] == "running"),
                                     rows[0]["key"] if rows else None)}
 
@@ -594,7 +598,7 @@ class MultiCatalog:
                        for key in ("database_total", "database_runs_total", "observed_total", "memory_limit")})
         result.update(database_present=any(catalog["database_present"] for catalog in catalogs),
                       truncated=any(catalog["truncated"] for catalog in catalogs),
-                      agent_id=self.agent, audience_id=self.audience, channels=list(self.catalogs))
+                      agent_id=self.agent, audience_id=self.audience, all_chats=self.all_chats, channels=list(self.catalogs))
         return result
 
     def action(self, key, action, note, revision):
@@ -694,6 +698,7 @@ def main():
     selection.add_argument("--project", help="Limit database records to this registered project ID")
     parser.add_argument("--agent", default="default", help="Agent instance ID (default: default)")
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
+    parser.add_argument("--all-chats", action="store_true", help="Show every Agent and chat partition in this local console")
     parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
@@ -701,10 +706,10 @@ def main():
         if args.channel_home:
             if args.workspace or args.project or not args.no_reports:
                 parser.error("--channel-home requires --no-reports and no project/workspace filter")
-            catalog = MultiCatalog(args.channel_home, args.agent, args.audience, args.host_binary)
+            catalog = MultiCatalog(args.channel_home, args.agent, args.audience, args.host_binary, args.all_chats)
             catalog.index()
         else:
-            catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience, args.host_binary)
+            catalog = Catalog(args.home, None if args.no_reports else args.reports, args.workspace, args.project, args.agent, args.audience, args.host_binary, args.all_chats)
             catalog.index()
     except (OSError, ValueError, sqlite3.Error) as error:
         parser.error(str(error))
