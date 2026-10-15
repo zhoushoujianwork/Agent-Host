@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"agent-host/internal/mcpstdio"
 )
 
+// Access is accepted only for compatibility with older configuration files.
+// Enabled datasource plugins are global; these selectors are not applied.
 type Access struct {
 	Channels  []string `json:"channels"`
 	Audiences []string `json:"audiences"`
@@ -47,10 +48,6 @@ func Decode(raw []byte) (Envelope, error) {
 		return e, errors.New("component requires version 1, explicit enabled and documented fields")
 	}
 	return e, nil
-}
-
-func (e Envelope) Allows(channel string) bool {
-	return *e.Enabled && e.Access != nil && slices.Contains(e.Access.Channels, channel)
 }
 
 // Settings preserves legacy direct configurations. Unified files are decoded by

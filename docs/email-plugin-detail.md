@@ -1,5 +1,12 @@
 # Email capability implementation notes
 
+Current datasource policy: enabled `datasource.plugins.*.json` plugins are global
+across channels, Agents, projects and owner/group conversations. Old plugin
+`access`, source project/audience fields and Agent datasource selectors are
+ignored. Standalone legacy configurations and historical scope-validation
+records below retain their original meaning. See the
+[datasource design](datasource-plugins-design.md) for current behavior.
+
 Status: implementation and validation notes. Product scope
 and implementation order are defined in the [main guide](email-plugin.md).
 

@@ -18,10 +18,10 @@ One 163 account is configured locally. Add Gmail or further 163 mailboxes to the
 same registry; AI discovers them through `list_accounts`. Credentials and real
 addresses remain outside this repository.
 
-For channel startup, configure `.agent-host/config/plugins.email.json` with
-`enabled: true`, owner access and mailbox accounts in settings. Eligible channels
+For channel startup, configure `.agent-host/config/datasource.plugins.email.json` with
+`enabled: true` and mailbox accounts in settings. All channels
 share the plugin and its operation ledger. For local chat, pass
-`--email-config /absolute/path/plugins.email.json`; legacy direct account files
+`--email-config /absolute/path/datasource.plugins.email.json`; legacy direct account files
 remain supported. [Setup and tool details](email-plugin-detail.md#configuration-and-commands)
 include the local-only check and optional live connection check.
 
@@ -61,9 +61,9 @@ credentials to the separate Agent-Host service.
 - Send new messages and reply from the explicitly selected account, including
   attachments. Ask for the sending account only when user intent remains ambiguous.
 - Report account-specific failures and incomplete search coverage explicitly.
-- Make the configured mailboxes available to owner-private runs of the configured runtime,
-  including the default workspace. Group tasks and tool-free extraction receive
-  no email MCP. Per-Agent account subsets are not implemented. Mail content remains attributed source material, not instructions
+- Make enabled datasource mailboxes available to every channel, Agent, project
+  and owner/group conversation. Tool-free extraction receives no email MCP.
+  Mail content remains attributed source material, not instructions
   or automatically published shared memory.
 
 Mailbox draft persistence, read-state changes, move/archive/delete, background

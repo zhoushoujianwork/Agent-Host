@@ -23,7 +23,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 .agent-host/
 ├── config/                         # 人工维护的配置，唯一入口
 │   ├── host.json                   # 命名执行配置与 provider 环境文件引用
-│   ├── agents.json                 # Agent 角色、项目和能力选择
+│   ├── agents.json                 # Agent 角色和任务项目
 │   ├── channels.dingtalk.json
 │   ├── channels.feishu.json
 │   ├── datasource.plugins.email.json
@@ -62,10 +62,6 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 {
   "version": 1,
   "enabled": true,
-  "access": {
-    "channels": ["dingtalk", "feishu"],
-    "audiences": ["owner"]
-  },
   "settings": {}
 }
 ```
@@ -83,9 +79,11 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 配置错误在连接外部平台之前报告；平台连接或授权失败明确显示，不自动换提供方
 或重放任务。禁用组件不连接、不挂载工具，也不删除其历史数据。
 
-插件启用后，Host 按渠道、Agent 和可见范围决定是否向本次任务提供工具。
-私人邮件和渠道内 DWS 个人业务工具默认仅向 owner 私聊提供；启用本身不授予发送消息
-等业务操作的授权。配置修改通过重启 `make run` 生效，本期不做热加载。
+Enabled datasource plugins are global across channels, Agents, projects and
+owner/group conversations. No effective-scope configuration is required; older
+plugin `access` and source/Agent selectors are ignored. DingTalk DWS remains a
+channel feature. Sending still requires authorization for the requested operation.
+Restart `make run` after configuration changes; hot reload is not implemented.
 
 ## 动态工程登记与运行目录（待实现）
 
@@ -124,7 +122,8 @@ cache 或所属数据源运行目录；拟新增的工程运行记录写入 Host
 有来源的本地材料由 `datasource.plugins.local-documents.json` 声明读取范围，
 迁移后的保留快照进入本地文档数据源存储；详细稿中的旧 `knowledge/` 路径是迁移历史。
 项目已有文档留在项目目录，通过知识源配置引用。私人快照可以供多个渠道引用，
-但仍需满足项目、Agent 与 owner 可见范围，不能因为文件共享就向群聊开放。
+Enabled datasource plugins expose these configured snapshots globally, including
+groups. File paths define document coverage; they do not configure task audiences.
 
 各渠道的运行证据仍保存在 `state/state.db`，原生会话仍在 `native/`；
 文件后端的正式记忆由来源发布清单决定，不由运行数据库或生成视图替代。
@@ -138,7 +137,7 @@ cache 或所属数据源运行目录；拟新增的工程运行记录写入 Host
 1. 统一配置扫描、严格预检和已支持内置组件的启动装配。
 2. 接入钉钉渠道的 bot/DWS 可选项、飞书渠道及 Email、知识插件；保留现有工具语义。
 3. 停止后备份迁移配置、渠道数据、插件状态和知识快照，保留旧默认记忆范围。
-4. 自动化验证独立启用和权限过滤；实际双渠道连接及插件验证见详细稿。
+4. 自动化验证独立启用和全局插件装配；实际双渠道连接及插件验证见详细稿。
 
 本期交付标准是“配置启用即可在启动时加载已有内置能力”。外部插件安装、公共 SDK、
 插件市场、热加载和共享记忆服务留待具体需求出现后扩展。

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"agent-host/internal/componentconfig"
 	"agent-host/internal/email"
 	"agent-host/internal/harness"
 )
@@ -23,7 +24,8 @@ const emailUsage = `Managed multi-account email MCP (Gmail API and personal 163 
 
 check is local-only unless --live is supplied. Live checks never send mail.
 Configuration and credential files must be owner-private. Register one unified
-MCP for owner-private tasks; AI lists accounts and supplies account_id to tools.
+MCP for tasks; enabled datasource plugins are global. AI lists accounts and
+supplies account_id to tools.
 serve is an internal stdio entry point. Sending requires send_enabled and an
 operation_id; pending/unknown submission outcomes are never automatically retried.
 `
@@ -78,10 +80,11 @@ func runEmail(ctx context.Context, args []string, in io.Reader, out, errout io.W
 	return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "accounts": c.Catalog(), "fingerprint": fp, "remote_verified": false})
 }
 func resolveEmail(o *options) error {
-	if o.pluginNames != nil && !slices.Contains(o.pluginNames, "email") {
+	global := componentconfig.DataSourceID(o.emailConfig) == "email"
+	if !global && o.pluginNames != nil && !slices.Contains(o.pluginNames, "email") {
 		return nil
 	}
-	if o.emailConfig == "" || o.noTools || o.audienceID != "" && o.audienceID != "owner" {
+	if o.emailConfig == "" || o.noTools || (!global && o.audienceID != "" && o.audienceID != "owner") {
 		return nil
 	}
 	_, fp, e := email.Load(o.emailConfig)

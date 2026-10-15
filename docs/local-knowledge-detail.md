@@ -1,5 +1,12 @@
 # Local knowledge implementation details
 
+Current datasource policy: enabled `datasource.plugins.*.json` plugins are global
+across channels, Agents, projects and owner/group conversations. Old plugin
+`access`, source project/audience fields and Agent datasource selectors are
+ignored. Standalone legacy configurations and historical scope-validation
+records below retain their original meaning. See the
+[datasource design](datasource-plugins-design.md) for current behavior.
+
 The [main guide](local-knowledge.md) defines user behavior and scope. Local
 Markdown uses the same source selection, MCP execution and evidence boundary
 as [remote knowledge](knowledge-sources-detail.md).

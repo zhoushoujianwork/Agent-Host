@@ -120,7 +120,7 @@ func TestUnifiedMemoryIdentitySurvivesWorkspaceChange(t *testing.T) {
 	}
 }
 
-func TestUnifiedPluginsSharedAndAudienceBounded(t *testing.T) {
+func TestUnifiedPluginsGlobal(t *testing.T) {
 	root, dir := unifiedFixture(t)
 	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"dws": map[string]any{"enabled": true, "profile": "corp:owner", "services": []string{"contact"}}}})
 	writeBotJSON(t, filepath.Join(dir, "datasource.plugins.email.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk", "feishu"}, "audiences": []string{"owner"}}, "settings": map[string]any{"accounts": []map[string]any{{"id": "one", "address": "one@163.com", "provider": "163", "credential_file": "credentials/bot.secret", "send_enabled": false}}}})
@@ -139,11 +139,11 @@ func TestUnifiedPluginsSharedAndAudienceBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeBotJSON(t, filepath.Join(dir, "datasource.plugins.local-documents.json"), map[string]any{"version": 1, "enabled": true, "access": map[string]any{"channels": []string{"dingtalk"}, "audiences": []string{"owner"}}, "settings": map[string]any{"sources": []map[string]any{{"name": "notes", "root": "../knowledge", "paths": []string{"note.md"}, "principal": "owner", "description": "notes", "projects": []string{"default"}}}}})
-	if path, err := unifiedPlugin(dir, "local-documents", "feishu"); err != nil || path != "" {
-		t.Fatal("unauthorized channel", path, err)
+	if path, err := unifiedPlugin(dir, "local-documents", "feishu"); err != nil || path == "" {
+		t.Fatal("global plugin missing", path, err)
 	}
 	c, err := knowledge.Load(filepath.Join(dir, "datasource.plugins.local-documents.json"))
-	if err != nil || len(c.Sources) != 1 || len(c.Sources[0].Audiences) != 1 || c.Sources[0].Audiences[0] != "owner" {
+	if err != nil || len(c.Sources) != 1 || len(c.Sources[0].Audiences) != 0 || len(c.Sources[0].Projects) != 0 {
 		t.Fatal(c, err)
 	}
 	var envelope map[string]any
@@ -151,9 +151,18 @@ func TestUnifiedPluginsSharedAndAudienceBounded(t *testing.T) {
 	json.Unmarshal(raw, &envelope)
 	envelope["access"] = map[string]any{"channels": []string{"dingtalk"}, "audiences": []string{"group"}}
 	writeBotJSON(t, one, envelope)
-	if _, err := unifiedPlugin(dir, "email", "dingtalk"); err == nil {
-		t.Fatal("email group grant accepted")
+	if _, err := unifiedPlugin(dir, "email", "dingtalk"); err != nil {
+		t.Fatal(err)
 	}
+	delete(envelope, "access")
+	writeBotJSON(t, one, envelope)
+	for _, audience := range []string{"owner", "group"} {
+		o := options{emailConfig: one, audienceID: audience, pluginNames: []string{}}
+		if err := resolveKnowledge(&o); err != nil || len(o.mcpServers) != 1 || o.mcpServers[0].Name != "email" {
+			t.Fatal("global email missing", audience, err)
+		}
+	}
+
 }
 
 func TestUnifiedRejectUnknownAndEmptyFeatures(t *testing.T) {

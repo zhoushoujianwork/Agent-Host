@@ -1,10 +1,6 @@
 {
   "version": 1,
   "enabled": false,
-  "access": {
-    "channels": ["dingtalk"],
-    "audiences": ["owner"]
-  },
   "settings": {
     "sources": [
       {
@@ -12,8 +8,7 @@
         "endpoint": "https://dokki.example.invalid/api/v1",
         "credential_file": "credentials/dokki.json",
         "principal": "owner",
-        "description": "Company Dokki knowledge",
-        "projects": ["default"]
+        "description": "Company Dokki knowledge"
       }
     ]
   }

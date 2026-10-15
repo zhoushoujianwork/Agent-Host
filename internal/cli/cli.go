@@ -178,7 +178,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 		o.knowledgeConfigs = append(o.knowledgeConfigs, path)
 		return nil
 	})
-	fs.StringVar(&o.knowledgeChannel, "knowledge-channel", "", "Managed channel grant for datasource selection")
+	fs.StringVar(&o.knowledgeChannel, "knowledge-channel", "", "Legacy channel label; enabled datasource plugins are global")
 	fs.StringVar(&o.discoveryConfig, "discovery-config", "", "Private DWS system topic discovery configuration")
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
 	fs.StringVar(&o.agentID, "agent", "default", "Logical agent instance for local state selection")

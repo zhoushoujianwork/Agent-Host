@@ -9,20 +9,20 @@ import (
 	"agent-host/internal/componentconfig"
 )
 
-// SelectProjects resolves the union of explicitly authorized sources once.
-// A neutral cwd in a joint run does not add the default project's permissions.
+// SelectProjects resolves global datasource plugins and project-selected legacy
+// sources. A neutral cwd does not add legacy default-project permissions.
 func SelectProjects(path string, ids []string) ([]ResolvedSource, error) {
 	return SelectAgentProjects(path, ids, nil)
 }
 
-// SelectAgentProjects narrows project-authorized sources before opening their
-// credentials. An excluded source cannot block an unrelated instance.
+// SelectAgentProjects narrows legacy sources before opening credentials.
+// Enabled unified datasource plugins always resolve all their sources.
 func SelectAgentProjects(path string, ids, names []string) ([]ResolvedSource, error) {
 	return SelectAgentAudienceProjects(path, ids, names, "owner")
 }
 
-// SelectAgentAudienceProjects applies all access selectors before opening a
-// credential or inspecting a local root. An omitted audience means local owner.
+// SelectAgentAudienceProjects applies access selectors only to legacy sources.
+// Unified datasource plugins are global.
 func SelectAgentAudienceProjects(path string, ids, names []string, audience string) ([]ResolvedSource, error) {
 	if path == "" {
 		return nil, nil
@@ -34,19 +34,6 @@ func Catalog(paths []string, channel string) ([]Source, error) {
 	var sources []Source
 	seen := map[string]bool{}
 	for _, path := range paths {
-		if componentconfig.DataSourceID(path) != "" && channel != "" {
-			raw, err := readPrivate(path, 64<<10)
-			if err != nil {
-				return nil, err
-			}
-			e, err := componentconfig.Decode(raw)
-			if err != nil {
-				return nil, err
-			}
-			if !e.Allows(channel) {
-				continue
-			}
-		}
 		c, err := Load(path)
 		if err != nil {
 			return nil, err
@@ -88,9 +75,12 @@ func SelectMany(paths, ids, names []string, audience, channel string) ([]Resolve
 	if err != nil {
 		return nil, err
 	}
-	names, err = ResolveNames(sources, names)
-	if err != nil {
-		return nil, err
+	// Global datasource plugins do not use Agent, project or audience selectors.
+	if !allGlobalSources(sources) {
+		names, err = ResolveNames(sources, names)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(ids) == 0 {
 		ids = []string{"default"}
@@ -104,6 +94,14 @@ func SelectMany(paths, ids, names []string, audience, channel string) ([]Resolve
 	}
 	var selected []ResolvedSource
 	for _, source := range sources {
+		if globalSource(source) {
+			r, err := resolve(source)
+			if err != nil {
+				return nil, err
+			}
+			selected = append(selected, r)
+			continue
+		}
 		if names != nil && !slices.Contains(names, source.Name) {
 			continue
 		}
@@ -123,4 +121,17 @@ func SelectMany(paths, ids, names []string, audience, channel string) ([]Resolve
 	}
 	sort.Slice(selected, func(i, j int) bool { return selected[i].Source.Name < selected[j].Source.Name })
 	return selected, nil
+}
+
+func globalSource(source Source) bool {
+	return componentconfig.DataSourceID(source.ConfigPath) != ""
+}
+
+func allGlobalSources(sources []Source) bool {
+	for _, source := range sources {
+		if !globalSource(source) {
+			return false
+		}
+	}
+	return true
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,68 +38,93 @@ func datasourceDocumentFixture(t *testing.T, dir, id, name string) string {
 	return path
 }
 
-func TestDatasourceNamespacedMountsAndAmbiguousLegacyReference(t *testing.T) {
+func TestDatasourceGlobalMounts(t *testing.T) {
 	_, dir := unifiedFixture(t)
 	local := datasourceDocumentFixture(t, dir, "local-documents", "notes")
-	remote := datasourceDocumentFixture(t, dir, "dokki", "notes")
-	o := options{knowledgeConfigs: []string{local, remote}, knowledgeChannel: "dingtalk", audienceID: "owner"}
-	if err := resolveKnowledge(&o); err != nil {
+	remote := datasourceDocumentFixture(t, dir, "confluence", "notes")
+	for _, channel := range []string{"dingtalk", "feishu", ""} {
+		for _, audience := range []string{"owner", "group-fixture"} {
+			o := options{knowledgeConfigs: []string{local, remote}, knowledgeChannel: channel,
+				audienceID: audience, projectID: "unrelated", knowledgeNames: []string{}, pluginNames: []string{}}
+			if err := resolveKnowledge(&o); err != nil {
+				t.Fatal(err)
+			}
+			if len(o.knowledgeSources) != 2 || len(o.knowledgeHints) != 2 {
+				t.Fatal("global sources missing", channel, audience)
+			}
+			seen := map[string]bool{}
+			for _, server := range o.mcpServers {
+				seen[server.Name] = true
+			}
+			if !seen["knowledge_local-documents_notes"] || !seen["knowledge_confluence_notes"] {
+				t.Fatal("missing mounts", seen)
+			}
+			for _, source := range o.knowledgeSources {
+				if _, err := knowledge.ResolveSource(source.ConfigPath, source.Source.Name, source.Fingerprint); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	catalog, err := knowledge.Catalog([]string{local, remote}, "feishu")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(o.knowledgeSources) != 2 {
-		t.Fatal(o.knowledgeSources)
-	}
-	seen := map[string]bool{}
-	for _, server := range o.mcpServers {
-		seen[server.Name] = true
-	}
-	if !seen["knowledge_local-documents_notes"] || !seen["knowledge_dokki_notes"] {
-		t.Fatal("colliding mounts", seen)
-	}
-	o.knowledgeNames = []string{"notes"}
-	if _, err := selectKnowledgeForOptions(o); err == nil {
-		t.Fatal("ambiguous legacy reference accepted")
-	}
-	o.knowledgeNames = []string{"local-documents:notes"}
-	selected, err := selectKnowledgeForOptions(o)
-	if err != nil || len(selected) != 1 || selected[0].ConfigPath != local {
-		t.Fatal(selected, err)
-	}
-	if _, err := knowledge.ResolveSource(local, selected[0].Source.Name, selected[0].Fingerprint); err != nil {
-		t.Fatal("new MCP binding unavailable", err)
-	}
-	o.audienceID = "group"
-	if selected, err := selectKnowledgeForOptions(o); err != nil || len(selected) != 0 {
-		t.Fatal("owner source exposed", selected, err)
+	if _, err := knowledge.ResolveNames(catalog, []string{"notes"}); err == nil {
+		t.Fatal("ambiguous explicit source identity accepted")
 	}
 }
 
-func TestDatasourceAgentSubsetExcludesUnavailableCredential(t *testing.T) {
+func TestDatasourceGlobalConfigurationAndBinding(t *testing.T) {
 	_, dir := unifiedFixture(t)
-	local := datasourceDocumentFixture(t, dir, "local-documents", "private")
+	path := datasourceDocumentFixture(t, dir, "local-documents", "notes")
+	// Old access/project/audience fields must not silently restrict global plugins.
+	var envelope map[string]any
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	sources := envelope["settings"].(map[string]any)["sources"].([]any)
+	sources[0].(map[string]any)["audiences"] = []string{"owner"}
+	writeBotJSON(t, path, envelope)
+	o := options{knowledgeConfigs: []string{path}, audienceID: "group", knowledgeChannel: "feishu", projectID: "other"}
+	if err := resolveKnowledge(&o); err != nil || len(o.knowledgeSources) != 1 {
+		t.Fatal(err, o.knowledgeSources)
+	}
+	validate := knowledgeValidator(o)
+	if validate == nil {
+		t.Fatal("missing configuration validator")
+	}
+	delete(envelope, "access")
+	delete(sources[0].(map[string]any), "projects")
+	delete(sources[0].(map[string]any), "audiences")
+	writeBotJSON(t, path, envelope)
+	if err := validate(); err != nil {
+		t.Fatal("obsolete scope fields changed binding", err)
+	}
+	sources[0].(map[string]any)["description"] = "Updated global notes"
+	writeBotJSON(t, path, envelope)
+	if err := validate(); err == nil {
+		t.Fatal("changed source configuration accepted")
+	}
+}
+
+func TestDatasourceGlobalProviderFailureIsExplicit(t *testing.T) {
+	_, dir := unifiedFixture(t)
 	remote := datasourceDocumentFixture(t, dir, "confluence", "remote")
 	if err := os.Remove(filepath.Join(dir, "credentials", "confluence.json")); err != nil {
 		t.Fatal(err)
 	}
-	o := options{knowledgeConfigs: []string{local, remote}, pluginNames: []string{"local-documents"}, audienceID: "owner"}
-	if err := resolveKnowledge(&o); err != nil || len(o.knowledgeSources) != 1 {
-		t.Fatal("excluded provider was resolved", err)
+	o := options{knowledgeConfigs: []string{remote}, pluginNames: []string{}, audienceID: "group"}
+	if err := resolveKnowledge(&o); err == nil {
+		t.Fatal("enabled global provider failure hidden")
 	}
-	validate := knowledgeValidator(o)
-	if validate == nil {
-		t.Fatal("missing access validator")
-	}
-	if err := validate(); err != nil {
-		t.Fatal(err)
-	}
-	e, err := readEnvelope(local)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.Access.Channels = []string{"feishu"}
-	writeBotJSON(t, local, e)
-	if err := validate(); err == nil {
-		t.Fatal("changed access binding accepted")
+	o.noTools = true
+	if err := resolveKnowledge(&o); err != nil || len(o.mcpServers) != 0 {
+		t.Fatal("tool-free invocation loaded plugins", err)
 	}
 }
 

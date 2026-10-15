@@ -121,6 +121,9 @@ func assemblyConfig(o options) assembly.Configuration {
 }
 
 func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
+	if globalKnowledgePlugins(o) {
+		return knowledge.SelectMany(knowledgePaths(o), nil, nil, "", "")
+	}
 	ids := make([]string, 0, len(o.projects))
 	for _, p := range o.projects {
 		ids = append(ids, p.ID)
@@ -185,4 +188,19 @@ func knowledgePluginsEnabled(names []string) bool {
 		}
 	}
 	return false
+}
+
+// Unified datasource plugins are enabled globally at startup. Legacy direct
+// knowledge configurations retain their existing selectors.
+func globalKnowledgePlugins(o options) bool {
+	paths := knowledgePaths(o)
+	if len(paths) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		if componentconfig.DataSourceID(path) == "" {
+			return false
+		}
+	}
+	return true
 }

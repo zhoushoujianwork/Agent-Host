@@ -20,7 +20,7 @@ import (
 	"agent-host/internal/componentconfig"
 )
 
-const ConnectorVersion = "knowledge-v3:local-markdown:audiences"
+const ConnectorVersion = "knowledge-v4:global-datasource"
 
 type Source struct {
 	ConfigPath        string   `json:"-"`
@@ -34,7 +34,7 @@ type Source struct {
 	Paths             []string `json:"paths,omitempty"`
 	Principal         string   `json:"principal"`
 	Description       string   `json:"description"`
-	Projects          []string `json:"projects"`
+	Projects          []string `json:"projects,omitempty"`
 	Audiences         []string `json:"audiences,omitempty"`
 }
 
@@ -112,7 +112,16 @@ func Load(path string) (Configuration, error) {
 	if len(c.Sources) > 32 {
 		return c, errors.New("datasource exceeds 32 sources")
 	}
-	if filepath.Base(path) == "plugins.knowledge.json" || pluginID != "" {
+	if pluginID != "" {
+		for i := range c.Sources {
+			source := &c.Sources[i]
+			source.ConfigPath = path
+			source.Root = componentconfig.Resolve(path, source.Root)
+			source.CredentialFile = componentconfig.Resolve(path, source.CredentialFile)
+			// Older scope fields are accepted for migration but have no effect.
+			source.Projects, source.Audiences = nil, nil
+		}
+	} else if filepath.Base(path) == "plugins.knowledge.json" {
 		envelope, e := componentconfig.Decode(original)
 		if e != nil {
 			return c, e
@@ -216,7 +225,7 @@ func validateSource(s Source) error {
 	if strings.TrimSpace(s.Principal) != s.Principal || s.Principal == "" || len(s.Principal) > 256 || strings.ContainsAny(s.Principal, "\x00\r\n") || strings.TrimSpace(s.Description) == "" || len(s.Description) > 1024 || strings.ContainsRune(s.Description, '\x00') {
 		return errors.New("knowledge sources require a principal label and a short description")
 	}
-	if len(s.Projects) == 0 || len(s.Projects) > 128 {
+	if (!globalSource(s) && len(s.Projects) == 0) || len(s.Projects) > 128 {
 		return errors.New("knowledge sources require explicit projects (use default for unregistered workspaces)")
 	}
 	projects := map[string]bool{}

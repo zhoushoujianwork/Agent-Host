@@ -159,10 +159,10 @@ learning follow later. The [validation notes](personal-assistant-detail.md#p0-va
 separate bounded native and selected-source evidence from unmeasured general quality.
 
 The [local knowledge increment](local-knowledge.md) adds explicitly selected
-project Markdown and retained owner-private snapshots through the same on-demand
-tools. Source selection intersects project grants, the Agent's configured subset
-and optional audience grants. Default-workspace authorization lets an ordinary
-question consult project material without a manual directory hint. Source roots
+project Markdown and retained owner snapshots through the same on-demand
+tools. Enabled datasource plugins provide all configured sources globally across
+channels, Agents, projects and owner/group conversations. Ordinary questions can
+consult project material without a manual directory hint. Source roots
 remain separate from execution cwd; retrieved notes keep provenance and do not
 automatically become learned Host memory. Its validation is tracked separately.
 

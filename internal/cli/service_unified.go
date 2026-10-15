@@ -138,18 +138,8 @@ func unifiedPlugin(directory, id, channel string) (string, error) {
 	if !*e.Enabled {
 		return "", nil
 	}
-	if e.Access == nil || len(e.Access.Channels) == 0 || len(e.Access.Audiences) == 0 {
-		return "", fmt.Errorf("plugin %s requires channel and audience access", id)
-	}
-	for _, name := range e.Access.Channels {
-		if name != "dingtalk" && name != "feishu" {
-			return "", errors.New("plugin access references an unknown channel")
-		}
-	}
+	// Enabled datasource plugins are global; legacy access fields are ignored.
 	if id == "email" {
-		if !slices.Equal(e.Access.Audiences, []string{"owner"}) {
-			return "", errors.New("email supports owner audience only")
-		}
 		c, _, err := email.Load(path)
 		if err != nil {
 			return "", err
@@ -171,9 +161,6 @@ func unifiedPlugin(directory, id, channel string) (string, error) {
 				return "", err
 			}
 		}
-	}
-	if channel != "" && !e.Allows(channel) {
-		return "", nil
 	}
 	return path, nil
 }

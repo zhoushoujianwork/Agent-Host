@@ -2,7 +2,13 @@
 
 当前数据源配置和加载规则见[数据源插件详细稿](datasource-plugins-design-detail.md)，
 `datasource.plugins.*.json` 已替代初次迁移的 `plugins.email.json` 与
-`plugins.knowledge.json`。下文保留初次 unified rollout 的结构和证据，涉及旧插件
+`plugins.knowledge.json`。
+
+Current enabled datasource plugins are global; `access`, source project/audience
+fields and Agent datasource selectors are obsolete. See the linked datasource
+details for current assembly and migration behavior.
+
+下文保留初次 unified rollout 的结构和证据，涉及旧插件
 文件名及状态路径的段落属于迁移历史；当前使用方式见[运行指南](service-install.md)。
 
 

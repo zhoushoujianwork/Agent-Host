@@ -22,8 +22,9 @@ const knowledgeUsage = `Read-only runtime knowledge (local Markdown, Dokki and C
 
 Configuration and provider token files must be owner-private (0600 or 0400).
 check validates local files only; no remote search or authentication is performed.
-Sources are selected by configured project IDs and authenticated audience.
-default means unregistered cwd. Local sources require explicit relative paths.
+Enabled datasource.plugins.* configurations are global across channels, Agents,
+projects and audiences. Legacy direct configurations retain their selectors.
+Legacy default means unregistered cwd. Local sources require explicit relative paths.
 Native permissions apply. The internal serve command runs only pinned MCP instances.
 `
 
@@ -110,7 +111,7 @@ func resolveKnowledge(o *options) error {
 	if err := resolveDingTalkWorkspace(o); err != nil {
 		return err
 	}
-	if o.knowledgePluginDisabled || !knowledgePluginsEnabled(o.pluginNames) {
+	if o.knowledgePluginDisabled || (!globalKnowledgePlugins(*o) && !knowledgePluginsEnabled(o.pluginNames)) {
 		return nil
 	}
 	selected, err := selectKnowledgeForOptions(*o)
@@ -156,7 +157,7 @@ func resolveKnowledge(o *options) error {
 }
 
 func knowledgeValidator(o options) func() error {
-	if o.knowledgePluginDisabled || !knowledgePluginsEnabled(o.pluginNames) || len(knowledgePaths(o)) == 0 || o.noTools {
+	if o.knowledgePluginDisabled || (!globalKnowledgePlugins(o) && !knowledgePluginsEnabled(o.pluginNames)) || len(knowledgePaths(o)) == 0 || o.noTools {
 		return nil
 	}
 	expected := knowledge.Fingerprint(o.knowledgeSources)

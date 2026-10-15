@@ -51,6 +51,8 @@ def migrate(root):
         for source in document.get("settings", {}).get("sources", []):
             source = dict(source)
             provider = source.pop("provider")
+            source.pop("projects", None)
+            source.pop("audiences", None)
             if provider not in PROVIDERS:
                 raise RuntimeError("unknown legacy provider")
             plugin = PROVIDERS[provider]
@@ -84,24 +86,20 @@ def migrate(root):
             shutil.copytree(old_state, backup / "email", symlinks=True)
         ready = True
         for plugin, sources in groups.items():
-            envelope = {key: value for key, value in document.items() if key != "settings"}
+            envelope = {key: value for key, value in document.items() if key not in ("settings", "access")}
             envelope["settings"] = {"sources": sources}
             write(config / f"datasource.plugins.{plugin}.json", envelope)
         if old_email.exists():
             email = read(old_email)
+            email.pop("access", None)
             email.get("settings", {}).pop("state_directory", None)
             write(config / "datasource.plugins.email.json", email)
         agents_path = config / "agents.json"
         if agents_path.exists():
             agents = read(agents_path)
             for agent in agents["agents"]:
-                if "knowledge_sources" in agent:
-                    agent["knowledge_sources"] = [aliases.get(name, name) for name in agent["knowledge_sources"]]
-                if "plugins" in agent:
-                    plugins = []
-                    for plugin in agent["plugins"]:
-                        plugins.extend(PROVIDERS.values() if plugin == "knowledge" else [plugin])
-                    agent["plugins"] = list(dict.fromkeys(plugins))
+                agent.pop("knowledge_sources", None)
+                agent.pop("plugins", None)
             write(agents_path, agents)
         host_path = config / "host.json"
         host = read(host_path)

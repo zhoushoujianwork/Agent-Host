@@ -1,10 +1,6 @@
 {
   "version": 1,
   "enabled": false,
-  "access": {
-    "channels": ["dingtalk", "feishu"],
-    "audiences": ["owner"]
-  },
   "settings": {
     "accounts": [
       {

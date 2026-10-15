@@ -162,7 +162,7 @@ func (c agentCatalog) validateReferences(ctx context.Context, store *state.Store
 				return fmt.Errorf("agent %s project directory is unavailable or changed", a.ID)
 			}
 		}
-		if a.KnowledgeSources != nil && !base.knowledgePluginDisabled && knowledgePluginsEnabled(a.Plugins) {
+		if a.KnowledgeSources != nil && !globalKnowledgePlugins(base) && !base.knowledgePluginDisabled && knowledgePluginsEnabled(a.Plugins) {
 			sources, err := knowledge.Catalog(knowledgePaths(base), base.knowledgeChannel)
 			if err != nil {
 				return err

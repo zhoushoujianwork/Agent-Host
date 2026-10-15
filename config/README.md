@@ -8,7 +8,8 @@ assistant and an operations assistant to copy and customize. Explicit
 The [unified configuration and plugin startup](../docs/configuration-layout.md)
 loads `.agent-host/config/host.json`, optional `agents.json`,
 `channels.<name>.json` and `datasource.plugins.<name>.json`. Component files use version 1,
-explicit enablement and settings; plugins also declare channel/audience access.
+explicit enablement and settings. Enabled datasource plugins are global across
+channels, Agents, projects and conversations; no scope configuration is needed.
 Use the unified example files for new deployments. Provider environments and
 credentials belong in the private `config/credentials/` directory. Plugin data
 lives in `datasource/plugins/<name>`, channel data in `channels/<name>`; DWS is an optional

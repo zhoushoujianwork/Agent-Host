@@ -33,7 +33,7 @@ class MigrationTests(unittest.TestCase):
         migration.write(config / "plugins.knowledge.json", {"version": 1, "enabled": True, "access": {"channels": ["dingtalk"], "audiences": ["owner"]}, "settings": {"version": 1, "sources": [{"name": "notes", "provider": "local_markdown", "root": "/unchanged/docs", "paths": ["note.md"], "projects": ["default"], "audiences": ["owner"]}, {"name": "company", "provider": "confluence", "endpoint": "https://example.test", "credential_file": "/unchanged/token"}]}})
         migration.write(config / "plugins.email.json", {"version": 1, "enabled": True, "access": {"channels": ["dingtalk"], "audiences": ["owner"]}, "settings": {"accounts": []}})
 
-    def test_split_preserves_sources_authorization_and_ledger(self):
+    def test_split_preserves_sources_and_ledger_without_scope(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             self.fixture(root)
@@ -45,12 +45,14 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(channel, migration.receipt(root / "channels/dingtalk/state/state.db"))
             self.assertEqual(ledger, migration.receipt(root / "datasource/plugins/email/operations.db"))
             local = migration.read(root / "config/datasource.plugins.local-documents.json")
-            self.assertEqual(["owner"], local["access"]["audiences"])
+            self.assertNotIn("access", local)
+            self.assertNotIn("projects", local["settings"]["sources"][0])
+            self.assertNotIn("audiences", local["settings"]["sources"][0])
             self.assertEqual("/unchanged/docs", local["settings"]["sources"][0]["root"])
             self.assertNotIn("provider", local["settings"]["sources"][0])
             agent = migration.read(root / "config/agents.json")["agents"][0]
-            self.assertEqual(["local-documents:notes"], agent["knowledge_sources"])
-            self.assertNotIn("knowledge", agent["plugins"])
+            self.assertNotIn("knowledge_sources", agent)
+            self.assertNotIn("plugins", agent)
             rule = migration.read(root / "config/host.json")["profiles"]["default"]["execution"]["allowed_tools"][0]
             self.assertEqual("mcp__knowledge_local-documents_notes__*", rule)
             with self.assertRaises(RuntimeError):

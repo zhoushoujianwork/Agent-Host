@@ -1,6 +1,7 @@
 # Local project knowledge and retained notes
 
-Status: local Markdown sources and audience filtering are implemented. Automated,
+Status: local Markdown sources are implemented. Enabled datasource plugins are
+global across channels, Agents, projects and owner/group conversations. Automated,
 native and private-channel acceptance are tracked separately in the
 [details](local-knowledge-detail.md). The
 [knowledge-source guide](knowledge-sources.md) explains the shared tool boundary.
@@ -11,11 +12,10 @@ Let the assistant find existing project documentation and selected older notes
 when answering an ordinary question. The user describes the problem; they do
 not need to supply a directory or switch projects first.
 
-An operator registers the meaningful project, makes its source available to
-the default assistant, and also authorizes that source for default-workspace
-execution. This lets an unresolved question consult relevant documentation
-without forcing a project-selection question. Registration alone does not
-import documents or grant knowledge access.
+An operator configures the local document source and enables its datasource
+plugin. No project registration or task-scope selection is needed to expose
+these documents to the assistant. Startup supplies descriptions; AI reads
+relevant material on demand.
 
 ## Core approach
 
@@ -25,10 +25,9 @@ import documents or grant knowledge access.
   Startup supplies a short source description rather than document bodies.
   Directory searches report bounded coverage rather than assuming every file
   was examined.
-- **Keep private notes private.** Source access requires the configured project,
-  Agent source selection and audience to match. Selected private notes use
-  `audiences: ["owner"]`; a group on the same Agent does not receive that source.
-  Existing sources without an audience list retain their previous behavior.
+- **Use configured sources globally.** All Agents and conversations, including
+  groups, receive enabled datasource tools. Old source project/audience fields
+  and Agent source lists no longer restrict unified datasource plugins.
 - **Preserve old material as evidence.** Copy selected notes into a private,
   versioned snapshot outside the repository and retain a manifest linking them
   to their originals and content digests. Original files remain intact.
@@ -40,13 +39,13 @@ import documents or grant knowledge access.
 Local knowledge roots do not become the execution cwd or additional native
 directories merely by being configured. Knowledge tools are disabled in
 tool-free runs. Native tools with broader directory access remain a separate
-capability; source filtering is not a filesystem isolation boundary.
+capability; plugin mounting is not a filesystem isolation boundary.
 
 ## Scope and rollout
 
-1. Add the local provider, explicit file selection and audience filtering.
-2. Register the project and configure the default Agent's source access.
-3. Retain selected older notes as owner-only snapshots with provenance.
+1. Add the local provider and explicit file selection.
+2. Configure and enable the local datasource plugin.
+3. Retain selected older notes as snapshots with provenance.
 4. Verify retrieval in a fresh native session, then repeat an ordinary private
    question without a directory hint. Keep real inputs and evidence outside
    the repository.

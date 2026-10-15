@@ -1,5 +1,12 @@
 # Group conversations and agent instances
 
+Current datasource policy: enabled `datasource.plugins.*.json` plugins are global
+across channels, Agents, projects and owner/group conversations. Old plugin
+`access`, source project/audience fields and Agent datasource selectors are
+ignored. Standalone legacy configurations and historical scope-validation
+records below retain their original meaning. See the
+[datasource design](datasource-plugins-design.md) for current behavior.
+
 Status: implemented; automated, isolated native and bounded single-group platform
 verification are recorded in the
 [implementation and validation details](agent-instances-detail.md).

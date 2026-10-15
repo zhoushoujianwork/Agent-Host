@@ -1,10 +1,6 @@
 {
   "version": 1,
   "enabled": false,
-  "access": {
-    "channels": ["dingtalk", "feishu"],
-    "audiences": ["owner"]
-  },
   "settings": {
     "sources": [
       {
@@ -12,9 +8,7 @@
         "root": "../knowledge/owner",
         "paths": ["notes"],
         "principal": "local-owner",
-        "description": "Private local Markdown notes",
-        "projects": ["default"],
-        "audiences": ["owner"]
+        "description": "Private local Markdown notes"
       }
     ]
   }

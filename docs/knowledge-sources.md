@@ -28,9 +28,9 @@ Keep the existing memory loop for Host-run tasks.
 
 | Source | How it enters Agent-Host | What the agent receives |
 | --- | --- | --- |
-| Dokki | Read-only MCP tools selected for the task's identity and project | Search results and source documents, requested during execution |
+| Dokki | Read-only MCP tools provided globally by enabled datasource plugins | Search results and source documents, requested during execution |
 | Confluence | The same runtime tool path, with its own source and credentials | Search results and source pages, requested during execution |
-| Local Markdown | Explicit files/directories under a configured source root, selected by project, Agent and audience | Bounded search results and document excerpts with relative references |
+| Local Markdown | Explicit files/directories under a configured source root, available globally through enabled datasource plugins | Bounded search results and document excerpts with relative references |
 | Daily DWS conversations | Optional system collection of explicitly selected conversations and local topic review | Bounded owner-private evidence export after explicit acceptance; learning remains planned; no general DWS task MCP |
 
 Each configured source remains authoritative for its documents. Startup supplies
@@ -86,12 +86,14 @@ can add stronger evidence without rewriting what the original discussion proved.
 ## Decisions for this extension
 
 - **Mount tools, retrieve content on demand.** Reuse memgov's concrete Dokki and
-  Confluence connector logic in Agent-Host's own read-only MCP process. Configure access
-  at native session startup; tool use happens later. Changing source access
-  starts a compatible fresh session.
+  Confluence connector logic in Agent-Host's own read-only MCP process. Enabled
+  datasource plugins are mounted globally
+  at native session startup; tool use happens later. Effective configuration
+  changes replace incompatible native sessions.
 - **Expose selected local material through the same tools.** Keep business cwd
-  separate from source roots. Private retained notes use an explicit owner
-  audience grant, with their originals and versions preserved. Reading a note
+  separate from source roots. Configured retained notes are available to every
+  task audience through an enabled datasource plugin, with originals and
+  versions preserved. Reading a note
   does not turn it into learned memory; see [local knowledge](local-knowledge.md).
 - **Use a separate DWS intake.** The current application-bot channel only sees
   messages addressed to the bot. Daily communication intake uses the configured
@@ -135,10 +137,10 @@ can add stronger evidence without rewriting what the original discussion proved.
 ## Enable the implemented knowledge tools
 
 Copy the [configuration example](../config/data-knowledge.example.json) to a private
-file and configure each source's endpoint, token-file path and permitted project
-IDs. `default` means an unregistered workspace; registered projects require
-their explicit IDs. Optional `audiences` further narrows access; omission keeps
-existing behavior, while `["owner"]` excludes group audiences. Provider token
+file. Unified startup uses `datasource.plugins.<name>.json` with `enabled`
+and `settings`; sources need no project, audience, channel or Agent selectors.
+All enabled datasource plugins are global. Legacy standalone `knowledge.json`
+continues to accept project/audience selectors for compatibility. Provider token
 files contain `{"api_key":"..."}` for Dokki or `{"pat":"..."}` for Confluence.
 Configuration and token files must be owner-private. Local Markdown sources
 use an explicit `root` and relative `paths` instead of an endpoint/token; their
