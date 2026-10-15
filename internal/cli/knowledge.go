@@ -15,7 +15,7 @@ import (
 	"agent-host/internal/knowledge"
 )
 
-const knowledgeUsage = `Read-only runtime knowledge (local Markdown, Dokki and Confluence).
+const knowledgeUsage = `Runtime sources: local Markdown/Dokki retrieval and Confluence page/blog retrieval and writes.
 
   agent-host knowledge check --config ABSOLUTE_PATH
   agent-host chat --knowledge-config ABSOLUTE_PATH [options]

@@ -23,6 +23,9 @@ Updates require the content's current version and replace its title and complete
 body. Read back the content to verify the result; a failed or uncertain write must
 be inspected before retrying. Existing Confluence configuration is sufficient,
 subject to the account's upstream permissions.
+This default chooses where authorized records are written. It does not publish
+every chat message or replace the Host's local learned memory, preferences,
+Skills or operational evidence.
 
 Existing `access`, source `projects`/`audiences`, and Agent plugin/source lists
 are obsolete for datasource plugins and no longer restrict availability. Current

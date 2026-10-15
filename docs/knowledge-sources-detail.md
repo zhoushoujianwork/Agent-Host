@@ -195,6 +195,28 @@ preserves the same test body; the original test page was moved to the recoverabl
 trash after the content matched. These bounded checks do not establish general
 native-agent write quality or permissions in other spaces.
 
+On 2026-10-15, an isolated real `agent-host chat` turn using the configured
+Claude and Jev providers received a request to save a managed user record without
+naming a destination. It selected `create_confluence_blogpost` without a
+`space_key`, created a record in the authenticated owner's personal blog, read
+it, updated it with `expected_version=1`, and read back the exact updated body at
+version 2. All four correlated tool results succeeded. The
+[chat-created record](https://confluence.zhihuiya.com/pages/viewpage.action?pageId=298113947)
+is retained. Native execution completed; Host task acceptance remained unverified,
+experience was empty and local memory was unchanged. This is CLI chat acceptance,
+not a DingTalk/Feishu message-delivery test. The first CLI attempt stopped before
+model execution because standalone CLI environment lacked Jev credentials; the
+passing run explicitly loaded the existing Host profile environment.
+Private receipts are retained under
+`.agent-host/validation/confluence-chat-20261015/`.
+
+The local DingTalk execution profile's prior read-only Confluence allowlist was
+extended with the five delivered page-write and blog tools. Existing wildcard
+profiles need no equivalent edit. Operators with explicit native allowlists must
+include the desired write tools; connector availability does not override native
+permissions. No automatic publication of every user message or replacement of the
+local memory backend is implemented.
+
 Results retain source IDs, human-facing links, bodies and upstream revision,
 pagination/truncation metadata when available. Dokki metadata/content identity
 and returned version compatibility are checked; Confluence reads check page ID,
