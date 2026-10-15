@@ -159,23 +159,29 @@ function renderGraph(items) {
     group.addEventListener("keydown", (event) => {if (["Enter", " "].includes(event.key)) {event.preventDefault(); click();}});
     nodes.append(group);
   }
+  const objectPositions = new Map();
   shown.forEach((item, index) => {
     const y = 53 + index * 70;
+    let objectY = y;
     const object = objectList(item)[0];
     const available = topicList(item);
     const topic = available.find((t) => t.key === "credential.rotation.period") || available.find((t) => !t.key.startsWith("credential.type.")) || available[0];
     if (object) {
       const objectValue = {...object, key: `${item.source.id}:${object.id}`};
-      node("object", 27, y, 173, object.name, object.kind.toUpperCase(), () => selectObject(objectValue), state.object?.key === objectValue.key);
+      if (!objectPositions.has(objectValue.key)) {
+        objectPositions.set(objectValue.key, y);
+        node("object", 27, y, 173, object.name, object.kind.toUpperCase(), () => selectObject(objectValue), state.object?.key === objectValue.key);
+      }
+      objectY = objectPositions.get(objectValue.key);
     } else {
       nodes.append(svgNode("text", {x: 39, y: y + 27, class: "graph-column-label"}, "未建立独立对象"));
     }
     if (topic) {
       node("topic", 269, y, 166, topics[topic.key] || topic.key, "TOPIC · SOURCE SPAN", () => {state.topic = topic.key; render();}, state.topic === topic.key);
       // Shared words alone cannot create an object/property edge.
-      if (object && list(topic.object_ids).includes(object.id)) link(200, y + 25, 269, y + 25, "object-edge");
+      if (object && list(topic.object_ids).includes(object.id)) link(200, objectY + 25, 269, y + 25, "object-edge");
       link(435, y + 25, 505, y + 25);
-    } else if (object) link(200, y + 25, 505, y + 25, "object-edge");
+    } else if (object) link(200, objectY + 25, 505, y + 25, "object-edge");
     node("memory", 505, y, 289, item.memory.text.split("\n")[0], `${(item.memory.kind || "unknown").toUpperCase()} · R${item.memory.revision ?? "?"}`, () => openDetail(item));
   });
   $("graph-note").textContent = `${items.length > shown.length ? `显示前 ${shown.length} / ${items.length} 条 · ` : ""}点击节点，查看关联记录 · 未标注关系保持空缺`;
