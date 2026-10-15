@@ -1,4 +1,4 @@
-.PHONY: build run package check viewer help
+.PHONY: build install run package check viewer help
 
 .DEFAULT_GOAL := help
 
@@ -10,9 +10,13 @@ RUNTIME_ROOT ?= $(CURDIR)/.agent-host/runtime
 CONFIG_DIR ?= $(CURDIR)/.agent-host/config
 RUN_ARGS ?=
 PYTHON ?= python3
+INSTALL_ARGS ?=
 
 build:
 	go build -ldflags "-X agent-host/internal/buildinfo.Version=$(or $(VERSION),0.2.0-dev)" -o bin/agent-host ./cmd/agent-host
+
+install: build
+	$(PYTHON) -B tools/install.py $(INSTALL_ARGS)
 
 # Historical local packaging utility; normal distribution uses source commits.
 package:
@@ -31,6 +35,7 @@ help:
 		'' \
 		'Targets:' \
 		'  build   Build bin/agent-host' \
+		'  install Build and link the CLI and memory skill for detected agents' \
 		'  run     Start or restart enabled channels in the foreground' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
@@ -46,6 +51,7 @@ help:
 		'Run options: CONFIG_DIR=/absolute/ROOT/config RUN_ARGS=--no-browser' \
 		'  RUNTIME_ROOT=/absolute/runtime selects an explicit legacy runtime' \
 		'  --viewer-port PORT Shared workbench port (default: 8765)'  \
+		'Install options: INSTALL_ARGS="--agents codex,claude --bin-dir /absolute/bin"' \
 		'Examples:' \
 		'  make viewer' \
 		"  make viewer VIEWER_ARGS='--home /path/to/isolated-home --port 0'" \
@@ -60,6 +66,7 @@ check:
 		{ test -z "$$unformatted" || { printf '%s\n' "$$unformatted"; exit 1; }; }
 	go vet ./...
 	go test ./...
+	$(PYTHON) -B tools/install_test.py
 	python3 -B tools/service/install_test.py
 	python3 -B tools/service/run_test.py
 	python3 -B tools/service/migrate_config_test.py

@@ -8,7 +8,9 @@ description: Save durable decisions, preferences, facts, and evidence-backed pro
 Keep the entry's normal conversation and tools. Use the running Host for durable
 knowledge through `agent-host memory`; read [the protocol](references/protocol.md)
 for commands and payloads. If the binary is unavailable, use a configured absolute
-path or the current repository's `bin/agent-host` when present. Do not silently
+path, or resolve this installed skill directory's symlink to its source checkout:
+the binary is `../../bin/agent-host` relative to the resolved skill directory.
+This works from any task cwd. Build it with `make install` if missing. Do not silently
 select a different runtime, scope, or provider.
 
 Check `memory connection show` for the intended alias (default `default`, or

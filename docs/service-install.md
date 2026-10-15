@@ -11,6 +11,11 @@ See the [configuration guide](configuration-layout.md) and
 
 ## Configure and check
 
+`make install` builds and links the CLI and external memory skill into detected
+local agents. It reports installed/skipped targets and preserves custom skills.
+See the [memory skill setup](external-memory-skill-design.md#setup-and-first-release).
+Continue below to configure and start channel services with `make run`.
+
 Use the tracked `config/*.example.json` templates, removing `.example` in the
 private configuration directory. Protect directories with mode `700` and files
 with mode `600`. Existing installations must migrate before using the new default.

@@ -51,7 +51,7 @@ skills. See [support details](README-detail.md#plugin-and-integration-boundaries
 
 ## Start
 
-Requires Go 1.26+, Make and Claude Code. Configure your Claude/Jev credentials
+Requires Go 1.26+, Make, Python 3.10+ and Claude Code. Configure your Claude/Jev credentials
 and channel settings using the [runtime setup guide](docs/service-install.md).
 
 Clone and compile locally; distribution is source-only:
@@ -59,8 +59,14 @@ Clone and compile locally; distribution is source-only:
 ```sh
 git clone https://github.com/zhoushoujianwork/Agent-Host.git
 cd Agent-Host
-make build
+make install
 ```
+
+`make install` builds the CLI, links it into `~/.local/bin`, and installs the
+memory skill for detected Codex, Claude Code, OpenCode, Gemini CLI, Cursor and
+GitHub Copilot setups. It reports each result and preserves custom installations.
+Use `make build` to compile only. Installation options and connection setup are
+in the [external memory guide](docs/external-memory-skill-design.md).
 
 After preparing your private configuration, start the channel service:
 

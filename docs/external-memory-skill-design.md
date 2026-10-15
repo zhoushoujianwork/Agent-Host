@@ -63,9 +63,13 @@ can be discovered normally without requiring explicit invocation every time.
 
 ## Setup and first release
 
-Build with `make build` and start or restart the owning Host with `make run`.
-Link or copy `skills/agent-host-memory` into the entry's skill directory, preserving
-any existing installation. Configure one connection to that running Host:
+Run `make install` to build the CLI, link it into `~/.local/bin` and install this
+skill for detected Codex, Claude Code, OpenCode, Gemini CLI, Cursor and GitHub
+Copilot setups. Existing custom targets are preserved; each outcome is reported.
+New sessions can discover the skill. Keep this checkout in place, since the
+installed links point to its source and built binary.
+
+Start or restart the owning Host with `make run`, then configure one connection:
 
 ```sh
 bin/agent-host memory connection add --connection default --home /absolute/host/state --agent default
@@ -76,6 +80,8 @@ Add `--project REGISTERED_PROJECT_ID` for an allowed registered project, or omit
 it for the Agent's default scope. Add `--checkpoint-save` only when automatic
 selected checkpoint submissions are wanted. Complete examples are in the
 skill's [protocol reference](../skills/agent-host-memory/references/protocol.md).
+For explicit clients or another CLI directory, use
+`make install INSTALL_ARGS="--agents codex,claude --bin-dir /absolute/bin"`.
 
 The first release includes manual save and opt-in checkpoint save. It excludes
 remote public HTTP, group sharing, full transcript synchronization, background

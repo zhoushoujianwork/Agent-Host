@@ -1,6 +1,9 @@
 # Local memory protocol
 
-Build Agent-Host from its source checkout with `make build`. All commands below
+Install from the source checkout with `make install` (or `make build` to compile
+only). Installation links the CLI and skill for detected supported clients and
+reports custom targets it preserved. New agent sessions can discover the skill.
+All commands below
 produce JSON. `--json` is optional. Flags must precede any positional arguments;
 these commands use named selectors throughout.
 

@@ -6,6 +6,41 @@ in the skill's [protocol reference](../skills/agent-host-memory/references/proto
 
 ## Ownership and connections
 
+`make install` builds first, then runs `tools/install.py`. This user-local
+installer links the built executable into `~/.local/bin` and the complete source
+skill into each detected supported client's skill directory. Detection checks
+the configured client directory or its command on PATH. `--agents` explicitly
+selects supported clients, including those not detected; it limits the set rather
+than adding to autodetection. It never starts a service or edits connections.
+
+| Client | Default skill directory | Supported override |
+| --- | --- | --- |
+| Codex | `~/.agents/skills` | `$CODEX_HOME/skills` for an explicitly selected local profile |
+| Claude Code | `~/.claude/skills` | `$CLAUDE_CONFIG_DIR/skills` |
+| OpenCode | `~/.config/opencode/skills` | `$OPENCODE_CONFIG_DIR/skills`, otherwise `$XDG_CONFIG_HOME/opencode/skills` |
+| Gemini CLI | `~/.gemini/skills` | None |
+| Cursor | `~/.cursor/skills` | None |
+| GitHub Copilot | `~/.copilot/skills` | None |
+
+Default discovery directories follow the
+[Codex](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills),
+[Claude Code](https://code.claude.com/docs/en/skills#choose-where-skills-load),
+[OpenCode](https://opencode.ai/docs/skills/),
+[Gemini CLI](https://geminicli.com/docs/cli/skills/),
+[Cursor](https://cursor.com/docs/skills) and
+[GitHub Copilot](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills)
+documentation. Profile overrides retain their local installation conventions.
+These links make the skill discoverable; an agent's own settings still control
+its availability and invocation permissions. Cloud/remote clients are separate.
+
+Reinstalling matching links is a no-op. Existing files, directories and foreign
+or dangling links are preserved. Skill conflicts are reported as `preserved`;
+a CLI conflict or filesystem failure produces a nonzero exit after reporting
+other outcomes. Source updates are visible through the links; moving the
+checkout requires explicit cleanup of old links before reinstalling. The
+installer reports a CLI directory missing from PATH, and the skill explains
+how to resolve its source-checkout binary from any working directory.
+
 `internal/cli/external_memory.go` is a transport-only client. It connects to the
 owning Host's existing `memory-control.sock` at `/external-memory`, using POST
 over a private Unix socket. The managed DingTalk and Feishu workers serve this
