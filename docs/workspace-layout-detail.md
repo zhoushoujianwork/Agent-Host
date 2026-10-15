@@ -226,3 +226,78 @@ datasource/plugins/<plugin>/sources/<source-id>/snapshots/<snapshot-id>/
 本期实现显式配置与任务装配，不增加自动日记、开机任务、定时学习或外发消息。
 本地停机迁移、双渠道重新连接与历史对照已完成，详见
 [文件记忆验证](file-memory-design-detail.md#已完成验证与边界)。
+
+## Proposed: multi-user recording and retrieval
+
+This section supports the [main design](workspace-layout.md#proposed-multiple-users-and-external-knowledge).
+It is proposed behavior, not a description of the current owner-only loader.
+No new configuration fields or identity database format are committed here.
+
+### Identity and record ownership
+
+Host resolves an authenticated sender using provider/channel, tenant and stable
+account ID, then maps that account to an internal user ID. Host creates safe local
+IDs; message text, nicknames and external IDs do not become filesystem paths.
+Verified account links may share a profile across channels, but do not by
+themselves merge historical learning domains or change their visibility.
+
+Separate the speaker, the subject of a claim and the audience allowed to read it.
+For example, Alice reporting a hobby of Bob records Alice as the source and Bob as
+the subject; it must not silently edit the USER.md profile of Bob. Retain the originating task,
+source locator, time and verification status alongside selected learned records.
+User, group and project ownership must compose with existing Agent/source scope
+checks; a shared project ID alone must not authorize private memory access.
+
+Identity/profile binding storage is durable Host state, not rebuildable cache.
+Its precise schema and lifecycle will be decided during implementation. Preserve
+legacy owner bindings and provenance until an explicit migration is verified.
+Unresolved or conflicting bindings fail private-context selection explicitly;
+Host may continue with permitted conversation context without guessing identity.
+
+### Profile and learned memory writes
+
+`config/users/<user-id>/USER.md` holds explicitly maintained profile information,
+including hobbies and response preferences. It grants no tools or permissions.
+A user may request an edit to their own profile through a future authorized
+profile-management operation. Normal learning and retrieval never rewrite config.
+The current explicit configuration/restart behavior remains until that operation
+is implemented; this proposal does not introduce automatic hot reload.
+
+Inferred preferences remain versioned learned memory with source evidence and
+visibility, not confirmed USER settings. A task USER.md is a bounded derived view
+of the permitted explicit profile and applicable learned preferences. It is not
+another save location. Explicit profile corrections take precedence over inferred
+preferences; the future correction flow must also invalidate conflicting learned
+records so removed settings cannot return through recall or session history.
+
+### Retrieval, cache and publication
+
+Host first selects permitted profile and local memory for the task. The runtime
+Agent can search/read Confluence through MCP when supporting detail or current
+knowledge is needed, including direct requests to consult Confluence. Search
+results, cached bodies and reads must all obey the requesting user’s visibility;
+shared connector credentials are not a substitute for per-user authorization.
+If that authorization cannot be established, do not expose the source.
+
+Optional retrieved-page cache entries retain source instance, page ID, URL,
+version, fetch time, content digest and access scope. Cache keys must avoid
+cross-user disclosure; refresh or revalidate before relying on current facts.
+Retention limits and refresh mechanics remain implementation decisions. These
+copies are rebuildable, unlike explicitly retained datasource evidence snapshots.
+Neither cached bodies nor full external collections are injected into every task.
+
+When an authorized task publishes a report, preserve its URL/version and source
+execution reference. Task output may link to that report. Selective local learning
+may retain a concise conclusion, applicability and source link, while the detailed
+report remains external. Creating or updating a page must not automatically mark
+claims as verified, create memory, replay tasks or publish private profile data.
+
+### Acceptance before rollout
+
+Verify two users sharing one Agent cannot recall one another’s private profile or
+memory, group tasks exclude private context, and equal nicknames do not link users.
+Verify explicit cross-channel linking preserves provenance without implicit domain
+merges, profile corrections do not return through recall/history, and Confluence
+search/read/cache respect the same audience boundary. Preserve source/version and
+task links through report updates. Missing plugins must leave local profiles and
+memory functional. None of these multi-user acceptance checks is claimed complete.

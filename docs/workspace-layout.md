@@ -44,6 +44,51 @@ from exports. See the [backup and recovery guide](workspace-backup-design.md).
 顶层 `knowledge/` 已退出本地运行布局。owner_notes 的 14 份原文已迁入
 local-documents 插件快照，摘要及原授权保持一致。数据源读取不会自动把资料变成记忆。
 
+## Proposed: multiple users and external knowledge
+
+Design agreed on 2026-10-15; not yet implemented. Current profile loading remains
+limited to an explicitly bound trusted owner. This proposal does not enable the
+unfinished Confluence memory backend: durable memory stays local.
+
+AGH identifies the person independently of the selected Agent. Each person has
+one Host user ID and a profile at `config/users/<user-id>/USER.md`; Agent role
+instructions stay under `config/agents/<agent-id>/`. Hobbies, background and
+explicit communication preferences belong in the user profile. Several Agents
+may serve the same person without copying that profile into each Agent.
+
+| Record | Where it belongs | How it is used |
+| --- | --- | --- |
+| Channel account to Host user mapping | Host-managed identity records; exact storage to be decided | Resolve the sender before selecting private context |
+| Explicit user profile | `config/users/<user-id>/USER.md` | Load only for that identified user in an allowed private task |
+| Learned facts, preferences, decisions and procedures | Local versioned `memory/` | Recall by authorized user, group or project scope and existing Agent boundaries |
+| Detailed findings, verified experience and task reports | Confluence pages/blogs, when authorized | Search/read through MCP as needed; retain source-task links |
+| Retrieved source copies and task context | Rebuildable cache and task views | Keep source/version metadata; never become memory merely by being cached |
+
+Use a stable platform account ID within its channel/tenant namespace, never a
+display name, to identify a sender. Link accounts across channels only through a
+verified binding. Unresolved identities receive no existing private profile;
+they can still be answered using context allowed for the current conversation.
+A statement about another person is a sourced claim, not a confirmed profile edit.
+
+Private user memory, group knowledge and project/team knowledge have distinct
+visibility. Being in the same group or using the same Agent does not merge users.
+Group tasks exclude private USER content by default. Host enforces these rules
+before retrieval, context assembly and publication; Markdown cannot grant access.
+
+External knowledge is retrieved on demand. Do not preload all Confluence posts or
+automatically re-import AGH-authored posts into memory. Keep a short local lesson
+or reference only after deliberate selection based on evidence and usefulness;
+publishing a report is not independent confirmation of its claims. A shared
+Confluence credential does not grant every AGH user access to its full results.
+
+Implementation order: first identity resolution and private-user isolation, then
+explicit profile management and scoped learning, then permission-aware external
+retrieval and bounded caching. Keep existing owner bindings until an explicit,
+verified migration maps them; do not infer owners of historical records.
+Acceptance requires separate private conversations for two people, safe group
+context, verified account linking, profile corrections and source traceability.
+See the [detailed recording rules](workspace-layout-detail.md#proposed-multi-user-recording-and-retrieval).
+
 ## 默认助手与运维模板
 
 默认角色是 `default`。用户可以复制[运维模板](../config/agent-templates/README.md)
