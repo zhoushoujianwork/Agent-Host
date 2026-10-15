@@ -71,7 +71,7 @@ func instanceDispatch(t *testing.T, f *projectFixture, bindings map[string]strin
 			c.AgentID, c.AudienceID = m.AgentID, m.AudienceID
 			c.Scope, c.Workspace, c.ProjectID, c.ProjectName = runtime.Scope, runtime.Workspace, runtime.ProjectID, runtime.ProjectName
 			c.RuntimeFingerprint, c.Projects, c.AdditionalDirectories = runtime.Fingerprint, runtime.Projects, runtime.AdditionalDirectories
-			return &host.Host{Store: child.Store, Config: c, Runner: f.runner, Decider: f.host.Decider}, runtime, nil
+			return &host.Host{Store: child.Store, Config: c, Runner: f.runner, Decider: f.host.Decider, Objects: f.host.Objects}, runtime, nil
 		}
 		child.Host = nil
 		child.ResolveHost = nil

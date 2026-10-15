@@ -156,6 +156,14 @@ func searchTokens(text string) []string {
 }
 
 func persistMemory(ctx context.Context, tx *sql.Tx, m Memory, isNew bool) error {
+	if len(m.ObjectAudit) > 0 {
+		if len(m.Objects) == 0 || !json.Valid(m.ObjectAudit) {
+			return errors.New("audited object extraction requires subjects")
+		}
+		if err := validateMemoryObjects(m.Objects); err != nil {
+			return err
+		}
+	}
 	m.AgentID, m.AudienceID = normalizedPartition(m.AgentID, m.AudienceID)
 	payload, err := json.Marshal(m)
 	if err != nil {
@@ -252,6 +260,9 @@ func (s *Store) FinalizeMemory(ctx context.Context, id string, updates []MemoryU
 					if existing.SenderID != m.SenderID || existing.Scope != run.Scope || !recallEligible(existing, time.Now()) || existing.SourceType == "reviewed_experience" {
 						return errors.New("duplicate evidence requires active user-statement memory in the same scope")
 					}
+					if len(m.ObjectAudit) > 0 && !sameObjectIdentities(existing.Objects, m.Objects) {
+						return errors.New("duplicate object context differs; explicitly repair the existing memory")
+					}
 					if _, err = tx.ExecContext(ctx, "INSERT INTO memory_evidence(memory_id,run_id) VALUES(?,?) ON CONFLICT(memory_id,run_id) DO NOTHING", existing.ID, run.ID); err != nil {
 						return err
 					}
@@ -265,9 +276,13 @@ func (s *Store) FinalizeMemory(ctx context.Context, id string, updates []MemoryU
 			}
 			isNew := errors.Is(err, sql.ErrNoRows)
 			if !isNew {
+				proposedObjects, proposedAudit := m.Objects, m.ObjectAudit
 				m, err = s.readMemory(ctx, tx, existingID)
 				if err != nil {
 					return err
+				}
+				if len(proposedAudit) > 0 && !sameObjectIdentities(m.Objects, proposedObjects) {
+					return errors.New("exact duplicate object context differs; explicitly repair the existing memory")
 				}
 				if m.SourceType == "reviewed_experience" || m.Status == "invalidated" || expired(m, time.Now()) {
 					return errors.New("exact duplicate is not an eligible user statement")

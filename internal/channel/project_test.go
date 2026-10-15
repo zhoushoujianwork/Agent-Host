@@ -61,7 +61,7 @@ func newProjectFixture(t *testing.T) *projectFixture {
 		config := f.host.Config
 		config.ProjectID, config.ProjectName, config.Scope = runtime.ProjectID, runtime.ProjectName, runtime.Scope
 		config.Workspace, config.RuntimeFingerprint = runtime.Workspace, runtime.Fingerprint
-		h := &host.Host{Store: f.service.Store, Config: config, Runner: f.runner, Decider: f.host.Decider}
+		h := &host.Host{Store: f.service.Store, Config: config, Runner: f.runner, Decider: f.host.Decider, Objects: f.host.Objects}
 		return h, runtime, nil
 	}
 	return f

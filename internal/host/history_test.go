@@ -30,6 +30,7 @@ func historyHost(t *testing.T) (*Host, *testRunner) {
 	h.Decider = deciderFunc(func(context.Context, string, []state.Memory) (memory.Decision, error) {
 		return memory.Decision{Kind: "none", Model: "fixture", Details: json.RawMessage(`{"reason":"question"}`)}, nil
 	})
+	h.Objects = fixtureObjects{}
 	return h, runner
 }
 

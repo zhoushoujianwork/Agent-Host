@@ -9,6 +9,7 @@ import (
 
 	"agent-host/internal/experience"
 	"agent-host/internal/memory"
+	"agent-host/internal/objectmemory"
 	"agent-host/internal/state"
 )
 
@@ -95,6 +96,13 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 			// Reuse already-admitted knowledge without changing its evidence or
 			// claiming that the incoming excerpts received a fresh assessment.
 			p.DuplicateIDs = []string{known.ID}
+			p.Objects = known.Objects
+			if proposed := r.Submission.ItemObjects(index); len(proposed) > 0 {
+				p.Objects = proposed
+			}
+			if len(p.Objects) == 0 {
+				return p, errors.New("existing procedure has no object context; extract its objects before reuse")
+			}
 			p.Result.Status, p.Result.Reason = "published", "duplicate_existing_memory"
 			p.Result.Audit, _ = json.Marshal(map[string]any{"policy": "reuse-active-reviewed-procedure-v1", "memory_id": known.ID, "revision": known.Revision, "evidence_basis": "existing active reviewed procedure; incoming evidence not reassessed or merged"})
 			return p, nil
@@ -116,7 +124,7 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 		}
 		m.Kind, m.Text, m.SourceType = "procedure", state.ExperienceText(draft), "reviewed_experience"
 		m.Conditions, m.Steps, m.Avoid = draft.Conditions, append([]string(nil), draft.Steps...), append([]string(nil), draft.Avoid...)
-		// Only the Host-configured scope contributes an entity identity.
+		// Evidence anchor identity remains separate from semantic subjects.
 		m.Entities = []string{"project:" + m.Scope}
 		m.ReviewNote = "Host-selected procedure from external-agent supplied evidence; not Host-observed execution"
 		p.ConflictIDs, p.DuplicateIDs = relations.ConflictIDs, relations.DuplicateIDs
@@ -133,6 +141,13 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 	if len(p.ConflictIDs) > 0 {
 		p.DuplicateIDs = nil
 	}
+	objects, err := h.identifyObjects(ctx, objectmemory.Input{Text: m.Text, Kind: m.Kind, Source: r.Submission.Source, Evidence: r.Submission.Evidence}, m.Objects)
+	p.Result.Audit, _ = json.Marshal(map[string]any{"admission": p.Result.Audit, "object_extraction": objects.Audit})
+	if err != nil {
+		return p, err
+	}
+	m.Objects, m.ObjectAudit = objects.Objects, objects.Audit
+	p.Objects = objects.Objects
 	m.RevisionDecision = p.Result.Audit
 	p.Memory = &m
 	p.Result.Status = "published"

@@ -21,6 +21,7 @@ import (
 	"agent-host/internal/history"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/memory"
+	"agent-host/internal/objectmemory"
 	"agent-host/internal/state"
 )
 
@@ -67,6 +68,7 @@ type Host struct {
 	Decider   memory.Decider
 	Extractor experience.Extractor
 	Judge     experience.Judge
+	Objects   objectmemory.Extractor
 	Config    Config
 	Sink      event.Sink
 }
@@ -636,7 +638,16 @@ func (h *Host) finalize(ctx context.Context, j *journal) error {
 			}
 		}
 		if d.Store || len(d.DuplicateIDs) > 0 {
+			objectInput := nativeObjectInput(r, r.Input, d.Kind, nil)
+			objects, err := h.identifyObjects(ctx, objectInput, nil)
+			if emitErr := j.emit(event.Event{Type: "memory.objects.extracted", Phase: "remember", Component: "memory.objects", Data: map[string]any{"extraction": objects, "error": errorText(err)}}); emitErr != nil {
+				return errors.Join(err, emitErr)
+			}
+			if err != nil {
+				return err
+			}
 			updates = []state.MemoryUpdate{{Memory: state.Memory{ID: ID(), Scope: r.Scope, Kind: d.Kind, Text: r.Input, Status: "active", Revision: 1, SourceRunID: r.ID, CreatedAt: time.Now().UTC()}, ConflictIDs: d.ConflictIDs}}
+			updates[0].Memory.Objects, updates[0].Memory.ObjectAudit = objects.Objects, objects.Audit
 			if len(d.ConflictIDs) == 0 {
 				updates[0].DuplicateIDs = d.DuplicateIDs
 			}

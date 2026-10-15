@@ -19,6 +19,7 @@ import (
 	"agent-host/internal/history"
 	"agent-host/internal/host"
 	"agent-host/internal/memory"
+	"agent-host/internal/objectmemory"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
@@ -176,7 +177,7 @@ func TestDailyUseNativeLive(t *testing.T) {
 			if err != nil {
 				return nil, runtime, err
 			}
-			return &host.Host{Store: child.Store, Runner: runner, Decider: decider, Config: host.Config{
+			return &host.Host{Store: child.Store, Runner: runner, Decider: decider, Objects: objectmemory.New(runner, configured.Model), Config: host.Config{
 				AgentID: runtime.AgentID, AudienceID: runtime.AudienceID, Scope: runtime.Scope, Workspace: runtime.Workspace,
 				NativeProfile: runtime.NativeProfile, RuntimeFingerprint: runtime.Fingerprint, PermissionMode: runtime.PermissionMode,
 				HostInstructions: policy, Model: configured.Model, DecisionModel: "fixture-admission", DecisionProvider: "fixture",

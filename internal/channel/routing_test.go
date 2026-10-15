@@ -53,7 +53,7 @@ func newRoutingFixture(t *testing.T) *projectFixture {
 		config := f.host.Config
 		config.Scope, config.Workspace, config.ProjectID, config.ProjectName = runtime.Scope, runtime.Workspace, runtime.ProjectID, runtime.ProjectName
 		config.Projects, config.AdditionalDirectories, config.RuntimeFingerprint = runtime.Projects, runtime.AdditionalDirectories, runtime.Fingerprint
-		return &host.Host{Store: f.service.Store, Config: config, Runner: f.runner, Decider: f.host.Decider}, runtime, nil
+		return &host.Host{Store: f.service.Store, Config: config, Runner: f.runner, Decider: f.host.Decider, Objects: f.host.Objects}, runtime, nil
 	}
 	f.service.Router = serviceRouter(func(ctx context.Context, request routing.Request) (routing.Decision, error) {
 		if strings.HasPrefix(request.Text, "ambiguous") || strings.Contains(request.Text, "gamma") || strings.Contains(request.Text, "凤凰") {

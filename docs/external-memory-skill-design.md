@@ -51,7 +51,9 @@ can be discovered normally without requiring explicit invocation every time.
   procedures with conditions. Do not upload entire chat histories by default.
 - Preserve who said what and when. External tool output remains evidence
   supplied by the external agent, not an execution observed by Host.
-- Preserve the named object from user context separately from the exact quote.
+- Every new memory needs a supported object, retained separately from the quote.
+  Host extracts missing subjects from user/tool evidence; unresolved subjects
+  and extraction failures block publication explicitly.
   Recall/read expose its name and source; existing active records support an
   audited association correction. Object metadata never grants permissions.
 - A summary without supporting material cannot establish a successful procedure.

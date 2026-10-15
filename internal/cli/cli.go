@@ -32,6 +32,7 @@ Usage:
   agent-host memory search [options] QUERY
   agent-host memory connection [add|show|revoke] [options]
   agent-host memory submit|receipt|recall|read [--help] [options]
+  agent-host memory associate|extract-objects [--help] [options]
   agent-host memory show [options] MEMORY_ID
   agent-host memory candidates [--run RUN_ID] [--status pending|accepted|rejected|all] [options]
   agent-host memory candidate [options] CANDIDATE_ID

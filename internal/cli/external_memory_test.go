@@ -49,7 +49,7 @@ func TestExternalMemoryCLIEndToEndAcrossConnectionsAndRestart(t *testing.T) {
 		return state.ExternalConnection{AgentID: agent, AudienceID: "owner", Scope: scope, ProjectID: project, Enabled: true}, nil
 	}
 	x.processor = func(c state.ExternalConnection) *host.Host {
-		return &host.Host{Store: s.WithPartition(c.AgentID, c.AudienceID), Decider: externalCLIDecider{}}
+		return &host.Host{Store: s.WithPartition(c.AgentID, c.AudienceID), Decider: externalCLIDecider{}, Objects: fixtureObjects{}}
 	}
 	stop, err := startMemoryControl(t.Context(), home, &memoryControl{external: x})
 	if err != nil {
@@ -115,11 +115,18 @@ func TestExternalMemoryCLIEndToEndAcrossConnectionsAndRestart(t *testing.T) {
 		t.Fatal(receipt)
 	}
 	id := receipt["results"].([]any)[0].(map[string]any)["memory_id"].(string)
+	extracted, err := call("", "extract-objects", "--connection", "same-scope", "--memory", id, "--revision", "1")
+	if err != nil || extracted["id"] != id || len(extracted["objects"].([]any)) == 0 {
+		t.Fatal(extracted, err)
+	}
 	objects := []state.MemoryObject{{Name: "Bastion", Kind: "system", Source: state.ExternalSource{Entry: "test", ObservedAt: now}, Evidence: state.ExternalEvidence{ID: "context", Author: "owner", Role: "user", Text: "This distribution fact concerns Bastion.", ObservedAt: now}}}
 	objectJSON, _ := json.Marshal(objects)
 	linked, err := call(string(objectJSON), "associate", "--connection", "same-scope", "--memory", id, "--revision", "1", "--input", "-")
 	if err != nil || linked["revision"] != float64(2) {
 		t.Fatal(linked, err)
+	}
+	if _, err := call("", "extract-objects", "--connection", "same-scope", "--memory", id, "--revision", "1"); err == nil {
+		t.Fatal("stale object repair accepted")
 	}
 	recalled, err := call("", "recall", "--connection", "same-scope", "--query", "Bastion")
 	if err != nil || len(recalled["items"].([]any)) != 1 {

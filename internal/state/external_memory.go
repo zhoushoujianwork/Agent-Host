@@ -374,6 +374,7 @@ func (s *Store) StartExternalReceipt(ctx context.Context, connection, id string)
 }
 
 type ExternalPublication struct {
+	Objects            []MemoryObject
 	Result             ExternalItemResult
 	Memory             *Memory
 	DuplicateIDs       []string
@@ -406,6 +407,9 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 			return errors.New("publication requires a memory or an eligible duplicate")
 		}
 		if p.Memory != nil || len(p.DuplicateIDs) > 0 {
+			if len(p.Objects) == 0 {
+				return errors.New("external publication requires extracted objects")
+			}
 			generation, err := memoryFingerprintTx(ctx, tx, []string{c.Scope}, c.AgentID, c.AudienceID)
 			if err != nil {
 				return err
@@ -425,7 +429,7 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 					if (r.Submission.Items[index].Kind == "procedure") != (m.SourceType == "reviewed_experience") {
 						return errors.New("external duplicate cannot change source evidence type")
 					}
-					if proposed := r.Submission.ItemObjects(index); len(proposed) > 0 && !sameObjectIdentities(m.Objects, proposed) {
+					if proposed := p.Objects; len(proposed) > 0 && !sameObjectIdentities(m.Objects, proposed) {
 						return errors.New("duplicate object context differs; explicitly associate the existing memory after review")
 					}
 					if p.Result.MemoryID == "" {
@@ -435,12 +439,15 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 				}
 			} else {
 				m := *p.Memory
+				if !json.Valid(m.ObjectAudit) || len(m.ObjectAudit) == 0 {
+					return errors.New("external publication requires an object extraction audit")
+				}
 				if m.ExternalReceiptID != r.ID || m.SourceRunID != "" || m.Scope != c.Scope || !samePartition(m.AgentID, m.AudienceID, c.AgentID, c.AudienceID) || m.Revision != 1 || m.Status != "active" || m.CandidateID != "" {
 					return errors.New("external memory source attribution is invalid")
 				}
 				item := r.Submission.Items[index]
-				if !reflect.DeepEqual(m.Objects, r.Submission.ItemObjects(index)) {
-					return errors.New("external publication changed object context")
+				if err := validateExternalObjectSources(m.Objects, r.Submission); err != nil {
+					return err
 				}
 				if !slices.Equal(m.EvidenceIDs, item.EvidenceIDs) {
 					return errors.New("external publication changed evidence references")
@@ -495,6 +502,42 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 		}
 		return writeExternalReceipt(ctx, tx, r)
 	})
+}
+
+func validateExternalObjectSources(objects []MemoryObject, v ExternalSubmission) error {
+	if len(objects) == 0 {
+		return errors.New("external publication requires extracted objects")
+	}
+	if err := validateMemoryObjects(objects); err != nil {
+		return err
+	}
+	for _, object := range objects {
+		found := false
+		for _, e := range v.Evidence {
+			if reflect.DeepEqual(object.Evidence, e) && reflect.DeepEqual(object.Source, v.Source) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("external object source is outside the retained submission")
+		}
+	}
+	return nil
+}
+
+func (s *Store) ExternalObjectEvidence(ctx context.Context, m Memory) (ExternalSource, []ExternalEvidence, error) {
+	r, err := readExternalReceipt(ctx, s.db, m.ExternalReceiptID)
+	if err != nil || r.Connection.Scope != m.Scope || !s.matchesPartition(r.Connection.AgentID, r.Connection.AudienceID) {
+		return ExternalSource{}, nil, ErrContextUnavailable
+	}
+	selected := []ExternalEvidence{}
+	for _, e := range r.Submission.Evidence {
+		if slices.Contains(m.EvidenceIDs, e.ID) {
+			selected = append(selected, e)
+		}
+	}
+	return r.Submission.Source, selected, nil
 }
 
 func (s *Store) ExternalMemoryEvidence(ctx context.Context, m Memory) (any, error) {

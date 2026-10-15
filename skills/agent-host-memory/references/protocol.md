@@ -85,18 +85,29 @@ the business task. A failed transport alone is not a reason to generate a new ke
 ## Preserve the object
 
 An exact statement can omit its subject (for example, "The namespace is ops").
-When a user identifies the subject in surrounding conversation, include optional
-item metadata such as:
+Object resolution is required for native and external publication. When an entry
+omits explicit objects, Host extracts them from retained user/tool evidence with
+its configured native model in an isolated, tool-free invocation. An unresolved
+subject, malformed output, missing provider, or unsupported name fails publication
+explicitly. A global preference identifies its attributed author; Host does not
+invent project or tool names to fill a blank. Installation alone cannot ensure
+that an entry's submitted evidence actually identifies a subject.
+
+When the subject is established in surrounding conversation, include item
+metadata such as:
 
 ```json
 "objects": [{"name": "Bastion", "kind": "system", "evidence_id": "subject-1"}]
 ```
 
-Include `subject-1` as a separate `role=user` entry in the submission's evidence,
+Include `subject-1` as a separate `role=user` or `role=tool` entry in the submission's evidence,
 with the exact excerpt identifying Bastion, its author and observation time.
 Do not add it to the statement's `evidence_ids`: that still contains exactly the
-one verbatim statement. Kinds are `system`, `service`, or `project`; at most three
-objects per item. The name must occur exactly in the subject excerpt. Context
+one verbatim statement. Kinds are `system`, `service`, `project`, `tool`, `person`,
+or `organization`; at most three objects per item. The name must occur exactly in
+the cited text or tool name/input/result. A person object may instead use the
+actual author field of user evidence. Tool citations require the same structured
+call/result and explicit error flag used below for procedures. Context
 associations are caller-attributed assertions, not independently verified facts.
 They neither grant permissions nor bypass admission. A duplicate with differing
 object context fails explicitly rather than silently discarding the association.
@@ -130,6 +141,18 @@ retry; a stale revision is an explicit error. The original statement and its
 admission evidence remain unchanged. Read returns the association evidence inside
 `memory.objects`; recall returns object names/kinds for navigation. A known bare
 object name can resolve through the same scoped registry; ambiguous names abstain.
+
+To extract subjects for an existing active record from its retained source:
+
+```sh
+agent-host memory extract-objects --memory MEMORY_ID --revision CURRENT_REVISION
+```
+
+This uses the owning Host's configured model (up to three minutes), not a new
+business invocation. Read back after a timeout before deciding whether to retry;
+the expected revision rejects stale writes. Original statements, tool results,
+admission decisions and lifecycle states remain intact. Successful extraction
+adds an audited metadata revision. No entire-history migration runs implicitly.
 
 ## Proposed procedures
 

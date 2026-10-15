@@ -26,6 +26,7 @@ const externalMemoryUsage = `External agent memory (local running Host, file-mem
   agent-host memory recall --connection NAME --query TEXT
   agent-host memory read --connection NAME --memory ID [--revision N]
   agent-host memory associate --connection NAME --memory ID --revision N --input FILE_OR_DASH
+  agent-host memory extract-objects --connection NAME --memory ID --revision N
 
 All output is JSON. --json is accepted for explicitness. --connections FILE
 overrides ~/.config/agent-host/memory-connections.json. --connection defaults to
@@ -41,7 +42,7 @@ type externalProfile struct {
 }
 
 func isExternalMemoryCommand(s string) bool {
-	return s == "connection" || s == "submit" || s == "receipt" || s == "recall" || s == "read" || s == "associate"
+	return s == "connection" || s == "submit" || s == "receipt" || s == "recall" || s == "read" || s == "associate" || s == "extract-objects"
 }
 
 func loadExternalProfiles(path string) (map[string]externalProfile, error) {
@@ -99,6 +100,9 @@ func externalMemoryCall(ctx context.Context, home string, a externalMemoryReques
 	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 15 * time.Second}
+	if a.Action == "extract-objects" {
+		client.Timeout = 3 * time.Minute
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://agent-host/external-memory", bytes.NewReader(b))
 	if err != nil {
 		return nil, err
@@ -256,6 +260,9 @@ func runExternalMemory(ctx context.Context, args []string, in io.Reader, out, er
 	}
 	if command == "read" && (a.Memory == "" || a.Revision < 0) {
 		return errors.New("read requires --memory and an optional positive revision")
+	}
+	if command == "extract-objects" && (a.Memory == "" || a.Revision < 1) {
+		return errors.New("extract-objects requires --memory and a positive expected --revision")
 	}
 	data, err := externalMemoryCall(ctx, p.Home, a)
 	if err != nil {

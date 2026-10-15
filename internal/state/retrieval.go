@@ -387,7 +387,13 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 			}
 			id := item.Memory.ID
 			memoryQuery := memoryQueries[id]
-			generic := len(item.Annotation.Objects) == 0 && len(item.Annotation.Topics) == 0 && len(item.Annotation.Aliases) == 0 && len(canonical[id].Objects) == 0 && len(memoryQuery.Ambiguous) == 0 && len(memoryQuery.Unknown) == 0
+			personal := len(item.Memory.Objects) > 0
+			for _, object := range append(append([]annotation.Object(nil), item.Annotation.Objects...), canonical[id].Objects...) {
+				if object.Kind != "person" {
+					personal = false
+				}
+			}
+			generic := (personal || len(item.Annotation.Objects) == 0 && len(canonical[id].Objects) == 0) && len(item.Annotation.Topics) == 0 && len(item.Annotation.Aliases) == 0 && len(memoryQuery.Ambiguous) == 0 && len(memoryQuery.Unknown) == 0
 			accepted, reason := true, "generic_persistent"
 			if !generic {
 				accepted, reason = annotation.Compatible(result.Query, canonical[id])

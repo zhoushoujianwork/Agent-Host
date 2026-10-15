@@ -32,13 +32,19 @@ Host memories as new evidence.
 
 - A statement retains an exact user excerpt with author and observation time.
   Keep generated summaries out of the statement field.
-- Preserve the subject when it comes from conversation context. Supply the item's
-  `objects` with the explicit system/service/project name and a cited user excerpt
-  that identifies that subject. Do not guess a subject from cwd or invent a name
-  in the exact statement. Recall/read show the retained associations separately.
+- Every published memory requires a source-grounded object. Supply the item's
+  `objects` when the subject is established in context; cite the actual user/tool
+  evidence. Host automatically extracts missing objects with its configured
+  tool-free native model before publication. Systems, services, projects, tools,
+  people and organizations are supported; a global personal preference identifies
+  its attributed author. Do not guess from cwd, substitute generic labels, or
+  invent a subject in the exact statement. An unresolved subject/provider failure
+  stops publication explicitly. Recall/read show retained associations separately.
   At the user's request, `memory associate` can correct an existing active record's
   object context with a current revision and attributed user evidence; see the
   protocol. This changes metadata, not admission or the original statement.
+  `memory extract-objects` can repair an existing active record using only its
+  retained evidence and expected revision, without replaying its source task.
 - A procedure proposes a short lesson with conditions, steps, and cited external
   tool call/result excerpts, including explicit error status. Preserve failure
   and uncertainty. Assistant claims alone cannot establish successful execution.

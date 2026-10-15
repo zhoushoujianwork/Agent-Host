@@ -40,7 +40,7 @@ func TestWorkbenchMemoryActionsUseHostAndPreserveBoundaries(t *testing.T) {
 	}
 	judge := &workbenchJudge{}
 	control := &memoryControl{store: s, publish: func(ctx context.Context, c state.Candidate, note string) (state.Memory, error) {
-		h := &host.Host{Store: s, Judge: judge, Config: host.Config{AgentID: c.AgentID, AudienceID: "owner", Scope: c.Scope}}
+		h := &host.Host{Store: s, Judge: judge, Objects: fixtureObjects{}, Config: host.Config{AgentID: c.AgentID, AudienceID: "owner", Scope: c.Scope}}
 		return h.AcceptExperience(ctx, c.ID, note, nil)
 	}}
 	call := func(a memoryAction) *httptest.ResponseRecorder {

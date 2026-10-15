@@ -75,6 +75,7 @@ func testHost(t *testing.T) (*Host, *testRunner) {
 	})
 	runner := &testRunner{}
 	h := &Host{Store: store, Runner: runner, Config: Config{Scope: t.TempDir(), Model: "requested-claude", DecisionModel: "requested-jev", DecisionProvider: "fixture"}}
+	h.Objects = fixtureObjects{}
 	h.Decider = deciderFunc(func(context.Context, string, []state.Memory) (memory.Decision, error) {
 		return memory.Decision{Kind: "none", Model: "resolved-jev", Details: json.RawMessage(`{"reason":"question"}`)}, nil
 	})

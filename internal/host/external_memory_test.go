@@ -74,7 +74,7 @@ func externalHost(t *testing.T) (*Host, state.ExternalConnection) {
 	if err := s.SaveExternalConnection(t.Context(), c); err != nil {
 		t.Fatal(err)
 	}
-	return &Host{Store: s, Decider: &externalDecider{}, Judge: externalJudge{eligible: true}}, c
+	return &Host{Store: s, Decider: &externalDecider{}, Judge: externalJudge{eligible: true}, Objects: fixtureObjects{}}, c
 }
 
 func TestExternalObjectContextPreservesStatementAndRetrievesSubject(t *testing.T) {

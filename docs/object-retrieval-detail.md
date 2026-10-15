@@ -27,7 +27,10 @@ rows; a user statement cannot claim experience provenance through them.
 
 ## Representation and rules
 
-The current rule version is `entity-topic-v3`. V3 adds explicit context objects
+The current rule version is `entity-topic-v4`. V4 removes generic English service
+phrases from the bounded textual registry and adds required source-grounded
+object resolution to every Host publication path (native statements, accepted
+or restructured native procedures, and external items). V3 added explicit context objects
 with scoped IDs and user-evidence provenance in `Memory.Objects`. New external
 items cite a subject excerpt; `memory associate` updates an active record using
 an expected revision and normal atomic publication. It cannot change the original
@@ -40,7 +43,28 @@ indexes include these IDs even when the original statement omits the name. A
 single explicit subject can bind otherwise unbound properties; several subjects
 do not receive guessed property relationships. Active canonical names also
 participate in bounded name resolution; name collisions abstain. This is explicit
-context support, not general model-based entity extraction or pronoun resolution.
+context support; V4 also uses a tool-free structured native model invocation to
+extract named subjects absent from explicit metadata. The configured native
+runner/model is used without provider fallback, tools, existing conversation,
+skills or workspace contents. Output names must occur in cited evidence; a
+personal subject may use the user evidence's attributed author. Source shape
+validation is not independent semantic verification. Unknown evidence references,
+empty objects, unresolved subjects, incomplete execution and provider failures
+block publication explicitly. No guessed scope or generic service fills a blank.
+
+`Memory.ObjectAudit` retains the extraction policy, resolved model, structured
+response and outcome. Original statements and tool evidence remain unchanged.
+Kinds include system, service, project, tool, person and organization. Personal
+preference/constraint subjects remain general context when no property or other
+object limits their applicability. Objects identify subjects; they never grant
+permissions or independently establish truth.
+
+`memory extract-objects --memory ID --revision N` reprocesses one active record's
+retained user/cited-tool evidence through that same extractor, then atomically
+publishes a metadata revision with optimistic revision checks. It cannot activate
+disabled/conflicted records or replay business tasks. It does not silently sweep
+historical memory. Duplicate publication cannot discard differing object context;
+the existing record requires explicit correction.
 
 The P0 native acceptance exposed
 that a readiness "success token" was incorrectly filtered as an authentication

@@ -13,7 +13,7 @@ import (
 	"unicode/utf8"
 )
 
-const Version = "entity-topic-v3"
+const Version = "entity-topic-v4"
 
 type Span struct {
 	Text   string `json:"text"`
@@ -80,6 +80,10 @@ func Extract(scope, text string) Annotation {
 		}
 	}
 	for _, loc := range latinService.FindAllStringIndex(text, -1) {
+		base := strings.ToLower(strings.Fields(text[loc[0]:loc[1]])[0])
+		if genericService(base) {
+			continue
+		}
 		if loc[0] > 0 && isNameRune(previousRune(text, loc[0])) {
 			continue
 		}
@@ -105,6 +109,14 @@ func Extract(scope, text string) Annotation {
 	}
 	bindTopics(&a, text)
 	return a
+}
+
+func genericService(base string) bool {
+	switch base {
+	case "a", "the", "any", "this", "that", "one", "each", "some", "another", "configured", "explicit", "our", "your", "their", "local", "remote", "external", "native":
+		return true
+	}
+	return false
 }
 
 // Resolve consults only the supplied registry. Callers must supply active,

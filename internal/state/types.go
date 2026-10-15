@@ -80,6 +80,7 @@ type Memory struct {
 	Entities          []string        `json:"entities,omitempty"`
 	EvidenceIDs       []string        `json:"evidence_ids,omitempty"`
 	Objects           []MemoryObject  `json:"objects,omitempty"`
+	ObjectAudit       json.RawMessage `json:"object_audit,omitempty"`
 	ExpiresAt         *time.Time      `json:"expires_at,omitempty"`
 	ReviewNote        string          `json:"review_note,omitempty"`
 }
@@ -271,6 +272,8 @@ type Candidate struct {
 }
 
 type CandidateAcceptance struct {
+	Objects            []MemoryObject
+	ObjectAudit        json.RawMessage
 	MemoryID           string
 	Note               string
 	ExpiresAt          *time.Time

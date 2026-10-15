@@ -30,7 +30,9 @@ func externalPublication(t *testing.T, s *Store, r ExternalReceipt, id string) E
 		t.Fatal(err)
 	}
 	m := Memory{ID: id, AgentID: r.Connection.AgentID, AudienceID: r.Connection.AudienceID, Scope: r.Connection.Scope, Kind: "decision", Text: r.Submission.Items[0].Text, Status: "active", Revision: 1, CreatedAt: time.Now().UTC(), SourceType: "user_statement", ExternalReceiptID: r.ID, EvidenceIDs: []string{"u1"}}
-	return ExternalPublication{Memory: &m, ExpectedGeneration: generation, Result: ExternalItemResult{Status: "published", Audit: json.RawMessage(`{"selected":true}`)}}
+	m.Objects = []MemoryObject{{Name: r.Submission.Evidence[0].Author, Kind: "person", Source: r.Submission.Source, Evidence: r.Submission.Evidence[0]}}
+	m.ObjectAudit = json.RawMessage(`{"status":"identified","policy":"test-object-extraction"}`)
+	return ExternalPublication{Memory: &m, Objects: m.Objects, ExpectedGeneration: generation, Result: ExternalItemResult{Status: "published", Audit: json.RawMessage(`{"selected":true}`)}}
 }
 
 func TestExternalReceiptIdempotencyEvidenceAndRecall(t *testing.T) {

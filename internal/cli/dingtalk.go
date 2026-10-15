@@ -26,6 +26,7 @@ import (
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/host"
 	"agent-host/internal/memory"
+	"agent-host/internal/objectmemory"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 	"agent-host/internal/terminal"
@@ -152,6 +153,7 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	runner := claude.New(o.binary)
 	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(runner, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
+	h.Objects = objectmemory.New(runner, o.model)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
 	h.Config.ProcedureRecallHints = append([]state.ProcedureRecallHint(nil), o.procedureRecallHints...)

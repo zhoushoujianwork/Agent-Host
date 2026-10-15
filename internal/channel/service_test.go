@@ -110,6 +110,7 @@ func newServiceFixture(t *testing.T) *serviceFixture {
 		t.Fatal(err)
 	}
 	f.host = &host.Host{Store: store, Runner: f.runner, Config: host.Config{Scope: t.TempDir(), Model: "fixture-model", DecisionModel: "fixture-decision", DecisionProvider: "fixture", ToolsDisabled: true}}
+	f.host.Objects = fixtureObjectExtractor{}
 	f.host.Decider = serviceDecider(func(context.Context, string, []state.Memory) (memory.Decision, error) {
 		return memory.Decision{Kind: "none", Model: "fixture-decision", Details: json.RawMessage(`{"reason":"question"}`)}, nil
 	})

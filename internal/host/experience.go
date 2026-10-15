@@ -348,9 +348,20 @@ func (h *Host) acceptExperience(ctx context.Context, id, note string, expires *t
 		note = "Accepted through local CLI"
 	}
 	var m state.Memory
+	evidence, err := h.Store.CandidateEvidence(ctx, c.ID)
+	if err != nil {
+		return m, err
+	}
+	objects, err := h.identifyObjects(ctx, nativeObjectInput(r, state.ExperienceText(c.Draft), "procedure", evidence), nil)
+	if emitErr := j.emit(event.Event{Type: "memory.objects.extracted", Phase: "publish", Component: "memory.objects", Data: map[string]any{"extraction": objects, "error": errorText(err)}}); emitErr != nil {
+		return m, errors.Join(err, emitErr)
+	}
+	if err != nil {
+		return m, err
+	}
 	err = j.phase(ctx, "publish", h.memoryComponent(), "", func(ctx context.Context) error {
 		var err error
-		m, err = h.Store.AcceptCandidate(ctx, c.ID, state.CandidateAcceptance{MemoryID: ID(), Note: note, ExpiresAt: expires, ConflictIDs: relation.ConflictIDs, DuplicateIDs: relation.DuplicateIDs, ExpectedRevisions: revisions, ExpectedGeneration: generation, Decision: audit})
+		m, err = h.Store.AcceptCandidate(ctx, c.ID, state.CandidateAcceptance{MemoryID: ID(), Note: note, ExpiresAt: expires, ConflictIDs: relation.ConflictIDs, DuplicateIDs: relation.DuplicateIDs, ExpectedRevisions: revisions, ExpectedGeneration: generation, Decision: audit, Objects: objects.Objects, ObjectAudit: objects.Audit})
 		if err != nil {
 			return err
 		}
@@ -442,5 +453,9 @@ func (h *Host) RestructureExperience(ctx context.Context, id string, revision in
 	if strings.TrimSpace(note) == "" {
 		note = "Separated successful steps from observed pitfalls using original evidence"
 	}
-	return h.Store.RestructureExperience(ctx, id, revision, draft, audit, note)
+	objects, err := h.identifyObjects(ctx, nativeObjectInput(run, state.ExperienceText(draft), "procedure", evidence), nil)
+	if err != nil {
+		return state.Memory{}, err
+	}
+	return h.Store.RestructureExperience(ctx, id, revision, draft, audit, note, state.Memory{Objects: objects.Objects, ObjectAudit: objects.Audit})
 }

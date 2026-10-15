@@ -580,6 +580,9 @@ func (s *Store) AcceptCandidate(ctx context.Context, id string, accept Candidate
 				if accept.ExpiresAt != nil && (m.ExpiresAt == nil || m.ExpiresAt.After(*accept.ExpiresAt)) {
 					return errors.New("duplicate target outlives this review expiration; invalidate it or choose an independent record")
 				}
+				if len(accept.ObjectAudit) > 0 && !sameObjectIdentities(m.Objects, accept.Objects) {
+					return errors.New("duplicate object context differs; explicitly repair the existing memory")
+				}
 				if _, err := tx.ExecContext(ctx, "INSERT INTO memory_evidence(memory_id,run_id) VALUES(?,?) ON CONFLICT(memory_id,run_id) DO NOTHING", m.ID, run.ID); err != nil {
 					return err
 				}
@@ -590,6 +593,7 @@ func (s *Store) AcceptCandidate(ctx context.Context, id string, accept Candidate
 		} else {
 			m := Memory{AgentID: candidate.AgentID, AudienceID: candidate.AudienceID, ID: accept.MemoryID, Scope: candidate.Scope, Kind: "procedure", Text: ExperienceText(candidate.Draft), Status: "active", Revision: 1, SourceRunID: candidate.RunID, CreatedAt: now, SourceType: "reviewed_experience", CandidateID: candidate.ID, Conditions: candidate.Draft.Conditions, Steps: append([]string(nil), candidate.Draft.Steps...), Entities: append([]string(nil), candidate.Entities...), EvidenceIDs: append([]string(nil), candidate.Draft.EvidenceIDs...), ExpiresAt: accept.ExpiresAt, ReviewNote: accept.Note}
 			m.Avoid = append([]string(nil), candidate.Draft.Avoid...)
+			m.Objects, m.ObjectAudit = accept.Objects, accept.ObjectAudit
 			if run.Source != nil {
 				m.SenderID = run.Source.SenderID
 			}
@@ -685,8 +689,11 @@ func (s *Store) InvalidateMemory(ctx context.Context, id, note string) error {
 
 // RestructureExperience preserves identity and source evidence, with an atomic
 // revision check. The original candidate and prior memory revisions stay intact.
-func (s *Store) RestructureExperience(ctx context.Context, id string, revision int, draft ExperienceDraft, decision json.RawMessage, note string) (Memory, error) {
+func (s *Store) RestructureExperience(ctx context.Context, id string, revision int, draft ExperienceDraft, decision json.RawMessage, note string, objectContext ...Memory) (Memory, error) {
 	var revised Memory
+	if len(objectContext) > 1 {
+		return revised, errors.New("one object extraction is required")
+	}
 	if revision < 1 || !json.Valid(decision) || strings.TrimSpace(note) == "" {
 		return revised, errors.New("experience restructuring requires a revision, decision and note")
 	}
@@ -715,6 +722,9 @@ func (s *Store) RestructureExperience(ctx context.Context, id string, revision i
 			}
 		}
 		m.Text, m.Conditions = ExperienceText(draft), draft.Conditions
+		if len(objectContext) == 1 {
+			m.Objects, m.ObjectAudit = objectContext[0].Objects, objectContext[0].ObjectAudit
+		}
 		m.Steps, m.Avoid = append([]string(nil), draft.Steps...), append([]string(nil), draft.Avoid...)
 		m.Revision++
 		m.ReviewNote, m.RevisionDecision = note, append(json.RawMessage(nil), decision...)

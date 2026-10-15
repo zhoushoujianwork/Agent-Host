@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -32,22 +33,40 @@ func validateMemoryObjects(objects []MemoryObject) error {
 	seen := map[string]bool{}
 	for _, o := range objects {
 		key := o.Kind + ":" + strings.ToLower(o.Name)
-		if !boundedExternalText(o.Name, 128) || o.Name != strings.TrimSpace(o.Name) || strings.ContainsAny(o.Name, "\r\n\t") || seen[key] || (o.Kind != "system" && o.Kind != "service" && o.Kind != "project") {
-			return errors.New("objects require unique bounded names and system, service or project kind")
+		if !boundedExternalText(o.Name, 128) || o.Name != strings.TrimSpace(o.Name) || strings.ContainsAny(o.Name, "\r\n\t") || seen[key] || !validObjectKind(o.Kind) {
+			return errors.New("objects require unique bounded names and a supported entity kind")
 		}
 		seen[key] = true
 		e := o.Evidence
-		if e.Role != "user" || e.Tool != nil || !boundedExternalText(e.ID, 128) || !boundedExternalText(e.Author, 256) || !boundedExternalText(e.Text, 8192) || e.ObservedAt.IsZero() || !strings.Contains(e.Text, o.Name) || !boundedExternalText(o.Source.Entry, 64) || o.Source.ObservedAt.IsZero() || len(o.Source.Conversation) > 512 || len(o.Source.Turn) > 512 {
-			return errors.New("object context requires an attributed user excerpt containing the exact object name and source observation time")
+		grounded := strings.Contains(e.Text, o.Name) || (o.Kind == "person" && o.Name == e.Author && e.Role == "user")
+		if e.Role == "tool" && e.Tool != nil {
+			grounded = grounded || strings.Contains(e.Tool.Name, o.Name) || strings.Contains(string(e.Tool.Input), o.Name) || strings.Contains(string(e.Tool.Result), o.Name)
+		}
+		toolValid := e.Role == "tool" && e.Tool != nil && boundedExternalText(e.Tool.Name, 128) && json.Valid(e.Tool.Input) && json.Valid(e.Tool.Result) && e.Tool.IsError != nil
+		if (e.Role != "user" || e.Tool != nil) && !toolValid || !boundedExternalText(e.ID, 128) || !boundedExternalText(e.Author, 256) || !boundedExternalText(e.Text, 8192) || e.ObservedAt.IsZero() || !grounded || !boundedExternalText(o.Source.Entry, 64) || o.Source.ObservedAt.IsZero() || len(o.Source.Conversation) > 512 || len(o.Source.Turn) > 512 {
+			return errors.New("object context requires attributed user/tool evidence grounding its name or authenticated author")
 		}
 	}
 	return nil
 }
 
+func validObjectKind(kind string) bool {
+	switch kind {
+	case "system", "service", "project", "tool", "person", "organization":
+		return true
+	}
+	return false
+}
+
+func ValidateMemoryObjects(objects []MemoryObject) error { return validateMemoryObjects(objects) }
+
 // AssociateMemoryObjects changes context metadata through normal publication;
 // it cannot enable disabled memories, rewrite their statements or change scope.
-func (s *Store) AssociateMemoryObjects(ctx context.Context, scope, id string, revision int, objects []MemoryObject) (Memory, error) {
+func (s *Store) AssociateMemoryObjects(ctx context.Context, scope, id string, revision int, objects []MemoryObject, extractionAudit ...json.RawMessage) (Memory, error) {
 	var result Memory
+	if len(extractionAudit) > 1 || len(extractionAudit) == 1 && !json.Valid(extractionAudit[0]) {
+		return result, errors.New("one valid object extraction audit is required")
+	}
 	if len(objects) == 0 || revision < 1 {
 		return result, errors.New("association requires 1–3 objects and an expected revision")
 	}
@@ -62,11 +81,15 @@ func (s *Store) AssociateMemoryObjects(ctx context.Context, scope, id string, re
 		if m.Scope != scope || m.Revision != revision || !recallEligible(m, time.Now()) {
 			return errors.New("object association requires the current active memory in this scope")
 		}
-		if reflect.DeepEqual(m.Objects, objects) {
+		if reflect.DeepEqual(m.Objects, objects) && len(m.ObjectAudit) > 0 && (len(extractionAudit) == 0 || bytes.Equal(m.ObjectAudit, extractionAudit[0])) {
 			result = m
 			return nil
 		}
 		m.Objects = append([]MemoryObject(nil), objects...)
+		m.ObjectAudit = json.RawMessage(`{"policy":"explicit-object-association-v1","status":"identified"}`)
+		if len(extractionAudit) == 1 {
+			m.ObjectAudit = extractionAudit[0]
+		}
 		m.Revision++
 		m.RevisionDecision = json.RawMessage(`{"policy":"explicit-object-association-v1"}`)
 		if err := persistMemory(ctx, tx, m, false); err != nil {

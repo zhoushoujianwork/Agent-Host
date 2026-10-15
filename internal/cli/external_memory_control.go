@@ -137,7 +137,11 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 		fail(409, errors.New("external memory requires explicit file-memory migration"))
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	timeout := 10 * time.Second
+	if a.Action == "extract-objects" {
+		timeout = 3 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 	var value any
 	var err error
@@ -181,6 +185,8 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 				value = externalReceiptView(receipt)
 			case "associate":
 				value, err = s.AssociateMemoryObjects(ctx, c.Scope, a.Memory, a.Revision, a.Objects)
+			case "extract-objects":
+				value, err = x.processor(c).ExtractMemoryObjects(ctx, c.Scope, a.Memory, a.Revision)
 			case "recall":
 				if a.Query == "" {
 					err = errors.New("recall requires a query")

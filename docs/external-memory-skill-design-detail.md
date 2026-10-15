@@ -7,12 +7,19 @@ in the skill's [protocol reference](../skills/agent-host-memory/references/proto
 ## Ownership and connections
 
 External items may now cite explicit object context independently of their exact
-statement/tool evidence. `memory associate` applies an explicitly requested
+statement/tool evidence. Missing object metadata is extracted by the configured
+native model before publication; it is no longer an optional annotation step.
+No supported subject means explicit failure, not objectless publication. Source
+tool names/inputs/results can ground a tool or service; personal preference
+subjects can use the attributed author. Caller-supplied object context still
+passes source validation and never grants permissions. `memory associate` applies an explicitly requested
 correction to an existing active record through the same scoped owning worker,
 with optimistic revision checks and audited file-memory publication. Recall
 includes names, kinds, scoped IDs and query resolution; read includes attributed
 context evidence. See [object retrieval](object-retrieval-detail.md) and the
 [payload examples](../skills/agent-host-memory/references/protocol.md#preserve-the-object).
+`memory extract-objects` invokes the same extractor for an existing active record,
+with a three-minute transport/request budget and required expected revision.
 
 `make install` builds first, then runs `tools/install.py`. This user-local
 installer links the built executable into `~/.local/bin` and the complete source
