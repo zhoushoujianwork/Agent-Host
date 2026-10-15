@@ -205,7 +205,7 @@ func rebuildTerms(ctx context.Context, tx *sql.Tx, scope string, partition ...st
 		if !hasAliases {
 			registry = []annotation.Annotation{item.Annotation}
 		}
-		query := annotation.Resolve(scope, item.Memory.Text, registry)
+		query := annotation.ResolveRecord(scope, item.Memory.Text, registry, objectAnnotation(item.Memory, annotation.Annotation{}).Objects)
 		keys := append(annotation.QueryKeys(query), annotation.Keys(objectAnnotation(item.Memory, annotation.Canonical(query)))...)
 		for _, key := range keys {
 			if _, err = tx.ExecContext(ctx, "INSERT INTO memory_terms(memory_id,term) VALUES(?,?) ON CONFLICT DO NOTHING", item.Memory.ID, key); err != nil {
@@ -305,7 +305,7 @@ func (s *Store) retrieve(ctx context.Context, scope, text string, limit int, for
 			if !hasAliases {
 				registry = []annotation.Annotation{item.Annotation}
 			}
-			memoryQuery := annotation.Resolve(scope, item.Memory.Text, registry)
+			memoryQuery := annotation.ResolveRecord(scope, item.Memory.Text, registry, objectAnnotation(item.Memory, annotation.Annotation{}).Objects)
 			memoryQueries[item.Memory.ID] = memoryQuery
 			current := objectAnnotation(item.Memory, annotation.Canonical(memoryQuery))
 			canonical[item.Memory.ID] = current
@@ -347,6 +347,12 @@ func (s *Store) retrieve(ctx context.Context, scope, text string, limit int, for
 		}
 		sort.SliceStable(ids, func(i, j int) bool {
 			a, b := ids[i], ids[j]
+			// Unverified source quotations supplement admitted knowledge. Apply
+			// the same eligibility checks below before either consumes a slot.
+			aNote, bNote := byID[a].Memory.SourceType == SourceNoteSource, byID[b].Memory.SourceType == SourceNoteSource
+			if aNote != bNote {
+				return !aNote
+			}
 			if rank(a) != rank(b) {
 				return rank(a) > rank(b)
 			}

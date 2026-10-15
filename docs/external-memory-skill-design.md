@@ -61,7 +61,8 @@ can be discovered normally without requiring explicit invocation every time.
 - An explicitly requested saved-document import preserves quotations as source
   notes, labeled “来源笔记 · 未复验” in the console. They can be recalled with their
   original references and dates. They do not establish current facts, permissions,
-  or successful command execution. The memgov importer selects saved topic notes,
+  or successful command execution. Admitted knowledge takes precedence over
+  imported references when both apply. The memgov importer selects saved topic notes,
   redacts credential patterns, and verifies publication by reading them back.
 - Submit only selected, necessary evidence, without credentials. A source link
   helps navigation; a retained excerpt keeps the basis readable later.

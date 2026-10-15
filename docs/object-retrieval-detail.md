@@ -42,8 +42,12 @@ evidence instead of pretending the name occurred in the memory statement. Derive
 indexes include these IDs even when the original statement omits the name. A
 single explicit subject can bind otherwise unbound properties; several subjects
 do not receive guessed property relationships. Active canonical names also
-participate in bounded name resolution; name collisions abstain. This is explicit
-context support; V4 also uses a tool-free structured native model invocation to
+participate in bounded name resolution; caller queries abstain on name collisions.
+For a stored record's own text, `ResolveRecord` uses its retained explicit subject
+to disambiguate that exact name. Other names and aliases keep their ambiguity;
+the source, object identity and caller query are unchanged. This prevents an
+imported reference from hiding an already attributed lesson with a shared name.
+This is explicit context support; V4 also uses a tool-free structured native model invocation to
 extract named subjects absent from explicit metadata. The configured native
 runner/model is used without provider fallback, tools, existing conversation,
 skills or workspace contents. Output names must occur in cited evidence; a

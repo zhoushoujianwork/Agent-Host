@@ -189,8 +189,10 @@ documented commands ran during import.
 Host preserves this quotation as `external_source_note`, with an explicit
 unverified-source warning. It becomes available for recall/read and appears in
 the memory console as “来源笔记 · 未复验”. Active means available as a reference,
-not verified current truth. Source notes do not enter fact/procedure comparison
-or establish aliases. Exact active duplicates reuse the existing record;
+not verified current truth. Source notes supplement applicable admitted knowledge
+in recall. They do not enter fact/procedure comparison or establish aliases. A
+record's retained explicit subject disambiguates its own name; caller queries
+still abstain on ambiguous names. Exact active duplicates reuse the existing record;
 resubmission does not revive withdrawn notes. Statement and procedure admission
 retain their existing checks.
 

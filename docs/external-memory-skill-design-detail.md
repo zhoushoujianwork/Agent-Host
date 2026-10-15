@@ -126,6 +126,13 @@ retains the existing generation check, receipt journal, scope checks and normal
 file-memory transaction; no schema migration or direct importer storage writes
 are needed.
 
+Recall prioritizes applicable admitted records before source quotations. Each
+record's validated explicit subject disambiguates that exact name within its own
+text; imported names cannot make an already attributed procedure unresolved.
+Caller queries still resolve against the scoped registry and abstain on ambiguous
+names. Unrelated aliases retain their ambiguity and no identity metadata is
+rewritten. This applies to term indexing and recall using `ResolveRecord`.
+
 `skills/agent-host-memory/scripts/import_memgov.py` reads only the active
 Workspace's saved `memory/**/*.md` collection. It prepares private local sanitized
 snapshots and bounded envelopes before submission, preserving source paths,
@@ -241,3 +248,9 @@ proof of failed or successful intake. The local manifest and bounded validation
 report are under `.agent-host/imports/memgov-20261015-final/` and
 `.agent-host/validation/memgov-import-20261015.json`. This is a one-time import;
 checkpoint collection remains off and no documented source command was executed.
+
+The final tccli check caught a service/tool name collision for `cbs` that hid an
+active admitted procedure. A regression now checks both records remain retrievable,
+the admitted procedure wins a one-item recall limit, and a bare ambiguous `cbs`
+query still abstains. This is a retrieval fix, not a memory rewrite or a new
+verification of the historical commands.

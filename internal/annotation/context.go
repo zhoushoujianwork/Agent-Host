@@ -1,5 +1,43 @@
 package annotation
 
+// ResolveRecord uses a record's explicit subject only for that record's own
+// exact name. Ordinary queries and unrelated aliases retain global ambiguity.
+func ResolveRecord(scope, text string, records []Annotation, objects []Object) Query {
+	preferred := map[string]map[string]bool{}
+	for _, o := range objects {
+		if o.ID != objectID(scope, o.Kind, o.Name) {
+			continue
+		}
+		name := canonical(o.Name)
+		if preferred[name] == nil {
+			preferred[name] = map[string]bool{}
+		}
+		preferred[name][o.ID] = true
+	}
+	if len(preferred) == 0 {
+		return Resolve(scope, text, records)
+	}
+	filtered := make([]Annotation, 0, len(records))
+	for _, record := range records {
+		copy := record
+		copy.Objects, copy.Aliases = nil, nil
+		for _, o := range record.Objects {
+			ids := preferred[canonical(o.Name)]
+			if len(ids) != 1 || ids[o.ID] {
+				copy.Objects = append(copy.Objects, o)
+			}
+		}
+		for _, a := range record.Aliases {
+			ids := preferred[canonical(a.Name)]
+			if len(ids) != 1 || ids[a.TargetID] {
+				copy.Aliases = append(copy.Aliases, a)
+			}
+		}
+		filtered = append(filtered, copy)
+	}
+	return Resolve(scope, text, filtered)
+}
+
 // ContextObject has no offset in the memory statement. Its source excerpt is
 // stored separately; negative offsets prevent accidental textual attribution.
 func ContextObject(scope, kind, name, evidenceID string) Object {

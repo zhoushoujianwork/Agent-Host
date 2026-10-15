@@ -117,3 +117,47 @@ func TestSourceNoteDoesNotEstablishAliasAuthority(t *testing.T) {
 		t.Fatal("quoted alias became registry authority", got, err)
 	}
 }
+
+func TestSourceNotesCannotShadowAdmittedProcedureSubjects(t *testing.T) {
+	h, c := externalHost(t)
+	known := sourceNoteSubmission()
+	known.Key = "known-cbs-service"
+	known.Evidence[0].Tool.Input = json.RawMessage(`{"command":"tccli cbs DescribeDisks --profile default"}`)
+	known.Evidence[0].Tool.Result = mustNoteJSON("Fixture: tccli cbs returned DiskSet")
+	known.Items[0] = state.ExternalItem{Kind: "procedure", EvidenceIDs: []string{"read"}, Objects: []state.ExternalObject{{Name: "tccli", Kind: "tool", EvidenceID: "read"}, {Name: "cbs", Kind: "service", EvidenceID: "read"}}, Procedure: &state.ExperienceDraft{Title: "tccli cbs DescribeDisks", Summary: "Fixture reported a disk lookup.", Conditions: "For the fixture's disk lookup.", Steps: []string{"Use tccli cbs DescribeDisks --profile default."}, EvidenceIDs: []string{"read"}}}
+	r, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), known)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = processedExternal(t, h, r)
+	if r.Results[0].Status != "published" {
+		t.Fatal(r.Results)
+	}
+	procedureID := r.Results[0].MemoryID
+	quote := sourceNoteSubmission()
+	quote.Key = "different-cbs-tool"
+	quote.Items[0].Title = "tccli cbs historical note"
+	quote.Items[0].Text = strings.Repeat("tccli cbs DescribeDisks historical reference. ", 20)
+	quote.Items[0].Objects = []state.ExternalObject{{Name: "tccli", Kind: "tool", EvidenceID: "read"}, {Name: "cbs", Kind: "tool", EvidenceID: "read"}}
+	quote.Evidence[0].Tool.Result = mustNoteJSON(quote.Items[0].Text)
+	note, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), quote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	note = processedExternal(t, h, note)
+	if note.Results[0].Status != "published" {
+		t.Fatal(note.Results)
+	}
+	got, err := h.Store.Retrieve(t.Context(), c.Scope, "tccli DescribeDisks", 10)
+	if err != nil || len(got.Matches) != 2 || got.Matches[0].ID != procedureID {
+		t.Fatal("source quote hid the admitted procedure or its own explicit subject", got, err)
+	}
+	limited, err := h.Store.Retrieve(t.Context(), c.Scope, "tccli DescribeDisks", 1)
+	if err != nil || len(limited.Matches) != 1 || limited.Matches[0].ID != procedureID {
+		t.Fatal("quotation displaced admitted knowledge at the recall limit", limited, err)
+	}
+	ambiguous, err := h.Store.Retrieve(t.Context(), c.Scope, "cbs", 10)
+	if err != nil || len(ambiguous.Query.Ambiguous) == 0 || len(ambiguous.Matches) != 0 {
+		t.Fatal("caller query guessed between different cbs identities", ambiguous, err)
+	}
+}
