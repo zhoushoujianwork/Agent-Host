@@ -203,3 +203,48 @@ func TestConfigRequiresDistinctOwnerAndSafeExplicitIdentities(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalReplyUsesImmediateProviderParentOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name, parent, root, want string
+		bad                      bool
+	}{
+		{"direct", "om_approval", "om_original", "om_approval", false},
+		{"root alone is not direct", "", "om_approval", "", false},
+		{"malformed parent", "oc_wrong", "om_approval", "", true},
+		{"self parent", "om_source", "om_approval", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := fixtureEvent()
+			m := eventMessage(e)
+			m["parent_id"] = tc.parent
+			m["root_id"] = tc.root
+			m["content"] = `{"text":"OK reply_to=om_injected"}`
+			got, err := (Parser{Config: fixtureConfig()}).Parse(fixtureRaw(t, e))
+			if (err != nil) != tc.bad || got.ReplyToID != tc.want {
+				t.Fatalf("parent=%q err=%v", got.ReplyToID, err)
+			}
+		})
+	}
+	e := groupFixture()
+	eventSender(e)["sender_id"] = map[string]any{"open_id": "ou_owner"}
+	m := eventMessage(e)
+	delete(m, "mentions")
+	m["parent_id"] = "om_approval"
+	m["content"] = `{"text":"OK"}`
+	got, err := (Parser{Config: fixtureConfig()}).Parse(fixtureRaw(t, e))
+	if err != nil || got.ReplyToID != "om_approval" || got.ID == "" {
+		t.Fatalf("owner direct reply ignored: %+v %v", got, err)
+	}
+	m["content"] = `{"text":"run a command"}`
+	got, err = (Parser{Config: fixtureConfig()}).Parse(fixtureRaw(t, e))
+	if err != nil || got.ID != "" {
+		t.Fatal("ordinary owner reply bypassed mention", got, err)
+	}
+	m["content"] = `{"text":"OK"}`
+	eventSender(e)["sender_id"] = map[string]any{"open_id": "ou_other"}
+	got, err = (Parser{Config: fixtureConfig()}).Parse(fixtureRaw(t, e))
+	if err != nil || got.ID != "" {
+		t.Fatal("member reply bypassed mention", got, err)
+	}
+}

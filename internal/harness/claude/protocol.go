@@ -108,28 +108,30 @@ type message struct {
 }
 
 type streamDecoder struct {
-	session              string
-	initModel            string
-	model                string
-	text                 string
-	subtype              string
-	initialized          bool
-	extraction           bool
-	mcpServers           []harness.MCPServer
-	mcpSetupFailed       bool
-	finalSeen            bool
-	finalError           bool
-	mainResultSeen       bool
-	continuationSeen     bool
-	activeTasks          map[string]string
-	pendingNotifications map[string]string
-	notificationsHandled bool
-	inlineResultSeen     bool
-	continuationResults  int
-	structuredOutput     json.RawMessage
-	toolCalls            map[string]harness.ToolObservation
-	toolResults          map[string]harness.ToolObservation
-	emit                 func(harness.Observation) error
+	session               string
+	initModel             string
+	model                 string
+	text                  string
+	subtype               string
+	initialized           bool
+	extraction            bool
+	restrictedReadOnly    bool
+	restrictedSetupFailed bool
+	mcpServers            []harness.MCPServer
+	mcpSetupFailed        bool
+	finalSeen             bool
+	finalError            bool
+	mainResultSeen        bool
+	continuationSeen      bool
+	activeTasks           map[string]string
+	pendingNotifications  map[string]string
+	notificationsHandled  bool
+	inlineResultSeen      bool
+	continuationResults   int
+	structuredOutput      json.RawMessage
+	toolCalls             map[string]harness.ToolObservation
+	toolResults           map[string]harness.ToolObservation
+	emit                  func(harness.Observation) error
 }
 
 func (s *streamDecoder) consume(line []byte) error {
@@ -168,6 +170,12 @@ func (s *streamDecoder) consume(line []byte) error {
 			}
 			if s.initialized && event.Model != s.initModel {
 				return s.reject(observation, "session initialization changed model")
+			}
+			if s.restrictedReadOnly {
+				if err := validateRestrictedInventory(event.Tools, s.mcpServers); err != nil {
+					s.restrictedSetupFailed = true
+					return s.reject(observation, err.Error())
+				}
 			}
 			if s.extraction {
 				for _, tool := range event.Tools {

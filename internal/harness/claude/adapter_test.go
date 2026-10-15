@@ -58,6 +58,10 @@ func fixture(mode string) {
 		}
 	}
 	prompt, _ := io.ReadAll(os.Stdin)
+	if mode == "restricted_auth" {
+		body, _ := json.Marshal(map[string]string{"token": os.Getenv("ANTHROPIC_AUTH_TOKEN"), "base_url": os.Getenv("ANTHROPIC_BASE_URL"), "unreviewed": os.Getenv("UNREVIEWED_PROFILE_ENV")})
+		_ = os.WriteFile(os.Getenv("AGENT_HOST_FIXTURE_PROVIDER_ENV"), body, 0600)
+	}
 	if path := os.Getenv("AGENT_HOST_FIXTURE_REQUEST"); path != "" {
 		body, _ := json.Marshal(map[string]any{"args": os.Args[1:], "prompt": string(prompt), "cwd": func() string { cwd, _ := os.Getwd(); return cwd }(), "auto_memory_disabled": os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY"), "additional_instructions": os.Getenv("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"), "nonstreaming_fallback_disabled": os.Getenv("CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"), "max_output_tokens": os.Getenv("CLAUDE_CODE_MAX_OUTPUT_TOKENS"), "native_profile": os.Getenv("CLAUDE_CONFIG_DIR")})
 		_ = os.WriteFile(path, body, 0600)
@@ -69,6 +73,12 @@ func fixture(mode string) {
 	write := func(v any) { body, _ := json.Marshal(v); fmt.Println(string(body)) }
 	if mode != "missing_init" && mode != "api_error_nonzero_missing_init" {
 		init := map[string]any{"type": "system", "subtype": "init", "session_id": session, "model": "claude-fixture"}
+		if mode == "restricted_auth" || mode == "restricted_readonly" {
+			init["tools"] = []string{"Read", "Glob", "Grep"}
+		}
+		if mode == "restricted_forbidden" {
+			init["tools"] = []string{"Read", "Bash"}
+		}
 		if repeatedInit {
 			init["uuid"] = "first"
 		}

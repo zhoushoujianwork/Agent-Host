@@ -173,6 +173,7 @@ const (
 // ChannelMessage is safe to inspect without disclosing its private reply URL.
 // Execution and delivery have independent status fields.
 type ChannelMessage struct {
+	ReplyToID             string            `json:"reply_to_id,omitempty"`
 	Input                 *ChannelInput     `json:"input_material,omitempty"`
 	ConversationType      string            `json:"conversation_type,omitempty"`
 	AgentID               string            `json:"agent_id,omitempty"`

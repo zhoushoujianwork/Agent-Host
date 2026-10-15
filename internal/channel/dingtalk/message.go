@@ -44,6 +44,7 @@ func ValidateConfig(cfg Config) error {
 }
 
 type Message struct {
+	ReplyToID        string
 	ID               string
 	ConversationID   string
 	ConversationType string
@@ -212,6 +213,14 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 		CreatedAt: time.UnixMilli(callback.CreatedAt), ReplyExpiresAt: expires}
 	if supported {
 		message.Text, message.Attachments = text, attachments
+		// originalMsgId is not a reliable parent identifier. Bind only the
+		// explicit provider reply metadata, never quote body or author text.
+		if callback.Text.IsReplyMsg && callback.Text.RepliedMsg != nil {
+			id := callback.Text.RepliedMsg.MsgID
+			if strings.TrimSpace(id) != "" && strings.TrimSpace(id) == id && len(id) <= maxIDBytes && !strings.ContainsAny(id, "\x00\r\n") && id != callback.ID {
+				message.ReplyToID = id
+			}
+		}
 		message.Quote = parseQuote(callback.OriginalMsgID, callback.Text.IsReplyMsg, callback.Text.RepliedMsg)
 		if forwarded != nil {
 			// The callback authenticates the sender who supplied the Markdown,

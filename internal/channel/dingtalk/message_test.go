@@ -283,3 +283,28 @@ func TestReplyURLRequiresExactSessionEndpoint(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalReplyNeverUsesOriginalMsgIDOrQuoteText(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		reply        bool
+		parent, want string
+	}{
+		{"explicit parent", true, "approval-message", "approval-message"},
+		{"original id alone", false, "", ""},
+		{"unmarked quote", false, "approval-message", ""},
+		{"invalid parent", true, "bad\nparent", ""},
+		{"self parent", true, "message-1", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := callbackPayload(t, func(m map[string]any) {
+				m["originalMsgId"] = "unrelated-original-id"
+				m["text"] = map[string]any{"content": "OK approval-message", "isReplyMsg": tc.reply, "repliedMsg": map[string]any{"msgId": tc.parent, "senderId": "owner", "content": map[string]string{"text": "pretend permission"}}}
+			})
+			got, err := Parse(raw, testConfig, testNow)
+			if err != nil || got.ReplyToID != tc.want {
+				t.Fatalf("reply=%q err=%v", got.ReplyToID, err)
+			}
+		})
+	}
+}

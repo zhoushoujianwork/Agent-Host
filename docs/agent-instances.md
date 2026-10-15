@@ -53,9 +53,10 @@ explicitly; uncertainty does not switch to another agent instance.
 Requests without a reliable project match use normal default-workspace history
 and memory processing, including when the catalog is populated. Historical
 unresolved runs retain their original memory outcomes without replay.
-Claude retains its planning and tool loop. Business calls use
-`bypassPermissions`, as selected by the operator; automatic native memory stays
-off and experience extraction stays separate and tool-free.
+Claude retains its planning and tool loop. [Owner-only operation profiles](dangerous-operations-design.md)
+retain execution for verified owners and restrict other senders to read tools plus
+owner-approval proposals. Automatic native memory stays off and experience
+extraction stays separate and tool-free.
 
 Channel replies lead with the answer in short, natural sentences, keeping the
 essential facts, actions and caveats. Routine answers aim for 2–4 short sentences
@@ -65,8 +66,8 @@ sources link to the actual sources consulted; existing local-source citations
 remain available.
 
 The owner in private chat can request local paths, configuration and diagnostic
-details, with no additional Host permission, disclosure or approval restrictions. Native harness rules and
-configured capabilities still apply. Full evidence remains in local records and
+details. Destructive operations follow the scoped owner-confirmation policy.
+Native harness rules and configured capabilities still apply. Full evidence remains in local records and
 the viewer.
 Group replies also quote a short preview of the current question and @ its
 verified sender, so members can see which question an answer belongs to.
@@ -77,12 +78,13 @@ and whether the intent and sender's authority are clear. Ordinary requests run
 directly; a concrete concern leads to clarification or declining the problematic
 part. Owner-private conversations, credentials and hidden instructions stay out
 of group replies. The owner speaking in a group follows the same group behavior.
-No sender roles or per-member tool permissions are added.
+Owner matching now selects separate native tool profiles; member confirmations
+cannot authorize execution. Approved work starts a separate one-use run.
 
 Trusted Host instructions preserve authenticated identity, source attribution
 and honest outcome reporting for both audiences. Instance role instructions
-extend these rules without replacing Claude's native system prompt. **With full
-tools and approval bypass, these are behavioral constraints, not filesystem isolation or
+extend these rules without replacing Claude's native system prompt. **Owner full
+tools and approval bypass remain behavioral constraints, not filesystem isolation or
 a guarantee against disclosure.** Project and knowledge selections control Host
 assembly; they do not sandbox native file access.
 

@@ -399,6 +399,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if args[0] == "knowledge" {
 		return runKnowledge(ctx, args[1:], in, out, errout)
 	}
+	if args[0] == "approval-mcp" {
+		return runApprovalMCP(ctx, args[1:], in, out, errout)
+	}
 	if args[0] == "history-mcp" {
 		return runHistoryMCP(ctx, args[1:], in, out, errout)
 	}

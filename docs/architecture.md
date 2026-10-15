@@ -200,11 +200,15 @@ The first external channel accepts the configured owner's DingTalk private
 messages and same-enterprise group mentions using an application bot. The
 [agent instance extension](agent-instances.md) selects a default or group-bound
 role before project routing. Group members share one conversation while agent
-and audience partition native sessions and learned memory. Business instances
-use explicit native approval bypass. Owner private requests have no added Host
-permission or disclosure restrictions; group prompts judge requests and replies
-for the shared audience without adding member permission roles;
-this is not an OS isolation boundary. Ordinary CLI policy remains unchanged.
+and audience partition native sessions and learned memory. Channel instances now
+use [owner-only dangerous-operation profiles](dangerous-operations-design.md):
+verified owners retain native execution while other senders receive restricted
+read tools and a narrow owner-approval request capability. Durable correlated
+approvals authorize separate one-use runs; member native sessions are never
+elevated. DingTalk uses explicit request codes; Feishu uses direct reply IDs.
+Automated checks are separate from pending live acceptance and the current need
+to configure bare-profile provider credentials. Shared-audience privacy still
+applies; this is not an OS isolation boundary. Ordinary CLI policy is unchanged.
 The [conversation/input extension](channel-conversations.md) keeps each group
 or DM and shared agent/audience partition ordered through memory and reply
 completion, while different audiences use a bounded pool (default four).

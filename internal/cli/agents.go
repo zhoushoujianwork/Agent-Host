@@ -317,6 +317,12 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	if err != nil {
 		return nil, err
 	}
+	owner := parent.OwnerID != "" && message.SenderID == parent.OwnerID
+	o.hostInstructions += "\n\n" + channelAuthorizationInstructions(parent.OwnerID, owner)
+	if !owner && !o.noTools {
+		o.permissionMode = "dontAsk"
+		o.allowedTools = nil
+	}
 	o.retrievalQuery = message.Text
 	o.recallBinding = message.Binding
 	for _, supplement := range message.Supplements {
@@ -324,6 +330,7 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	}
 	if provider == state.ReplyTargetFeishuMeeting {
 		o.hostInstructions = host.MeetingChannelInstructions(a.role)
+		o.hostInstructions += "\n\n" + channelAuthorizationInstructions(parent.OwnerID, owner)
 	}
 	store := parent.Store.WithPartition(id, audience)
 	child := *parent
@@ -354,7 +361,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 				return nil, assembly.Runtime{}, errors.New("workspace resolves to a project not configured for this agent")
 			}
 		}
-		return composeHost(store, selected, client, sink), runtimeOptions(selected), nil
+		h := composeHost(store, selected, client, sink)
+		configureChannelAuthorization(h, &child, message, selected, owner)
+		return h, runtimeOptions(selected), nil
 	}
 	child.ResolveProjects = resolve
 	child.ResolveHost = func(ctx context.Context, id string) (channel.Host, assembly.Runtime, error) {
@@ -364,7 +373,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 		}
 		return resolve(ctx, ids, "")
 	}
-	child.Host = composeHost(store, o, client, sink)
+	h := composeHost(store, o, client, sink)
+	configureChannelAuthorization(h, &child, message, o, owner)
+	child.Host = h
 	child.Scope = o.defaultScope
 	return &child, nil
 }

@@ -111,6 +111,12 @@ func (p Parser) Parse(raw []byte) (channel.Message, error) {
 	if idErr != nil || chatErr != nil || !messageID.MatchString(id) || !chatID.MatchString(chat) {
 		return channel.Message{}, errors.New("Feishu IM message or chat identifier is invalid")
 	}
+	// Only the immediate parent binds an approval reply. root_id can refer to
+	// an earlier ancestor and must never authorize a different action.
+	replyTo, replyErr := stringField(message, "parent_id")
+	if replyErr != nil || replyTo != "" && (!messageID.MatchString(replyTo) || replyTo == id) {
+		return channel.Message{}, errors.New("Feishu IM reply parent is invalid")
+	}
 	if created, present := message["create_time"]; present {
 		at, err = timestamp(created)
 		if err != nil {
@@ -135,7 +141,7 @@ func (p Parser) Parse(raw []byte) (channel.Message, error) {
 		if err != nil {
 			return channel.Message{}, err
 		}
-		if len(keys) == 0 {
+		if len(keys) == 0 && !(from == p.Config.OwnerOpenID && replyTo != "" && approvalDecisionText(text)) {
 			return channel.Message{}, nil
 		}
 		text = stripLeadingMentions(text, keys)
@@ -145,7 +151,7 @@ func (p Parser) Parse(raw []byte) (channel.Message, error) {
 	if text == "" {
 		return channel.Message{}, nil
 	}
-	return channel.Message{ID: id, ConversationID: chat, ConversationType: conversationType,
+	return channel.Message{ID: id, ReplyToID: replyTo, ConversationID: chat, ConversationType: conversationType,
 		SenderID: from, TenantID: tenant, MessageType: "text", Text: text, CreatedAt: at,
 		ReplyTarget: state.ChannelReplyTarget{Kind: state.ReplyTargetFeishu, ID: chat, MessageID: id}}, nil
 }
@@ -205,4 +211,15 @@ func timestamp(raw json.RawMessage) (time.Time, error) {
 		return time.Time{}, errors.New("invalid Feishu timestamp")
 	}
 	return time.UnixMilli(n).UTC(), nil
+}
+
+// Approval replies without a bot mention are control messages only. Keep the
+// vocabulary exact so a quoted ordinary conversation cannot enter task intake.
+func approvalDecisionText(text string) bool {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "ok", "approve", "no", "reject":
+		return true
+	default:
+		return false
+	}
 }

@@ -1,8 +1,8 @@
 # Owner-only dangerous operations
 
-Status: proposed design; no runtime permission changes are delivered by this document.
+Status: implemented in source with automated validation. Live channel acceptance is pending; the current bare-profile provider authentication needs separate configuration.
 
-Only the locally configured bot owner may request destructive operations
+Only the locally configured bot owner may authorize destructive operations
 (危险操作). Other senders can ask questions and request analysis, but cannot
 authorize deletion by confirming it, claiming an administrator role, forwarding
 an owner message, or supplying instructions in a document.
@@ -18,8 +18,8 @@ Both channels already recognize a configured owner:
 
 This is a local owner binding, not automatic discovery of the bot's creator or
 platform administrator. Group audiences remain shared even when the owner speaks.
-Current channel execution uses `bypassPermissions`; there is no owner-specific
-destructive-tool restriction. Identity recognition alone does not enforce this policy.
+Channel execution now uses separate owner and member profiles. The authenticated
+sender is matched before execution; a textual ownership claim grants nothing.
 
 ## Intended behavior
 
@@ -49,7 +49,10 @@ Host then sends a real platform @mention, for example:
 > repository is unaffected. Reply directly to this message with **OK** or **No**.
 
 Only a fresh authenticated reply from the configured owner can approve it.
-“OK” must reply directly to that approval message. An unrelated OK, a member's
+On Feishu, “OK” must reply directly to that approval message. DingTalk webhook
+acknowledgements do not return a bot-message ID, so its prompt instead requires
+`@bot Approve <request-code>` or `@bot Reject <request-code>`. Host verifies the
+owner, conversation and exact saved request code. An unrelated OK, a member's
 confirmation or a forwarded owner statement grants nothing. The owner can decline;
 unanswered requests expire without execution. Avoid duplicate owner mentions.
 
@@ -65,9 +68,9 @@ Use both a trusted system prompt and native tool restrictions at every Claude
 startup/resume. Host determines the current sender's owner status before execution;
 Claude cannot grant it. Owner status and audience visibility are separate.
 
-For the first increment, non-owner work is read-only: remove Bash and other
-execution/write capabilities. Expose only reviewed read-only MCP operations and
-the narrow Host capability for requesting owner approval described above.
+Non-owner work is read-only: Bash and other execution/write capabilities are
+removed. Only the narrow Host approval-request capability is mounted. General knowledge, history
+and business MCP servers are absent from this first restricted profile.
 This also removes non-owner builds, tests and file edits for now. Blocking only
 `rm` does not block deletion through scripts, Git, APIs or file overwrites. A later
 increment can restore ordinary work through narrowly controlled tools; unrestricted
@@ -87,7 +90,8 @@ Host selects one profile from the verified sender before launching Claude:
 | Owner | `--permission-mode bypassPermissions --tools default` | Existing execution tools remain available; the prompt requires scoped destructive requests and confirmation. |
 | Non-owner or unknown | `--permission-mode dontAsk --tools "Read,Glob,Grep" --allowedTools "Read,Glob,Grep" --disallowedTools "Bash,Edit,Write,NotebookEdit,Agent,Task"` | Only the selected read tools are available; no native execution or file mutation tools. |
 
-The non-owner baseline also starts with an empty explicit MCP configuration,
+The non-owner baseline starts with an empty explicit MCP configuration or only
+the approval-request server, plus
 `--bare`, disabled skills/hooks and no user/project/local settings. Otherwise
 another tool or startup customization could restore execution. `--allowedTools`
 pre-approves the selected reads; `--tools` limits the built-in inventory. These
@@ -97,13 +101,18 @@ the [startup examples](dangerous-operations-design-detail.md#concrete-startup-ex
 This blocks non-owner execution through native capabilities, rather than relying
 on Claude to obey a refusal prompt. The owner's confirmation behavior remains
 prompt-guided; `bypassPermissions` does not enforce a confirmation dialog. The
-commands are proposed configuration, not a deployed or live-validated change.
+profiles are implemented; live platform approval acceptance remains unverified.
 
-Implement in order: trusted per-turn owner resolution; prompt and native tool
-profiles; owner approval and authorized dispatch; session separation and
-alternate-tool restrictions; automated checks
-and bounded live DingTalk/Feishu validation. Existing owner configuration is reused;
-no chat command can change it. This proposal covers channel requests; ordinary
+Implemented: trusted per-turn owner resolution, prompt/native profiles, durable
+one-use owner approvals, separate approved execution and native-session partitions.
+Automated tests cover both provider paths; bounded live approval validation remains.
+Existing owner configuration is reused; no chat command can change it. This
+increment covers channel requests; ordinary
 local CLI permissions remain outside this increment.
 
-See [implementation details and draft system prompt](dangerous-operations-design-detail.md).
+Bare mode skips the existing OAuth/keychain login. Configure protected API/provider
+credentials separately; missing authentication fails explicitly without permission
+fallback. The user chose to retain bare mode. No live service restart or approval
+message send was performed for this change.
+
+See [implementation details and system prompt](dangerous-operations-design-detail.md).

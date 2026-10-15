@@ -92,6 +92,9 @@ func nativeStreamEnvironment() (map[string]string, error) {
 }
 
 func argumentsWithStreamEnvironment(req harness.Request, policy map[string]string) ([]string, error) {
+	if err := validateRestrictedReadOnly(req); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, errors.New("Claude prompt is empty")
 	}
@@ -107,8 +110,8 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 	if req.NativeProfile != "" && (!filepath.IsAbs(req.NativeProfile) || strings.ContainsRune(req.NativeProfile, '\x00')) {
 		return nil, errors.New("Claude native profile must be an absolute path without NUL")
 	}
-	if req.PermissionMode != "" && req.PermissionMode != "default" && req.PermissionMode != "bypassPermissions" {
-		return nil, errors.New("Claude permission mode must be default or bypassPermissions")
+	if req.PermissionMode != "" && req.PermissionMode != "default" && req.PermissionMode != "bypassPermissions" && !(req.RestrictedReadOnly && req.PermissionMode == "dontAsk") {
+		return nil, errors.New("Claude permission mode must be default or bypassPermissions, or dontAsk for restricted reads")
 	}
 	if req.Extraction && (req.PermissionMode == "bypassPermissions" || req.HostInstructions != "") {
 		return nil, errors.New("Claude extraction cannot inherit business permissions or instructions")
@@ -152,7 +155,9 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 	if len(req.Images) > 0 {
 		args = append(args, "--input-format", "stream-json")
 	}
-	if req.PermissionMode != "" {
+	if req.RestrictedReadOnly {
+		args = append(args, "--permission-mode", "dontAsk")
+	} else if req.PermissionMode != "" {
 		args = append(args, "--permission-mode", req.PermissionMode)
 	}
 	for _, directory := range req.AdditionalDirectories {
@@ -172,7 +177,13 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 		sessionFlag = "--resume"
 	}
 	args = append(args, sessionFlag, req.NativeSessionID)
-	if len(req.AllowedTools) > 0 {
+	if req.RestrictedReadOnly {
+		allowed := []string{"Read", "Glob", "Grep"}
+		if len(req.MCPServers) > 0 {
+			allowed = append(allowed, restrictedApprovalTool)
+		}
+		args = append(args, "--allowedTools", strings.Join(allowed, ","))
+	} else if len(req.AllowedTools) > 0 {
 		args = append(args, "--allowedTools")
 		args = append(args, req.AllowedTools...)
 	}
@@ -180,6 +191,12 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 		args = append(args, "--json-schema", req.JSONSchema)
 	}
 	settings := map[string]any{"autoMemoryEnabled": false, "env": policy}
+	if req.RestrictedReadOnly {
+		settings["disableAllHooks"] = true
+		args = append(args, "--bare", "--setting-sources", "", "--tools", "Read,Glob,Grep",
+			"--disallowedTools", "Bash,Edit,Write,NotebookEdit,Agent,Task",
+			"--disable-slash-commands", "--no-chrome")
+	}
 	if req.ToolsDisabled {
 		// These are per-invocation restrictions, never edits to native settings.
 		// Disabling hooks also prevents a nominally tool-free run from invoking
@@ -276,6 +293,11 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 		result.Status, result.Error = "failed", err.Error()
 		return result, err
 	}
+	providerEnvironment, err := restrictedProviderEnvironment(req)
+	if err != nil {
+		result.Status, result.Error = "failed", err.Error()
+		return result, err
+	}
 	input, err := encodeClaudeInput(req)
 	if err != nil {
 		result.Status, result.Error = "failed", err.Error()
@@ -308,6 +330,11 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 			sections = append(sections, req.HostInstructions)
 		}
 		directories := append([]string{req.Workspace}, req.AdditionalDirectories...)
+		if req.RestrictedReadOnly {
+			// Bare mode excludes ambient project customization. Only the Host's
+			// explicitly assembled instructions are trusted for this profile.
+			directories = nil
+		}
 		seen := map[string]bool{}
 		for index, directory := range directories {
 			if seen[directory] {
@@ -330,7 +357,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 				}
 			}
 		}
-		if systemInstructions := withKnowledgeGuidance(strings.Join(sections, "\n\n"), req.ToolsDisabled); systemInstructions != "" {
+		if systemInstructions := withKnowledgeGuidance(strings.Join(sections, "\n\n"), req.ToolsDisabled || req.RestrictedReadOnly); systemInstructions != "" {
 			args = append(args, "--append-system-prompt", systemInstructions)
 		}
 	}
@@ -339,8 +366,17 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	cmd := exec.CommandContext(runCtx, a.binary, args...)
 	cmd.Dir = req.Workspace
 	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, overridden := providerEnvironment[key]; overridden {
+			continue
+		}
 		if !strings.HasPrefix(entry, "CLAUDE_CODE_DISABLE_AUTO_MEMORY=") && !strings.HasPrefix(entry, "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=") && !strings.HasPrefix(entry, nativeFallbackEnvironment+"=") && !strings.HasPrefix(entry, nativeOutputEnvironment+"=") && (req.NativeProfile == "" || !strings.HasPrefix(entry, "CLAUDE_CONFIG_DIR=")) {
 			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	for _, key := range restrictedProviderKeys {
+		if value, exists := providerEnvironment[key]; exists {
+			cmd.Env = append(cmd.Env, key+"="+value)
 		}
 	}
 	if req.NativeProfile != "" {
@@ -354,7 +390,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 			cmd.Env = append(cmd.Env, key+"="+value)
 		}
 	}
-	if !req.Extraction {
+	if !req.Extraction && !req.RestrictedReadOnly {
 		cmd.Env = append(cmd.Env, "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1")
 	}
 	cmd.Stdin = bytes.NewReader(input)
@@ -364,7 +400,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 		return result, err
 	}
 	emit = imageSafeEmitter(emit)
-	protocol := streamDecoder{session: req.NativeSessionID, extraction: req.Extraction, mcpServers: req.MCPServers, emit: emit}
+	protocol := streamDecoder{session: req.NativeSessionID, extraction: req.Extraction, restrictedReadOnly: req.RestrictedReadOnly, mcpServers: req.MCPServers, emit: emit}
 	output := lineWriter{consume: protocol.consume, cancel: cancel}
 	if len(req.Images) > 0 {
 		// A verbose input echo may contain all four base64 images in one line.
@@ -398,7 +434,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	result.StructuredOutput = protocol.structuredOutput
 	switch {
 	case output.err != nil:
-		if protocol.mcpSetupFailed {
+		if protocol.mcpSetupFailed || protocol.restrictedSetupFailed {
 			result.Status = "failed"
 		}
 		err = output.err

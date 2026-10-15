@@ -96,12 +96,14 @@ to recover. The previous task is retained without replay; an unfinished memory
 record does not block a new message.
 See the [intelligent routing guide](smart-project-routing.md) and
 [runtime assembly guide](runtime-assembly.md) for registration and boundaries.
-Business instances use `bypassPermissions`; owner private requests have no added
-Host approval or disclosure restrictions. Group instructions consider affected
+Verified owners retain `bypassPermissions`; other senders use restricted native
+read tools and can request owner approval with a real mention and explicit request
+code. See [dangerous operations](dangerous-operations-design.md) for credential
+requirements and pending live acceptance. Group instructions consider affected
 resources, whether the result can be shared and the authenticated sender. This
 prompt behavior does not provide hard access isolation.
-This increment has no remote permission dialog
-or memory-review interface.
+There is no native interactive permission dialog; Host correlates the owner's
+approval reply before dispatching a separate run.
 
 ## Prepare and start
 

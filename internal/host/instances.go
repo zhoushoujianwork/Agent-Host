@@ -54,7 +54,7 @@ func invocationInstructions(policy string, run state.Run) string {
 // prompt. These are behavioral requirements, not an OS access boundary.
 func ChannelInstructions(role string, isGroup bool) string {
 	audience := `This reply is addressed to the authenticated owner in a private conversation.
-Execute the owner's requests directly, with no additional Host permission, disclosure or approval restrictions. Requested local paths, diagnostic details, Host configuration and internal identifiers may be included in the answer; their presence is not a reason to refuse or redact an owner request. Native harness rules and configured capabilities still apply. Keep routine replies concise and include diagnostic detail when requested.`
+Execute the owner's ordinary requests directly. Apply the Host dangerous-operation policy when supplied, including its scope and confirmation requirements. Requested local paths, diagnostic details, Host configuration and internal identifiers may be included in the answer; their presence is not a reason to refuse or redact an owner request. Native harness rules and configured capabilities still apply. Keep routine replies concise and include diagnostic detail when requested.`
 	if isGroup {
 		audience = sharedAudienceInstructions("This reply is public to every member of the current enterprise group. All messages in this group share the conversation; their authenticated senders remain different people.")
 	}

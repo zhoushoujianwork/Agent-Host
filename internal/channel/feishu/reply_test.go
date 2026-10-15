@@ -190,3 +190,31 @@ func TestRichReplyLabelCannotDisplaceMarkdownFirstLine(t *testing.T) {
 		})
 	}
 }
+
+func TestApprovalUsesActualOwnerMentionAndReturnsConfirmedID(t *testing.T) {
+	client := &mockClient{out: feishumeeting.Output{Stdout: []byte(successAck), Started: true}}
+	r := Replier{Config: fixtureConfig(), Client: client}
+	id, err := r.SendApproval(t.Context(), fixtureTarget(), "ou_owner", "Approve deletion? Reply OK or No.")
+	if err != nil || id != "om_new" || len(client.calls) != 1 {
+		t.Fatalf("approval: %q %v", id, err)
+	}
+	var content struct {
+		ZH struct {
+			Content [][]map[string]string `json:"content"`
+		} `json:"zh_cn"`
+	}
+	if err := json.Unmarshal([]byte(client.calls[0][11]), &content); err != nil {
+		t.Fatal(err)
+	}
+	rows := content.ZH.Content
+	if len(rows) != 2 || len(rows[0]) != 2 || rows[0][1]["tag"] != "at" || rows[0][1]["user_id"] != "ou_owner" || rows[1][0]["tag"] != "text" {
+		t.Fatal("owner is not a real at node", rows)
+	}
+	if id, err := r.SendApproval(t.Context(), fixtureTarget(), "ou_other", "request"); err == nil || id != "" || len(client.calls) != 1 {
+		t.Fatal("unconfigured owner sent approval", id, err)
+	}
+	client.out.Stdout = []byte(strings.Replace(successAck, "oc_chat", "oc_wrong", 1))
+	if id, err := r.SendApproval(t.Context(), fixtureTarget(), "ou_owner", "request"); err == nil || id != "" {
+		t.Fatal("wrong destination confirmed", id, err)
+	}
+}

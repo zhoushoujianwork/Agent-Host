@@ -285,6 +285,9 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 					return err
 				}
 			}
+			if _, err := tx.Exec(schemaApprovals); err != nil {
+				return err
+			}
 			return migrateCurrentAnnotations(context.Background(), tx)
 		}); err != nil {
 			_, restoreErr := db.Exec("PRAGMA foreign_keys=ON")

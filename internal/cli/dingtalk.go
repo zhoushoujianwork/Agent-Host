@@ -57,7 +57,7 @@ workspace_config selects its private configuration; default is data-dingtalk-wor
 Optional system DWS discovery uses explicit selected conversations in a private file.
 check validates local configuration and credentials without connecting or sending.
 serve owns its state home; stop it before local memory review/retry commands.
-Channel instances use bypassPermissions with trusted behavioral instructions.
+Verified owners retain native execution; other senders use restricted reads and owner approvals.
 Terminal output streams; DingTalk replies show task results without internal metadata.
 Original task messages show generic processing and completed/failed markers.
 These three Host controls run in message order without model calls or reactions.
@@ -300,6 +300,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	service := &channel.Service{Downloader: &dingtalk.MediaDownloader{Config: cfg}, MediaRoot: filepath.Join(o.home, "attachments"), Store: store, Host: composeHost(store, o, client, sink), Router: routing.New(client), Replier: dingtalk.Replier{}, Reactor: &dingtalk.Reactor{Config: cfg, RobotCode: cfg.RobotCode}, ClientID: cfg.ClientID, Scope: o.scope, Profile: profile, Timeout: o.timeout, MaxConcurrentConversations: o.maxConcurrentConversations, Observe: observe}
 	o.runtimeWorkspaces = make(map[string]string)
 	configureChannelRuntimeProjects(service, store, o, "dingtalk")
+	service.OwnerID = cfg.OwnerUserID
 	service.SelectAgent = func(ctx context.Context, m dingtalk.Message) (channel.AgentSelection, error) {
 		return agents.selectAgent(cfg.ClientID, m)
 	}

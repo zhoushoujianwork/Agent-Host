@@ -264,6 +264,10 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	service := &channel.Service{Channel: channelKind, DisableReactions: !cfg.IMReactions, TextReplier: feishumeeting.Replier{Config: cfg},
 		Store: store, Host: composeHost(store, o, client, sink), Router: routing.New(client), ClientID: cfg.AppID,
 		Scope: o.scope, Profile: profile, Timeout: o.timeout, MaxConcurrentConversations: o.maxConcurrentConversations, Observe: observe}
+	service.OwnerID = cfg.OwnerOpenID
+	if cfg.IMChat {
+		service.ApprovalSender = feishu.Replier{Config: feishuIMConfig(cfg)}
+	}
 	if cfg.IMReactions {
 		service.APIReactor = feishu.Reactor{Config: feishuIMConfig(cfg)}
 	}

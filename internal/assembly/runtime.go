@@ -69,8 +69,8 @@ func AssembleProjects(projects []state.ProjectRef, primaryID, defaultScope, defa
 		c.AudienceID = state.OwnerAudienceID
 	}
 	r := Runtime{AgentID: c.AgentID, AudienceID: c.AudienceID, PermissionMode: c.PermissionMode, HostInstructions: c.HostInstructions, Scope: defaultScope, Workspace: defaultWorkspace, ProjectName: "Default workspace"}
-	if c.PermissionMode != "" && c.PermissionMode != "default" && c.PermissionMode != "bypassPermissions" {
-		return r, errors.New("runtime permission mode must be default or bypassPermissions")
+	if c.PermissionMode != "" && c.PermissionMode != "default" && c.PermissionMode != "bypassPermissions" && c.PermissionMode != "dontAsk" {
+		return r, errors.New("runtime permission mode must be default, dontAsk or bypassPermissions")
 	}
 	byID := make(map[string]state.ProjectRef, len(projects))
 	for _, project := range projects {

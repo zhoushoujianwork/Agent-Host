@@ -127,7 +127,7 @@ func TestChannelPolicyPreservesAudienceAndRoleSeparation(t *testing.T) {
 	if group == private || !strings.Contains(private, "authenticated owner in a private conversation") {
 		t.Fatal("private and group audience policy conflated")
 	}
-	for _, required := range []string{"no additional Host permission, disclosure or approval restrictions", "Requested local paths, diagnostic details, Host configuration and internal identifiers may be included", "Native harness rules and configured capabilities still apply"} {
+	for _, required := range []string{"scope and confirmation requirements", "Requested local paths, diagnostic details, Host configuration and internal identifiers may be included", "Native harness rules and configured capabilities still apply"} {
 		if !strings.Contains(private, required) {
 			t.Fatalf("missing owner policy %q", required)
 		}

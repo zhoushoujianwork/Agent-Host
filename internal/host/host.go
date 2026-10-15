@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"agent-host/internal/annotation"
+	"agent-host/internal/approval"
 	"agent-host/internal/assembly"
 	"agent-host/internal/assistance"
 	"agent-host/internal/event"
@@ -26,6 +28,10 @@ import (
 )
 
 type Config struct {
+	RestrictedReadOnly    bool
+	ApprovalExecutable    string
+	RequestApproval       func(context.Context, state.Run, approval.Proposal) error
+	ApprovedOperationID   string
 	ProcedureRecallHints  []state.ProcedureRecallHint
 	ContextFiles          []assembly.ContextFile
 	UserProfile           string
@@ -327,6 +333,11 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		}
 		r, j.run = stored, stored
 	}
+	if h.Config.ApprovedOperationID != "" {
+		if err := h.Store.BindOperationApprovalRun(ctx, h.Config.ApprovedOperationID, channelMessageID, r.ID); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
 	if err := j.emit(event.Event{Type: "run.started", Phase: "request", Component: "host", Status: "running", Message: fmt.Sprintf("run=%s session=%s", r.ID, r.SessionID), Data: map[string]any{"agent_id": r.AgentID, "audience_id": r.AudienceID, "workspace": r.WorkingDirectory(), "scope": r.Scope, "project_id": r.ProjectID, "project_name": r.ProjectName, "runtime_fingerprint": r.RuntimeFingerprint, "projects": r.Projects, "additional_directories": r.AdditionalDirectories, "supplements": r.Supplements, "input_bytes": len(input)}}); err != nil {
 		return h.failBeforeExecution(j, err)
 	}
@@ -445,7 +456,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, err)
 		}
 	}
-	if channelMessageID != "" && h.Config.HistoryHome != "" && !h.Config.ToolsDisabled {
+	if channelMessageID != "" && h.Config.HistoryHome != "" && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
 		binding, err := history.Resolve(h.Config.HistoryHome, channelMessageID)
 		if err != nil {
 			return h.failBeforeExecution(j, fmt.Errorf("assemble conversation history: %w", err))
@@ -473,7 +484,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if err != nil {
 			return h.failBeforeExecution(j, err)
 		}
-		if h.Store.FileMemoryEnabled() && !h.Config.ToolsDisabled {
+		if h.Store.FileMemoryEnabled() && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
 			identity := assembly.SkillIdentity{SourceIdentity: h.Config.MemorySource, AgentID: r.AgentID, AudienceID: r.AudienceID}
 			for _, p := range recallProjects(r) {
 				identity.Scopes = append(identity.Scopes, p.Scope)
@@ -516,13 +527,29 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, errors.New("published memory changed before execution; a new task context is required"))
 		}
 	}
+	var proposalDirectory string
+	if h.Config.RestrictedReadOnly {
+		mcpServers = nil
+		if h.Config.RequestApproval != nil && h.Config.ApprovalExecutable != "" {
+			proposalDirectory, err = os.MkdirTemp("", "agh-owner-approval-")
+			if err != nil {
+				return h.failBeforeExecution(j, err)
+			}
+			defer os.RemoveAll(proposalDirectory)
+			mcpServers = []harness.MCPServer{approval.Server(h.Config.ApprovalExecutable, proposalDirectory)}
+		}
+	}
 	err = j.phase(ctx, "execute", "harness.claude", h.Config.Model, func(ctx context.Context) error {
-		if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: "host", Status: "running", Model: h.Config.Model, Message: "dispatch local-claude through native CLI", Data: map[string]any{"native_session_id": s.NativeSessionID, "resume": resume, "requested_model": h.Config.Model, "tools_disabled": h.Config.ToolsDisabled, "allowed_tools": h.Config.AllowedTools, "native_profile": h.Config.NativeProfile, "permission_mode": h.Config.PermissionMode}}); err != nil {
+		if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: "host", Status: "running", Model: h.Config.Model, Message: "dispatch local-claude through native CLI", Data: map[string]any{"native_session_id": s.NativeSessionID, "resume": resume, "requested_model": h.Config.Model, "tools_disabled": h.Config.ToolsDisabled, "allowed_tools": h.Config.AllowedTools, "native_profile": h.Config.NativeProfile, "permission_mode": h.Config.PermissionMode, "restricted_read_only": h.Config.RestrictedReadOnly}}); err != nil {
 			return err
 		}
 		var runErr error
 		activity := newRuntimePhases(j.emit)
-		result, runErr = h.Runner.Run(ctx, harness.Request{SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...), Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		directories := append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...)
+		if h.Config.RestrictedReadOnly {
+			directories = nil
+		}
+		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: "harness.claude", Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
@@ -544,6 +571,18 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	})
 	if result.Status == "" {
 		result.Status = "unknown"
+	}
+	if proposalDirectory != "" && result.Status == "completed" && err == nil {
+		proposal, proposalErr := approval.Read(proposalDirectory)
+		if proposalErr == nil {
+			proposalErr = h.Config.RequestApproval(ctx, r, proposal)
+			if proposalErr == nil {
+				result.Text += "\n\nThe configured owner was mentioned for this specific approval request. No blocked action has executed."
+			}
+		}
+		if proposalErr != nil && !errors.Is(proposalErr, os.ErrNotExist) {
+			result.Text += "\n\nOwner approval could not be requested: " + proposalErr.Error() + ". No blocked action has executed."
+		}
 	}
 	errText := result.Error
 	if err != nil && result.Status != "completed" {

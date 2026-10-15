@@ -22,6 +22,11 @@ Use one Feishu bot for three conversations:
 | Ordinary group chat | @mention the bot, then ask | Human members of the configured tenant |
 | Meeting chat | Start with `AI:` or `AI：`; no @mention needed | Configured meeting senders |
 
+The [owner-only operation profiles](dangerous-operations-design.md) restrict
+non-owner execution and support correlated owner approval replies in IM groups.
+Bare-profile provider credentials and live approval acceptance remain separate
+requirements; meetings do not send approval prompts.
+
 Owner private chat uses the owner's audience. Each group and meeting has its
 own public audience and conversation history; an owner asking in a group or
 meeting does not bring private-chat permissions into that shared conversation.

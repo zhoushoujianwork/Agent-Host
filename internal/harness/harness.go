@@ -19,6 +19,7 @@ type Request struct {
 	NativeSessionID       string
 	Resume                bool
 	ToolsDisabled         bool
+	RestrictedReadOnly    bool // Fixed member capability profile; never grants execution or mutation.
 	AllowedTools          []string
 	MCPServers            []MCPServer
 	JSONSchema            string

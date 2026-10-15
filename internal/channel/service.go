@@ -47,6 +47,8 @@ type AgentSelection struct {
 // Service owns durable channel intake and automatic project dispatch.
 // Inbound text cannot invent directories or change the routing policy.
 type Service struct {
+	OwnerID        string
+	ApprovalSender ApprovalSender
 	// Empty Channel preserves the existing DingTalk adapter and receipt shape.
 	Channel            string
 	DisableReactions   bool
@@ -148,7 +150,8 @@ func (s *Service) Receive(ctx context.Context, m dingtalk.Message) error {
 		binding = Key("agent-conversation-v1", "dingtalk", s.ClientID, m.TenantID, m.ConversationID, sender, selection.AgentID, selection.AudienceID)
 	}
 	message := state.ChannelMessage{
-		ID: Key("dingtalk", s.ClientID, m.ID), Channel: "dingtalk", AccountID: s.ClientID,
+		ReplyToID: m.ReplyToID,
+		ID:        Key("dingtalk", s.ClientID, m.ID), Channel: "dingtalk", AccountID: s.ClientID,
 		TenantID: m.TenantID, MessageID: m.ID, ConversationID: m.ConversationID,
 		SenderID: m.SenderID, Profile: s.Profile, ConversationType: m.ConversationType,
 		AgentID: selection.AgentID, AudienceID: selection.AudienceID,
@@ -218,9 +221,20 @@ func (s *Service) workMessages(ctx context.Context) error {
 	active := make(map[string]state.ChannelMessage, limit)
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
+	var nextApprovalSweep time.Time
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if time.Now().After(nextApprovalSweep) {
+			kind := s.Channel
+			if kind == "" {
+				kind = "dingtalk"
+			}
+			if err := s.Store.RefreshOperationApprovals(ctx, kind, s.ClientID, s.OwnerID, time.Now().UTC()); err != nil {
+				return err
+			}
+			nextApprovalSweep = time.Now().Add(time.Minute)
 		}
 		for len(active) < limit {
 			busy := make([]state.ChannelMessage, 0, len(active))
@@ -329,8 +343,15 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 		m, runErr = s.prepareInput(turnCtx, m)
 		if runErr != nil {
 			handled, reply = true, "附件未能下载或保存，本次任务没有执行。请重新发送附件。"
-		} else if m.Input == nil {
-			handled, reply, runErr = s.conversationCommand(turnCtx, m)
+		} else {
+			// A normal reply can carry quote material. Match only the current
+			// authenticated text, never the quoted body, before native dispatch.
+			if m.MessageType == "text" {
+				handled, reply, runErr = s.approvalReply(turnCtx, m)
+			}
+			if !handled && runErr == nil && m.Input == nil {
+				handled, reply, runErr = s.conversationCommand(turnCtx, m)
+			}
 		}
 		if !handled {
 			var notice string

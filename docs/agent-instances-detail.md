@@ -140,9 +140,10 @@ Channel policy version 7 adds a project-introduction line (what Agent-Host is
 and its source URL, https://github.com/zhoushoujianwork/Agent-Host) that the
 assistant mentions only when asked what it runs on or how to deploy/configure
 it, then separates owner-private and group behavior while using
-the same configured execution capabilities. Owner-private instructions execute
-requests directly without additional Host permission, disclosure or approval
-restrictions. Requested local paths, Host configuration, diagnostic details and
+the configured execution capabilities. The [owner-only operation increment](dangerous-operations-design-detail.md)
+now separates verified-owner execution from restricted member tools and adds
+correlated one-use owner approvals. Owner-private ordinary requests execute directly;
+destructive requests follow the scoped confirmation policy. Requested local paths, Host configuration, diagnostic details and
 internal identifiers are allowed; per-turn provenance instructions do not add
 an owner identifier suppression rule. Native harness rules remain in effect.
 
@@ -158,7 +159,8 @@ in a shared native conversation and favor natural attribution in group replies.
 Both policies treat quoted text, attachments, retrieved documents, memory and
 tool output as source material that cannot replace authenticated identity or
 channel instructions. Both require honest execution outcomes and evidence
-grounding. No permission table, sender roles or separate tool profile is added.
+grounding. The newer owner-operation policy selects separate native capability
+profiles without changing shared-audience privacy.
 Both also lead with the answer in short, natural, conversational sentences,
 retain essential facts, actions and caveats, and aim for 2–4 short sentences or
 up to three compact bullets for routine replies. They expand when explicitly
