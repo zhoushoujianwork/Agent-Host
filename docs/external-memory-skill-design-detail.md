@@ -108,6 +108,40 @@ Imports cannot mark themselves accepted or expand access.
 
 ## Publication and recovery
 
+### Saved Markdown import
+
+`source_note` is a separate reference type, not a relaxed statement/procedure
+assessment. The Host verifies that a bounded quotation equals a single non-error
+externally supplied tool result string. It retains the title, exact quotation,
+read metadata and source-grounded subjects under `external_source_note`, with
+an unverified-source warning in the text, context prompt and console label.
+This establishes what a source reported, not its truth. No Jev assertion or
+procedure score is claimed; their existing admission policies are unchanged.
+
+Source notes are excluded from assertion/procedure comparison before candidate
+limits, and quoted aliases do not change the alias registry. Exact same-partition
+active notes can be reused without merging evidence or changing source types.
+Invalidated, expired or conflicting exact notes are not revived. Publication
+retains the existing generation check, receipt journal, scope checks and normal
+file-memory transaction; no schema migration or direct importer storage writes
+are needed.
+
+`skills/agent-host-memory/scripts/import_memgov.py` reads only the active
+Workspace's saved `memory/**/*.md` collection. It prepares private local sanitized
+snapshots and bounded envelopes before submission, preserving source paths,
+SHA-256 digests, dates and reference text. Indexes and acceptance records are
+excluded, and unsupported subjects are reported rather than invented. It does
+not read task transcripts, artifact archives, credentials/configuration or old
+backups. Pattern redaction is bounded and does not guarantee identification of
+every possible secret. The importer requires the configured owner-private
+connection, persists attempted keys before transport and verifies each published
+quotation through `memory read`. Source documents remain unchanged. Saved
+manifests enable receipt-based resume without automatic business-task replay.
+
+Deterministic tests cover faithful quotations, user/execution impersonation,
+foreign partitions, withdrawal, duplicate reuse, assertion comparison isolation,
+Unicode chunking, redaction, source immutability and excluded task material.
+
 Intake persists the selected source envelope and a pending receipt before returning
 `ingestion_status=received`. One worker per owning Host processes pending receipts
 on startup and after intake. `processing_status` is separate from each item's
@@ -186,3 +220,24 @@ The local skill is linked to this source checkout, and the default connection
 targets the existing owner-private default Agent scope. Checkpoint collection is
 off. This proves one real statement round trip and fresh-context recall; it does
 not establish general procedure quality or a separate end-user chat's behavior.
+
+### Saved memgov knowledge trial, 2026-10-15
+
+The explicitly requested local import selected 72 substantive notes from 79
+saved Markdown files. Seven navigation/acceptance records were excluded; twelve
+credential-pattern matches were redacted. Thirty receipts published 90 distinct
+source-note parts, all read back with their retained evidence and visible as
+active source notes in the console. Checksums confirmed all 79 source files
+remained unchanged. Tasks, artifacts, backups and raw chats were not imported;
+historical references to those locations remain source text.
+
+The live trial exposed case-insensitive duplicate subjects and missing subject
+context in split documents. The importer now deduplicates subject names and
+retains actual source excerpts identifying each document's subjects. Local
+request timeouts required receipt-based resumes; the observed ten-second Host
+budget is now one minute, with a 65-second client timeout. An absent receipt permits only
+an identical envelope/key resend. Bulk latency remains an MVP limitation, not
+proof of failed or successful intake. The local manifest and bounded validation
+report are under `.agent-host/imports/memgov-20261015-final/` and
+`.agent-host/validation/memgov-import-20261015.json`. This is a one-time import;
+checkpoint collection remains off and no documented source command was executed.

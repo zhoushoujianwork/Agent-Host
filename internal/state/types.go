@@ -71,7 +71,7 @@ type Memory struct {
 	SourceRunID       string          `json:"source_run_id"`
 	ExternalReceiptID string          `json:"external_receipt_id,omitempty"`
 	CreatedAt         time.Time       `json:"created_at"`
-	SourceType        string          `json:"source_type,omitempty"` // user_statement or reviewed_experience
+	SourceType        string          `json:"source_type,omitempty"` // user_statement, reviewed_experience or external_source_note
 	CandidateID       string          `json:"candidate_id,omitempty"`
 	Conditions        string          `json:"conditions,omitempty"`
 	Steps             []string        `json:"steps,omitempty"`

@@ -58,6 +58,11 @@ can be discovered normally without requiring explicit invocation every time.
   audited association correction. Object metadata never grants permissions.
 - A summary without supporting material cannot establish a successful procedure.
   Failed attempts can support bounded failure lessons.
+- An explicitly requested saved-document import preserves quotations as source
+  notes, labeled “来源笔记 · 未复验” in the console. They can be recalled with their
+  original references and dates. They do not establish current facts, permissions,
+  or successful command execution. The memgov importer selects saved topic notes,
+  redacts credential patterns, and verifies publication by reading them back.
 - Submit only selected, necessary evidence, without credentials. A source link
   helps navigation; a retained excerpt keeps the basis readable later.
 - Host-selected memories become effective automatically on the file backend.

@@ -56,7 +56,8 @@ type ExternalTool struct {
 }
 
 type ExternalItem struct {
-	Kind        string           `json:"kind"` // statement or procedure
+	Kind        string           `json:"kind"` // statement, procedure or source_note
+	Title       string           `json:"title,omitempty"`
 	Text        string           `json:"text,omitempty"`
 	EvidenceIDs []string         `json:"evidence_ids"`
 	Procedure   *ExperienceDraft `json:"procedure,omitempty"`
@@ -156,8 +157,12 @@ func (v ExternalSubmission) Validate() error {
 			seen[id] = true
 		}
 		switch item.Kind {
+		case SourceNoteKind:
+			if err := validateSourceNote(item, available); err != nil {
+				return err
+			}
 		case "statement":
-			if item.Procedure != nil || !boundedExternalText(item.Text, 4096) {
+			if item.Title != "" || item.Procedure != nil || !boundedExternalText(item.Text, 4096) {
 				return errors.New("statement requires bounded exact source text and no procedure")
 			}
 			// A generated summary cannot impersonate the quoted user statement.
@@ -165,7 +170,7 @@ func (v ExternalSubmission) Validate() error {
 				return errors.New("statement must retain exactly one cited user excerpt")
 			}
 		case "procedure":
-			if item.Text != "" || item.Procedure == nil {
+			if item.Title != "" || item.Text != "" || item.Procedure == nil {
 				return errors.New("procedure requires a draft and no statement text")
 			}
 			d := *item.Procedure
@@ -181,7 +186,7 @@ func (v ExternalSubmission) Validate() error {
 				return err
 			}
 		default:
-			return errors.New("item kind must be statement or procedure")
+			return errors.New("item kind must be statement, procedure or source_note")
 		}
 	}
 	return nil
@@ -429,6 +434,9 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 					if (r.Submission.Items[index].Kind == "procedure") != (m.SourceType == "reviewed_experience") {
 						return errors.New("external duplicate cannot change source evidence type")
 					}
+					if (r.Submission.Items[index].Kind == SourceNoteKind) != (m.SourceType == SourceNoteSource) {
+						return errors.New("source-note duplicate cannot change source evidence type")
+					}
 					if proposed := p.Objects; len(proposed) > 0 && !sameObjectIdentities(m.Objects, proposed) {
 						return errors.New("duplicate object context differs; explicitly associate the existing memory after review")
 					}
@@ -457,7 +465,11 @@ func (s *Store) FinishExternalItem(ctx context.Context, id string, index int, p 
 						return errors.New("external publication changed evidence references")
 					}
 				}
-				if item.Kind == "statement" {
+				if item.Kind == SourceNoteKind {
+					if m.Text != SourceNoteText(item) || m.SourceType != SourceNoteSource || m.Kind != SourceNoteKind || len(m.Steps) != 0 || len(m.Entities) != 0 || m.Conditions != "" || len(p.ConflictIDs) != 0 {
+						return errors.New("source note must preserve its quotation without claiming reviewed facts or execution")
+					}
+				} else if item.Kind == "statement" {
 					if m.Text != item.Text || m.SourceType != "user_statement" || (m.Kind != "preference" && m.Kind != "constraint" && m.Kind != "project_fact" && m.Kind != "decision") || len(m.Steps) != 0 || len(m.Entities) != 0 || m.Conditions != "" {
 						return errors.New("external statement must preserve its source and cannot claim a procedure")
 					}

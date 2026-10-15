@@ -31,6 +31,9 @@ func (h *Host) comparisonMemories(ctx context.Context, scope, query string) ([]s
 	items := make([]state.Memory, 0, memory.MaxExisting)
 	bytes := len(query)
 	for _, m := range disabledItems {
+		if m.SourceType == state.SourceNoteSource {
+			continue
+		}
 		disabled[m.ID] = true
 		// Conflicted comparison status makes equivalent content visible across
 		// statement/procedure source types, without admitting it for recall.
@@ -46,6 +49,9 @@ func (h *Host) comparisonMemories(ctx context.Context, scope, query string) ([]s
 		return nil, nil, err
 	}
 	for _, m := range active {
+		if m.SourceType == state.SourceNoteSource {
+			continue
+		}
 		if len(items) >= memory.MaxExisting {
 			break
 		}

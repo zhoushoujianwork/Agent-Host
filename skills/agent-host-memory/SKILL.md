@@ -1,6 +1,6 @@
 ---
 name: agent-host-memory
-description: Save durable decisions, preferences, facts, and evidence-backed procedures to a configured local Agent-Host, and recall its memory for current work. Use when asked to remember something in Agent-Host or when prior project knowledge would help.
+description: Save durable decisions, preferences, facts, evidence-backed procedures, and explicitly requested source-note imports to a configured local Agent-Host, and recall its memory for current work. Use when asked to remember or import knowledge into Agent-Host or when prior project knowledge would help.
 ---
 
 # Agent-Host memory
@@ -48,6 +48,12 @@ Host memories as new evidence.
 - A procedure proposes a short lesson with conditions, steps, and cited external
   tool call/result excerpts, including explicit error status. Preserve failure
   and uncertainty. Assistant claims alone cannot establish successful execution.
+- At an explicit request to import saved documents, use `source_note` for exact
+  source quotations. Retain original dates and references, redact credentials,
+  and identify the actual document read. An agent-written note is not a user
+  statement or proof of the commands it describes. Source notes are unverified
+  references and do not replace admitted facts or procedures. The protocol has
+  a resumable memgov importer; review its prepared manifest before submission.
 - Use actual conversation/turn IDs when available; omit missing IDs. Never
   fabricate a source, native run, observed output, or timestamp of the original
   event. If quoting the current visible message without a source timestamp,

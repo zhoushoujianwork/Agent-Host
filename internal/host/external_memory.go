@@ -58,6 +58,9 @@ func (h *Host) assessExternal(ctx context.Context, r state.ExternalReceipt, inde
 	if err != nil {
 		return p, err
 	}
+	if item.Kind == state.SourceNoteKind {
+		return h.sourceNotePublication(ctx, r, index, p)
+	}
 	existing, disabled, err := h.comparisonMemories(ctx, r.Connection.Scope, query)
 	if err != nil {
 		return p, err

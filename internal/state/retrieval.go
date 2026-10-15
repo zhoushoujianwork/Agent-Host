@@ -36,6 +36,10 @@ type annotatedMemory struct {
 
 func rawAnnotation(ctx context.Context, tx *sql.Tx, m Memory) error {
 	a := objectAnnotation(m, annotation.Extract(m.Scope, m.Text))
+	if m.SourceType == SourceNoteSource {
+		// Quoted alias declarations are source content, not registry authority.
+		a.Aliases = nil
+	}
 	payload, err := json.Marshal(a)
 	if err != nil {
 		return err
@@ -215,6 +219,10 @@ func rebuildTerms(ctx context.Context, tx *sql.Tx, scope string, partition ...st
 // Retrieve uses one SQLite snapshot for the alias registry, indexed candidates,
 // and lexical candidates. It checks applicability before imposing the limit.
 func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (result Retrieval, err error) {
+	return s.retrieve(ctx, scope, text, limit, false)
+}
+
+func (s *Store) retrieve(ctx context.Context, scope, text string, limit int, forDecision bool) (result Retrieval, err error) {
 	result.Matches = []Memory{}
 	result.Persistent = []Memory{}
 	result.LexicalIDs = []string{}
@@ -357,6 +365,9 @@ func (s *Store) Retrieve(ctx context.Context, scope, text string, limit int) (re
 		for _, id := range ids {
 			item := byID[id]
 			accepted, reason := annotation.Compatible(result.Query, canonical[id])
+			if forDecision && item.Memory.SourceType == SourceNoteSource {
+				accepted, reason = false, "source_reference_not_assertion"
+			}
 			if len(memoryQueries[id].Ambiguous) > 0 || len(memoryQueries[id].Unknown) > 0 {
 				accepted, reason = false, "unresolved_memory_object"
 			}

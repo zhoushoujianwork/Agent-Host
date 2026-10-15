@@ -19,7 +19,7 @@ func (s *Store) DecisionMemories(ctx context.Context, scope, query string, limit
 	if limit < 1 || limit > 100 {
 		return nil, errors.New("comparison limit must be 1–100")
 	}
-	r, err := s.Retrieve(ctx, scope, query, limit)
+	r, err := s.retrieve(ctx, scope, query, limit, true)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (s *Store) DecisionMemories(ctx context.Context, scope, query string, limit
 	seen := map[string]bool{}
 	for _, group := range [][]Memory{exact, r.Matches, conflicts, r.Persistent} {
 		for _, m := range group {
-			if len(items) < limit && !seen[m.ID] {
+			if m.SourceType != SourceNoteSource && len(items) < limit && !seen[m.ID] {
 				items = append(items, m)
 				seen[m.ID] = true
 			}
@@ -128,7 +128,7 @@ func (s *Store) DisabledMemories(ctx context.Context, scope string, limit int) (
 	var items []Memory
 	err := s.memoryTransaction(ctx, func(tx *sql.Tx) error {
 		a, b := s.Partition()
-		rows, err := tx.QueryContext(ctx, `SELECT payload FROM memories WHERE agent_id=? AND audience_id=? AND scope=? AND status='invalidated' ORDER BY rowid LIMIT ?`, a, b, scope, limit+1)
+		rows, err := tx.QueryContext(ctx, `SELECT payload FROM memories WHERE agent_id=? AND audience_id=? AND scope=? AND status='invalidated' AND COALESCE(json_extract(payload,'$.source_type'),'')!='external_source_note' ORDER BY rowid LIMIT ?`, a, b, scope, limit+1)
 		if err != nil {
 			return err
 		}

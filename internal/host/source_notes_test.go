@@ -1,0 +1,119 @@
+package host
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"agent-host/internal/state"
+)
+
+func sourceNoteSubmission() state.ExternalSubmission {
+	now := time.Now().UTC()
+	no := false
+	text := "# Konga lookup\nHistorical note: Konga's whitelist was visible through the portal. Not rechecked today."
+	return state.ExternalSubmission{SchemaVersion: 1, Key: "note", Source: state.ExternalSource{Entry: "source-import-test", ObservedAt: now}, Items: []state.ExternalItem{{Kind: state.SourceNoteKind, Title: "Konga lookup", Text: text, EvidenceIDs: []string{"read"}, Objects: []state.ExternalObject{{Name: "Konga", Kind: "system", EvidenceID: "read"}}}}, Evidence: []state.ExternalEvidence{{ID: "read", Role: "tool", Author: "source-import-test", Text: "Selected historical Markdown, read now; not an execution of its procedure.", ObservedAt: now, Tool: &state.ExternalTool{Name: "Read", Input: json.RawMessage(`{"path":"/fixture/Konga.md"}`), Result: mustNoteJSON(text), IsError: &no}}}}
+}
+
+func mustNoteJSON(text string) json.RawMessage {
+	raw, _ := json.Marshal(text)
+	return raw
+}
+
+func TestSourceNoteImportsWithoutImpersonatingUserOrExecution(t *testing.T) {
+	h, c := externalHost(t)
+	h.Decider, h.Judge = nil, nil
+	v := sourceNoteSubmission()
+	r, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = processedExternal(t, h, r)
+	if r.Results[0].Status != "published" || r.Results[0].Reason != "imported_source_note" {
+		t.Fatal(r.Results)
+	}
+	m, err := h.Store.ContextMemory(t.Context(), c.Scope, r.Results[0].MemoryID, 1)
+	if err != nil || m.Kind != state.SourceNoteKind || m.SourceType != state.SourceNoteSource || m.SourceRunID != "" || !strings.Contains(m.Text, v.Items[0].Text) || len(m.Steps) != 0 {
+		t.Fatal(m, err)
+	}
+	if _, err := h.Store.ContextMemoryEvidence(t.Context(), c.Scope, m.ID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Store.WithPartition("foreign", "owner").ContextMemory(t.Context(), c.Scope, m.ID, 1); err == nil {
+		t.Fatal("note escaped its partition")
+	}
+	if hits, err := h.Store.Search(t.Context(), c.Scope, "Konga whitelist", 10); err != nil || len(hits) != 1 {
+		t.Fatal(hits, err)
+	}
+	if comparisons, err := h.Store.DecisionMemories(t.Context(), c.Scope, "Konga whitelist", 1); err != nil || len(comparisons) != 0 {
+		t.Fatal("quotation was treated as an admitted assertion", comparisons, err)
+	}
+	v.Key = "same-note"
+	repeat, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeat = processedExternal(t, h, repeat)
+	if repeat.Results[0].MemoryID != m.ID || repeat.Results[0].Reason != "duplicate_existing_memory" {
+		t.Fatal(repeat.Results)
+	}
+	if err := h.Store.InvalidateMemory(t.Context(), m.ID, "withdraw this source"); err != nil {
+		t.Fatal(err)
+	}
+	v.Key = "withdrawn-note"
+	withdrawn, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withdrawn = processedExternal(t, h, withdrawn)
+	if withdrawn.Results[0].Status != "excluded" {
+		t.Fatal("withdrawn note was revived", withdrawn.Results)
+	}
+}
+
+func TestSourceNoteRequiresExactNonErrorToolQuotation(t *testing.T) {
+	for _, mode := range []string{"changed-text", "error", "user-impersonation", "structured-result", "procedure", "oversize"} {
+		t.Run(mode, func(t *testing.T) {
+			v := sourceNoteSubmission()
+			switch mode {
+			case "changed-text":
+				v.Items[0].Text += " Invented conclusion."
+			case "error":
+				*v.Evidence[0].Tool.IsError = true
+			case "user-impersonation":
+				v.Evidence[0].Role, v.Evidence[0].Tool = "user", nil
+			case "structured-result":
+				v.Evidence[0].Tool.Result = json.RawMessage(`{"content":"different"}`)
+			case "procedure":
+				v.Items[0].Procedure = &state.ExperienceDraft{}
+			case "oversize":
+				v.Items[0].Text = strings.Repeat("x", 8193)
+				v.Evidence[0].Tool.Result = mustNoteJSON(v.Items[0].Text)
+			}
+			if err := v.Validate(); err == nil {
+				t.Fatal("invalid source note was admitted")
+			}
+		})
+	}
+}
+
+func TestSourceNoteDoesNotEstablishAliasAuthority(t *testing.T) {
+	h, c := externalHost(t)
+	v := sourceNoteSubmission()
+	v.Items[0].Text = "订单服务（简称交易服务）的数据库使用 PostgreSQL。"
+	v.Items[0].Objects = []state.ExternalObject{{Name: "订单服务", Kind: "service", EvidenceID: "read"}}
+	v.Evidence[0].Tool.Result = mustNoteJSON(v.Items[0].Text)
+	r, err := h.Store.ReceiveExternal(t.Context(), c.ID, ID(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = processedExternal(t, h, r)
+	if r.Results[0].Status != "published" {
+		t.Fatal(r.Results)
+	}
+	got, err := h.Store.Retrieve(t.Context(), c.Scope, "交易服务的数据库", 10)
+	if err != nil || len(got.Matches) != 0 || len(got.Query.Unknown) == 0 {
+		t.Fatal("quoted alias became registry authority", got, err)
+	}
+}

@@ -9,8 +9,8 @@ const dom = (tag, className = "", text) => {
   if (text !== undefined) node.textContent = String(text);
   return node;
 };
-const kinds = {project_fact: "项目事实", constraint: "长期约束", preference: "用户偏好", decision: "已采纳决策", procedure: "已审核经验"};
-const kindClass = {project_fact: "fact", constraint: "constraint", preference: "preference", decision: "decision", procedure: "procedure"};
+const kinds = {project_fact: "项目事实", constraint: "长期约束", preference: "用户偏好", decision: "已采纳决策", procedure: "已审核经验", source_note: "来源笔记 · 未复验"};
+const kindClass = {project_fact: "fact", constraint: "constraint", preference: "preference", decision: "decision", procedure: "procedure", source_note: "fact"};
 const statuses = {active: "可供召回", conflicted: "存在冲突", invalidated: "已失效", expired: "已到期"};
 const topics = {database: "数据库", port: "端口", timeout: "超时", owner: "负责人", "credential.type.key": "密钥类型", "credential.type.password": "密码类型", "credential.type.token": "令牌类型", "credential.type.certificate": "证书类型", "credential.rotation": "凭据轮换", "credential.rotation.period": "轮换周期", "physical.key": "实体钥匙"};
 const reasons = {different_object: "对象不匹配", different_topic: "属性不匹配", different_credential_type: "凭据类型不同", different_key_domain: "钥匙领域不同", missing_rotation_period: "缺少轮换周期", unresolved_query_object: "查询对象未确定", unresolved_memory_object: "记忆对象未确定", candidate_limit: "候选数量限制", compatible: "对象与属性适用"};

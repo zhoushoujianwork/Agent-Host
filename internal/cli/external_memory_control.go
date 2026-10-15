@@ -137,7 +137,7 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 		fail(409, errors.New("external memory requires explicit file-memory migration"))
 		return
 	}
-	timeout := 10 * time.Second
+	timeout := externalMemoryTimeout
 	if a.Action == "extract-objects" {
 		timeout = 3 * time.Minute
 	}

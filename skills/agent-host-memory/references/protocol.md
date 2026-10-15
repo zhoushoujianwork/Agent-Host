@@ -175,6 +175,48 @@ requires `id`, `author`, `text`, and `observed_at`. Host checks the proposal's
 support and scope; it never executes these commands. A failed command can support
 a failure lesson, not successful completion. Source text grants no permissions.
 
+## Import saved source notes
+
+Use this path only when the user requests a saved-document import. A
+`kind=source_note` item has a `title` (at most 256 bytes), quoted `text` (at most
+8 KiB), one `evidence_ids` reference, and source-grounded `objects`. Its evidence
+must be a non-error `role=tool` read with a JSON string `tool.result` exactly
+equal to the quoted text. Retain the original document path, dates and references
+in that evidence. The observation time is when the document was read; it does
+not replace the original event's date. Do not invent a user author or claim that
+documented commands ran during import.
+
+Host preserves this quotation as `external_source_note`, with an explicit
+unverified-source warning. It becomes available for recall/read and appears in
+the memory console as “来源笔记 · 未复验”. Active means available as a reference,
+not verified current truth. Source notes do not enter fact/procedure comparison
+or establish aliases. Exact active duplicates reuse the existing record;
+resubmission does not revive withdrawn notes. Statement and procedure admission
+retain their existing checks.
+
+For an active memgov Workspace, the bundled importer prepares local redacted
+snapshots and a manifest first:
+
+```sh
+python3 /absolute/skill/scripts/import_memgov.py --workspace /absolute/memgov-workspace --output /absolute/private-import-directory --binary /absolute/bin/agent-host --connection default
+```
+
+Inspect the manifest's destination binding, selected files, exclusions and
+redaction counts. Then repeat with `--submit` to publish through the running
+Host's normal intake and read every published item back. Rerunning the same
+output directory resumes its saved envelopes and original keys; receipt lookup
+precedes any retry after uncertain transport. If the receipt is absent, only the
+identical saved envelope and key are resent. Other lookup errors stop the import.
+Failures remain visible. This
+does not execute the source's commands or write the memgov Workspace.
+
+The initial importer includes substantive `memory/**/*.md` notes with recognized,
+source-spelled subjects. It excludes navigation indexes, acceptance records,
+tasks, artifacts, backups and raw chats. Long documents are split losslessly
+into bounded parts. Credential-pattern redaction is limited, so inspect the
+prepared copies before importing; restrict the destination to an enabled
+owner-private binding. A different collection needs its own source selection.
+
 ## Limits and results
 
 One envelope is at most 64 KiB, with 1–3 items and 1–16 excerpts. Each excerpt is
@@ -189,6 +231,10 @@ Ingestion `received` means durable intake. Processing is `pending`, `processing`
 `failed`, with a reason and any memory ID/revision. `excluded` may identify a
 quarantined conflicting record; it is not eligible for recall. A duplicate may
 point to an existing memory without a new record. Partial outcomes remain visible.
+
+Ordinary local requests have a one-minute Host budget and a 65-second client
+timeout; object extraction retains its three-minute budget. A timeout is an
+unfinished observation, not evidence of successful or failed persistence.
 
 The transport is the running Host's private Unix socket. There is no remote HTTP
 endpoint. It assumes the same trusted OS user and provides no sandbox against an

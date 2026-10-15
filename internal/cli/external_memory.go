@@ -17,6 +17,10 @@ import (
 	"agent-host/internal/state"
 )
 
+// File-backed reads may validate a larger imported source collection. Keep the
+// request bounded without canceling healthy local work after ten seconds.
+const externalMemoryTimeout = time.Minute
+
 const externalMemoryUsage = `External agent memory (local running Host, file-memory backend):
   agent-host memory connection add --connection NAME --home STATE_HOME [--agent ID] [--project ID] [--checkpoint-save]
   agent-host memory connection show|revoke --connection NAME
@@ -99,7 +103,7 @@ func externalMemoryCall(ctx context.Context, home string, a externalMemoryReques
 		return (&net.Dialer{}).DialContext(ctx, "unix", filepath.Join(home, "memory-control.sock"))
 	}}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 15 * time.Second}
+	client := &http.Client{Transport: transport, Timeout: externalMemoryTimeout + 5*time.Second}
 	if a.Action == "extract-objects" {
 		client.Timeout = 3 * time.Minute
 	}
