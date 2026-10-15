@@ -13,6 +13,10 @@ instructions and profiles to read-only runtime configuration, learned knowledge
 and skills to memory, source snapshots to datasource plugin storage, and scoped
 task context views to cache. It removes the separate top-level knowledge directory
 in the target layout while preserving execution cwd and channel state.
+The proposed [lightweight workspace backup](workspace-backup-design.md) retains
+current configuration, memory state and required source evidence, with daily
+encrypted recovery points and isolated restore verification. Automatic backup and
+compact restore are not implemented.
 
 The [datasource plugin configuration](datasource-plugins-design.md) loads local
 Markdown, Dokki, Confluence and Email from separate `datasource.plugins.*.json`
