@@ -101,6 +101,54 @@ Feishu subprocess fixture deadlines; the unchanged full check passed with
 Unrelated working-copy edits were preserved. No test assertion or model-provider
 fallback was used to obtain a passing result.
 
+### Original tccli case checked against the running Host
+
+On 2026-10-15 at 13:37–13:39 Asia/Singapore, the user's request to check the real
+case was exercised against the running local Host through the installed
+`agent-host-memory` skill and its default connection. That connection targets
+the DingTalk default Agent's owner-private workspace scope; this result does not
+establish recall in another channel or project.
+
+- Normal recall/read returned active revision 1 of
+  `2f9a0f9a-1607-433d-a900-225eb770ed3d`, the older invalid-profile recovery
+  procedure. Its source is run `8b92358b-34bd-4f98-84eb-a0ca5bb37df4`.
+  It does not contain the later `--cli-profile` correction.
+- Read-only journal inspection paired the actual failed call/result at events
+  931/935 and corrected successful call/result at 941/945 of run
+  `85c265b3-f57d-4212-b5c1-4ebca9f82190`. The failed invocation reported
+  `Unknown options`; the corrected invocation used `--profile` and returned
+  `TotalCount`, `DiskSet` and `RequestId`. No cloud command was repeated.
+- Selected original excerpts were explicitly attributed as journal evidence read
+  and supplied by external Codex, then submitted through the normal external
+  memory interface. Receipt `998756fd-7027-4b07-bbcb-e7b58568696c` completed with
+  `excluded/procedure_not_supported_or_durable`: durability 1.00, support 0.65.
+- One deliberately narrower proposal retained only the complete parameterized
+  command, returned `DiskSet`, and observed failed flag. Receipt
+  `14255f90-e610-44a8-9ec2-a0b307e5ca53` was also excluded: durability 0.98,
+  support 0.56. Both assessments chose `supported` but abstained because its
+  probability was below 0.80. No threshold, receipt, database or publication
+  manifest was overridden. This manual historical backfill is distinct from the
+  automatic extraction/refinement path for newly completed native runs.
+- A subsequent normal recall still returned only the older recovery procedure.
+  The exact correction has **not** been published. Saved raw evidence,
+  completed receipt processing and active reusable memory remain distinct.
+- Independently, the existing opt-in native learning/reuse probe passed again
+  in 35.3 seconds on the configured model/provider: direct recall 0, hinted
+  recall 1, actual Skill invocation, one correctly parameterized local surrogate
+  lookup and `UNATTACHED`. Report:
+  `.agent-host/validation/tccli-native-observation-20261015-05.json`.
+  It uses sanitized replay shapes and isolated memory, not the rejected
+  production proposal. Its passing result cannot stand in for production
+  admission or prove reduced cloud-operation errors.
+
+Private submission files and a concise outcome report are retained under
+`.agent-host/validation/tccli-real-case-20261015-*`. They are not committed.
+The check identifies a real admission gap without establishing its cause; do
+not infer a generally calibrated error probability from Jev's scores. Automatic
+historical backfill and external-proposal refinement are not delivered by this
+MVP. Further changes should use this failed case as evidence and preserve the
+existing admission boundary.
+
 ## Evidence scope and limits
 
 Read-only inspection covered the current DingTalk and Feishu channel state

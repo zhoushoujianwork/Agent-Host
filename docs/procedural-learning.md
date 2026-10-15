@@ -63,6 +63,15 @@ general authorization to switch accounts.
 
 ## Observe before expanding
 
+The latest check of the original `--cli-profile` incident found only the older
+invalid-profile recovery lesson active. Explicit historical backfill through the
+running Host's external-memory interface was withheld twice (support 0.65, then
+0.56 after one manual narrowing, below 0.80). The exact flag correction is still
+not recallable. A fresh isolated native probe passed, but this does not establish
+that the original production correction has been learned. Admission of this real
+case remains an open effectiveness gap; old completed runs are not automatically
+backfilled.
+
 An isolated real-model probe has demonstrated automatic learning, recall changing
 from zero to one for a short request, and actual Skill invocation. A stricter
 probe found that remembering only the changed flag could still omit `DiskIds`;
