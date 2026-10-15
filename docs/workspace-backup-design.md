@@ -97,24 +97,9 @@ directory. Verify every newly created archive without connecting channels, sendi
 messages or running Skills. Keep older verified recovery points if verification fails.
 
 Full conversation recovery, external account sessions, full project checkout
-backup and cloud synchronization are outside the first increment. Existing
-`.agent-host/backups/` migration artifacts remain separate and are not pruned by
-this policy.
+backup and cloud synchronization are outside the first increment. Retention only
+prunes archives tracked by the backup policy.
 
-## Historical migration archives
-
-Older rollback snapshots are stored as `<migration-name>.tar.gz.age` in the same
-directory. They preserve their original files and layout; they are not current
-logical recovery points and do not use `backup restore`. They remain outside the
-automatic retention policy.
-
-Use the standard age tool to decrypt one and tar to inspect or extract it into
-an empty directory. The recovery key is the same separate key used for daily backups:
-
-```sh
-age --decrypt --identity /safe/recovery.key migration.tar.gz.age | tar -tzf -
-age --decrypt --identity /safe/recovery.key migration.tar.gz.age | tar -xzf - -C /empty/restore
-```
-
-Historical archives support manual rollback of the corresponding migration;
-they do not replace the latest verified `backup-HASH.tar.gz.age` recovery point.
+The six obsolete migration archives were explicitly removed on 2026-10-15 after
+current recovery verification. Use the verified daily recovery archives for
+restoration; audit receipts remain under `.agent-host/validation/`.

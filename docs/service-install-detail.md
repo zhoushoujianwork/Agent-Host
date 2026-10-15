@@ -66,9 +66,9 @@ sources and shared memory/cache roots. Both channel workers reconnected, and the
 workbench memory API returned 3 memories, 1 candidate and 2 channels. Old channel
 memory/revision/evidence and original derived tables remain identical to the
 stopped backup. The final isolated history receipt is
-`.agent-host/validation/file-memory-history-20261013-final/report.json`; cutover
-backup is `.agent-host/backups/file-memory-cutover-20261013.tar.gz.age`
-(an encrypted directory archive for manual historical recovery).
+`.agent-host/validation/file-memory-history-20261013-final/report.json`. The
+historical cutover archive was retired on 2026-10-15 after current recovery
+verification; use the [workspace backup procedure](workspace-backup-design.md).
 
 The default Agent now uses user-maintained AGENTS/SOUL/IDENTITY through
 instructions_dir, preserving the prior CLAUDE.md role text. No owner USER was

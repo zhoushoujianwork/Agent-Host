@@ -75,9 +75,8 @@ stream to an X25519 recovery identity. `backup init` generates a private key
 outside the workspace and destination. The key is not included in archives or
 logs. The owner must retain an independent key copy for disk-loss recovery.
 
-The default destination is `ROOT/backups`, shared with historical migration
-artifacts. Only this subtree is allowed for internal archive storage; configuration,
-memory and cache directories are rejected. The export allowlist excludes all
+The default destination is `ROOT/backups`. Only this subtree is allowed for
+internal archive storage; configuration, memory and cache directories are rejected. The export allowlist excludes all
 backup storage. Retention only removes policy-owned archive files referenced by
 its checkpoint index, leaving historical directories and unrelated files untouched.
 
@@ -179,15 +178,9 @@ The 597 verified members occupied 412,365,659 bytes before compression and
 156,258,819 bytes as encrypted archives. The conversion receipt is
 `validation/legacy-backup-compression-20261015.json`.
 
-| Archive prefix | Historical recovery purpose |
-| --- | --- |
-| `config-names-20261013T062858Z` | Configuration files before renaming |
-| `datasource-config-20261013T105814Z` | Configuration and email data before the datasource migration |
-| `file-memory-cutover-20261013` | SQLite memory databases and owner notes before file-memory cutover |
-| `global-plugins-20261015T024349Z` | Agent and datasource settings before global plugin changes |
-| `gtm-skilllab-group-20261014T030854Z` | Agent configuration before the group-agent change |
-| `unified-config-20261013T103321Z` | Full legacy channel/runtime state before configuration consolidation |
-
-Each filename ends in `.tar.gz.age`. These snapshots preserve historical layouts
-for manual recovery and are not inputs to the current logical `backup restore`
-command. Automatic retention does not prune them.
+The owner subsequently requested removal of all six obsolete migration archives.
+Their sizes and SHA-256 hashes were checked against the conversion receipt before
+deletion, freeing another 156,258,819 bytes. The verified daily recovery archive
+and checkpoint index were preserved. The removal receipt is
+`validation/legacy-backup-removal-20261015.json`. These historical snapshots are
+no longer available for migration rollback.

@@ -169,7 +169,8 @@ host.memory.backend 为 files，两个渠道已重新连接，workbench API 返�
 1 个候选和 2 个渠道。默认角色沿用原 CLAUDE.md 全文并通过 instructions_dir 加载，
 未自动绑定私人 USER。owner_notes 的 14 份 Markdown 已迁入 local-documents 插件快照，
 正文摘要与授权不变；旧顶层 knowledge 目录已退出运行布局。
-迁移备份位于 `.agent-host/backups/file-memory-cutover-20261013.tar.gz.age`，旧两库的 memory、
-revisions、evidence 及原派生索引表与备份逐项原样一致。
+迁移时，旧两库的 memory、revisions、evidence 及原派生索引表已与备份逐项核对一致。
+The historical cutover archive was retired on 2026-10-15 after current recovery
+verification; use the [workspace backup procedure](workspace-backup-design.md).
 尚未交付直接编辑记忆的导入/草稿工作流、手写 config/skills 新挂载入口、向量检索、
 多万条性能、Codex 适配、外部资料统一索引和自动日记/定时学习。

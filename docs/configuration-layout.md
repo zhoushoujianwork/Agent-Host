@@ -45,7 +45,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 │   └── <project-id>/               # 记录、任务、worktree；新 clone/新工程可含 repository
 ├── cli-state/                      # 普通终端聊天的现有状态
 ├── backup-state/                   # Backup lock and last-success/failure receipt
-└── backups/                        # Automatic archives and historical rollback data
+└── backups/                        # Automatic recovery archives
 ```
 
 插件的可编辑配置放 `config/datasource.plugins.<名称>.json`；`datasource/plugins/<名称>/` 保存运行时
