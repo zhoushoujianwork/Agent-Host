@@ -11,6 +11,7 @@ import unittest
 import os
 import socketserver
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -283,6 +284,113 @@ class MemoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "provide --host-binary"):
             memory_catalog(server.Catalog(self.home, None, host_binary=self.root / "missing-host"))
         conn.close()
+
+    def test_unchanged_parallel_reads_share_one_complete_verification(self):
+        conn = self.database()
+        conn.close()
+        self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        barrier = threading.Barrier(4)
+
+        def read():
+            barrier.wait(timeout=5)
+            return self.catalog.record("db:source-a")["memories"][0]["text"]
+
+        with patch.object(self.catalog, "verify_file_memory", return_value={"generation": 1}) as verifier, \
+                patch.object(self.catalog, "validate_memory_cache", wraps=self.catalog.validate_memory_cache) as validation:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                self.assertEqual(list(pool.map(lambda _: read(), range(4))), ["Current knowledge"] * 4)
+            self.assertEqual(memory_catalog(self.catalog)["database_total"], 1)
+            verifier.assert_called_once_with()
+            self.assertEqual(validation.call_count, 1)
+
+    def test_cached_reads_detect_same_size_edit_even_with_restored_mtime(self):
+        conn = self.database()
+        conn.close()
+        marker, manifest, _, _ = self.file_backend([
+            {"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        entry = manifest["entries"][0]
+        content = Path(marker["memory_root"]) / "domains" / entry["domain"] / "entries/current/revisions/1/content.md"
+        with patch.object(self.catalog, "verify_file_memory", return_value={"generation": 1}) as verifier:
+            self.catalog.record("db:source-a")
+            original, info = content.read_bytes(), content.stat()
+            content.write_bytes(b"X" * len(original))
+            os.utime(content, ns=(info.st_atime_ns, info.st_mtime_ns))
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                self.catalog.record("db:source-a")
+            self.assertEqual(verifier.call_count, 2)
+            content.write_bytes(original)
+            self.assertEqual(self.catalog.record("db:source-a")["memories"][0]["text"], "Current knowledge")
+            self.assertEqual(verifier.call_count, 3)
+
+    def test_parallel_verifier_failures_are_shared_and_a_later_read_can_retry(self):
+        conn = self.database()
+        conn.close()
+        self.file_backend([{"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        barrier = threading.Barrier(4)
+
+        def read():
+            barrier.wait(timeout=5)
+            try:
+                self.catalog.record("db:source-a")
+            except ValueError as error:
+                return str(error)
+
+        with patch.object(self.catalog, "verify_file_memory", side_effect=ValueError("audit unavailable")) as verifier:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                self.assertEqual(list(pool.map(lambda _: read(), range(4))), ["audit unavailable"] * 4)
+            verifier.assert_called_once_with()
+        with patch.object(server.time, "monotonic", return_value=self.catalog._memory_verification_error[1] + 1), \
+                patch.object(self.catalog, "verify_file_memory", return_value={"generation": 1}) as retry:
+            self.assertEqual(self.catalog.record("db:source-a")["memories"][0]["text"], "Current knowledge")
+            retry.assert_called_once_with()
+
+    def test_changed_publication_and_cache_invalidate_verified_snapshot(self):
+        conn = self.database()
+        conn.close()
+        marker, manifest, index, memories = self.file_backend([
+            {"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        source_key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
+        current = Path(marker["memory_root"]) / "sources" / source_key / "current.json"
+        with patch.object(self.catalog, "verify_file_memory", return_value={"generation": 1}) as verifier:
+            self.catalog.record("db:source-a")
+            manifest["generation"] = 2
+            current.write_text(json.dumps(manifest))
+            cache = sqlite3.connect(index)
+            cache.execute("UPDATE file_index_checkpoint SET generation=2")
+            cache.commit(); cache.close()
+            self.catalog.record("db:source-a")
+            self.assertEqual(verifier.call_count, 2)
+            # Derived annotation edits must also invalidate the successful audit.
+            cache = sqlite3.connect(index)
+            cache.execute("UPDATE memory_annotations SET payload='{}'")
+            cache.commit(); cache.close()
+            self.catalog.record("db:source-a")
+            self.assertEqual(verifier.call_count, 3)
+            index.unlink()
+            with patch.object(self.catalog, "verify_file_memory", side_effect=lambda: self.write_file_index(index, memories, 2)) as rebuild:
+                self.catalog.record("db:source-a")
+                rebuild.assert_called_once_with()
+
+    def test_verifier_failure_and_mid_verification_edit_never_reuse_old_snapshot(self):
+        conn = self.database()
+        conn.close()
+        marker, manifest, _, _ = self.file_backend([
+            {"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        entry = manifest["entries"][0]
+        content = Path(marker["memory_root"]) / "domains" / entry["domain"] / "entries/current/revisions/1/content.md"
+        with patch.object(self.catalog, "verify_file_memory", side_effect=ValueError("audit unavailable")):
+            with self.assertRaisesRegex(ValueError, "audit unavailable"):
+                self.catalog.record("db:source-a")
+        self.assertIsNone(self.catalog._verified_memory_signature)
+
+        def changed_during_verification():
+            content.write_bytes(content.read_bytes())
+
+        with patch.object(self.catalog, "verify_file_memory", side_effect=changed_during_verification):
+            self.catalog._memory_verification_error = None
+            with self.assertRaisesRegex(ValueError, "changed during verification"):
+                self.catalog.record("db:source-a")
+        self.assertIsNone(self.catalog._verified_memory_signature)
 
     def archive(self, name="native.json"):
         path = Path(__file__).parent / "fixtures/attributed-retrieval.json"

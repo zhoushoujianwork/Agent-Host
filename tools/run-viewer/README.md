@@ -41,6 +41,10 @@ automatically loads `.agent-host/runtime/state/state.db` and the saved experienc
 in `experiments/experience/results`. Click a record in the sidebar, then click
 a phase or switch between events, tools, judgments, memory, and raw data.
 The page refreshes every five seconds while visible; the checkbox pauses it.
+Unchanged file-memory reads reuse a verified snapshot. A changed publication,
+manual file edit or index change triggers verification again; simultaneous reads
+share that verification. The first read after startup or a change can still take
+longer. Verification errors remain visible. See the [read-path details](README-detail.md#verified-memory-read-cache).
 
 To inspect an isolated host or choose an available port:
 

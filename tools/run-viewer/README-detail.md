@@ -262,6 +262,33 @@ loopback/read-only HTTP behavior. Browser checks cover filtering, graph links,
 memory details, trace navigation and responsive layout.
 
 
+## Verified memory read cache
+
+Each channel Catalog serializes memory validation across HTTP threads. The first
+read runs the Host verifier and validates the published index against current
+authoritative records. Subsequent reads reuse that successful audit while the
+filesystem signature is unchanged. The signature covers the backend marker,
+publication manifest and lock, domain mappings, every referenced revision's
+record/document, Host executable, index and index WAL. File identity, mode, size,
+mtime and ctime detect replacements and same-size edits with restored mtime;
+ancestor identity/mode checks reject symlink substitutions. Directory timestamps
+and operational state changes do not invalidate the memory audit.
+
+Reads still open a fresh read-only SQLite snapshot and hold the shared publication
+lock. On a signature change they release that lock before Host verification,
+then reacquire it and check that the authoritative inputs stayed unchanged.
+Only successful validation can authorize reads. Verifier failures are shared for
+one second to prevent queued readers launching identical failed jobs; a later
+refresh retries, and changed inputs bypass that cooldown. Missing or corrupt data
+fails explicitly; there is no fallback to the last verified contents. This is an in-process local
+filesystem optimization, not protection against a hostile filesystem or a change
+after the read snapshot has been established. Full `memory verify` remains
+available independently; the first read after startup/change retains its cost.
+
+Regression tests cover concurrent readers, generation/index changes, missing
+index recovery, same-size edits with restored mtime, verifier failure and an edit
+during verification. The record response and memory partition filters are unchanged.
+
 ## Shared channel workbench
 
 The Go service supervisor starts one viewer with repeated

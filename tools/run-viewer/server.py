@@ -13,6 +13,7 @@ import stat
 import os
 import fcntl
 import subprocess
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -212,6 +213,9 @@ class Catalog:
         self.agent, self.audience = agent, audience
         self.all_chats = all_chats
         self.host_binary = Path(host_binary).expanduser().resolve() if host_binary else ROOT / "bin" / "agent-host"
+        self._memory_validation_lock = threading.Lock()
+        self._verified_memory_signature = None
+        self._memory_verification_error = None
         if not agent or not audience:
             raise ValueError("agent and audience must be nonempty identifiers")
 
@@ -255,10 +259,69 @@ class Catalog:
         return result
 
     def memory_connection(self):
+        # A Catalog is shared by HTTP threads. Only one request verifies a changed
+        # publication; followers reuse the successful result, never an old one.
+        with self._memory_validation_lock:
+            return self._memory_connection()
+
+    def memory_signature(self, marker, manifest, source, index):
+        """Track all published revisions, including edits without a new generation."""
+        paths = {self.database.parent / "file-memory.json", source / "current.json",
+                 source / "publish.lock", self.host_binary}
+        domains, entries = manifest.get("domains") or [], manifest.get("entries") or []
+        if not isinstance(domains, list) or not isinstance(entries, list):
+            raise ValueError("file-memory publication requires domain and entry arrays")
+        for domain in domains:
+            if not isinstance(domain, dict):
+                raise ValueError("invalid file-memory domain identity")
+            identifier = domain.get("id")
+            if not isinstance(identifier, str) or len(identifier) != 32 or any(c not in "0123456789abcdef" for c in identifier):
+                raise ValueError("invalid file-memory domain identity")
+            paths.add(Path(marker["memory_root"]) / "domains" / identifier / "scope.json")
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("revisions"), list):
+                raise ValueError("invalid file-memory revision set")
+            identifier, domain, directory = entry.get("id"), entry.get("domain"), entry.get("directory")
+            if (not isinstance(identifier, str) or not identifier or identifier in {".", ".."}
+                    or any(c in identifier for c in "/\\\0") or not isinstance(domain, str)
+                    or len(domain) != 32 or any(c not in "0123456789abcdef" for c in domain)
+                    or directory not in {"entries", "skills"}):
+                raise ValueError("invalid file-memory publication entry")
+            for revision in entry.get("revisions", []):
+                number = revision.get("revision") if isinstance(revision, dict) else None
+                if type(number) is not int or number < 1:
+                    raise ValueError("invalid file-memory revision")
+                base = Path(marker["memory_root"]) / "domains" / domain / directory / identifier / "revisions" / str(number)
+                paths.update((base / "record.json", base / ("SKILL.md" if directory == "skills" else "content.md")))
+
+        def fingerprint(files):
+            # Include ancestors so replacing a directory with a symlink cannot
+            # preserve a cached result. Directory timestamps are irrelevant.
+            dependencies = set(files)
+            for path in files:
+                dependencies.update(path.parents)
+            result = []
+            for path in sorted(dependencies):
+                try:
+                    info = path.lstat()
+                except FileNotFoundError:
+                    result.append((str(path), None))
+                    continue
+                if stat.S_ISLNK(info.st_mode):
+                    raise ValueError("file-memory path contains a symlink")
+                identity = (info.st_dev, info.st_ino, info.st_mode)
+                if not stat.S_ISDIR(info.st_mode):
+                    identity += (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+                result.append((str(path), identity))
+            return tuple(result)
+
+        return fingerprint(paths), fingerprint({index, Path(str(index) + "-wal")})
+
+    def _memory_connection(self, verified_authority=None):
         marker = self.file_memory_marker()
         if marker is None:
+            self._verified_memory_signature = None
             return self.connection()
-        self.verify_file_memory()
         source_key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
         source = Path(marker["memory_root"]) / "sources" / source_key
         lock_path = source / "publish.lock"
@@ -282,17 +345,43 @@ class Catalog:
                 raise ValueError("file-memory backend changed during verification; refresh")
             manifest = memory_object(source / "current.json")
             index = Path(marker["cache_root"]) / source_key / "index.db"
+            signature = self.memory_signature(marker, manifest, source, index)
+            if verified_authority is not None and signature[0] != verified_authority:
+                raise ValueError("file-memory publication changed during verification; refresh")
+            if signature != self._verified_memory_signature and verified_authority is None:
+                self._verified_memory_signature = None
+                failure = self._memory_verification_error
+                if failure and failure[0] == signature and time.monotonic() < failure[1]:
+                    raise ValueError(failure[2])
+                # Host verification takes the exclusive publication lock. Release
+                # this read lock first, then recheck under a fresh shared lock.
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                lock.close()
+                lock = None
+                try:
+                    self.verify_file_memory()
+                except ValueError as error:
+                    # Waiting readers see the same failure promptly. A later
+                    # refresh may retry; changed files bypass this short cooldown.
+                    self._memory_verification_error = (signature, time.monotonic() + 1, str(error))
+                    raise
+                self._memory_verification_error = None
+                return self._memory_connection(signature[0])
             if index.resolve() != index or not index.is_file():
                 raise ValueError("verified file-memory cache is missing or has an unsafe path")
             conn = self.connection()
             conn.publication_lock = lock
             conn.execute("ATTACH DATABASE ? AS published_memory", (index.as_uri() + "?mode=ro",))
-            self.validate_memory_cache(conn, marker, manifest)
+            if signature != self._verified_memory_signature:
+                self.validate_memory_cache(conn, marker, manifest)
+                if signature != self.memory_signature(marker, manifest, source, index):
+                    raise ValueError("file-memory files changed during validation; refresh")
+                self._verified_memory_signature = signature
             return conn
         except Exception:
             if conn is not None:
                 conn.close()
-            else:
+            elif lock is not None:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
                 lock.close()
             raise
