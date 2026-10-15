@@ -69,3 +69,24 @@ func TestBackupPolicyIsAcceptedByServicePreflight(t *testing.T) {
 		t.Fatal("invalid backup policy passed startup")
 	}
 }
+
+func TestBackupInitDefaultsToExistingBackupsDirectory(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "host")
+	if err := os.MkdirAll(filepath.Join(root, "config"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var out, errout bytes.Buffer
+	if err := Run(t.Context(), []string{"backup", "init", "--root", root, "--identity", filepath.Join(base, "key")}, nil, &out, &errout); err != nil {
+		t.Fatal(err)
+	}
+	var initialized struct {
+		Destination string `json:"destination"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &initialized); err != nil {
+		t.Fatal(err)
+	}
+	if initialized.Destination != filepath.Join(root, "backups") {
+		t.Fatalf("unexpected default %s", initialized.Destination)
+	}
+}

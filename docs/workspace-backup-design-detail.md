@@ -75,6 +75,12 @@ stream to an X25519 recovery identity. `backup init` generates a private key
 outside the workspace and destination. The key is not included in archives or
 logs. The owner must retain an independent key copy for disk-loss recovery.
 
+The default destination is `ROOT/backups`, shared with historical migration
+artifacts. Only this subtree is allowed for internal archive storage; configuration,
+memory and cache directories are rejected. The export allowlist excludes all
+backup storage. Retention only removes policy-owned archive files referenced by
+its checkpoint index, leaving historical directories and unrelated files untouched.
+
 Write a temporary encrypted archive in the destination filesystem; flush and
 atomically rename only after verification succeeds. Failure, cancellation, disk
 full or unavailable destination leaves previous verified archives intact. Restrict
@@ -154,3 +160,13 @@ nine Skills, two invalidated records and four conflicted records, from a
 execution, memory processing, external intake or delivery was revived. The local
 HTTP backup-health response matched the automatic recovery point. Private evidence
 is recorded in `.agent-host/validation/backup-recovery-20261015.json`.
+
+The 2026-10-15 storage audit moved automatic archives into `backups/` directly.
+All 32 inspected historical SQLite databases passed integrity checks. Six readable
+migration/config rollback directories were retained. Five disposable test fixture
+directories and three superseded executable copies were removed, freeing
+278,246,656 bytes while preserving eight raw reports/logs under `validation/`.
+The retired external archive directory was removed after a new internal archive
+passed isolated restore verification. Audit and cleanup receipts are retained in
+`validation/backup-directory-audit-20261015.json` and
+`validation/backup-directory-cleanup-20261015.json`.

@@ -27,8 +27,13 @@
 ├── channels/<channel>/              # state、workspace、native、logs；钉钉可含 dws
 ├── datasource/plugins/<plugin>/     # 插件运行数据及来源持久快照
 ├── cli-state/
-└── backups/
+├── backup-state/                    # Automatic backup lock and health receipt
+└── backups/                         # Automatic archives and historical rollback data
 ```
+
+Automatic `.tar.gz.age` archives and their checkpoint index use `backups/`
+directly; no `workspace/` subdirectory is required. Backup storage is excluded
+from exports. See the [backup and recovery guide](workspace-backup-design.md).
 
 **学习后的 Skill 放在 `memory/domains/<domain-id>/skills/<id>/revisions/<revision>/SKILL.md`。**
 正式事实、偏好和决策放同域的 `entries/`。当前版本由来源发布清单决定，

@@ -24,7 +24,7 @@ func runBackup(ctx context.Context, args []string, out, errout io.Writer) error 
 	var root, destination, identity, timezone, archive, target string
 	var due bool
 	fs.StringVar(&root, "root", ".agent-host", "Host workspace root")
-	fs.StringVar(&destination, "destination", "", "Archive directory outside the Host root (init)")
+	fs.StringVar(&destination, "destination", "", "Archive directory; default ROOT/backups (init)")
 	fs.StringVar(&identity, "identity", "", "Separate private age recovery key")
 	fs.StringVar(&timezone, "timezone", "Local", "Calendar timezone for retention (init)")
 	fs.StringVar(&archive, "archive", "", "Encrypted .tar.gz.age archive (verify/restore)")
@@ -49,7 +49,7 @@ func runBackup(ctx context.Context, args []string, out, errout io.Writer) error 
 			return e
 		}
 		if destination == "" {
-			destination = filepath.Join(home, "Agent-Host-Backups", filepath.Base(filepath.Dir(root)))
+			destination = filepath.Join(root, "backups")
 		}
 		if identity == "" {
 			hash := sha256.Sum256([]byte(root))

@@ -45,7 +45,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 │   └── <project-id>/               # 记录、任务、worktree；新 clone/新工程可含 repository
 ├── cli-state/                      # 普通终端聊天的现有状态
 ├── backup-state/                   # Backup lock and last-success/failure receipt
-└── backups/                        # 迁移备份和旧部署材料
+└── backups/                        # Automatic archives and historical rollback data
 ```
 
 插件的可编辑配置放 `config/datasource.plugins.<名称>.json`；`datasource/plugins/<名称>/` 保存运行时
@@ -53,8 +53,9 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 和插件状态目录，加载器不会扫描它们作为组件配置。
 
 `backup.json` is a separate Host policy, validated at startup rather than decoded
-as a channel/plugin envelope. It schedules encrypted archives outside this root;
-the recovery key also stays outside the root and archive directory. See
+as a channel/plugin envelope. It schedules encrypted archives directly in
+`backups/` by default; an external destination is optional. The recovery key stays
+outside the root and archive directory. See
 [workspace backup and recovery](workspace-backup-design.md).
 
 `workspace` 只保存任务文件和产物，不放账号登录态。关联项目的任务仍使用项目真实

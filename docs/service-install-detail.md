@@ -66,7 +66,7 @@ sources and shared memory/cache roots. Both channel workers reconnected, and the
 workbench memory API returned 3 memories, 1 candidate and 2 channels. Old channel
 memory/revision/evidence and original derived tables remain identical to the
 stopped backup. The final isolated history receipt is
-`.agent-host/backups/file-memory-history-20261013-final/report.json`; cutover
+`.agent-host/validation/file-memory-history-20261013-final/report.json`; cutover
 backup is `.agent-host/backups/file-memory-cutover-20261013`.
 
 The default Agent now uses user-maintained AGENTS/SOUL/IDENTITY through

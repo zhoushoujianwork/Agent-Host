@@ -18,9 +18,10 @@ This is a recovery point for the Host's knowledge, not a full machine backup.
   cannot produce new backups; the latest successful recovery point stays visible.
 - Keep seven daily recovery points and four weekly recovery points. If content
   has not changed, reuse the same immutable archive and record a successful check.
-- Store archives outside `.agent-host/`, preferably on another disk or a backed-up
-  directory. A copy on the same disk helps with accidental edits but cannot
-  recover from loss of that disk. The destination must be explicitly configured.
+- Store automatic archives directly in `.agent-host/backups/`. The exporter
+  excludes backup storage, so archives do not include older archives. An external
+  destination remains configurable for protection against loss of this directory
+  or disk.
 - Show the last successful backup, destination, size and last verification result
   in the local workbench. Show failures explicitly and keep the previous good copy.
 
@@ -35,8 +36,7 @@ Archives are compressed tar files wrapped in age encryption: `.tar.gz.age`.
 Initialize once, then produce the first verified recovery point:
 
 ```sh
-./bin/agent-host backup init --root /absolute/.agent-host \
-  --destination /another-disk/agent-host-backups --timezone Asia/Singapore
+./bin/agent-host backup init --root /absolute/.agent-host --timezone Asia/Singapore
 ./bin/agent-host backup create --root /absolute/.agent-host
 ./bin/agent-host backup status --root /absolute/.agent-host
 ```
@@ -45,7 +45,9 @@ Initialization prints the separate recovery-key path, never its contents. Copy
 that key to independently protected storage. `make run` activates the daily job
 in the channel supervisor; it checks the deadline hourly and once at startup.
 The execution workbench shows backup health. The default local archive directory
-is `~/Agent-Host-Backups/<project>/`; it may share the source disk.
+is `.agent-host/backups/`, without an additional namespace directory. Use
+`--destination /another-disk/agent-host-backups` at initialization to select an
+external location instead. Local backups share the source disk.
 
 ## What is retained
 

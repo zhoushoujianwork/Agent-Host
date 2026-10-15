@@ -147,7 +147,7 @@ make build
 
 2026-10-13 的隔离历史验证使用只读 SQLite backup，所有 CLI 操作只作用于副本，
 没有平台连接、消息发送或业务任务。私有报告位于
-`.agent-host/backups/file-memory-history-20261013-final/report.json`。
+`.agent-host/validation/file-memory-history-20261013-final/report.json`。
 
 | 历史数据 | 对照结果 |
 | --- | --- |

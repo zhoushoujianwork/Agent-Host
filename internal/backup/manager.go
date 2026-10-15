@@ -156,10 +156,21 @@ func LoadPolicy(root string) (Policy, error) {
 	if e != nil {
 		return p, e
 	}
-	if p.Destination == root || inside(root, p.Destination) || p.IdentityFile == root || inside(root, p.IdentityFile) || inside(p.Destination, p.IdentityFile) {
-		return p, errors.New("backup destination and identity must be outside the workspace; identity must be outside the destination")
+	if e = validateStoragePaths(root, p.Destination, p.IdentityFile); e != nil {
+		return p, e
 	}
 	return p, nil
+}
+
+func validateStoragePaths(root, destination, identity string) error {
+	backups := filepath.Join(root, "backups")
+	if destination == root || inside(root, destination) && destination != backups && !inside(backups, destination) {
+		return errors.New("internal backup destination must be under the Host backups directory")
+	}
+	if identity == root || inside(root, identity) || identity == destination || inside(destination, identity) {
+		return errors.New("keep the recovery key outside the Host root and archive directory")
+	}
+	return nil
 }
 
 // Init creates a separate recovery key and policy, never overwriting either.
@@ -181,8 +192,8 @@ func Init(root, destination, identity, timezone string) error {
 	if _, e = time.LoadLocation(timezone); e != nil {
 		return e
 	}
-	if destination == root || inside(root, destination) || inside(root, identity) || inside(destination, identity) {
-		return errors.New("keep archives and key separately outside the Host root")
+	if e = validateStoragePaths(root, destination, identity); e != nil {
+		return e
 	}
 	policyPath := filepath.Join(root, "config", "backup.json")
 	if _, e = os.Lstat(policyPath); !errors.Is(e, os.ErrNotExist) {

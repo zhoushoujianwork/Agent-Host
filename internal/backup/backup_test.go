@@ -223,12 +223,53 @@ func TestArchiveRejectsUnsafeMembersAndPolicyPaths(t *testing.T) {
 			t.Fatalf("accepted path %s", name)
 		}
 	}
-	p.Destination = filepath.Join(root, "backups")
+	p.Destination = filepath.Join(root, "cache")
 	if e = writeJSON(filepath.Join(root, "config", "backup.json"), p); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = LoadPolicy(root); e == nil {
 		t.Fatal("accepted recursive backup destination")
+	}
+}
+
+func TestInternalBackupsAreAllowedExcludedAndPreserveHistoricalFiles(t *testing.T) {
+	root, p := backupFixture(t)
+	p.Destination = filepath.Join(root, "backups")
+	historical := filepath.Join(p.Destination, "migration", "state.db")
+	if e := os.MkdirAll(filepath.Dir(historical), 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(historical, []byte("historical rollback data"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	if e := writeJSON(filepath.Join(root, "config", "backup.json"), p); e != nil {
+		t.Fatal(e)
+	}
+	point, e := Create(context.Background(), root, false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	manifest, e := Verify(context.Background(), filepath.Join(p.Destination, point.Archive), p.IdentityFile)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, f := range manifest.Files {
+		if strings.HasPrefix(f.Path, "workspace/backups/") {
+			t.Fatal("recursively included backup storage")
+		}
+	}
+	if _, e = Create(context.Background(), root, false); e != nil {
+		t.Fatal(e)
+	}
+	if b, e := os.ReadFile(historical); e != nil || string(b) != "historical rollback data" {
+		t.Fatal("modified historical backup", e)
+	}
+	p.IdentityFile = filepath.Join(p.Destination, "key")
+	if e = writeJSON(filepath.Join(root, "config", "backup.json"), p); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = LoadPolicy(root); e == nil {
+		t.Fatal("allowed key beside archives")
 	}
 }
 
