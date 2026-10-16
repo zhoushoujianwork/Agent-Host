@@ -37,12 +37,12 @@ Each configured source remains authoritative for its documents. Startup supplies
 short source descriptions and available tools; it does not search these sources
 or add document bodies to the prompt. The native agent decides when to search
 and which result to read. Search does not automatically publish a memory.
-Answers cite articles with clickable original source links after the supported
-passage or in a short Sources list. Local copies use a recorded original URL,
-or the agent searches enabled sources such as Confluence and reads the matching
-original before linking. Local filesystem paths stay in internal retrieval
-evidence. If no URL is found, the answer names the article and source and states
-that an accessible link is unavailable; it does not invent a link.
+When an answer uses relevant external articles found during retrieval, it appends
+clickable title links after the supported passage or in a short Sources list.
+Local memory files and local knowledge paths remain internal context and receive
+no visible citation. A recorded original external article URL may be included
+when it supports the answer. Without one, omit the internal citation silently;
+do not add a link-unavailable notice or search only to manufacture a citation.
 Long documents are read in bounded excerpts. Continuing a read checks the
 previous content digest so a changing document cannot silently mix versions.
 

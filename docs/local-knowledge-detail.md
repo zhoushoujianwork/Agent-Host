@@ -81,11 +81,13 @@ metadata through the common knowledge receipt. Continuing a read supplies the
 previous `expected_content_sha256`; an edited document fails that continuation
 instead of silently combining versions. Absolute local source paths are not
 business citations. The configured source identity plus relative path identifies
-the document in internal retrieval and evidence. User-facing answers link the
-recorded original article URL, or search an enabled source such as Confluence
-and read the matching original before citing it. Without a verified URL, cite
-the title and source name and state that an accessible link is unavailable;
-never substitute a local path or fabricate a link.
+the document in internal retrieval and evidence. Ordinary answers do not expose
+local memory filenames, paths, internal source identifiers, or citation entries.
+If a local copy records an original external article URL relevant to the answer,
+append a clickable title link after the supported passage or at the end.
+Otherwise omit the internal citation silently, without a link-unavailable notice
+or an external lookup solely for citation purposes. External searches remain
+available when needed to answer the question. Never fabricate a link.
 
 Effective source configuration and audience grants participate in native session
 compatibility. Changing or removing a grant rotates the binding; per-call checks
