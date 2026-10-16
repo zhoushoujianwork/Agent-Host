@@ -82,7 +82,9 @@ previous `expected_content_sha256`; an edited document fails that continuation
 instead of silently combining versions. Absolute local source paths are not
 business citations. The configured source identity plus relative path identifies
 the document in internal retrieval and evidence. Ordinary answers do not expose
-local memory filenames, paths, internal source identifiers, or citation entries.
+local memory filenames, local note titles, paths, internal source identifiers,
+or citation entries. Use the content naturally without introducing internal
+memory or internal notes as its source.
 If a local copy records an original external article URL relevant to the answer,
 append a clickable title link after the supported passage or at the end.
 Otherwise omit the internal citation silently, without a link-unavailable notice

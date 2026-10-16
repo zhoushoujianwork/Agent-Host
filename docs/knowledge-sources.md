@@ -40,8 +40,9 @@ and which result to read. Search does not automatically publish a memory.
 When an answer uses relevant external articles found during retrieval, it appends
 clickable title links after the supported passage or in a short Sources list.
 Local memory files and local knowledge paths remain internal context and receive
-no visible citation. A recorded original external article URL may be included
-when it supports the answer. Without one, omit the internal citation silently;
+no visible citation or attribution to internal notes; their content is used
+naturally without naming local note titles. A recorded original external article
+URL may be included when it supports the answer. Without one, omit the internal citation silently;
 do not add a link-unavailable notice or search only to manufacture a citation.
 Long documents are read in bounded excerpts. Continuing a read checks the
 previous content digest so a changing document cannot silently mix versions.
