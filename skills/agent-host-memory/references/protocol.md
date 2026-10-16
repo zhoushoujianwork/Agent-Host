@@ -73,6 +73,19 @@ user excerpt exactly. Host decides the memory category and whether to retain it.
 
 ```sh
 agent-host memory submit --connection default --input /absolute/submission.json
+```
+
+Success returns intake metadata only: `id`, `connection`, `idempotency_key`,
+`digest`, `received_at`, and `ingestion_status=received`. Report "Submitted to
+Agent-Host" and stop. Host handles selection, duplicate/conflict checks and
+publication asynchronously; ordinary reporting does not poll or assess adoption.
+Even an identical resubmission after processing returns only intake confirmation.
+Validation, authorization, payload/key mismatch and persistence errors still fail
+submission explicitly.
+
+For explicit diagnostics, verified imports, or confirmation after a transport timeout:
+
+```sh
 agent-host memory receipt --connection default --receipt RETURNED_RECEIPT_ID
 agent-host memory receipt --connection default --key ORIGINAL_IDEMPOTENCY_KEY
 ```
@@ -233,7 +246,7 @@ draft policy (up to 12 steps, bounded fields). Oversized submissions fail withou
 silent truncation. Select the relevant observed output yourself and label omitted
 material as omitted; do not invent a shorter successful result.
 
-Receipts contain separate `ingestion_status`, `processing_status`, and `results`.
+Explicit receipt queries contain separate `ingestion_status`, `processing_status`, and `results`.
 Ingestion `received` means durable intake. Processing is `pending`, `processing`,
 `completed`, or `failed`. Per-item status is `pending`, `published`, `excluded`, or
 `failed`, with a reason and any memory ID/revision. `excluded` may identify a

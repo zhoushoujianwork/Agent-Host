@@ -14,8 +14,9 @@ memory, its sources, publication decisions, and access scope.
 For example, after this Codex conversation establishes a project decision, the
 user can say “save this decision to Agent-Host.” The agent submits the decision
 with the relevant user statement and conversation reference. Host returns a
-receipt, then reports whether a memory became available. A fresh conversation
-can retrieve the decision and inspect its source.
+durable submission confirmation. The reporting agent says "Submitted to
+Agent-Host" and finishes; Host handles adoption and publication afterward.
+A fresh conversation can retrieve an adopted decision and inspect its source.
 
 ## Recommended design
 
@@ -37,8 +38,13 @@ The normal workflow is:
    read the selected record and its evidence before relying on it.
 2. At a useful checkpoint, submit a small set of durable statements or lessons
    and the source excerpts supporting each one.
-3. Check the receipt. Tell the user what was published, excluded, or failed.
-   Receipt of material alone does not mean a memory has been saved for recall.
+3. Confirm successful submission and finish. Do not wait for adoption or poll
+   processing results. Host handles them in the background; explicit diagnostics
+   and verified document imports can still inspect the receipt.
+
+Submission succeeds only after Host durably receives the material. Invalid input,
+access failures and storage errors still fail submission. Successful submission
+does not promise that a memory is already available for recall.
 
 Explicit requests to remember are supported immediately. Automatic checkpoint
 submission requires a user-configured standing preference for this destination;

@@ -203,7 +203,7 @@ def submit(binary, connection, output, manifest):
             receipt = cli(binary, connection, "submit", "--input", str(output / batch["path"]))
             batch["receipt_id"] = receipt["id"]
         for _ in range(6):
-            if receipt["processing_status"] not in ("pending", "processing"):
+            if receipt.get("processing_status") not in (None, "pending", "processing"):
                 break
             time.sleep(2)
             receipt = cli(binary, connection, "receipt", "--key", batch["key"])

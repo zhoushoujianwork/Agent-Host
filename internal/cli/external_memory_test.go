@@ -93,8 +93,13 @@ func TestExternalMemoryCLIEndToEndAcrossConnectionsAndRestart(t *testing.T) {
 	v := state.ExternalSubmission{SchemaVersion: 1, Key: "stable-key", Source: state.ExternalSource{Entry: "codex", ObservedAt: now}, Items: []state.ExternalItem{{Kind: "statement", Text: "The release distribution uses source only.", EvidenceIDs: []string{"u"}}}, Evidence: []state.ExternalEvidence{{ID: "u", Author: "owner", Role: "user", Text: "The release distribution uses source only.", ObservedAt: now}}}
 	data, _ := json.Marshal(v)
 	intake, err := call(string(data), "submit", "--connection", "codex", "--input", "-")
-	if err != nil || intake["ingestion_status"] != "received" || intake["processing_status"] != "pending" {
+	if err != nil || intake["ingestion_status"] != "received" {
 		t.Fatal(intake, err)
+	}
+	for _, field := range []string{"processing_status", "results"} {
+		if _, ok := intake[field]; ok {
+			t.Fatalf("submission exposed processing field %q: %v", field, intake)
+		}
 	}
 	// The worker starts after intake, representing a restart with pending jobs.
 	stopWorker := x.start(t.Context())
@@ -152,6 +157,18 @@ func TestExternalMemoryCLIEndToEndAcrossConnectionsAndRestart(t *testing.T) {
 	again, err := call(string(data), "submit", "--connection", "codex", "--input", "-")
 	if err != nil || again["id"] != intake["id"] {
 		t.Fatal(again, err)
+	}
+	if again["ingestion_status"] != "received" || again["processing_status"] != nil || again["results"] != nil {
+		t.Fatal("resubmission exposed publication outcome", again)
+	}
+	changed := v
+	changed.Items = append([]state.ExternalItem(nil), v.Items...)
+	changed.Evidence = append([]state.ExternalEvidence(nil), v.Evidence...)
+	changed.Items[0].Text = "A different statement."
+	changed.Evidence[0].Text = changed.Items[0].Text
+	changedData, _ := json.Marshal(changed)
+	if _, err := call(string(changedData), "submit", "--connection", "codex", "--input", "-"); err == nil {
+		t.Fatal("changed payload under the same key reported success")
 	}
 	if _, err := call("", "connection", "revoke", "--connection", "codex"); err != nil {
 		t.Fatal(err)

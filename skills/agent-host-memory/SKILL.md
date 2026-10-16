@@ -63,12 +63,18 @@ Host memories as new evidence.
   use the current observation time and make clear it is the time of observation.
 
 Write the JSON payload to a temporary file without shell interpolation, submit
-it once with a stable idempotency key, then inspect the receipt. On a transport
-timeout, look up that key first. Resend only the identical payload and key if
-needed. Poll at most six times over 30 seconds, then report the durable receipt
-and unfinished status; stop on terminal failure and retain its reason.
+it once with a stable idempotency key. When `ingestion_status=received`, report
+"Submitted to Agent-Host" and stop; retain the receipt ID. Do not poll for
+selection/publication or report those outcomes during ordinary submissions.
+On a transport timeout, look up that key first: a receipt with
+`ingestion_status=received` confirms submission regardless of processing outcome.
+Resend only the identical payload and key if the receipt is absent; other lookup
+errors leave submission unconfirmed and must be reported. Intake errors remain
+submission failures. Inspect processing only when explicitly requested for
+diagnostics or when verifying a saved-document import as described above.
 
-Tell the user which items were published, excluded, or failed. `received` alone
-does not mean memory is available for recall. Publication does not prove business
-success. Host performs selection, duplicate/conflict handling, and blacklist
+Submission success means Host durably received the material, not that memory is
+already available for recall. Host owns subsequent selection and publication;
+the reporting agent's work ends at intake confirmation. Publication does not
+prove business success. Host performs selection, duplicate/conflict handling, and blacklist
 admission; never edit its files/database or fabricate a run to bypass that path.

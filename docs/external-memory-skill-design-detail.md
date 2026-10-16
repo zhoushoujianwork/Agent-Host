@@ -153,7 +153,10 @@ foreign partitions, withdrawal, duplicate reuse, assertion comparison isolation,
 Unicode chunking, redaction, source immutability and excluded task material.
 
 Intake persists the selected source envelope and a pending receipt before returning
-`ingestion_status=received`. One worker per owning Host processes pending receipts
+`ingestion_status=received`. The submit response includes intake metadata only,
+even for an idempotent resubmission whose processing has finished. It omits
+`processing_status` and `results`; explicit receipt queries retain those fields.
+One worker per owning Host processes pending receipts
 on startup and after intake. `processing_status` is separate from each item's
 `pending`, `published`, `excluded` or `failed` result. Partial success remains
 visible, and provider failure does not replay the business task.
@@ -179,8 +182,11 @@ not a general retry scheduler.
 
 Receipt responses omit source bodies, and receipt/read responses omit raw decision
 audits; the durable record retains them. Clients look up by receipt ID or original key after a transport
-timeout, and only resend the identical envelope/key when necessary. The skill
-polls at most six times over 30 seconds before reporting unfinished work.
+timeout, and only resend the identical envelope/key if the receipt is absent.
+Ordinary submission ends at durable intake confirmation, regardless of processing
+outcome. Processing inspection remains available for explicit diagnostics and
+verified source-note imports; the importer polls at most six times before
+recording unfinished work.
 
 ## Recall, native use and inspection
 

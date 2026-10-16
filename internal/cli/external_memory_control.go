@@ -36,14 +36,21 @@ type externalMemoryControl struct {
 	wake      chan struct{}
 }
 
+// Submission acknowledges durable intake only, including idempotent resubmission
+// after processing. Publication outcomes belong to explicit receipt inspection.
+func externalSubmissionView(r state.ExternalReceipt) map[string]any {
+	return map[string]any{"id": r.ID, "connection": r.Connection, "idempotency_key": r.Submission.Key,
+		"digest": r.Digest, "received_at": r.ReceivedAt, "ingestion_status": r.IngestionStatus}
+}
+
 func externalReceiptView(r state.ExternalReceipt) any {
 	results := append([]state.ExternalItemResult(nil), r.Results...)
 	for i := range results {
 		results[i].Audit = nil
 	}
-	return map[string]any{"id": r.ID, "connection": r.Connection, "idempotency_key": r.Submission.Key,
-		"digest": r.Digest, "received_at": r.ReceivedAt, "ingestion_status": r.IngestionStatus,
-		"processing_status": r.ProcessingStatus, "results": results}
+	view := externalSubmissionView(r)
+	view["processing_status"], view["results"] = r.ProcessingStatus, results
+	return view
 }
 
 func newExternalMemoryControl(s *state.Store, o options, client *jev.Client) *externalMemoryControl {
@@ -173,7 +180,7 @@ func (x *externalMemoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request
 				}
 				var receipt state.ExternalReceipt
 				receipt, err = x.store.ReceiveExternal(ctx, c.ID, host.ID(), *a.Submission)
-				value = externalReceiptView(receipt)
+				value = externalSubmissionView(receipt)
 				if err == nil {
 					select {
 					case x.wake <- struct{}{}:

@@ -35,8 +35,10 @@ const externalMemoryUsage = `External agent memory (local running Host, file-mem
 All output is JSON. --json is accepted for explicitness. --connections FILE
 overrides ~/.config/agent-host/memory-connections.json. --connection defaults to
 AGENT_HOST_MEMORY_CONNECTION or "default". Submit acknowledges durable intake;
-query its receipt until processing_status is completed or failed. Installation
-does not enable checkpoint collection; --checkpoint-save is an explicit opt-in.
+report submission success and stop. Host handles selection and publication in
+the background. Receipt inspection is optional for explicit diagnostics or
+verified imports. Installation does not enable checkpoint collection;
+--checkpoint-save is an explicit opt-in.
 `
 
 type externalProfile struct {

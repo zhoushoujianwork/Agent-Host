@@ -96,14 +96,16 @@ class SourceImportTests(unittest.TestCase):
                     return {"binding": binding}
                 if args[0] == "receipt":
                     self.assertEqual(args, ("receipt", "--key", batch["key"]))
-                    raise RuntimeError("agent-host: sql: no rows in result set")
+                    if sum(call[0] == "receipt" for call in calls) == 1:
+                        raise RuntimeError("agent-host: sql: no rows in result set")
+                    return {"id": "receipt", "processing_status": "completed", "results": [{"status": "excluded", "reason": "fixture"}]}
                 self.assertEqual(args, ("submit", "--input", str(envelope)))
                 self.assertEqual(envelope.read_bytes(), original)
-                return {"id": "receipt", "processing_status": "completed", "results": [{"status": "excluded", "reason": "fixture"}]}
+                return {"id": "receipt", "ingestion_status": "received"}
 
-            with mock.patch.object(IMPORT, "cli", side_effect=cli):
+            with mock.patch.object(IMPORT, "cli", side_effect=cli), mock.patch.object(IMPORT.time, "sleep"):
                 IMPORT.submit("fixture", "default", output, manifest)
-            self.assertEqual([call[0] for call in calls], ["connection", "receipt", "submit"])
+            self.assertEqual([call[0] for call in calls], ["connection", "receipt", "submit", "receipt"])
             self.assertEqual(batch["status"], "completed")
 
 
