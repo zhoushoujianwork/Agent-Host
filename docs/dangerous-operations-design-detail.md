@@ -6,6 +6,9 @@ for behavior and first-scope tradeoffs.
 
 ## Identity and native-session policy
 
+The two providers verify their local Owner bindings independently; no cross-channel
+two-factor confirmation is implemented or required by this policy.
+
 DingTalk matches the configured enterprise and `owner_user_id` against the
 transport sender staff ID. Feishu matches the configured application/tenant and
 `owner_open_id` against the sender Open ID. `internal/cli/agents.go` resolves the
@@ -198,3 +201,34 @@ approval round trip is claimed. DWS authenticates the configured owner, not a
 second member identity; the non-owner check is the explicit real CLI debug profile.
 Live group approval acceptance remains separate. Private deployment, DWS receipts,
 tool observations and the CLI summary share the acceptance directory above.
+
+## Permission and approval regression on 2026-10-16
+
+The authorization matrix now explicitly checks missing sender and Owner identities
+for DingTalk, Feishu IM and Feishu meetings. They receive `dontAsk` restricted reads;
+missing Owner configuration also disables approval delivery. Existing checks retain
+Owner/member native-session separation and deny the previous Owner after rebinding.
+
+The channel lifecycle regression checks that delivery records a pending proposal
+with no execution before a reply. Expired and canceled proposals cannot run. A
+failed approved execution retains its failed run and approval evidence; duplicate
+Owner replies cannot replay it. Existing tests cover both providers' successful
+approval paths, forged/cross-scope replies, rejection, unknown delivery, changed
+workspaces, durable recovery and concurrent one-use grant consumption.
+
+The real installed Claude restricted smoke passed using the protected DingTalk
+provider environment and disposable workspace/native profile. Its native inventory
+was `[Read]`, a real Read call succeeded, and the mutation marker remained absent.
+`make check` and the focused race-detection suite (119 tests across six packages)
+passed. No production runtime was restarted by this validation task.
+
+The user authorized Feishu's `test` and DingTalk's `Cyber 小钉 周守健` groups
+for live acceptance. Test instructions were sent on both platforms, requesting
+only a disposable `/tmp/agh-owner-approval-<provider>-20261016.txt` marker with
+`APPROVAL_TEST_OK`. Both notices were independently read back from their groups:
+Feishu message `om_x100b622ddb432cbccfdfcdb3b2a9838` and DingTalk message
+`msgXdNgupPG2xcZXT1J02OppQ==`. These notices are not approval requests or
+completed round trips.
+Both available CLI user identities match their configured Owner. A real non-owner
+member must submit the request and the Owner must reply before live acceptance
+can be claimed; identity must not be fabricated or temporarily rebound for testing.

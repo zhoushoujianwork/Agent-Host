@@ -74,6 +74,17 @@ func TestChannelAuthorizationProfilesBindVerifiedOwnerAcrossProviders(t *testing
 			if !oldOwner.Config.RestrictedReadOnly || newKey == ownerKey || newKey == memberKey {
 				t.Fatal("owner rebinding retained native authority")
 			}
+			unknown, _ := resolve("")
+			if !unknown.Config.RestrictedReadOnly || unknown.Config.PermissionMode != "dontAsk" {
+				t.Fatal("missing sender identity gained owner tools")
+			}
+			parent.OwnerID = ""
+			for _, sender := range []string{"", "verified-owner", "new-owner", "member"} {
+				h, _ := resolve(sender)
+				if !h.Config.RestrictedReadOnly || h.Config.PermissionMode != "dontAsk" || h.Config.RequestApproval != nil {
+					t.Fatal("missing owner binding gained tools or approval delivery", sender)
+				}
+			}
 		})
 	}
 }

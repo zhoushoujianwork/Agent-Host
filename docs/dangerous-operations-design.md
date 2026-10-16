@@ -13,6 +13,9 @@ an owner message, or supplying instructions in a document.
 
 Both channels already recognize a configured owner:
 
+Each channel verifies its own configured Owner independently. This is not a
+requirement for the Owner to confirm the same request through both platforms.
+
 | Channel | Owner binding | Current behavior |
 | --- | --- | --- |
 | DingTalk | Enterprise ID and `owner_user_id` | Private input must match `senderStaffId`; group mentions retain each sender's staff ID. |
@@ -108,6 +111,9 @@ profiles are implemented; live platform approval acceptance remains unverified.
 Implemented: trusted per-turn owner resolution, prompt/native profiles, durable
 one-use owner approvals, separate approved execution and native-session partitions.
 Automated tests cover both provider paths; bounded live approval validation remains.
+On 2026-10-16, additional regression checks verified missing identities, waiting
+without execution, expiry, Owner changes and failed execution without replay.
+The real restricted Claude smoke test passed again; group round trips remain pending.
 Existing owner configuration is reused; no chat command can change it. This
 increment covers channel requests; ordinary
 local CLI permissions remain outside this increment.

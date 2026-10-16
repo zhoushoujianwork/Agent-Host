@@ -5,10 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"agent-host/internal/approval"
 	"agent-host/internal/assembly"
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/harness"
 	"agent-host/internal/state"
 )
 
@@ -30,6 +32,56 @@ func approvalFixture(t *testing.T) (*projectFixture, state.ChannelMessage, state
 	r := state.Run{ID: "proposal-run", ProjectID: p.ID, Workspace: p.Workspace, Projects: []state.ProjectRef{{ID: p.ID, Name: p.Name, Workspace: p.Workspace, Scope: p.Scope}}}
 	proposal := approval.Proposal{Operation: "Delete local project", Target: p.Workspace, Impact: "All local files are removed. Remote repository is unaffected.", Shareable: true}
 	return f, source, r, proposal
+}
+
+func TestApprovalWaitsAndTerminalFailuresNeverReplay(t *testing.T) {
+	for _, scenario := range []string{"expired", "owner changed", "execution failed"} {
+		t.Run(scenario, func(t *testing.T) {
+			f, m, r, p := approvalFixture(t)
+			ctx := t.Context()
+			if err := f.service.RequestApproval(ctx, m, r, p); err != nil {
+				t.Fatal(err)
+			}
+			id := Key("operation-approval-v1", m.ID, p.Operation, p.Target, p.Impact)[:24]
+			a, err := f.service.Store.OperationApproval(ctx, id)
+			if err != nil || a.Status != "pending" || a.RunID != "" || len(f.runner.snapshot()) != 0 {
+				t.Fatal("proposal did not wait without execution", a, err)
+			}
+			wantStatus, wantRuns := "consumed", 1
+			switch scenario {
+			case "expired":
+				if err := f.service.Store.RefreshOperationApprovals(ctx, m.Channel, m.AccountID, "owner", a.ExpiresAt); err != nil {
+					t.Fatal(err)
+				}
+				wantStatus, wantRuns = "expired", 0
+			case "owner changed":
+				f.service.OwnerID = "replacement-owner"
+				if err := f.service.Store.RefreshOperationApprovals(ctx, m.Channel, m.AccountID, f.service.OwnerID, time.Now().UTC()); err != nil {
+					t.Fatal(err)
+				}
+				wantStatus, wantRuns = "canceled", 0
+			case "execution failed":
+				f.runner.run = func(context.Context, harness.Request) (harness.Result, error) {
+					return harness.Result{Status: "failed", Error: "fixture write failed"}, errors.New("fixture write failed")
+				}
+			}
+			f.process(t, groupInput(t, f.serviceFixture, "answer", "owner", "group", "Approve "+id))
+			f.process(t, groupInput(t, f.serviceFixture, "duplicate", "owner", "group", "Approve "+id))
+			a, err = f.service.Store.OperationApproval(ctx, id)
+			if err != nil || a.Status != wantStatus || len(f.runner.snapshot()) != wantRuns {
+				t.Fatal("terminal approval replayed or lost its status", a, err)
+			}
+			if scenario == "execution failed" {
+				if a.RunID == "" || !strings.Contains(a.Error, "fixture write failed") {
+					t.Fatal("execution failure lost approval evidence", a)
+				}
+				run, err := f.service.Store.Run(ctx, a.RunID)
+				if err != nil || run.ExecutionStatus != "failed" {
+					t.Fatal("execution failure reported as success", run, err)
+				}
+			}
+		})
+	}
 }
 
 func TestDingTalkOwnerMentionApprovalExecutesOnceWithoutMemberElevation(t *testing.T) {
