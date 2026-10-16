@@ -93,6 +93,12 @@ Otherwise omit the internal citation silently, without a link-unavailable notice
 or an external lookup solely for citation purposes. External searches remain
 available when needed to answer the question. Never fabricate a link.
 
+The shared summary and final-reference rules are supplied in both native system
+guidance and every current-turn prompt, including resumed conversations. Agent
+configuration must agree with these rules; context files are loaded at startup,
+so updating them requires a restart and rotates native compatibility while
+retaining scoped memory.
+
 Effective source configuration and audience grants participate in native session
 compatibility. Changing or removing a grant rotates the binding; per-call checks
 reject stale configuration. Document content digests identify retrieved versions
