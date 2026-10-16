@@ -86,7 +86,9 @@ local memory filenames, local note titles, paths, internal source identifiers,
 or citation entries. Use the content naturally without introducing internal
 memory or internal notes as its source.
 If a local copy records an original external article URL relevant to the answer,
-append a clickable title link after the supported passage or at the end.
+append a clickable title link in the final References section, after the short
+summary and any minimal operation example. Do not place citations inline or
+repeat the full article; the linked article provides the detailed instructions.
 Otherwise omit the internal citation silently, without a link-unavailable notice
 or an external lookup solely for citation purposes. External searches remain
 available when needed to answer the question. Never fabricate a link.

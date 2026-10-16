@@ -37,8 +37,15 @@ Each configured source remains authoritative for its documents. Startup supplies
 short source descriptions and available tools; it does not search these sources
 or add document bodies to the prompt. The native agent decides when to search
 and which result to read. Search does not automatically publish a memory.
-When an answer uses relevant external articles found during retrieval, it appends
-clickable title links after the supported passage or in a short Sources list.
+Routine answers start with a short summary: at most 200 Chinese characters or
+100 English words of prose, with at most one useful operation example of up to
+three code lines. Code and references are outside the prose budget. Detailed
+background and full procedures stay in the linked articles unless the user
+explicitly asks for a detailed answer or complete artifact.
+When an answer uses relevant external articles found during retrieval, it ends
+with a References section (引用 in Chinese), containing one to three relevant
+clickable article title links after all explanation and examples. No prose follows
+the reference list.
 Local memory files and local knowledge paths remain internal context and receive
 no visible citation or attribution to internal notes; their content is used
 naturally without naming local note titles. A recorded original external article
