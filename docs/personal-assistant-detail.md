@@ -2,7 +2,7 @@
 
 Reviewed: 2026-10-12. The [main design](personal-assistant.md) governs scope and
 implementation order. P0 is implemented in the
-[release record](release-follow-up.md#p0-contextual-assistance-and-accessible-memory).
+[release record](release-follow-up-detail.md#p0-acceptance).
 Implementation and bounded acceptance are described below; research and later
 personal-memory proposals retain their own evidence boundaries.
 

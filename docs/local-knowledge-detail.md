@@ -1,7 +1,9 @@
 # Local knowledge implementation details
 
 Current datasource policy: enabled `datasource.plugins.*.json` plugins are global
-across channels, Agents, projects and owner/group conversations. Old plugin
+at catalog level across channels, Agents and projects. Optional user/group grants
+and sender execution profiles constrain actual access; restricted member runs omit
+business MCP tools. Old plugin
 `access`, source project/audience fields and Agent datasource selectors are
 ignored. Standalone legacy configurations and historical scope-validation
 records below retain their original meaning. See the
@@ -13,7 +15,9 @@ as [remote knowledge](knowledge-sources-detail.md).
 
 ## Configuration and selection
 
-Add a source to the private version-1 knowledge configuration. Identifiers and
+Current unified startup uses [datasource component files](datasource-plugins-design.md).
+The standalone configuration and project/audience selectors below describe the
+legacy compatibility path, not unified plugin access control. Identifiers and
 paths below are synthetic:
 
 ```json
@@ -65,7 +69,7 @@ native MCP tools according to the configured execution policy. Run
 `knowledge check` and `service check` before restarting with `make install`.
 Source declarations do not register projects automatically. Registry changes
 use the existing stopped-service procedure in the
-[installation guide](service-install.md#register-production-projects).
+[project routing guide](runtime-assembly.md#goal-and-usage).
 
 ## Runtime tools and evidence
 

@@ -3,7 +3,9 @@
 The [agent instance extension](agent-instances.md) selects an Agent and audience
 before project assembly. Project scope is unchanged; native sessions and learned
 memory additionally belong to that instance/audience. Channel instances use
-approval bypass with behavioral disclosure rules, not OS access isolation.
+verified owner/member profiles: owners retain configured execution tools, while
+members receive restricted reads and supported owner-approval proposals. See
+[authorization](dangerous-operations-design.md); this is not OS access isolation.
 
 Status: local project selection and automatic channel routing are implemented.
 The [intelligent routing extension](smart-project-routing.md) adds registered
@@ -20,7 +22,9 @@ otherwise run in the configured default workspace. Project files retain code, do
 rules and deliverables. Host memory retains attributed statements and reviewed
 experience. Native conversation state stays with Claude.
 
-Register existing directories locally, using the same state home as the service:
+Local checkout discovery and selected-target enrollment are automatic; see
+[project records](development-projects.md). Manual registration remains available,
+using the same state home as the service:
 
 ```sh
 agent-host project add --id api --name 'API project' --workspace /absolute/path/api --home /absolute/path/state
@@ -73,9 +77,9 @@ its revisions or source evidence. Joint tasks recall the selected projects'
 existing memory with its scope preserved; they do not transfer memory between
 projects. Automatic new memory and experience extraction are paused for joint
 tasks until their attribution policy is implemented.
-An unresolved routing result from a populated catalog also pauses automatic
-memory and experience publication and retries for that default-workspace turn.
-An empty catalog uses the normal default-memory flow.
+Current default-workspace execution uses normal history, memory and experience
+processing, including with a populated catalog. Historical unresolved runs retain
+their skipped learning outcomes without replay.
 
 A single project uses its cwd. Parallel multi-project work uses `~/workspace`
 with the selected project directories added to the native invocation. Naming a
@@ -85,7 +89,8 @@ the installed production default is not automatically relocated.
 Default handoff can reuse a compatible session; trusted per-turn instructions
 keep unrelated earlier context from defining the new task's target.
 
-All projects within an agent use its configured Claude model and native tool permissions.
+Projects within an Agent use its selected Claude configuration; verified sender
+authorization further restricts native tools on each turn.
 Shared directory access can extend beyond the participating project set through
 the [native profile policy](service-install-detail.md#directory-access-policy).
 This does not add projects, memories or knowledge sources to the run.

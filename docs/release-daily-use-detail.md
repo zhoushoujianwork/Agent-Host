@@ -1,5 +1,9 @@
 # Everyday reliability: validation record
 
+Historical evidence for the 2026-10-12 revision. Its prompt-only group policy
+was superseded by [owner/member authorization](dangerous-operations-design.md).
+These results do not validate the later approval flow.
+
 Companion to the [delivered release](release-daily-use.md).
 [Remaining work](release-follow-up.md) is tracked separately. These records keep
 execution, reply delivery, task acceptance and memory persistence distinct.

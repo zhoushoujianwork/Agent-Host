@@ -9,7 +9,11 @@ Channel receipts retain channel, account, tenant, sender, audience and project
 scope. `Memory.SenderID` and `internal/state/memory_attribution.go` distinguish
 who made a statement. `internal/host/instances.go` supplies authenticated sender
 metadata for each invocation. Existing history and assistance paths retain source
-citations, but do not provide an owner-private per-person profile store.
+citations. Verified private users now have first-contact profile files and
+optional configured overrides, implemented in `internal/cli/users.go` and
+`internal/assembly/workspace.go`. See [workspace contracts](workspace-layout-detail.md#multi-user-recording-and-retrieval).
+The proposal below concerns learned preference observations and their controls;
+it must reuse those identity/profile boundaries rather than add a second registry.
 
 Reuse preference publication, revision, exclusion and source-read checks. The
 profile is a derived view, not another copy of durable truth or the current-matter

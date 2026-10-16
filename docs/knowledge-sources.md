@@ -72,7 +72,7 @@ flowchart TD
     T[User task and authenticated identity] --> A[Assemble project, eligible memory and tool access]
     M[(Scoped Host memory)] --> A
     A --> N[Native agent execution]
-    N -->|Search and read when needed| K[Read-only knowledge MCP]
+    N -->|Search and read when needed| K[Knowledge MCP: retrieval and authorized Confluence writes]
     K --> D[Dokki]
     K --> C[Confluence]
     K --> L[Selected local Markdown]
@@ -101,12 +101,14 @@ can add stronger evidence without rewriting what the original discussion proved.
 
 - **Mount tools, retrieve content on demand.** Reuse memgov's concrete Dokki and
   Confluence connector logic in Agent-Host's own MCP process. Enabled
-  datasource plugins are mounted globally
-  at native session startup; tool use happens later. Effective configuration
+  datasource plugins supply a global catalog. Optional `users.json` restricts
+  non-owner/shared source access; current restricted member profiles omit business
+  MCP servers. Eligible tools mount at native session startup; tool use happens later.
+  Effective configuration
   changes replace incompatible native sessions.
 - **Expose selected local material through the same tools.** Keep business cwd
-  separate from source roots. Configured retained notes are available to every
-  task audience through an enabled datasource plugin, with originals and
+  separate from source roots. Configured retained notes use the same source
+  grants and execution-profile restrictions as other knowledge, with originals and
   versions preserved. Reading a note
   does not turn it into learned memory; see [local knowledge](local-knowledge.md).
 - **Use a separate DWS intake.** The current application-bot channel only sees
@@ -153,7 +155,9 @@ can add stronger evidence without rewriting what the original discussion proved.
 Copy the [configuration example](../config/data-knowledge.example.json) to a private
 file. Unified startup uses `datasource.plugins.<name>.json` with `enabled`
 and `settings`; sources need no project, audience, channel or Agent selectors.
-All enabled datasource plugins are global. Legacy standalone `knowledge.json`
+Enabled datasource plugins supply a global catalog; optional `users.json` adds
+explicit non-owner/shared grants, and restricted member execution omits business
+MCP tools. Legacy standalone `knowledge.json`
 continues to accept project/audience selectors for compatibility. Provider token
 files contain `{"api_key":"..."}` for Dokki or `{"pat":"..."}` for Confluence.
 Configuration and token files must be owner-private. Local Markdown sources
@@ -171,8 +175,9 @@ agent-host chat --knowledge-config /absolute/private/path/knowledge.json \
 The allow rules explicitly permit these two named MCP instances, including
 Confluence page and blog creation and updates;
 native permissions still govern other tools. `check` validates local configuration,
-not remote authentication. The managed service uses the same file through
-`knowledge_config` in its private `service.json`. Existing sessions rotate when
+not remote authentication. Current managed startup loads
+`config/datasource.plugins.*.json`; `knowledge_config` in `service.json` is a
+legacy single-runtime configuration. Existing sessions rotate when
 the effective source configuration or credential changes. Knowledge results stay
 in the run evidence and are excluded from execution-experience publication.
 

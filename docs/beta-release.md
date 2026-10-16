@@ -1,8 +1,10 @@
 # Run from source
 
 Each tester runs their own instance with their own accounts, credentials and
-local memory. This beta uses Claude Code; automatic user-statement memory is
-available, while execution experience still requires `memory accept`.
+local memory. This beta uses Claude Code. Migrated file-memory runtimes
+automatically publish
+selected execution experience; legacy SQLite experience requires `memory accept`.
+Migration and backend selection are explicit, as described in the [memory guide](file-memory-design.md).
 The repository distributes source, without GitHub Releases or prebuilt packages.
 See [distribution notes](beta-release-detail.md) and [feedback](feedback.md).
 
@@ -40,8 +42,10 @@ make run
 ```
 
 Send a private request or @mention your bot in an enterprise group. Groups
-share an audience and use system-prompt judgment; native tools retain their
-configured access. The runtime guide explains project-local configuration, visible logs and
+share an audience. Verified owners retain configured native tools; members
+receive restricted read tools, with a separate owner-approval path for supported
+group requests. See [current permissions](dangerous-operations-design.md).
+The runtime guide explains project-local configuration, visible logs and
 Ctrl-C shutdown. DingTalk and Feishu are supported; each needs its own channel
 configuration. Building and local execution support macOS/Linux.
 

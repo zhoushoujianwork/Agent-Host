@@ -10,7 +10,9 @@ non-owner users and shared conversations additionally require exact source grant
 in `users.json`; they receive none by default. Owner access and installations
 without the registry retain the existing policy. Grants cover the whole reachable
 source and are applied before credential resolution; they do not impersonate the
-requesting person in the upstream service.
+requesting person in the upstream service. The [restricted member profile](dangerous-operations-design.md)
+currently omits business MCP servers, even when a source grant exists. Source
+grants do not restore tools removed by execution policy.
 
 The supported plugins are `local-documents`, `dokki`, `confluence` and `email`.
 Each has one `.agent-host/config/datasource.plugins.<name>.json` file containing

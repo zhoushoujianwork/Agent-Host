@@ -17,16 +17,18 @@ Examples in the video are illustrative; current support is listed below.
 
 - **Chat where you work:** CLI, DingTalk and Feishu private messages, group
   @mentions, and optional Feishu meeting text.
-- **Work across projects:** route requests to registered workspaces and continue
-  compatible conversations with their project context.
+- **Work across projects:** discover local Git checkouts, enroll selected targets
+  and route requests while preserving compatible project conversations.
 - **Remember useful context:** keep facts as readable documents and observed
   procedures as versioned Skills; recall relevant knowledge and Agent history.
-- **Read your sources:** search configured Dokki, Confluence and local Markdown
-  documents on demand, keeping their source references.
+- **Use your sources:** search configured Dokki, Confluence and local Markdown
+  on demand; create or update authorized Confluence pages and personal blogs.
 - **Operate managed email:** AI lists configured Gmail/163 accounts, selects an
   account, then searches, reads, sends or replies through one email MCP.
+- **Control access:** initialize verified private-user profiles and restrict
+  member execution, with separate one-use owner approvals for supported group requests.
 - **See what happened:** inspect execution steps, tool results and memory in
-  the local workbench or terminal logs.
+  the local workbench or terminal logs; retain encrypted recovery backups.
 
 Claude Code is the current execution engine. Email requires your own account
 setup; 163 reads have been tested live. Gmail onboarding and real send/reply
@@ -41,7 +43,7 @@ Built-in capabilities use MCP tools or channel adapters:
 | Integration | Current support |
 | --- | --- |
 | Email MCP | Gmail and personal 163 accounts; AI lists accounts and selects one for each read/send operation. |
-| Knowledge MCP | Dokki, Confluence and selected local Markdown sources; search and read on demand. |
+| Knowledge MCP | Dokki/local Markdown retrieval; Confluence search/read and authorized page/blog writes. Sender grants and execution profiles constrain access. |
 | Host MCP tools | Scoped conversation history, eligible memory, current matters and private suggestions. |
 | Channel adapters | CLI, DingTalk, Feishu chat and optional Feishu meeting text. |
 
@@ -131,6 +133,7 @@ lists controls. Saved Host memory remains available after `/new`.
 [Runtime setup](docs/service-install.md) · [Email setup](docs/email-plugin.md) ·
 [DingTalk workspace](docs/dingtalk-workspace.md) ·
 [Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·
+[Progress and next steps](docs/release-follow-up.md) ·
 [File memory and Skills](docs/file-memory-design.md) ·
 [Workspace layout](docs/workspace-layout.md) ·
 [Feedback](docs/feedback.md) · [Development](docs/development.md)

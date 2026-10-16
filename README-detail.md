@@ -6,8 +6,9 @@ This page keeps additional commands, configuration notes and implementation guid
 ## Runtime and credentials
 
 `make install` also enables background startup at user login when private runtime
-configuration exists, using macOS launchd or Linux user systemd. Rerun it to
-restart after updates. `make uninstall-service` removes background startup;
+configuration exists, using macOS launchd or Linux user systemd. For source-bound
+installations, rerun it to restart after updates. A relocated production bundle
+requires a separate deployment; `make install` preserves its installed links. `make uninstall-service` removes background startup;
 `INSTALL_ARGS=--no-autostart` installs only the CLI and skills.
 
 `make run` invokes the Go CLI to start enabled `.agent-host/config/channels.*.json`
@@ -42,7 +43,7 @@ registrations to the native harness for each eligible run.
 | Capability | Configuration and availability |
 | --- | --- |
 | Email MCP (`email`) | Set `email_config` in the runtime or `--email-config` for CLI. `list_accounts` discovers the registry; subsequent calls specify `account_id`. Owner-private runs only. Gmail needs OAuth; personal 163 uses a client authorization password. |
-| Knowledge MCP (`knowledge_*`) | Set `knowledge_config` or `--knowledge-config`. Dokki, Confluence and local Markdown sources are selected through configured project, Agent and audience grants. Each selected source has its own MCP registration. |
+| Knowledge MCP (`knowledge_*`) | Set `knowledge_config` or `--knowledge-config`. Enabled datasource plugins supply sources globally for owner execution; an optional user registry adds explicit non-owner/shared source grants. Restricted member runs omit business MCP tools. Confluence also supports authorized page/blog writes. Each selected source has its own MCP registration. |
 | Conversation history (`conversation_history`) | Built-in access to saved Agent messages/replies in the authorized conversation, Agent, audience and project scope. It does not expose arbitrary personal chats. |
 | Owner context (`host_context`) | Built-in on-demand access to eligible memory, selected-source matters, citations and private suggestions in the run's scope. Retrieval does not publish memory or execute a suggestion. |
 | DingTalk and Feishu | Channel adapters configured through the runtime's private channel files. They receive requests and deliver responses; they are not mailbox or knowledge MCP servers. |
@@ -115,7 +116,7 @@ not grant permissions or prove that a described procedure was executed.
 | Memory and history | [Execution experience](docs/experience-memory.md), [object retrieval](docs/object-retrieval.md), [conversation history](docs/conversation-history.md) |
 | Personal assistance | [Current matters and private suggestions](docs/personal-assistant.md) |
 | Validation | [Evaluation workflow](docs/evaluation.md), [first CLI MVP](docs/mvp-validation.md), [experience validation](docs/experience-memory-detail.md#validation-status-and-limits) |
-| Architecture and roadmap | [Architecture](docs/architecture.md), [release follow-up](docs/release-follow-up.md), [research](docs/research.md) |
+| Architecture and roadmap | [Architecture](docs/architecture.md), [progress and next steps](docs/release-follow-up.md), [research](docs/research.md) |
 | Source setup and feedback | [Clone and run](docs/beta-release.md), [reviewed diagnostic feedback](docs/feedback.md), [development workflow](docs/development.md) |
 
 Guides distinguish delivered features, bounded live acceptance and remaining work.

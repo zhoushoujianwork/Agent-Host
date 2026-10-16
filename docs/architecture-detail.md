@@ -1,48 +1,53 @@
 # Agent-Host implementation notes
 
-Status: private runtime contracts, Claude adapter, SQLite store, event rendering,
-bounded Jev decisions and reviewed experience are implemented. The
-[experience details](experience-memory-detail.md) cover tool evidence,
-extraction and review, including passing bounded live validation. The
-[revised memory policy](experience-memory-detail.md#revised-publication-and-blacklist-policy-2026-10-12)
-is implemented for explicitly migrated file-memory runtimes, including automatic
-publication and bounded blacklist admission checks. Legacy SQLite experience
-retains human acceptance. The [file-memory details](file-memory-design-detail.md)
-record authoritative manifests, reversible migration and current validation. The
-[first MVP details](mvp-validation-detail.md) retain the earlier validation. The
-[CLI memory details](cli-memory-design-detail.md) retain the broader roadmap.
-The [evaluation details](evaluation-detail.md) define categorized regression
-fixtures and separate live decision checks. The [object retrieval details](object-retrieval-detail.md)
-cover the delivered bounded service/alias/property rules, schema v3 and the
-expanded regression. The original retrieval mismatches are fixed within that
-scope; one historical live admission mismatch remains unresolved. The
-[DingTalk channel details](dingtalk-channel-detail.md) describe the first external
-channel and durable receipt/delivery state with a separate phase reaction outbox.
-Reaction HTTP requests run in an independent worker; task and delivery truth
-are recorded atomically with their marker intent. Host phase events project
-source-attributed markers in their journal transaction; obsolete unsent steps
-are skipped without delaying execution. Offline adapter and host tests and
-the first live owner turn have passed; broader live platform acceptance remains
-open.
-The [main architecture document](architecture.md) governs scope and priorities.
-The [service installation details](service-install-detail.md) define the macOS
-user-service lifecycle, private runtime configuration and production/test
-isolation. `internal/cli/service.go` composes existing channel behavior with an
-isolated native profile; `tools/service/autostart.py` owns current source-checkout
-OS registration and startup verification. `tools/service/install.py` retains the
-legacy isolated-runtime installer. No provider or channel protocol moves into
-the installer.
-The [conversation/input details](channel-conversations-detail.md) describe the
-bounded concurrent scheduler, native image and file inputs, callback quotes and
-schema v11 capability storage. Their validation is separate from historical
-text-only acceptance.
+Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
+The main document owns scope; [progress](release-follow-up.md) owns priorities.
+Feature-specific details retain historical schemas and bounded acceptance results;
+they are not a claim that every current path passed live validation.
+
+## Current implementation map
+
+| Concern | Code / authoritative guide |
+| --- | --- |
+| Selected local checkout discovery and shared receipts | `internal/projectruntime`, `internal/cli/project_runtime.go`; [project records](development-projects-detail.md) |
+| Verified private users and profiles | `internal/cli/users.go`, `internal/assembly/workspace.go`; [workspace contracts](workspace-layout-detail.md#multi-user-recording-and-retrieval) |
+| Owner/member execution and one-use approvals | `internal/cli/channel_authorization.go`, `internal/approval`, `internal/harness/claude/restricted.go`; [authorization details](dangerous-operations-design-detail.md) |
+| File-memory publication, source-linked objects and native Skills | `internal/state`, `internal/memory`, `internal/experience`, `internal/objectmemory`; [file backend](file-memory-design-detail.md), [procedural learning](procedural-learning-detail.md) |
+| External evidence ingestion and installed memory skill | `internal/cli`, `skills/agent-host-memory`, `tools/install.py`; [external memory](external-memory-skill-design-detail.md) |
+| Knowledge retrieval, Confluence writes and reply guidance | `internal/knowledge`, `internal/assembly/context.go`, `internal/harness/claude/knowledge_instructions.go`; [source tools](knowledge-sources-detail.md) |
+| Selected-source matters and suggestions | `internal/discovery`, `internal/assistance`; [P0 implementation](personal-assistant-detail.md#p0-implementation) |
+| Service lifecycle and independent runtime | `internal/cli/service.go`, `tools/service/autostart.py`; [runtime operations](service-install-detail.md) |
+| Encrypted backup, restore verification and retention | `internal/backup`; [backup details](workspace-backup-design-detail.md) |
+
+The supervisor uses one worker per enabled channel and a shared local workbench.
+Runtime state and native sessions remain channel-local. Memory publication can
+share file storage without merging Agent/audience visibility. Shared project
+receipts exclude original request/response text and native context.
+
+## Storage and context authority
+
+- `config/`: user-maintained inputs, read-only during execution. Automatic first
+  contact initializes runtime `users/<id>/USER.md`; explicit configured overrides win.
+- `channels/<name>/state/state.db` and CLI state: operational evidence, source
+  receipts, candidates and lifecycle records. These remain durable.
+- `memory/`: versioned published knowledge and Skills for explicitly migrated
+  runtimes. Source publication manifests own visibility; domain views are derived.
+- `cache/`: rebuildable retrieval indexes, scoped task views and native Skill packages.
+- `datasource/plugins/`: source snapshots and provider-owned runtime data.
+- `projects/`: shared registry and per-run engineering receipts, not durable features.
+- `backups/`: encrypted recovery archives; the decryption key is kept outside the root.
+
+Migration is explicit per source and reversible. Startup cannot infer a backend
+from an existing directory. A production relocation receipt identifies a separate
+runtime: development builds and tests must not update or restart that bundle.
+See [layout](workspace-layout-detail.md) and [migration](file-memory-design-detail.md).
 
 ## Code boundaries
 
-The CLI composes the host. Local chat and the DingTalk owner DM channel select
-one shared Claude configuration. Registered-project routing, automatic task
-classification, default-workspace execution and project-set assembly are implemented;
-the Codex package remains a scaffold. Repository discovery remains planned.
+The CLI composes channel and local execution through selected profiles. Local Git
+discovery, automatic enrollment, routing, default-workspace execution and project-set
+assembly are implemented. Remote discovery, managed clones and durable worktree/PR
+coordination remain proposed. The Codex package remains a scaffold.
 
 ```text
 Agent-Host/
@@ -57,13 +62,13 @@ Agent-Host/
 │   │   └── dingtalk/        Application-bot Stream and session-webhook transport
 │   ├── routing/             Explicit and tool-free registered-project selection
 │   ├── assembly/            Workspace, instructions, and context preparation
-│   ├── knowledge/           Selected read-only remote/local Markdown MCP sources
+│   ├── knowledge/           Source MCP retrieval and authorized Confluence writes
 │   ├── harness/             Shared adapter boundary
 │   │   ├── claude/          Claude Code protocol and process integration
-│   │   └── codex/           Codex protocol and process integration
+│   │   └── codex/           Codex adapter scaffold (not executable)
 │   ├── annotation/          Source-linked objects, aliases and topic applicability
 │   ├── memory/              User-statement decisions and finalization
-│   ├── experience/          Tool-free extraction and reviewed procedure decisions
+│   ├── experience/          Tool-free extraction and selected procedure publication
 │   ├── evaluation/          Categorized fixture checks and evaluation reports
 │   └── state/               Operational records and raw evidence
 ├── config/                 Example local channel configuration
@@ -76,7 +81,7 @@ Agent-Host/
 | `internal/host` | Business task lifecycle and execution coordination |
 | `internal/harness` | Shared execution contract and capability reporting |
 | `internal/harness/claude` | Claude-specific protocol and process integration |
-| `internal/harness/codex` | Codex-specific protocol and process integration |
+| `internal/harness/codex` | Reserved scaffold; no runtime implementation |
 | `internal/annotation` | Versioned source spans, service identities, aliases, topics and applicability checks |
 | `internal/memory` | Source-linked user-statement decisions and finalization |
 | `internal/experience` | Evidence-linked procedure extraction and Jev screening/comparison |
@@ -121,10 +126,12 @@ with a populated catalog. Historical `MemoryAttribution=unresolved` runs keep
 their skipped learning records but remain readable within their saved default
 scope. Empty-catalog runs use the same normal memory flow. The
 [routing details](smart-project-routing-detail.md) define that boundary.
-The storage implementation uses one
-SQLite database for operational records, review candidates and versioned
-memories, with shared transaction boundaries in `internal/state` and semantics
-in `internal/memory`, `internal/experience` and `internal/annotation`. Schema v3
+Each state home retains a SQLite database for operational records and candidates.
+The legacy backend also keeps versioned memory there; migrated file runtimes use
+the publication and cache boundaries above. `internal/state` owns transactions,
+with semantics in `internal/memory`, `internal/experience` and `internal/annotation`.
+The schema descriptions below record historical migration steps, not the latest schema.
+Schema v3
 migration derives annotations and terms from existing memory text without
 rewriting statements, immutable revisions, evidence or review decisions. Schema
 v4 adds channel receipts, private reply capabilities and native-session bindings;
@@ -169,8 +176,8 @@ semantics remain unchanged.
 - Pair native tool calls/results by their IDs and journal sequence before using
   them as experience sources. Tool-free extraction runs separately; its output
   cannot serve as evidence of business execution.
-- Publish Jev-selected experience automatically under the revised memory policy;
-  the current pending-human-review path remains an implementation gap. Go
+- Migrated file-memory runtimes publish Jev-selected experience automatically;
+  legacy SQLite retains explicit review. Go
   validates source references, scope, compared revisions and exclusions before
   publication. Jev screening does not certify truth. A scoped blacklist must
   prevent both recall and equivalent re-admission. Expired, invalidated and
@@ -181,8 +188,11 @@ semantics remain unchanged.
 The [external-source extension](knowledge-sources-detail.md) implements
 Host-selected MCP configuration through assembly and harness adapters.
 `internal/knowledge` owns private source configuration, credential pinning and
-the read-only remote/local Markdown MCP process. Project and Agent source
-selection also enforce optional audience grants before resolution. Knowledge
+the source MCP process: Dokki/local Markdown reads and authorized Confluence
+page/blog writes. Enabled datasource plugins provide a global source catalog for
+owner execution; optional users.json applies explicit non-owner/shared grants.
+The restricted member profile currently removes business MCP servers entirely.
+Legacy standalone source selectors remain a compatibility path. Knowledge
 results remain journal evidence but cannot support execution-experience candidates.
 The separate [Host history implementation](conversation-history-detail.md) derives
 a read-only search/read view from retained bot receipts and exact saved replies.
@@ -205,8 +215,8 @@ explicit relative file/directory entries, bounded search coverage, source-relati
 references and digest-pinned reads. Local roots do not change business cwd or
 native additional directories. Selected older notes remain immutable private
 snapshots with an outside-repository provenance manifest; no run, user statement
-or reviewed memory is manufactured from them. Owner-only source selection and
-learned-memory audience partitioning are independent boundaries. Neither source
+or reviewed memory is manufactured from them. Source grants and learned-memory
+audience partitioning are independent boundaries. Neither source
 filtering nor native approval bypass provides filesystem isolation.
 
 ## First implementation validation
@@ -219,9 +229,10 @@ proof of a working native integration.
 The [first MVP details](mvp-validation-detail.md) record the earlier persistence
 and session validation. The [experience details](experience-memory-detail.md)
 retain historical live evidence for file edits/tests, resume, explicit review,
-fresh-session reuse and invalidation. The next memory increment must validate
-automatic publication, reuse, disabling, equivalent re-admission exclusion and
-retry without task replay. The
+fresh-session reuse and invalidation. File-memory and procedural-learning records
+cover bounded automatic publication,
+reuse, disabling and retry checks. Equivalent re-admission remains model-dependent
+for arbitrary rewrites; broader usefulness and scale remain unmeasured. The
 [CLI memory details](cli-memory-design-detail.md) remain the broader roadmap.
 Add storage and protocol
 dependencies only when the validated path needs them. After execution is

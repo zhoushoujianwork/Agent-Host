@@ -1,9 +1,13 @@
 # Per-person reply preferences
 
-Status: proposed on 2026-10-13 for [issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1).
-Current memory preserves statement attribution, but a cross-channel person-profile
-layer is not delivered. See the [implementation notes](person-profiles-detail.md)
-and [delivery order](release-follow-up.md#issue-1-delivery-plan).
+Status: the learned preference lifecycle below remains proposed. Verified private
+user mappings, first-contact `USER.md` initialization and configured private profile
+selection are implemented; see [current user profiles](workspace-layout-detail.md#multi-user-recording-and-retrieval).
+That foundation does not deliver automatic preference editing, opt-out controls or
+opted-in group preferences. The original scope came from
+[issue #1](https://github.com/zhoushoujianwork/Agent-Host/issues/1);
+see [implementation notes](person-profiles-detail.md) and
+[current priorities](release-follow-up.md#proposed-development-order).
 
 ## Goal and usage
 

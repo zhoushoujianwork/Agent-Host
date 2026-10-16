@@ -25,6 +25,7 @@ Email 是内置能力插件，可以供钉钉和飞书使用。DWS 与钉钉机�
 ├── config/                         # 人工维护的配置，唯一入口
 │   ├── host.json                   # 命名执行配置与 provider 环境文件引用
 │   ├── agents.json                 # Agent 角色和任务项目
+│   ├── users.json                  # Optional verified private-user mappings and source grants
 │   ├── backup.json                 # Optional encrypted backup policy
 │   ├── channels.dingtalk.json
 │   ├── channels.feishu.json
@@ -90,8 +91,10 @@ DWS 的账号状态、生成令牌和操作账本放 `channels/dingtalk/dws/`。
 或重放任务。禁用组件不连接、不挂载工具，也不删除其历史数据。
 
 Enabled datasource plugins are global across channels, Agents, projects and
-owner/group conversations. No effective-scope configuration is required; older
-plugin `access` and source/Agent selectors are ignored. DingTalk DWS remains a
+owner/group conversations at catalog level; optional `users.json` restricts
+non-owner/shared sources through explicit grants. Current restricted member
+execution omits business MCP tools. Older plugin `access` and source/Agent
+selectors are ignored by unified plugin loading. DingTalk DWS remains a
 channel feature. Sending still requires authorization for the requested operation.
 Restart `make run` after configuration changes; hot reload is not implemented.
 
@@ -136,8 +139,9 @@ cache 或所属数据源运行目录；工程运行记录写入 Host 的 `projec
 有来源的本地材料由 `datasource.plugins.local-documents.json` 声明读取范围，
 迁移后的保留快照进入本地文档数据源存储；详细稿中的旧 `knowledge/` 路径是迁移历史。
 项目已有文档留在项目目录，通过知识源配置引用。私人快照可以供多个渠道引用，
-Enabled datasource plugins expose these configured snapshots globally, including
-groups. File paths define document coverage; they do not configure task audiences.
+Enabled datasource plugins supply the configured snapshot catalog globally.
+Optional user/group grants and the execution profile constrain actual access.
+File paths define document coverage; they do not configure task audiences.
 
 各渠道的运行证据仍保存在 `state/state.db`，原生会话仍在 `native/`；
 文件后端的正式记忆由来源发布清单决定，不由运行数据库或生成视图替代。

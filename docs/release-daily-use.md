@@ -1,6 +1,8 @@
 # Release record: everyday reliability
 
-Delivered and deployed on 2026-10-12.
+Delivered and deployed on 2026-10-12. This is a historical release record.
+Its group tool policy below was superseded by [owner/member authorization](dangerous-operations-design.md)
+on 2026-10-15; use [current progress](release-follow-up.md) for present behavior.
 
 - Default-workspace tasks retain history, memory and conversation continuity,
   including after `/new` and failed-session recovery.

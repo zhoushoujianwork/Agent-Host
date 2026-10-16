@@ -1,7 +1,8 @@
 # Local project knowledge and retained notes
 
 Status: local Markdown sources are implemented. Enabled datasource plugins are
-global across channels, Agents, projects and owner/group conversations. Automated,
+global at catalog level; optional user/group grants and sender execution profiles
+restrict actual tool access. Automated,
 native and private-channel acceptance are tracked separately in the
 [details](local-knowledge-detail.md). The
 [knowledge-source guide](knowledge-sources.md) explains the shared tool boundary.
@@ -25,8 +26,9 @@ relevant material on demand.
   Startup supplies a short source description rather than document bodies.
   Directory searches report bounded coverage rather than assuming every file
   was examined.
-- **Use configured sources globally.** All Agents and conversations, including
-  groups, receive enabled datasource tools. Old source project/audience fields
+- **Share the configured catalog.** Enabled sources are globally configured;
+  optional `users.json` requires explicit non-owner/shared grants. Restricted member
+  profiles currently omit business MCP tools. Old source project/audience fields
   and Agent source lists no longer restrict unified datasource plugins.
 - **Preserve old material as evidence.** Copy selected notes into a private,
   versioned snapshot outside the repository and retain a manifest linking them

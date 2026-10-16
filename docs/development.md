@@ -12,13 +12,17 @@ repository's unrelated history.
 
 Keep real accounts, credentials, configuration, database state and execution
 reports outside Git, normally in the project's ignored `.agent-host/` tree.
-`make run` loads enabled `.agent-host/channels/channel-*.json` registrations through the
-Go CLI, falling back to `.agent-host/runtime` only when that directory is absent;
+`make run` loads enabled `.agent-host/config/channels.*.json` components through the
+Go CLI. Explicit `RUNTIME_ROOT` retains the legacy single-runtime path;
 ordinary CLI state uses
 `.agent-host/cli-state`. Commit configuration
 examples with placeholders. The ignore rules are a safeguard, not a substitute
 for reviewing files before publication. Private historical validation reports
-are kept in a local archive rather than copied into the public repository.
+are kept locally rather than copied into the public repository. Before operating
+a service, check `.agent-host/production-migration.json`: a relocated production
+runtime is independent of this checkout. `make build` and automated tests do not
+deploy it; use separate configuration and channel identities for development.
+See [production separation](service-install.md#separate-production-from-development).
 
 Distribution is source-only. Users clone this repository and run `make build`
 locally, using their own native harness, accounts and credentials. Normal

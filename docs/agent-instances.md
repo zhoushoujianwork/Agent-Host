@@ -1,7 +1,9 @@
 # Group conversations and agent instances
 
 Current datasource policy: enabled `datasource.plugins.*.json` plugins are global
-across channels, Agents, projects and owner/group conversations. Old plugin
+at catalog level across channels, Agents and projects. Optional user/group grants
+and sender execution profiles constrain actual access; restricted member runs omit
+business MCP tools. Old plugin
 `access`, source project/audience fields and Agent datasource selectors are
 ignored. Standalone legacy configurations and historical scope-validation
 records below retain their original meaning. See the

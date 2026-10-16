@@ -3,14 +3,16 @@
 Status: automatic registered-project routing with default-workspace execution.
 Earlier automated checks, seven native-Claude turns and an 18-message DingTalk
 private-chat acceptance are preserved separately from the current policy in the
-[details](smart-project-routing-detail.md). Repository discovery and
-GitHub/GitLab import remain planned.
+[details](smart-project-routing-detail.md). Bounded local Git checkout discovery
+and selected-target enrollment are implemented through the shared
+[project runtime](development-projects.md). Remote GitHub/GitLab import remains planned.
 The [runtime assembly](runtime-assembly.md) supplies project identity, directories,
 scoped knowledge and compatible native sessions.
 
 ## Goal and usage
 
-Describe a task naturally. The Host selects a registered project or project set
+Describe a task naturally. The Host considers registered projects and bounded
+local checkout candidates, enrolls the selected local target, and selects a project set
 when the association is reliable. Otherwise, the configured agent starts in its
 default workspace and handles the request directly. An empty catalog also runs
 directly; users do not need to register a project before asking for help.

@@ -48,39 +48,21 @@ general quality/scale boundaries; production rollout is not claimed.
 P0 does not require a new personal memory domain, automatic conversation-derived
 publication, stronger equivalent-re-admission protection, group recommendations,
 proactive delivery or specialist memory stores. The separate automatic-experience
-increment retains its existing priority and validation; P1 depends on that
+increment is delivered in migrated file runtimes; P1 must preserve that
 publication/blacklist policy, while P0 only consumes eligible existing records.
 
 ## Issue #1 planning baseline
 
-The [delivery plan](release-follow-up.md#issue-1-delivery-plan) is based on a
-2026-10-13 ClawFlow read of all issues and open PRs for
-`zhoushoujianwork/Agent-Host`: only open issue #1 was returned, and the open PR
-list was empty. An all-state related-experience search also returned only #1.
-The local checkout had no Git remote; the configured ClawFlow repository and
-the issue's returned URL identify the reviewed project. No remote issue fields,
-comments, labels or PRs were changed by this planning work.
+The 2026-10-13 issue #1 plan proposed automatic publication, native Skills and
+per-person preferences. File-memory publication and native Skill integration
+have since shipped, with bounded evidence in [file-memory details](file-memory-design-detail.md)
+and [procedural learning](procedural-learning-detail.md). Configured private
+profiles and verified identity initialization are also implemented; learned
+preference observations and their inspect/correct/disable lifecycle remain proposed.
 
-The issue's Hermes comparison is motivation, not independently verified runtime
-evidence. Planning uses the current local architecture and code: procedure memory
-has conditions, steps and citations; there is no generated-skill request field;
-authenticated senders are already attributed; groups share native conversations.
-The two linked proposals narrow open questions into independently deliverable
-increments, with broader profiling deferred.
-
-The design-doc portion of #1 has local proposals and linked details. Runtime
-skill export, profile learning and their evaluation cases remain unimplemented;
-documentation checks do not complete those issue checkboxes. The automatic
-publication/blacklist prerequisite retains its own acceptance loop and historical
-manual-review evidence. Track implementation slices separately when development
-starts; keep #1 as the umbrella until both proposals pass their distinct gates.
-
-Native skill mounting is grounded in official Claude documentation, with an
-installed-version integration probe still required. Profile privacy planning
-accounts for persistent shared native history, rather than relying solely on
-filtering the current prompt. See
-[skill implementation notes](experience-skills-detail.md) and
-[profile implementation notes](person-profiles-detail.md) for those boundaries.
+The original database-first sequence is retired. Use the
+[current development order](release-follow-up.md#proposed-development-order).
+This record makes no claim about current GitHub issue or PR state.
 
 ## Real non-owner group acceptance
 
@@ -89,7 +71,8 @@ non-owner group request at the latest audit. A second same-enterprise account
 is needed for this check. Synthetic senders and self-declared owner text cannot
 replace that evidence.
 
-Verify ordinary group mention execution, current-sender reply addressing and
+Verify restricted group mention execution, owner approval for a separate run,
+current-sender reply addressing and
 two members' distinct statements followed by a question about who said what.
 Inspect authenticated source attribution, native context and exact platform
 source/reply reads. Keep owner-private context separate. Existing local tests
@@ -119,5 +102,5 @@ other root cause, or suppress failures of mandatory evidence writes.
   [implementation and transition plan](experience-memory-detail.md); they
   require separate save, reuse, disable and equivalent re-admission validation.
 
-Command syntax, release dates and additional sender permissions are not decided
-by this backlog.
+Current sender permissions are defined by the [authorization guide](dangerous-operations-design.md).
+Additional chat commands and release dates are not decided by this backlog.
