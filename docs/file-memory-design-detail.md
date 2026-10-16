@@ -62,6 +62,8 @@ source-key 从明确的来源名生成。domain-id 同时包含来源、scope、
 运行记录仍进入 state.db。旧 memories/revisions/evidence 表在文件模式下保持历史，
 不做记忆双写。回退转换器是更新这些旧表的显式管理操作。
 
+Published revisions retain their original JSON bytes and checksums when a later encoder changes only formatting or object-key order. Publication compares all JSON values without rounding integers; changed data still fails the immutable revision check.
+
 ## 沉淀、禁用与比较
 
 用户陈述保留原始归属与证据性质。文件后端会自动比较并发布通过筛选的执行候选，

@@ -528,8 +528,14 @@ func (f *fileMemory) publish(snap fileSnapshot, operations []fileOperation) (fil
 		// revision already referenced by the manifest remains immutable.
 		immutable := publishedRevisions[m.ID][m.Revision]
 		if immutable {
-			if _, err = readPrivateFile(filepath.Join(base, "record.json")); err != nil {
-				return next, err
+			retained, readErr := readPrivateFile(filepath.Join(base, "record.json"))
+			if readErr != nil {
+				return next, readErr
+			}
+			// Keep the original bytes and checksum when a newer encoder changes
+			// only JSON formatting. Actual revision changes still fail below.
+			if sameJSONValue(retained, b) {
+				b = retained
 			}
 			if _, err = readPrivateFile(filepath.Join(base, memoryContentName(e.Directory))); err != nil {
 				return next, err
@@ -578,6 +584,24 @@ func (f *fileMemory) publish(snap fileSnapshot, operations []fileOperation) (fil
 		}
 	}
 	return next, nil
+}
+
+func sameJSONValue(a, b []byte) bool {
+	canonical := func(raw []byte) ([]byte, error) {
+		if !json.Valid(raw) {
+			return nil, errors.New("invalid JSON")
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		var value any
+		if err := decoder.Decode(&value); err != nil {
+			return nil, err
+		}
+		return json.Marshal(value)
+	}
+	x, errA := canonical(a)
+	y, errB := canonical(b)
+	return errA == nil && errB == nil && bytes.Equal(x, y)
 }
 
 func (s *Store) openFileMemory(ctx context.Context) error {

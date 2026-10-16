@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -13,6 +14,59 @@ import (
 	"testing"
 	"time"
 )
+
+func TestFileMemoryPublishPreservesEquivalentHistoricalJSON(t *testing.T) {
+	s, _, _, _ := fileStore(t)
+	r := addRun(t, s, "original-format", "scope", "Remember the original format.", true)
+	if err := s.FinalizeMemory(testContext, r.ID, []MemoryUpdate{updateFor(r, "original-format")}, decision); err != nil {
+		t.Fatal(err)
+	}
+	f := s.files
+	manifest, err := f.readManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := &manifest.Entries[0]
+	path := filepath.Join(f.revisionPath(*entry, 1), "record.json")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Model a historical encoder's ordering and whitespace without changing data.
+	var value map[string]any
+	if err = json.Unmarshal(original, &value); err != nil {
+		t.Fatal(err)
+	}
+	retained, _ := json.Marshal(value)
+	if err = os.WriteFile(path, retained, 0600); err != nil {
+		t.Fatal(err)
+	}
+	entry.Revisions[0].RecordSHA256 = fileHash(retained)
+	if err = atomicJSON(filepath.Join(f.sourceDir, "current.json"), manifest, false); err != nil {
+		t.Fatal(err)
+	}
+	r2 := addRun(t, s, "new-after-historical-format", "scope", "Remember another fact.", true)
+	if err = s.FinalizeMemory(testContext, r2.ID, []MemoryUpdate{updateFor(r2, "new-after-historical-format")}, decision); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(after, retained) {
+		t.Fatalf("historical bytes changed: %v", err)
+	}
+}
+
+func TestSameJSONValueRejectsChangedData(t *testing.T) {
+	for _, pair := range [][2]string{
+		{`{"revision":1}`, `{"revision":2}`},
+		{`{"id":9007199254740992}`, `{"id":9007199254740993}`},
+		{`{"a":1,"extra":true}`, `{"a":1}`},
+		{`invalid`, `null`},
+	} {
+		if sameJSONValue([]byte(pair[0]), []byte(pair[1])) {
+			t.Fatalf("accepted changed JSON: %v", pair)
+		}
+	}
+}
 
 func fileStore(t *testing.T) (*Store, string, string, string) {
 	t.Helper()
