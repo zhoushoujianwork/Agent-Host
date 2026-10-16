@@ -51,8 +51,8 @@ func toolsFor(provider string) []mcpTool {
 	switch provider {
 	case "local_markdown":
 		return []mcpTool{
-			readTool("search_local_markdown", "Search the explicitly configured local Markdown paths. Results retain relative paths and source receipts. Read relevant documents before making claims; bounded scan coverage and zero matches do not prove global absence.", inputSchema(map[string]any{"query": field("string"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 10}}, "query")),
-			readTool("read_local_markdown", "Read an authorized local Markdown document using its relative path from search. Cite the source name and relative document path, never an absolute local path."+excerptInstructions, readSchema("path")),
+			readTool("search_local_markdown", "Search the explicitly configured local Markdown paths. Results retain relative paths and source receipts. Read relevant documents before making claims; bounded scan coverage and zero matches do not prove global absence. "+CitationInstructions, inputSchema(map[string]any{"query": field("string"), "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "default": 10}}, "query")),
+			readTool("read_local_markdown", "Read an authorized local Markdown document using its relative path from search. "+CitationInstructions+excerptInstructions, readSchema("path")),
 		}
 	case "dokki":
 		return []mcpTool{

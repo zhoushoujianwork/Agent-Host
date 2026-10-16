@@ -1,0 +1,4 @@
+package knowledge
+
+// CitationInstructions keeps answer citations consistent across assembly and tools.
+const CitationInstructions = "When answering from knowledge articles, place a clickable Markdown link using the article title and its actual returned source_url immediately after the supported passage, or in a short Sources list at the end. For a local copy, use its recorded original article URL when available. If it has no original URL, search enabled knowledge sources such as Confluence by title or topic and read the matching original to verify it before linking. Never invent a URL or substitute an unrelated article. Do not expose absolute or relative local filesystem paths as user-facing article citations; retain them only for internal retrieval and evidence. If no original URL can be found, cite the article title and source name and briefly state that an accessible link is unavailable."
