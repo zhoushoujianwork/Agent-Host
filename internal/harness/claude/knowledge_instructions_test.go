@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"agent-host/internal/harness"
+	"agent-host/internal/knowledge"
 )
 
 func TestKnowledgeUsageIsSystemGuidanceWithoutGrantingPermissions(t *testing.T) {
@@ -50,6 +51,9 @@ func TestKnowledgeUsageIsSystemGuidanceWithoutGrantingPermissions(t *testing.T) 
 			}
 			if i < 0 || !strings.Contains(captured.Args[i+1], responseStyleInstructions) || strings.Contains(strings.Join(captured.Args, " "), "bypassPermissions") {
 				t.Fatalf("reply guidance or unchanged permissions missing: %v", captured.Args)
+			}
+			if !strings.Contains(captured.Args[i+1], knowledge.CitationInstructions) || strings.Contains(captured.Args[i+1], "source name and relative document path for local knowledge") {
+				t.Fatal("system prompt must use the shared citation policy without the old local-path rule")
 			}
 			if strings.Contains(captured.Args[i+1], knowledgeUsageInstructions) == tc.toolsDisabled {
 				t.Fatalf("knowledge tool guidance disagrees with tool availability: %v", captured.Args)
