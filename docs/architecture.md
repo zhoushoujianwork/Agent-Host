@@ -125,11 +125,15 @@ implementation. A passing automated check does not establish production quality.
 
 ## Next direction
 
-First close real member/owner approval and multi-user acceptance gaps, then
-observe daily reliability and memory usefulness. The next proposed development
-slice is a durable feature task with an owned worktree, validation/commit receipts
-and authorized PR delivery. See the [current priorities](release-follow-up.md)
-and [workflow proposal](development-workflow.md).
+The next proposed product increment is [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md):
+answer supported routine questions addressed to the owner, wait silently on
+incomplete or complex requests, and learn from owner conversations. Start with
+selected private chats and visibly marked AI replies. It is not implemented.
+
+Existing member/owner approval and multi-user acceptance gaps remain open.
+Durable feature tasks, owned worktrees and authorized PR delivery remain a
+separate [engineering proposal](development-workflow.md). See
+[current priorities](release-follow-up.md) for delivery order.
 
 Keep concrete integrations behind private adapters. A public plugin SDK,
 marketplace, custom Host model/tool loop and transparent migration of native

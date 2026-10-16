@@ -4,7 +4,11 @@ Status: P0 implemented on 2026-10-12: changing matters, scoped AI access to
 existing memory and original evidence, and owner-selected preparation.
 [Implementation and validation](personal-assistant-detail.md#p0-implementation)
 separate automated checks, native-model acceptance and the selected-source pilot.
-Personal-domain memory and conversation learning remain P1.
+Personal-domain memory and conversation learning remain P1. The proposed
+[Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md) now defines a
+specific next path: selected private conversations, supported automatic answers,
+silent waiting and separate learning of owner style and solutions. This extends
+P0 with explicit standing reply delegation; it is not current runtime behavior.
 
 ## Recommendation
 

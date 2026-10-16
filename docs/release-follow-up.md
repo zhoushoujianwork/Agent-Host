@@ -47,15 +47,21 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
 
 ## Proposed development order
 
-1. **Durable engineering delivery.** Build a feature task spanning runs, owned
+1. **Owner Answering Beta / Owner 代答 BETA.** Observe selected private DingTalk
+   chats, answer complete questions from an approved answer set, and wait silently
+   for missing details or owner handling. Learn style and solutions separately.
+   Owner selected private-chat pilots and a visible AI reply marker. Deliver
+   capability verification, shadow evaluation and restricted live sending in that
+   order. [Main design](owner-answering-beta.md); not yet implemented.
+2. **Durable engineering delivery.** Build a feature task spanning runs, owned
    worktree, validation and commit receipts, then authorized PR delivery. Local
    checkout discovery is already done. Clones/new repositories and GitLab MR
    delivery remain proposed. [Workflow](development-workflow.md).
-2. **Learned per-person preferences.** Add explicit inspect/correct/disable/opt-out
+3. **Learned per-person preferences.** Add explicit inspect/correct/disable/opt-out
    behavior on top of scoped memory and configured private profiles. Do not infer
    that identity initialization completes the preference product. [Profile scope](person-profiles.md).
-3. **Later expansion.** Personal memory domains, automatic conversation learning,
-   proactive notifications, Codex execution and meeting audio need their own
+4. **Later expansion.** Personal memory domains, conversation learning beyond the
+   owner-answering pilot, proactive notifications, Codex execution and meeting audio need their own
    implementation and acceptance. No delivery dates are assigned.
 
 ## Retired planning baseline

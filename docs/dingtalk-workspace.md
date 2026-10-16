@@ -5,6 +5,9 @@ Owner authorization, personal sending, bounded message reads and one robot-led
 ticket-result notification passed live validation on 2026-10-13. Other product
 read/write acceptance remains unverified.
 See the [implementation details](dingtalk-workspace-detail.md).
+The proposed [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md)
+would reuse personal reads and sending for delegated routine answers. Question
+tracking, takeover protection and conversation-derived learning are not yet delivered.
 
 ## Goal and usage
 
