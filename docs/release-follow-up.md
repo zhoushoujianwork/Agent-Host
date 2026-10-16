@@ -4,6 +4,12 @@ Source status reviewed on 2026-10-16. This is the current backlog, not a release
 commitment. [Architecture](architecture.md) explains the technical route;
 [validation notes](release-follow-up-detail.md) retain evidence and open checks.
 
+Reading aid / 阅读提示：see [key objects / 关键对象](architecture.md#key-objects--关键对象)
+and [technical terms / 技术名词](architecture-detail.md#technical-glossary--技术名词).
+“Implemented / 已实现” means code exists; “live acceptance / 真实验收” means it
+has been exercised with real accounts and platforms. These are separate milestones.
+“已实现”说明代码能力已具备，“真实验收”说明已经过真实账号与平台验证，两者分别记录。
+
 ## Delivered since the daily-use baseline
 
 | Increment | Current progress |

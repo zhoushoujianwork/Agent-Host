@@ -5,6 +5,34 @@ The main document owns scope; [progress](release-follow-up.md) owns priorities.
 Feature-specific details retain historical schemas and bounded acceptance results;
 they are not a claim that every current path passed live validation.
 
+## Technical glossary / 技术名词
+
+The [main glossary](architecture.md#key-objects--关键对象) introduces business and
+memory objects. These terms explain how they are executed, authorized and stored.
+[主文档](architecture.md#key-objects--关键对象)解释业务与记忆对象；这里补充执行、权限和存储术语。
+
+| Term / 名词 | Meaning / 含义 |
+| --- | --- |
+| Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code. 负责模型推理、工具调用循环和原生会话的程序，当前为 Claude Code。 |
+| Harness adapter / 执行引擎适配器 | Translates Host requests and engine events across their boundary. 在 Host 与执行引擎之间转换请求和事件，不接管引擎内部循环。 |
+| Routing / 路由 | Selects the Agent and project environment for a request. 为请求选择智能体配置和项目环境；选中项目本身不会增加权限。 |
+| Context assembly / 上下文装配 | Prepares the instructions, eligible memory and tools for a run. 执行前准备指令、可用记忆和工具；不会预先读取所有资料正文。 |
+| MCP / Model Context Protocol / 模型上下文协议 | A protocol exposing tool calls to the native engine. 让原生引擎调用资料检索、邮件等工具的协议；接入工具不等于授权任何操作。 |
+| Jev / 决策组件 | The configured model-backed decision service used for routing and memory selection. 用于路由和记忆筛选的模型决策组件；其判断不是事实或业务成功的证明。 |
+| Audience / 受众 | The private user or shared group a conversation and its records belong to. 对话及记录所属的私人用户或共享群体，是控制可见性的维度。 |
+| Scope / 适用范围 | The project and identity boundaries within which records may be used. 记录可被使用的项目、身份等边界；内容相似不会自动获得访问资格。 |
+| Source grant / 数据源访问授权 | An explicit configuration permitting a user or shared audience to use a named source. 明确允许某用户或共享受众使用指定数据源的配置；不能恢复执行配置已移除的工具。 |
+| Execution profile / 执行配置 | The selected native model, tools, permissions and provider environment. 执行时采用的模型、工具、权限和服务环境；Owner 与成员可采用不同配置。 |
+| Owner / 所有者; Member / 成员 | The configured owner and other authenticated channel users. 配置指定的所有者与其他已认证渠道用户；Host 根据可信身份选择权限，不根据消息自称。 |
+| User profile / 用户档案 | A private user’s configured or initialized `USER.md` context. 私人用户的背景与沟通偏好文件；群聊不装入私人档案，自动学习偏好的完整管理流程仍待实现。 |
+| Owner approval / 所有者审批 | A correlated, one-use authorization for a separate execution run. 与具体请求关联、仅使用一次的独立执行授权，不提升成员原生会话的权限。 |
+| Runtime / 运行实例 | A running Host deployment with its configuration, state and native sessions. 带有自身配置、状态和原生会话的一套 Host 部署；开发与生产可分别运行。 |
+| Publication manifest / 发布清单 | Selects the visible revisions of published file memory. 指定文件记忆当前可见版本的清单；目录里存在文件不等于它已生效。 |
+| Retrieval index / 检索索引 | Rebuildable lookup data derived from published memory. 从正式记忆生成、便于查找的辅助数据；损坏后可重建，不是知识正文的权威副本。 |
+| Current matter / 当前事项 | Evolving work state linked to selected source evidence. 从选定来源跟踪、随进展更新的工作状态；与可长期复用的知识分开管理。 |
+| Worktree / Git 工作树 | A separate checkout for isolated repository work. 同一 Git 仓库的独立工作目录；Host 自动管理其任务归属和生命周期仍待实现。 |
+| PR / Pull request / 合并请求 | A proposed code change submitted for review and merge; GitLab calls it an MR. 提交给他人审查和合并的代码变更，GitLab 称 MR；Host 自动交付流程仍待实现。 |
+
 ## Current implementation map
 
 | Concern | Code / authoritative guide |

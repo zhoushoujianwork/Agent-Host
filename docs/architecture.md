@@ -16,25 +16,60 @@ business tasks, routing, context, delivery and durable memory. Claude Code owns
 its model/tool loop and native conversations. Codex execution remains a scaffold;
 installing the external memory skill into Codex does not implement that adapter.
 
+## Key objects / 关键对象
+
+Read these as separate responsibilities, even when they work on the same request.
+这些对象可能参与同一次请求，但各自管理不同的内容。
+
+| Object / 对象 | Meaning / 含义 |
+| --- | --- |
+| Host / 宿主 | Coordinates tasks, access, context and durable records. 负责组织任务、权限、上下文与长期记录，产品名是 Agent-Host。 |
+| Agent / 智能体配置 | A configured role, model and project policy used for requests. 一套角色、模型和项目配置，例如“运维助手”；不是一个独立模型或进程。 |
+| Channel / 渠道 | An entry and reply path, such as DingTalk, Feishu or CLI. 接收请求并交付回复的入口，例如钉钉、飞书或终端。 |
+| Task / 任务 | The business work requested by the user. 用户希望完成的工作，例如“修复登录测试”；跨多轮的持久功能任务仍待实现。 |
+| Run / 执行记录 | One execution attempt with its own events and outcome. 一次执行尝试及其过程、结果；执行结束不等于业务验收通过。 |
+| Conversation / 对话 | Related channel messages and replies within an authorized binding. 授权范围内关联的渠道消息与回复；群成员可以共享同一对话。 |
+| Native session / 原生会话 | Conversation state maintained by Claude Code across compatible turns. Claude Code 自己保存的连续执行上下文；可重置或替换，Host 的长期记忆另行保留。 |
+| Project / 项目 | A stable registered identity for a repository and its execution environment. 仓库及执行环境的稳定登记身份，用于路由和关联记录。 |
+| Workspace / 工作目录 | The filesystem location where execution works on files. 执行时实际操作文件的目录；项目身份与目录路径分别记录。 |
+| Context / 上下文 | The instructions and information available to the engine for the current work. 引擎处理当前工作时可用的指令与信息；长期记忆只是其中一种来源。 |
+| Evidence / 证据 | Attributed source material and observed execution results. 带来源的原始材料与执行观测，例如消息、工具输出；保留它不代表内容已被证实。 |
+| Memory / 长期记忆 | Eligible facts, preferences, decisions or procedures retained for later tasks. 可供后续任务使用的事实、偏好、决策或方法；与聊天原文、执行日志分别保存。 |
+| Skill / 方法技能 | A reusable procedure delivered as `SKILL.md` with conditions and evidence. 保存适用条件、步骤与证据的可复用方法；记住方法不代表已经执行成功。 |
+| Datasource / 数据源 | A configured source the assistant can consult, such as Confluence or local Markdown. 可按需查询的资料来源；读取资料不会自动把它变成长期记忆。 |
+
+For example, “fix the login test” arrives through a **Channel**, selects an
+**Agent** and **Project**, then creates a **Run** in the project's **Workspace**.
+Claude Code may continue a compatible **Native session**. Host records **Evidence**
+and separately decides whether a useful correction becomes **Memory / a Skill**.
+
+例如：“修复登录测试”从钉钉进入，Host 选择运维助手和目标项目，在项目目录执行。
+执行记录回答“做了什么、结果如何”，长期记忆回答“以后可以复用什么”。
+任务完成、用户验收通过和经验保存成功分别记录。
+
+Execution-engine, authorization and storage terms are explained in the
+[bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
+执行引擎、权限和存储相关术语见同一份详细稿中的双语解释。
+
 ## Core architecture
 
 ```mermaid
 flowchart TD
-    U[CLI / DingTalk / Feishu] --> C[Identity and conversation queue]
+    U[CLI / 钉钉 / 飞书] --> C[Identity and queue / 身份与对话队列]
     subgraph Host[Agent-Host · Go]
-        C --> R[Agent, project routing and authorization]
-        P[Local checkout discovery and shared project registry] --> R
-        R --> A[Scoped context and capability assembly]
-        K[File knowledge and versioned Skills] --> A
-        A --> H[Run supervision and harness adapter]
-        H --> E[(Operational state and source evidence)]
-        E --> M[Memory extraction, Jev selection and Host validation]
+        C --> R[Routing and authorization / 路由与授权]
+        P[Project discovery and registry / 项目发现与登记] --> R
+        R --> A[Context assembly / 上下文与工具装配]
+        K[Memory and Skills / 长期记忆与方法] --> A
+        A --> H[Run supervision and adapter / 执行管理与适配]
+        H --> E[(State and evidence / 状态与证据)]
+        E --> M[Memory selection and validation / 记忆筛选与校验]
         M --> K
-        H --> D[Reply delivery and progress outbox]
-        E --> V[Local workbench]
+        H --> D[Replies and progress / 回复与进度交付]
+        E --> V[Workbench / 本地工作台]
     end
-    H <--> N[Claude Code native execution]
-    A --> T[Authorized MCP tools: knowledge, email, history, assistance]
+    H <--> N[Claude Code / 原生执行引擎]
+    A --> T[MCP tools / 资料、邮件、历史与辅助工具]
     N <--> T
     D --> U
 ```
