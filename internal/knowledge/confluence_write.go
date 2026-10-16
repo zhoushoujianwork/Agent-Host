@@ -49,7 +49,7 @@ func confluenceContentWriteTool(update bool, kind string) mcpTool {
 		delete(properties, "parent_id")
 		if !update {
 			required = []string{"title", "content"}
-			description = "Create a Confluence blog post for user-authorized Agent-Host-managed content. Omit space_key to use the authenticated user's personal blog. Prefer this location for automatically managed notes and reports unless the user requests another location. Blog posts have no parent page. Returns identity and version; read the blog post to verify content. Never automatically retry a failed or uncertain write; inspect the target first."
+			description = "Create a Confluence blog post for user-authorized Agent-Host-managed content. Omit space_key to use the authenticated user's personal blog. Prefer this location for automatically managed notes and reports unless the user requests another location. Blog posts have no parent page. Use a descriptive title without appending a date; Confluence already dates blog posts. Returns identity and version; read the blog post to verify content. Never automatically retry a failed or uncertain write; inspect the target first."
 		}
 	}
 	return mcpTool{Name: name, Description: description, InputSchema: inputSchema(properties, required...),

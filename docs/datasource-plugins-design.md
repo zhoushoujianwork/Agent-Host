@@ -26,6 +26,7 @@ Confluence supports creating and updating pages and blog posts when authorized
 by the user. Automatically managed notes and reports default to the authenticated
 connector account's personal blog; regular pages remain available when requested. Blog creation
 can resolve the personal space automatically, without per-user configuration.
+Use descriptive blog titles without appending a date; Confluence already dates posts.
 Updates require the content's current version and replace its title and complete
 body. Read back the content to verify the result; a failed or uncertain write must
 be inspected before retrying. Existing Confluence configuration is sufficient,
