@@ -146,7 +146,7 @@ func TestServiceWorkbenchFixedPortAcrossRestarts(t *testing.T) {
 	var prior string
 	for range 2 {
 		var notice bytes.Buffer
-		stop, err := startServiceWorkbenchSources(t.Context(), layout, python, port, false, &notice, nil, sources)
+		stop, err := startServiceWorkbenchSources(t.Context(), layout, python, port, false, &notice, nil, sources, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,6 +169,40 @@ func TestServiceWorkbenchFixedPortAcrossRestarts(t *testing.T) {
 			t.Fatal("fixed workbench URL changed or failed", prior, address, response.StatusCode)
 		}
 		prior = address
+	}
+}
+
+func TestServiceWorkbenchIncludesCLIStateSource(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal("workbench requires Python 3.10+:", err)
+	}
+	layout := workbenchFixture(t)
+	sources := []configuredChannel{{"dingtalk", layout.Root}}
+	cliState := filepath.Join(t.TempDir(), "cli-state")
+	if _, err := state.Open(cliState, false); err != nil {
+		t.Fatal(err)
+	}
+	var notice bytes.Buffer
+	stop, err := startServiceWorkbenchSources(t.Context(), layout, python, 0, false, &notice, nil, sources, cliState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	address := strings.Fields(notice.String())[2]
+	response, err := http.Get(address + "api/records")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var index struct {
+		Channels []string `json:"channels"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&index); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(index.Channels, ","), "cli") {
+		t.Fatal("workbench omitted the CLI chat source", index)
 	}
 }
 

@@ -165,6 +165,28 @@ func (w synchronizedChannelOutput) Write(p []byte) (int, error) {
 	return w.w.Write(p)
 }
 
+// discoverCLIState finds the ordinary CLI chat state home for the fixed,
+// documented ROOT/cli-state path beside a unified ROOT/config directory. It
+// is read-only discovery: an absent or not-yet-initialized directory is not
+// an error, only an empty result, matching the viewer's own tolerance for a
+// missing database. A custom --home used by an ad hoc "agent-host chat"
+// invocation is never auto-discovered; only the documented default path is.
+func discoverCLIState(directory string) (string, error) {
+	if filepath.Base(directory) != "config" {
+		return "", nil
+	}
+	cliState := filepath.Join(filepath.Dir(directory), "cli-state")
+	if _, err := os.Lstat(filepath.Join(cliState, "state.db")); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	} else if err != nil {
+		return "", fmt.Errorf("inspect CLI chat state: %w", err)
+	}
+	if _, err := privateServicePath(cliState, true); err != nil {
+		return "", fmt.Errorf("CLI chat state directory: %w", err)
+	}
+	return cliState, nil
+}
+
 func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser, restart bool, out, errout io.Writer) error {
 	channels, err := discoverServiceChannels(directory, fallback)
 	if err != nil {
@@ -221,7 +243,11 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 	if err != nil {
 		return err
 	}
-	stop, err := startServiceWorkbenchSources(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL, channels)
+	cliState, err := discoverCLIState(directory)
+	if err != nil {
+		return err
+	}
+	stop, err := startServiceWorkbenchSources(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL, channels, cliState)
 	if err != nil {
 		fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
 	} else {

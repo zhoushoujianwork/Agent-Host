@@ -18,10 +18,14 @@ import (
 // The observer has a separate log and inherits no managed provider credentials.
 // Its lifetime follows the service; an observer failure does not replay work.
 func startServiceWorkbench(ctx context.Context, layout serviceLayout, python string, port int, browser bool, notice io.Writer, openURL func(context.Context, string) error) (func(), error) {
-	return startServiceWorkbenchSources(ctx, layout, python, port, browser, notice, openURL, nil)
+	return startServiceWorkbenchSources(ctx, layout, python, port, browser, notice, openURL, nil, "")
 }
 
-func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, python string, port int, browser bool, notice io.Writer, openURL func(context.Context, string) error, sources []configuredChannel) (func(), error) {
+// cliState, when non-empty, is the ordinary CLI chat state home. It is an
+// additional read-only source, not a channel: it has no runtime lock, no
+// supervised process and no nested "state" subdirectory, so it is forwarded
+// to the viewer directly rather than through the channel Root+"/state" rule.
+func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, python string, port int, browser bool, notice io.Writer, openURL func(context.Context, string) error, sources []configuredChannel, cliState string) (func(), error) {
 	script := filepath.Join(layout.Root, "viewer", "server.py")
 	if _, err := privateServicePath(script, false); err != nil {
 		return nil, errors.New("installed viewer is missing or invalid; rerun make run")
@@ -55,6 +59,9 @@ func startServiceWorkbenchSources(ctx context.Context, layout serviceLayout, pyt
 	}
 	for _, source := range sources {
 		args = append(args, "--channel-home", source.Name+"="+filepath.Join(source.Root, "state"))
+	}
+	if cliState != "" {
+		args = append(args, "--channel-home", "cli="+cliState)
 	}
 	cmd := exec.CommandContext(childCtx, python, args...)
 	for _, entry := range os.Environ() {

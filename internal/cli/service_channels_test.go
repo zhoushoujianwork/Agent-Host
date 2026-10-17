@@ -12,6 +12,39 @@ import (
 	"time"
 )
 
+func TestDiscoverCLIStateFixedPathOnly(t *testing.T) {
+	root := channelDirectoryFixture(t)
+	directory := filepath.Join(root, "config")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if cliState, err := discoverCLIState(directory); err != nil || cliState != "" {
+		t.Fatal("absent CLI state must be silently empty, not an error", cliState, err)
+	}
+	cliState := filepath.Join(root, "cli-state")
+	if err := os.Mkdir(cliState, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cliState, "state.db"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := discoverCLIState(directory)
+	if err != nil || got != cliState {
+		t.Fatal("fixed ROOT/cli-state must be discovered once initialized", got, err)
+	}
+	// A directory that is not a unified ROOT/config layout never auto-discovers
+	// CLI state: only the documented default path qualifies.
+	if got, err := discoverCLIState(filepath.Join(root, "channels-dir")); err != nil || got != "" {
+		t.Fatal("non-config directory must not discover CLI state", got, err)
+	}
+	if err := os.Chmod(cliState, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discoverCLIState(directory); err == nil {
+		t.Fatal("group/other accessible CLI state must be rejected")
+	}
+}
+
 func channelDirectoryFixture(t *testing.T) string {
 	t.Helper()
 	path, err := filepath.EvalSymlinks(t.TempDir())
