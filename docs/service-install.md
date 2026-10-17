@@ -134,8 +134,12 @@ supervisor after failures. Supervisor output goes to
 `journalctl --user -u agent-host.service` on Linux. Channel logs remain under
 their existing runtime directories.
 
-Ordinary CLI chat keeps `.agent-host/cli-state`. To inspect channel records, select
-the relevant `--home`; migrated default memories retain the original scope:
+Ordinary CLI chat keeps `.agent-host/cli-state`. With `--config-dir`, the shared
+workbench automatically adds it as a read-only `cli` source once that directory
+holds a `state.db` — no separate viewer or `--home` setup is required. An ad hoc
+`chat --home` outside the default path stays independent and does not appear in
+the shared workbench. To inspect channel records directly, select the relevant
+`--home`; migrated default memories retain the original scope:
 
 ```sh
 ./bin/agent-host feishu status --home "$PWD/.agent-host/channels/feishu/state"

@@ -198,6 +198,14 @@ The supervisor starts one workbench for all enabled channels at fixed loopback
 port 8765 (`--viewer-port` overrides it). Workers use `--no-workbench` and do not
 start separate Web processes. The workbench reads each channel's state separately
 and qualifies displayed record/memory links with its registration name.
+With `--config-dir`, `discoverCLIState` also checks the documented fixed
+`ROOT/cli-state` path beside `ROOT/config`; when its `state.db` already exists,
+it is forwarded to the viewer as one more `--channel-home cli=...` source,
+alongside the per-channel ones, with the same read-only qualification. A missing
+`cli-state` directory is not an error, only an absent source — ordinary CLI chat
+is optional and its database is created lazily by the first invocation. Only this
+fixed default path is auto-discovered; an ad hoc `chat --home` elsewhere is an
+independent, unregistered runtime.
 Workers relay stdout/stderr to the
 terminal and their private append-only logs, and record `service.pid`.
 The supervisor forwards cancellation with SIGTERM, waits for cleanup, removes
