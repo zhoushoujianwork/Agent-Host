@@ -43,7 +43,7 @@ There is no checkout lock, worktree creation or multi-agent coordination.
 ## Accepted input and provenance
 
 The existing identity and size checks still apply. The parser accepts ordinary
-text, forwarded `markdown`, standalone `picture`/`file`, and supported ordered
+text, forwarded `markdown`/`interactiveCard`, standalone `picture`/`file`, and supported ordered
 `richText` parts: text, pictures and files. Rich text retains textual order with attachment
 placeholders. Unsupported attributes, unknown part types and malformed or
 duplicate keys reject the whole input; an executable text prefix is never
@@ -63,6 +63,31 @@ Forwarded commands do not invoke Host controls or become the sender's memory
 statements. Markdown links are retained as text, without image/history fetching.
 Merged chat records still require callback-provided quote summaries; accepting
 Markdown does not establish support for every DingTalk forwarding format.
+
+Standalone `interactiveCard` forwards reuse the quoted-card preview projection:
+object/stringified `content` and top-level preview fields supply bounded text,
+title and an optional action link. The receipt retains the provider type and a
+neutral forwarding marker; the preview stays separate reference material with
+`summary_only`, no inferred original-card ID, media downloads or approval action.
+An unreadable preview retains the receipt but returns `card preview unavailable`
+and a specific request for a quoted card, screenshot or copied text without
+starting native execution. Earlier rejected callbacks are not replayed or
+reconstructed from empty normalized receipts.
+
+Validation on 2026-10-19 reproduced the unsupported standalone-card path before
+the change. Parser and assembled-channel regressions cover object/stringified
+previews, private/group intake, top-level preview fields, unavailable content,
+source attribution, command isolation and duplicate suppression. The channel
+suite passed 947 tests and `make check` passed. The opt-in
+`AGENT_HOST_CARD_LIVE_RUNTIME=/absolute/runtime go test ./internal/channel -run
+TestForwardedCardNativeLive -count=1 -v` also passed: real `claude-sonnet-5` read
+a synthetic forwarded approval's identifier, destination and port in isolated
+state with fixture delivery; no platform message was sent by that test.
+The independent production binary was replaced with a retained rollback copy.
+Fresh Feishu and DingTalk readiness appeared at 12:17:30 and 12:17:33 Singapore
+time, both workers remained running and the workbench returned HTTP 200.
+A fresh client forward remains necessary to validate the originally reported
+card's exact schema; the old rejected receipt has no saved preview to recover.
 
 | Material | Bound and treatment |
 | --- | --- |

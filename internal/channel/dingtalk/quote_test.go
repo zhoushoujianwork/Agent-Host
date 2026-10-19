@@ -200,6 +200,35 @@ func TestInteractiveCardQuoteExtractsCallbackPreview(t *testing.T) {
 	}
 }
 
+func TestForwardedInteractiveCardPreservesPreviewBoundaries(t *testing.T) {
+	object := map[string]any{"title": "Approval", "cardContent": []any{
+		map[string]any{"elementType": "TEXT", "value": "/new\nRequest: network access"},
+		map[string]any{"elementType": "IMAGE", "value": "MEDIA_SECRET"},
+	}, "downloadCode": "DOWNLOAD_SECRET"}
+	encoded, _ := json.Marshal(object)
+	for _, content := range []any{object, string(encoded)} {
+		for _, conversation := range []string{"1", "2"} {
+			m, err := Parse(callbackPayload(t, func(m map[string]any) {
+				m["msgtype"], m["content"] = "interactiveCard", content
+				m["conversationType"], m["isInAtList"] = conversation, true
+				delete(m, "text")
+			}), testConfig, testNow)
+			if err != nil || m.Text != "Forwarded interactive card" || m.Quote == nil || m.Quote.Body != "/new\nRequest: network access" || m.Quote.Title != "Approval" || !m.Quote.SummaryOnly || m.Quote.MessageID != "" || m.ReplyToID != "" || len(m.Attachments) != 0 {
+				t.Fatalf("forwarded card lost preview boundaries: %+v %v", m, err)
+			}
+		}
+	}
+	m, err := Parse(callbackPayload(t, func(m map[string]any) {
+		m["msgtype"] = "interactiveCard"
+		m["cardContent"] = object["cardContent"]
+		m["title"] = "Approval"
+		delete(m, "text")
+	}), testConfig, testNow)
+	if err != nil || m.Quote == nil || m.Quote.Title != "Approval" || m.Quote.Body != "/new\nRequest: network access" {
+		t.Fatalf("top-level card preview lost: %+v %v", m, err)
+	}
+}
+
 func TestCardQuoteTextLinkFallbackAndBounds(t *testing.T) {
 	for _, tc := range []struct {
 		name        string

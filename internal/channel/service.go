@@ -336,6 +336,9 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 		status, cause, reply = "failed", "reply capability expired before execution", "消息回复凭据已过期，本次请求没有执行。请重新发送问题。"
 	} else if !supportedInput(m) {
 		status, cause, reply = "failed", "unsupported message type", "这条消息的内容格式暂不支持，请发送文字、图片或文件。"
+		if m.MessageType == "interactiveCard" {
+			cause, reply = "card preview unavailable", "已收到转发的卡片，但钉钉没有提供可读取的预览内容。请引用卡片并发送解读请求，或发送截图、复制审批文字。"
+		}
 	} else if strings.TrimSpace(m.Text) == "" || len(m.Text) > 16*1024 {
 		status, cause, reply = "failed", "invalid text length", "文字消息不能为空，且不能超过 16 KiB。"
 	} else {

@@ -18,12 +18,15 @@ to be recorded successfully.
 When Claude delegates work to a background agent, the Host waits for its final
 answer rather than completing the task with an interim waiting response.
 
-Send text, pictures, files, image-with-text messages, or forwarded Markdown.
+Send text, pictures, files, image-with-text messages, forwarded Markdown, or
+forwarded DingTalk interactive cards, including approval previews.
 One message can contain up to four attachments: each image up to 5 MiB and each file up to
 20 MiB. Claude receives images as native image inputs and reads ordinary files
 with its tools. Quoted text, a chat-record summary, or an interactive-card
 preview (text, title and action link) is used when the callback supplies it.
 Missing original content is not fetched automatically.
+Forwarded cards use the visible preview supplied by DingTalk; when no readable
+preview is supplied, the reply asks for a quoted card, screenshot or copied text.
 Forwarded Markdown is supplied as reference material, with long bodies marked
 as truncated. Links in forwarded content do not automatically download images.
 

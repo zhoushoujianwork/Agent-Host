@@ -201,6 +201,14 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 		text, supported = callback.Text.Content, true
 	case "markdown":
 		text, forwarded, supported = parseForwardedMarkdown(callback.Text.Content, callback.Content)
+	case "interactiveCard":
+		var card quotedCallback
+		_ = json.Unmarshal(data, &card)
+		// Reuse the quote projection, including top-level preview fallbacks.
+		// The current callback ID is not an authenticated original-card ID.
+		card.MsgID, card.MsgType = "", "interactiveCard"
+		forwarded = parseQuote("", true, &card)
+		text, supported = "Forwarded interactive card", true
 	case "richText":
 		text, attachments, supported = parseRichText(callback.Content)
 	case "picture", "file":
@@ -224,10 +232,13 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 		}
 		message.Quote = parseQuote(callback.OriginalMsgID, callback.Text.IsReplyMsg, callback.Text.RepliedMsg)
 		if forwarded != nil {
-			// The callback authenticates the sender who supplied the Markdown,
+			// The callback authenticates the sender who supplied the material,
 			// not its original author. Keep the body out of sender statements
 			// and standalone Host-command parsing.
 			message.Text, message.Quote = "Forwarded Markdown message", forwarded
+			if callback.MessageType == "interactiveCard" {
+				message.Text = "Forwarded interactive card"
+			}
 		}
 	}
 	return message, nil

@@ -109,6 +109,9 @@ func supportedInput(m state.ChannelMessage) bool {
 		return m.Input != nil && len(m.Input.Attachments) > 0
 	case "markdown":
 		return strings.TrimSpace(m.Text) != "" && m.Input != nil && m.Input.Quote != nil && m.Input.Quote.MessageType == "markdown" && strings.TrimSpace(m.Input.Quote.Body) != ""
+	case "interactiveCard":
+		return strings.TrimSpace(m.Text) != "" && m.Input != nil && m.Input.Quote != nil && m.Input.Quote.MessageType == "interactiveCard" &&
+			(strings.TrimSpace(m.Input.Quote.Body) != "" || strings.TrimSpace(m.Input.Quote.Title) != "")
 	default:
 		return false
 	}
