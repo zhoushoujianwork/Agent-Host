@@ -86,6 +86,23 @@ the foreground runtime and verify that the independent binary supports the
 current database schema. Keep only one supervisor connected to these channel
 identities.
 
+### Runtime artifact cleanup
+
+The 2026-10-19 cleanup removed superseded executables from historical validation
+and channel directories, Finder metadata and the stale root `supervisor.pid`.
+Historical acceptance material, channel backup snapshots, deployment receipts and
+inactive legacy logs now live under `validation/archive/<timestamp>/`.
+`validation/runtime-cleanup-<timestamp>.json` records deleted file hashes,
+relocations and preservation checks. These historical executable copies are no
+longer rollback binaries.
+
+Keep `imports/`: published memory still references its source material. Keep the
+root `bin/`, `tools/` and `skills/` installation assets while the migration-aware
+installer references them. Channel `viewer/` directories are generated runtime
+assets; the shared workbench currently uses the DingTalk copy. Configuration,
+published memory, source snapshots, native sessions, current databases and
+verified encrypted backups were retained.
+
 ## Configure and check
 
 `make install` builds and links the CLI and external memory skill into detected
