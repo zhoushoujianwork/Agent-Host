@@ -115,7 +115,7 @@ func TestAgentRuntimeUsesPinnedIdentityAndIndependentProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	actual := h.(*host.Host)
-	if runtime.AgentID != "team" || runtime.AudienceID != message.AudienceID || runtime.PermissionMode != "dontAsk" || !actual.Config.RestrictedReadOnly || runtime.NativeProfile == native || actual.Config.Model != "team-model" || !strings.Contains(runtime.HostInstructions, "Help with builds.") {
+	if runtime.AgentID != "team" || runtime.AudienceID != message.AudienceID || runtime.PermissionMode != "bypassPermissions" || actual.Config.RestrictedReadOnly || runtime.NativeProfile == native || actual.Config.Model != "team-model" || !strings.Contains(runtime.HostInstructions, "Help with builds.") {
 		t.Fatalf("instance runtime not propagated: %+v", runtime)
 	}
 	entries, err := os.ReadDir(runtime.NativeProfile)

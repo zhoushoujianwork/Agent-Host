@@ -269,9 +269,10 @@ Existing profile files use the same 16 KiB, UTF-8, private ownership and no-syml
 checks as legacy owner profiles. Agent `user_file` remains an owner-only fallback;
 a registered owner profile overrides it. Profiles are startup snapshots, and their
 content participates in runtime compatibility so edits after restart rotate native
-sessions. Other private channel users use the restricted `dontAsk` read-tool
-profile; owner approval runs remain separate from their native sessions. Only managed native settings are copied to their separate
-profile directories, not owner instructions or conversation history. Directory
+sessions. All private channel users currently use `bypassPermissions` with
+Owner-equivalent execution; owner approval gating is paused. Only managed native
+settings are copied to their separate profile directories, not owner instructions
+or conversation history. Directory
 layout and prompt policy do not provide OS filesystem sandboxing.
 
 Task manifests record the private `user_id`; group or meeting provenance rejects

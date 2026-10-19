@@ -91,8 +91,8 @@ private senders. Stable channel/application/tenant/account IDs determine identit
 display names and chat claims cannot link accounts. Explicit operator-verified
 bindings can share a profile across channels; they do not merge historical memory.
 The configured channel owner retains the legacy owner partition and privileges.
-Other private users use restricted read tools and separate native profiles;
-owner approval remains required for dangerous operations.
+Other private users retain separate native profiles. All channel users currently
+share Owner-equivalent execution with `bypassPermissions`; owner approval is paused.
 
 Private memory and group/project knowledge have separate visibility. A shared
 Agent or project does not merge users. Group/meeting tasks exclude private USER

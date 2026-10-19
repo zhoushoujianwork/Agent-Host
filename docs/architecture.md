@@ -86,7 +86,7 @@ Source documents, remembered text and model output cannot grant permissions.
 | Project work | Bounded local Git discovery, selected-target enrollment, automatic routing and shared execution receipts | No durable feature/worktree ownership or PR/MR delivery lifecycle |
 | Memory and Skills | Explicitly migrated file backend, source-grounded facts and procedures, automatic selected-experience publication, blacklist and scoped native Skills | Legacy SQLite experience requires review; general extraction quality and scale remain unmeasured |
 | Knowledge and actions | Dokki/Confluence/local Markdown retrieval, authorized Confluence page/blog writes and managed Gmail/163 email tools | Source configuration and sender grants apply; Gmail onboarding and real mail send/reply acceptance remain separate |
-| User context and permissions | Verified private-user identity/profile initialization, private profile selection and owner/member execution profiles; one-use owner approval runs | Group approval round trips and multi-person live acceptance remain pending; learned per-person preference controls remain proposed |
+| User context and permissions | Verified private-user profiles and source grants; all channel senders currently share Owner-equivalent execution with bypassPermissions | Owner-only execution and approval requests are temporarily suspended; learned per-person preference controls remain proposed |
 | Personal assistance | Selected DWS intake, cited current matters, private suggestions and user-selected preparation | Automatic conversation learning and proactive delivery remain planned |
 | Operations | Shared workbench, automatic user-login services, independent production runtime and verified encrypted backups | Backup excludes external account sessions and complete external project directories |
 
@@ -103,16 +103,15 @@ implementation. A passing automated check does not establish production quality.
   and enroll only the selected target into shared project records. Existing
   source stays in place. Receipts are per execution, rather than a completed
   feature-delivery system. See [project records](development-projects.md).
-- **Identity now controls execution.** Verified owners retain configured native
-  tools. Non-owners get restricted read tools and, where supported, an approval
-  request tool. Approval creates a separate, one-use owner-authorized run;
-  member sessions are never elevated. This is not OS filesystem isolation.
+- **Execution is temporarily shared.** All channel senders use the Owner-equivalent
+  native execution profile. Verified owner identity and private audience boundaries
+  remain recorded; owner-only execution and approval requests are paused.
   See [permissions](dangerous-operations-design.md).
 - **Profiles and source grants are explicit.** Optional `config/users.json`
   resolves private users and initializes runtime `users/<id>/USER.md`; configured
   private overrides take precedence. Private profiles do not enter shared tasks.
-  Non-owner/shared source access needs explicit grants and is further constrained
-  by the restricted execution profile. See [workspace details](workspace-layout-detail.md#multi-user-recording-and-retrieval).
+  Non-owner/shared source access needs explicit grants. See
+  [workspace details](workspace-layout-detail.md#multi-user-recording-and-retrieval).
 - **Runtime and development are separated.** Editable config, channel state,
   datasource snapshots, memory and cache have distinct ownership. Production can
   run from an independent bundle; building the checkout does not deploy it.
@@ -130,7 +129,7 @@ answer supported routine questions addressed to the owner, wait silently on
 incomplete or complex requests, and learn from owner conversations. Start with
 selected private chats and visibly marked AI replies. It is not implemented.
 
-Existing member/owner approval and multi-user acceptance gaps remain open.
+Owner-only execution and approval remain suspended; multi-user acceptance gaps remain open.
 Durable feature tasks, owned worktrees and authorized PR delivery remain a
 separate [engineering proposal](development-workflow.md). See
 [current priorities](release-follow-up.md) for delivery order.

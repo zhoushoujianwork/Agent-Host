@@ -25,8 +25,8 @@ Examples in the video are illustrative; current support is listed below.
   on demand; create or update authorized Confluence pages and personal blogs.
 - **Operate managed email:** AI lists configured Gmail/163 accounts, selects an
   account, then searches, reads, sends or replies through one email MCP.
-- **Control access:** initialize verified private-user profiles and restrict
-  member execution, with separate one-use owner approvals for supported group requests.
+- **Identify users:** keep verified private-user profiles and source grants separate.
+  All channel users currently share Owner-equivalent execution; approval gating is paused.
 - **See what happened:** inspect execution steps, tool results and memory in
   the local workbench or terminal logs; retain encrypted recovery backups.
 

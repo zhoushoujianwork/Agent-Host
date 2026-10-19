@@ -13,7 +13,7 @@ import (
 	"agent-host/internal/state"
 )
 
-func TestChannelAuthorizationProfilesBindVerifiedOwnerAcrossProviders(t *testing.T) {
+func TestChannelSharedExecutionPreservesIdentityAcrossProviders(t *testing.T) {
 	for _, provider := range []string{"dingtalk", state.ReplyTargetFeishu, state.ReplyTargetFeishuMeeting} {
 		t.Run(provider, func(t *testing.T) {
 			root, err := filepath.EvalSymlinks(t.TempDir())
@@ -55,15 +55,15 @@ func TestChannelAuthorizationProfilesBindVerifiedOwnerAcrossProviders(t *testing
 				return h.(*host.Host), r.Fingerprint
 			}
 			member, memberKey := resolve("member")
-			if !member.Config.RestrictedReadOnly || member.Config.PermissionMode != "dontAsk" || len(member.Config.MCPServers) != 0 || !strings.Contains(member.Config.HostInstructions, `"is_owner":false`) {
-				t.Fatal("member got execution capabilities", member.Config)
+			if member.Config.RestrictedReadOnly || member.Config.PermissionMode != "bypassPermissions" || member.Config.RequestApproval != nil || !strings.Contains(member.Config.HostInstructions, `"is_owner":false`) || !strings.Contains(member.Config.HostInstructions, `"execution_access":"owner-equivalent"`) {
+				t.Fatal("member did not get shared execution", member.Config)
 			}
 			if provider == state.ReplyTargetFeishuMeeting && member.Config.RequestApproval != nil {
 				t.Fatal("meeting gained unsupported approval sends")
 			}
 			other, otherKey := resolve("other-member")
-			if !other.Config.RestrictedReadOnly || memberKey != otherKey {
-				t.Fatal("same restricted profile lost stable compatibility")
+			if other.Config.RestrictedReadOnly || other.Config.PermissionMode != "bypassPermissions" || memberKey != otherKey {
+				t.Fatal("same shared profile lost stable compatibility")
 			}
 			owner, ownerKey := resolve("verified-owner")
 			if owner.Config.RestrictedReadOnly || owner.Config.PermissionMode != "bypassPermissions" || !strings.Contains(owner.Config.HostInstructions, `"is_owner":true`) || ownerKey == memberKey {
@@ -71,18 +71,18 @@ func TestChannelAuthorizationProfilesBindVerifiedOwnerAcrossProviders(t *testing
 			}
 			parent.OwnerID = "new-owner"
 			oldOwner, newKey := resolve("verified-owner")
-			if !oldOwner.Config.RestrictedReadOnly || newKey == ownerKey || newKey == memberKey {
-				t.Fatal("owner rebinding retained native authority")
+			if oldOwner.Config.RestrictedReadOnly || oldOwner.Config.PermissionMode != "bypassPermissions" || newKey == ownerKey || newKey == memberKey {
+				t.Fatal("owner rebinding did not retain shared execution with fresh identity")
 			}
 			unknown, _ := resolve("")
-			if !unknown.Config.RestrictedReadOnly || unknown.Config.PermissionMode != "dontAsk" {
-				t.Fatal("missing sender identity gained owner tools")
+			if unknown.Config.RestrictedReadOnly || unknown.Config.PermissionMode != "bypassPermissions" {
+				t.Fatal("unbound sender did not get shared execution")
 			}
 			parent.OwnerID = ""
 			for _, sender := range []string{"", "verified-owner", "new-owner", "member"} {
 				h, _ := resolve(sender)
-				if !h.Config.RestrictedReadOnly || h.Config.PermissionMode != "dontAsk" || h.Config.RequestApproval != nil {
-					t.Fatal("missing owner binding gained tools or approval delivery", sender)
+				if h.Config.RestrictedReadOnly || h.Config.PermissionMode != "bypassPermissions" || h.Config.RequestApproval != nil {
+					t.Fatal("shared execution depended on owner binding", sender)
 				}
 			}
 		})

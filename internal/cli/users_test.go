@@ -156,8 +156,8 @@ func TestUsersResolvePrivateContextAndRejectForgedAudience(t *testing.T) {
 			t.Fatal(err)
 		}
 		h := child.Host.(*host.Host)
-		if h.Config.PermissionMode != "default" || strings.Contains(h.Config.HostInstructions, "authenticated owner") || !strings.Contains(h.Config.HostInstructions, "authenticated user") {
-			t.Fatal("owner authority leaked", h.Config.HostInstructions)
+		if h.Config.PermissionMode != "bypassPermissions" || !h.Config.ToolsDisabled || strings.Contains(h.Config.HostInstructions, "authenticated owner") || !strings.Contains(h.Config.HostInstructions, "authenticated user") {
+			t.Fatal("shared execution changed private identity or explicit no-tools", h.Config.HostInstructions)
 		}
 		if id == "unknown" && !strings.Contains(h.Config.UserProfile, "Personal details") || id != "unknown" && !strings.Contains(strings.ToLower(h.Config.UserProfile), id) {
 			t.Fatal("wrong profile", id, h.Config.UserProfile)
@@ -167,13 +167,13 @@ func TestUsersResolvePrivateContextAndRejectForgedAudience(t *testing.T) {
 		toolBase.noTools = false
 		toolParent := *parent
 		toolParent.OwnerID = "owner"
-		restricted, err := resolveAgentChannel(t.Context(), &toolParent, c, toolBase, client, nil, message)
+		shared, err := resolveAgentChannel(t.Context(), &toolParent, c, toolBase, client, nil, message)
 		if err != nil {
 			t.Fatal(err)
 		}
-		policy := restricted.Host.(*host.Host).Config
-		if policy.PermissionMode != "dontAsk" || !policy.RestrictedReadOnly {
-			t.Fatal("multi-user profile weakened member tool policy", policy.PermissionMode, policy.RestrictedReadOnly)
+		policy := shared.Host.(*host.Host).Config
+		if policy.PermissionMode != "bypassPermissions" || policy.RestrictedReadOnly || policy.RequestApproval != nil {
+			t.Fatal("multi-user profile did not receive shared execution", policy.PermissionMode, policy.RestrictedReadOnly)
 		}
 		view, err := assembly.MaterializeWorkspace(filepath.Join(root, "cache"), assembly.WorkspaceInput{Run: state.Run{ID: "run-" + id, AgentID: "default", AudienceID: audience, Scope: root}, Files: h.Config.ContextFiles, UserProfile: h.Config.UserProfile})
 		if err != nil || view.Manifest.UserID != state.PrivateUserID(audience) {

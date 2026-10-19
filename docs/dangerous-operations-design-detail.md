@@ -1,3 +1,34 @@
+# Current shared execution policy
+
+As of 2026-10-19, `resolveAgentChannel` selects `bypassPermissions` for every
+sender on DingTalk, Feishu IM and Feishu meeting channels. It does not install
+`RestrictedReadOnly` or an approval callback. The Host-supplied authorization
+envelope uses `shared-execution-v1`, preserves the actual `is_owner` identity and
+adds `execution_access: owner-equivalent`. Owner identity no longer restricts
+execution. The changed prompt and permission mode participate in runtime
+compatibility, so existing restricted conversations cannot retain the old policy.
+
+User partitions, private profile selection and source grants are unchanged.
+Explicit `--no-tools` remains effective. `chat --debug-non-owner` deliberately
+uses the previous restricted policy for local tests only. This is a temporary
+source policy, not a new user-editable configuration switch.
+
+The structured-disposition fallback and CLI approval outbox proposed during the
+AK investigation were withdrawn before activation. They are not implemented.
+
+[Current user guide](dangerous-operations-design.md) owns the current scope.
+Validation on 2026-10-19: `make check` passed. Regression checks cover all three
+channel types, actual owner/member identity, Owner rebinding and missing bindings,
+private-user profile isolation, explicit no-tools and the opt-in restricted debug
+profile. A real `chat` invocation using a disposable Agent and non-owner audience
+recorded `bypassPermissions`, `restricted_read_only=false` and a successful Bash
+`pwd`/marker command. This did not send a platform message or call cloud APIs.
+
+The remaining sections describe the suspended implementation and its historical
+validation, not the current channel execution policy.
+
+---
+
 # Owner-only dangerous operations: implementation details
 
 Status: implemented in source; automated checks and partial native startup evidence
