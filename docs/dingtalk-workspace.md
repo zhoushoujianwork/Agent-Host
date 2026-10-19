@@ -2,8 +2,10 @@
 
 Status: implemented with automated worker, scope and source-collection checks.
 Owner authorization, personal sending, bounded message reads and one robot-led
-ticket-result notification passed live validation on 2026-10-13. Other product
-read/write acceptance remains unverified.
+ticket-result notification passed live validation on 2026-10-13. Owner approval
+reads and native interpretation-first replies passed on 2026-10-19. Comment and
+approval writes have offline contract coverage; live business-write acceptance
+remains unverified.
 See the [implementation details](dingtalk-workspace-detail.md).
 The proposed [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md)
 would reuse personal reads and sending for delegated routine answers. Question
@@ -66,6 +68,16 @@ documents, files, meeting notes, knowledge spaces, AI tables, spreadsheets,
 mail, approvals and reports. The AI reads official parameter and risk contracts
 before execution. Actual availability depends on the pinned official package
 and the account's platform permissions.
+
+For work orders and approval cards, the AI first explains the request and asks
+how to handle it. After your choice, it can use the existing MCP tools to perform
+the chosen work, post a completion comment (闭环评论), or submit your approval.
+Enable `oa` in the owner's workspace `services` for approval reads and writes.
+When you choose a close-out, the AI verifies the work, posts the result comment,
+then submits the selected approval and checks the final workflow state. An
+approved task can leave later approvals pending; the AI reports closure only
+when the workflow actually completes. Separate POP ticket closure needs its own
+supported API. See the [workflow details](dingtalk-workspace-detail.md#ticket-interpretation-and-close-out).
 
 Writes require a requested action and a saved operation ID. Official destructive
 actions retain their confirmation requirement. Host retries return the saved

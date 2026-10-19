@@ -11,6 +11,7 @@ import (
 
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/harness/claude"
+	"agent-host/internal/host"
 	"agent-host/internal/state"
 )
 
@@ -53,6 +54,7 @@ func TestForwardedCardNativeLive(t *testing.T) {
 	}
 	f.host.Config.Scope, f.service.Scope = workspace, workspace
 	f.host.Config.Model = profile.Execution.Model
+	f.host.Config.HostInstructions = host.ChannelInstructions("", false)
 	f.service.Timeout = 2 * time.Minute
 	f.host.Runner = claude.New(profile.Execution.Claude)
 	input := inputCallback(t, f, "synthetic-forwarded-card", "interactiveCard", "", map[string]any{
@@ -84,6 +86,9 @@ func TestForwardedCardNativeLive(t *testing.T) {
 		if text == "" || !strings.Contains(run.Output, text) {
 			t.Fatalf("native card interpretation omitted expected text %q: %s", text, run.Output)
 		}
+	}
+	if !strings.ContainsAny(run.Output, "?？") {
+		t.Fatalf("forwarded approval was not followed by a handling question: %s", run.Output)
 	}
 	t.Logf("Forwarded card read by native model %s; isolated state and fixture delivery; output: %s", run.Model, run.Output)
 }

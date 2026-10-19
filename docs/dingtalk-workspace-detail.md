@@ -2,6 +2,49 @@
 
 See the [user guide and scope](dingtalk-workspace.md).
 
+## Ticket interpretation and close-out
+
+Channel policy version 8 applies to forwarded work orders, approval cards and
+their follow-ups. Bare intake is interpretation first, followed by one concrete
+handling question. An explicit choice authorizes the chosen action without
+repeating the same permission question. Performing resource work, commenting,
+approving a task and completing an entire workflow remain separate outcomes.
+This is guidance for the native tool loop, not a new Host approval state machine.
+
+The existing `dingtalk` MCP supplies `list_services`, `list_commands`,
+`describe_command`, `execute_command` and `operation_status`; no extra plugin or
+public ticket API is needed. The configured owner must have `oa` selected and
+platform access. The pinned official contracts provide `oa approval detail`,
+`tasks` and `records` for reads, `oa approval oa-comments` with `instance-id` and
+`content`, and `oa approval approve` with `instance-id`, `task-id` and optional
+`remark`. Current detail/tasks establish the selected user's pending task rather
+than a stale card URL. Existing owner-only workspace mounting still applies.
+
+A selected close-out uses observed work and verification to write its completion
+comment, verifies the comment, submits the chosen approval and reads back task
+and instance status. Each write has its own stable operation ID and saved
+receipt. Verification failure does not authorize replay. `completed` in that
+receipt means command completion, not business acceptance. In particular,
+`processInstanceResult=agree` while `status=RUNNING` is still open. Later approval
+tasks can remain after the current user's task is passed. Separate POP workflow
+closure is not inferred from a DingTalk task result and needs a supported API.
+The feature does not approve the reported live VM-upgrade request merely because
+approval tooling is being enabled or tested.
+
+Validation on 2026-10-19 used the pinned official command schemas with fixture
+identity/business responses to exercise detail, comment, comment verification,
+approval submission and final detail reads through the existing MCP service.
+It covered disabled OA access, duplicate suppression and comment preservation
+after a verification failure. `make check` passed. A real owner-workspace read
+confirmed the selected instance remained `RUNNING`; an isolated real Claude test
+summarized the actual card and then asked how to handle it without business
+writes. Production enabled the existing `oa` service and restarted with the new
+policy; Feishu and DingTalk emitted fresh readiness at 12:40:23 and 12:40:27
+Singapore time, both workers stayed running and the workbench returned HTTP 200.
+No real comment, approval or closure was submitted by these tests. Live business
+write acceptance remains separate from the offline contract tests and read-only
+native validation.
+
 ## Official dependency
 
 The root Go module imports official
