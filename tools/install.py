@@ -1,4 +1,4 @@
-"""Link the source-built CLI and memory skill into supported local clients."""
+"""Link the source-built CLI and external-agent skills into supported local clients."""
 
 import argparse
 import json
@@ -10,6 +10,7 @@ import sys
 
 AGENTS = ("codex", "claude", "opencode", "gemini", "cursor", "copilot")
 SKILL = "agent-host-memory"
+TASK_SKILL = "agent-host-tasks"
 
 
 def migrated_runtime(repo):
@@ -86,6 +87,7 @@ def install(repo, home, env, bin_dir, agents=None, which=shutil.which):
         raise ValueError("build bin/agent-host first, or run make install")
     if not (skill / "SKILL.md").is_file() or not (skill / "references" / "protocol.md").is_file():
         raise ValueError("the source checkout is missing the complete memory skill")
+    task_skill = repo / "skills" / TASK_SKILL
     roots = agent_roots(home, env)
     rows = []
 
@@ -110,6 +112,10 @@ def install(repo, home, env, bin_dir, agents=None, which=shutil.which):
             rows.append((name, "not-detected", str(target)))
             continue
         attempt(name, skill, target)
+        if (task_skill / "SKILL.md").is_file():
+            attempt(f"{name}/{TASK_SKILL}", task_skill, skills_root / TASK_SKILL)
+        else:
+            rows.append((f"{name}/{TASK_SKILL}", "not-bundled", str(skills_root / TASK_SKILL)))
     return rows
 
 

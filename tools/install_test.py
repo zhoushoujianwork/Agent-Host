@@ -33,6 +33,9 @@ class InstallTests(unittest.TestCase):
         (self.skill / "references").mkdir(parents=True)
         (self.skill / "SKILL.md").write_text("fixture skill")
         (self.skill / "references" / "protocol.md").write_text("fixture protocol")
+        self.task_skill = self.repo / "skills" / INSTALL.TASK_SKILL
+        self.task_skill.mkdir()
+        (self.task_skill / "SKILL.md").write_text("fixture task handoff")
         self.bin_dir = self.home / ".local" / "bin"
         self.env = {"PATH": ""}
 
@@ -49,6 +52,7 @@ class InstallTests(unittest.TestCase):
             target = (self.home / ".agents" / "skills" if name == "codex" else root / "skills") / INSTALL.SKILL
             self.assertEqual(target.resolve(), self.skill.resolve())
             self.assertEqual((target / "references" / "protocol.md").read_text(), "fixture protocol")
+            self.assertEqual((target.parent / INSTALL.TASK_SKILL).resolve(), self.task_skill.resolve())
         cli = self.bin_dir / "agent-host"
         result = subprocess.run([str(cli)], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.strip(), "fixture-cli")
@@ -62,6 +66,19 @@ class InstallTests(unittest.TestCase):
         for name, root in INSTALL.agent_roots(self.home, self.env).items():
             self.assertEqual(rows[name], "not-detected")
             self.assertFalse(root.exists())
+
+    def test_older_bundle_reports_missing_task_skill_without_replacing_custom_skill(self):
+        shutil.rmtree(self.task_skill)
+        rows = self.install(agents={"codex"})
+        self.assertEqual(dict((name, status) for name, status, _ in rows)["codex/agent-host-tasks"], "not-bundled")
+        self.task_skill.mkdir()
+        (self.task_skill / "SKILL.md").write_text("fixture task handoff")
+        target = self.home / ".agents/skills" / INSTALL.TASK_SKILL
+        target.mkdir()
+        (target / "SKILL.md").write_text("custom task handoff")
+        rows = self.install(agents={"codex"})
+        self.assertEqual(dict((name, status) for name, status, _ in rows)["codex/agent-host-tasks"], "preserved")
+        self.assertEqual((target / "SKILL.md").read_text(), "custom task handoff")
 
     def test_path_detection_and_explicit_agent_selection(self):
         rows = self.install(which=lambda name, **k: "/fake/claude" if name == "claude" else None)

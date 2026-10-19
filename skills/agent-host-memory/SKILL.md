@@ -5,6 +5,10 @@ description: Save durable decisions, preferences, facts, evidence-backed procedu
 
 # Agent-Host memory
 
+For execution of a clear routine task, use the separate `agent-host-tasks`
+skill when installed. This skill handles knowledge intake and recall; memory
+connection aliases do not configure CLI chat destinations.
+
 Keep the entry's normal conversation and tools. Use the running Host for durable
 knowledge through `agent-host memory`; read [the protocol](references/protocol.md)
 for commands and payloads. If the binary is unavailable, use a configured absolute
