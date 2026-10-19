@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from memory_view import memory_catalog, normalize_report
+from settings_store import SettingsStore, Conflict
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
@@ -717,6 +718,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
+            elif target.path == "/api/settings":
+                store = getattr(self.server, "settings_store", None)
+                result = store.index() if store else {"enabled": False, "files": []}
+                result["mutation_token"] = getattr(self.server, "mutation_token", None) if store else None
+                self.send(200, result)
             elif target.path == "/api/backup":
                 root = getattr(self.server, "backup_root", None)
                 result = {"enabled": False}
@@ -739,7 +745,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(400, {"error": "provide exactly one record key"})
                 else:
                     self.send(200, self.server.catalog.record(keys[0]))
-            elif target.path in {"/", "/index.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css"}:
+            elif target.path in {"/", "/index.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
@@ -752,7 +758,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         token = getattr(self.server, "mutation_token", None)
-        if urlsplit(self.path).path != "/api/memory-action" or not token:
+        route = urlsplit(self.path).path
+        if route not in {"/api/memory-action", "/api/settings"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -761,18 +768,28 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 8192 or self.headers.get("Content-Type") != "application/json" or self.headers.get("Transfer-Encoding"):
+            limit = 1 << 20 if route == "/api/settings" else 8192
+            if not 0 < length <= limit or self.headers.get("Content-Type") != "application/json" or self.headers.get("Transfer-Encoding"):
                 raise ValueError("provide a bounded JSON action")
             self.connection.settimeout(10)
             value = decode(self.rfile.read(length))
+            if route == "/api/settings":
+                if set(value) != {"file", "revision", "value"} or not isinstance(value["file"], str) or not isinstance(value["revision"], str):
+                    raise ValueError("Provide a settings file, expected revision and value.")
+                self.send(200, self.server.settings_store.save(value["file"], value["revision"], value["value"]))
+                return
             if set(value) != {"key", "action", "note", "revision"} or not all(isinstance(value[k], str) for k in ("key", "action", "note")) or type(value["revision"]) is not int or len(value["note"]) > 2000 or len(value["key"]) > 256 or value["action"] not in {"accept", "reject", "invalidate", "restructure"}:
                 raise ValueError("invalid memory action")
             status, result = self.server.catalog.action(value["key"], value["action"], value["note"], value["revision"])
             self.send(status, result)
+        except Conflict as error:
+            self.send(409, {"error": str(error)})
         except KeyError:
-            self.send(404, {"error": "record outside the selected source or scope"})
+            self.send(404, {"error": "Settings file is outside this console." if route == "/api/settings" else "record outside the selected source or scope"})
         except (ValueError, sqlite3.Error) as error:
             self.send(400, {"error": str(error)})
+        except (TypeError, RecursionError):
+            self.send(400, {"error": "Invalid settings value or nesting depth."})
         except (OSError, http.client.HTTPException):
             self.send(503, {"error": "Host control unavailable or interrupted; refresh to inspect the outcome before retrying"})
 
@@ -801,7 +818,7 @@ def main():
     parser.add_argument("--audience", default="owner", help="Audience ID (default: owner)")
     parser.add_argument("--all-chats", action="store_true", help="Show every Agent and chat partition in this local console")
     parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
-    parser.add_argument("--backup-root", type=Path, help="Host root for read-only backup health")
+    parser.add_argument("--backup-root", type=Path, help="Explicit Host root for backup health and local settings")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
     try:
@@ -818,6 +835,8 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.catalog = catalog
     server.backup_root = args.backup_root
+    server.settings_store = SettingsStore(args.backup_root, args.host_binary,
+                                        Path.home() / ".config/agent-host/task-handoff.json") if args.backup_root else None
     server.mutation_token = secrets.token_urlsafe(32)
     print(f"Execution viewer: http://127.0.0.1:{server.server_port}", flush=True)
     try:

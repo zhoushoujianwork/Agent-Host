@@ -158,3 +158,19 @@ original recorded tool results to separate the successful path from observed
 pitfalls, checks the revised lesson, and saves a new version. The original
 draft, older versions and source evidence remain unchanged. Review the resulting
 steps and **避免事项** in the memory detail. This operation does not rerun the task.
+
+## Settings
+
+Open `/settings.html` from **Settings** in the execution workspace. An explicit
+`--backup-root /absolute/host/root` enables the local configuration editor;
+managed unified startup already supplies it. The searchable categories cover
+Agents, execution profiles/models, provider credentials, channels, data sources,
+Agent instructions, users, backups and an existing CLI handoff connection.
+
+Secret fields load as retained markers, never as their saved values. You can
+replace or explicitly clear them. Saves reject conflicting revisions, keep a
+private prior copy and run Host configuration validation. Failed validation
+restores the original file. Changes to channel services require a restart;
+saving does not restart services or run a task. See the
+[settings design](../../docs/settings-console.md) and
+[implementation details](../../docs/settings-console-detail.md).

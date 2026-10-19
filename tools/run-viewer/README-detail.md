@@ -16,7 +16,11 @@ See the [main guide](README.md) for scope and usage.
 
 Database keys are `db:RUN_ID`. Report keys combine a hash of the selected report
 path and its Run ID, so identical IDs in distinct sources are not conflated.
-No request can select an arbitrary file or change the configured source paths.
+Execution and memory requests cannot select arbitrary files or change their
+configured source paths. The separate settings API intentionally edits only
+enumerated owner-local configuration files; see the
+[settings implementation](../../docs/settings-console-detail.md). Saving source
+configuration does not replace the viewer's current catalog or restart services.
 
 SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
 request. Legacy reads invoke no Host process. A file-memory backend uses the

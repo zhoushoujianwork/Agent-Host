@@ -90,6 +90,12 @@ Source documents, remembered text and model output cannot grant permissions.
 | Personal assistance | Selected DWS intake, cited current matters, private suggestions and user-selected preparation | Automatic conversation learning and proactive delivery remain planned |
 | Operations | Shared workbench, automatic user-login services, independent production runtime and verified encrypted backups | Backup excludes external account sessions and complete external project directories |
 
+The local workbench also provides a [settings console](settings-console.md) for
+saved Agent, execution, provider, channel and datasource configuration. Checked
+saves retain private previous versions; applying service changes still requires
+a restart. The console does not turn CLI chat into a client of a running channel
+Host.
+
 The feature guides retain bounded native/platform evidence separately from
 implementation. A passing automated check does not establish production quality.
 

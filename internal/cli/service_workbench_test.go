@@ -26,7 +26,7 @@ func workbenchFixture(t *testing.T) serviceLayout {
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css"} {
+	for _, name := range []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css", "settings_store.py", "settings.html", "settings.js", "settings.css"} {
 		raw, err := os.ReadFile(filepath.Join("..", "..", "tools", "run-viewer", name))
 		if err != nil {
 			t.Fatal(err)

@@ -19,7 +19,8 @@ import time
 LABEL = "com.agent-host.production"
 CONNECT_TIMEOUT = 35
 VIEWER_FILES = ("server.py", "memory_view.py", "index.html", "app.js", "style.css",
-                "memory.html", "memory.js", "memory.css")
+                "memory.html", "memory.js", "memory.css", "settings_store.py",
+                "settings.html", "settings.js", "settings.css")
 
 
 def private_directory(path):

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import sqlite3
 import subprocess
 import sys
 
@@ -45,6 +46,21 @@ def configured_command(path):
     for flag in required:
         if args.count(flag) != 1 or args.index(flag) + 1 >= len(args):
             raise ValueError("handoff requires explicit state, agent, workspace and native profile")
+    selected = {flag: args[args.index(flag) + 1] for flag in required}
+    for flag in ("--home", "--agents-config", "--workspace", "--native-profile"):
+        if not Path(selected[flag]).is_absolute():
+            raise ValueError("handoff paths must be absolute")
+    catalog = private_json(selected["--agents-config"])
+    agents = catalog.get("agents", [])
+    if not isinstance(agents, list) or not all(isinstance(agent, dict) for agent in agents) or not any(agent.get("id") == selected["--agent"] for agent in agents):
+        raise ValueError("selected Agent is unavailable in the configured catalog")
+    projects = [project for agent in agents for project in (agent.get("projects") or [])]
+    if projects:
+        database = Path(selected["--home"]) / "state.db"
+        with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as connection:
+            known = {row[0] for row in connection.execute("SELECT id FROM projects")}
+        if not set(projects) <= known:
+            raise ValueError("Agent catalog references projects unavailable in CLI state")
     if "-m" in args or "--message" in args or "--resume" in args or "--project" in args:
         raise ValueError("saved args must not include a task, session or project override")
     managed = private_json(config["environment_file"])
@@ -75,7 +91,7 @@ def main(argv=None):
             command += ["--resume", options.resume]
         result = subprocess.run(command, cwd=cwd, env=env, check=False)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as error:
         print(f"Handoff configuration failed ({type(error).__name__}); check the private configuration and referenced files.", file=sys.stderr)
         return 2
 

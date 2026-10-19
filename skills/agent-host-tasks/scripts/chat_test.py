@@ -26,6 +26,9 @@ class HandoffTests(unittest.TestCase):
         self.credentials = self.root / "credentials.json"
         self.credentials.write_text(json.dumps({"ANTHROPIC_AUTH_TOKEN": "managed-token", "JEV_API_KEY": "managed-jev"}))
         self.credentials.chmod(0o600)
+        agents = self.root / "agents.json"
+        agents.write_text(json.dumps({"agents": [{"id": "daily", "projects": []}]}))
+        agents.chmod(0o600)
         self.config = self.root / "handoff.json"
         self.value = {"binary": sys.executable, "cwd": str(self.root), "environment_file": str(self.credentials),
                       "args": ["--home", str(self.root / "cli-state"), "--agents-config", str(self.root / "agents.json"),
@@ -70,6 +73,13 @@ class HandoffTests(unittest.TestCase):
             self.value["args"] = ["--agent", "daily"]
             self.save()
             self.assertEqual(CHAT.main(["--config", str(self.config), "-m", "task"]), 2)
+        run.assert_not_called()
+
+    def test_channel_only_project_bindings_are_rejected_without_starting_host(self):
+        agents = self.root / "agents.json"
+        agents.write_text(json.dumps({"agents": [{"id": "daily", "projects": ["channel-only"]}]}))
+        with patch.object(CHAT.subprocess, "run") as run, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(CHAT.main(["--config", str(self.config), "--check"]), 2)
         run.assert_not_called()
 
 

@@ -143,6 +143,12 @@ running a task. CLI state is separate from the running channel service's state.
 
 ## More
 
+The [settings console](docs/settings-console.md) adds searchable editors for
+Agents, models/providers, channels, data sources, instructions, people, backups
+and CLI handoffs. Open **Settings** in the local workbench. Secrets stay hidden
+on load; checked saves preserve a private previous version. Saved service
+configuration applies after restart.
+
 [Runtime setup](docs/service-install.md) · [Email setup](docs/email-plugin.md) ·
 [DingTalk workspace](docs/dingtalk-workspace.md) ·
 [Detailed usage and guides](README-detail.md) · [Architecture](docs/architecture.md) ·

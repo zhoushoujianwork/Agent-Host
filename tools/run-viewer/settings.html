@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings · Agent-Host</title>
+  <link rel="stylesheet" href="/settings.css">
+  <script src="/settings.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="navigation">
+      <a class="brand" href="/"><span class="brand-icon">ah</span><span>Agent-Host<small>YOUR LOCAL WORKSPACE</small></span></a>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search settings" aria-label="Search settings"></label>
+      <div class="nav-heading">WORKSPACE SETTINGS</div>
+      <nav id="categories" aria-label="Settings categories"></nav>
+      <div class="nav-bottom"><a href="/">← Execution history</a><a href="/memory.html">Memory workspace ↗</a><span><i></i> Local configuration</span></div>
+    </aside>
+    <main>
+      <header class="page-top"><span>Workspace <span class="separator">/</span> Settings</span><button id="refresh" class="quiet" type="button">↻ Refresh</button></header>
+      <div class="page-body">
+        <div class="heading"><div><div class="eyebrow">MAKE IT YOURS</div><h1 id="section-title">Agents</h1><p id="section-description">Choose who handles your tasks and the context they use.</p></div><span class="local-badge">On this computer</span></div>
+        <div id="notice" class="notice" role="status">Loading your configuration…</div>
+        <div id="feedback" role="status" hidden></div>
+        <div id="files" class="file-tabs" aria-label="Configuration files"></div>
+        <div id="empty" class="empty" hidden>No settings match this search.</div>
+        <section id="editor" aria-label="Settings editor"></section>
+        <footer class="save-bar"><div><strong id="change-status">Everything is up to date</strong><small id="save-hint">Changes apply after you save.</small></div><div class="save-actions"><button id="reset" class="quiet" type="button" disabled>Discard changes</button><button id="save" class="primary" type="button" disabled>Save changes</button></div></footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
