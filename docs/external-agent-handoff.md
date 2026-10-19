@@ -19,6 +19,45 @@ side repeats the other's running work or delegates the same task back.
 
 ## A small collaboration loop
 
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant A as External agent
+    participant S as Skill / launcher
+    participant H as agh
+    U->>A: Request
+    A->>A: Resolve scope and existing authorization
+    A->>S: Submit brief
+    S->>H: Execute with saved configuration
+    opt Check progress
+        A->>S: Inspect observed run
+        S->>H: Read existing records
+        H-->>S: Existing progress / evidence
+        S-->>A: Inspection result
+    end
+    H-->>S: Report and execution records
+    S-->>A: Result with references
+    A->>A: Verify outcome and evidence
+    alt Completed and verified
+        A-->>U: Result
+    else Blocked or failed
+        A-->>U: Actual changes and blocker
+        opt Additional decision resolves the blocker
+            U->>A: Decision
+            A->>S: Continue observed session
+            S->>H: New execution turn
+            H-->>S: Updated report and records
+            S-->>A: Result for verification
+            A-->>U: Verified outcome / remaining blocker
+        end
+    end
+```
+
+The Skill teaches the external agent this loop; the launcher carries the request
+and result. It is not another decision-making agent. The
+[data structure sketch](external-agent-handoff-detail.md#data-structure-sketch)
+shows the small request/result boundary.
+
 1. **Prepare.** The external agent resolves the objective, target, authorized
    actions and completion checks from the conversation. Ask only for information
    or a decision genuinely missing from the user's request.
