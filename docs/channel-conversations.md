@@ -24,9 +24,11 @@ One message can contain up to four attachments: each image up to 5 MiB and each 
 20 MiB. Claude receives images as native image inputs and reads ordinary files
 with its tools. Quoted text, a chat-record summary, or an interactive-card
 preview (text, title and action link) is used when the callback supplies it.
-Missing original content is not fetched automatically.
-Forwarded cards use the visible preview supplied by DingTalk; when no readable
-preview is supplied, the reply asks for a quoted card, screenshot or copied text.
+Forwarded cards use the visible preview supplied by DingTalk. In an owner-private
+chat, a card with no readable preview can use the configured owner's DingTalk
+workspace to read that exact forwarded message. Failed or unavailable reads ask
+for a quoted card, screenshot or copied text. Other missing originals are not
+fetched automatically.
 Forwarded Markdown is supplied as reference material, with long bodies marked
 as truncated. Links in forwarded content do not automatically download images.
 

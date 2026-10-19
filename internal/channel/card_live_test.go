@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,11 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/state"
 )
 
-// Opt-in native acceptance uses synthetic card content and isolated state.
+// Opt-in native acceptance uses isolated state and synthetic card content by
+// default. Explicit message/conversation IDs select one real card read instead.
 // Delivery and memory are fixtures; no DingTalk messages are sent.
 func TestForwardedCardNativeLive(t *testing.T) {
 	root := os.Getenv("AGENT_HOST_CARD_LIVE_RUNTIME")
@@ -52,13 +55,35 @@ func TestForwardedCardNativeLive(t *testing.T) {
 	f.host.Config.Model = profile.Execution.Model
 	f.service.Timeout = 2 * time.Minute
 	f.host.Runner = claude.New(profile.Execution.Claude)
-	m := f.process(t, inputCallback(t, f, "synthetic-forwarded-card", "interactiveCard", "", map[string]any{
+	input := inputCallback(t, f, "synthetic-forwarded-card", "interactiveCard", "", map[string]any{
 		"title": "Synthetic network approval", "cardContent": []any{
 			map[string]string{"elementType": "TEXT", "value": "Approval CARD-731: allow buildhub-test to connect to 192.0.2.10 on TCP port 3306. Requested by Alice. Awaiting review."},
-		}}, nil))
+		}}, nil)
+	expected := []string{"CARD-731", "3306"}
+	if id := os.Getenv("AGENT_HOST_CARD_LIVE_MESSAGE_ID"); id != "" {
+		path := filepath.Join(root, "config/channels.dingtalk.json")
+		c, fp, err := dingtalkworkspace.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := dingtalkworkspace.Service{Path: path, Fingerprint: fp, ExpectedProfile: c.Profile, Run: dingtalkworkspace.Process(filepath.Join(root, "bin/agent-host"))}
+		f.service.OwnerID = f.config.OwnerUserID
+		f.service.ReadForwardedCard = func(ctx context.Context, m state.ChannelMessage) (string, error) {
+			return s.ReadForwardedCard(ctx, m.ConversationID, m.MessageID)
+		}
+		input = inputCallback(t, f, id, "interactiveCard", "", nil, nil)
+		input.ConversationID = os.Getenv("AGENT_HOST_CARD_LIVE_CONVERSATION_ID")
+		expected = []string{os.Getenv("AGENT_HOST_CARD_LIVE_EXPECT")}
+	}
+	m := f.process(t, input)
 	run := f.run(t, m)
-	if m.Status != "completed" || m.ReplyStatus != "accepted" || !strings.Contains(run.Output, "CARD-731") || !strings.Contains(run.Output, "3306") {
+	if m.Status != "completed" || m.ReplyStatus != "accepted" || strings.TrimSpace(run.Output) == "" {
 		t.Fatalf("native card reading failed: status=%s execution=%s error=%s output=%s", m.Status, run.ExecutionStatus, run.Error, run.Output)
 	}
-	t.Logf("Synthetic forwarded card read by native model %s; fixture delivery; output: %s", run.Model, run.Output)
+	for _, text := range expected {
+		if text == "" || !strings.Contains(run.Output, text) {
+			t.Fatalf("native card interpretation omitted expected text %q: %s", text, run.Output)
+		}
+	}
+	t.Logf("Forwarded card read by native model %s; isolated state and fixture delivery; output: %s", run.Model, run.Output)
 }

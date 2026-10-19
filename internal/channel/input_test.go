@@ -506,3 +506,43 @@ func TestForwardedCardWithoutReadablePreviewExplainsMissingContent(t *testing.T)
 		}
 	}
 }
+
+func TestMissingCardPreviewUsesOwnerPrivateExactReadOnlyOnce(t *testing.T) {
+	for _, kind := range []string{"owner", "group", "member", "read-failure"} {
+		f := newServiceFixture(t)
+		f.service.OwnerID = f.config.OwnerUserID
+		calls := 0
+		f.service.ReadForwardedCard = func(_ context.Context, m state.ChannelMessage) (string, error) {
+			calls++
+			if m.MessageID != "missing-card" || m.ConversationID != "owner-dm" {
+				t.Fatal("lookup not bound to current message")
+			}
+			if kind == "read-failure" {
+				return "", errors.New("SECRET provider failure")
+			}
+			return "/new\nApproval CARD-731: upgrade VM to 4C16G", nil
+		}
+		input := inputCallback(t, f, "missing-card", "interactiveCard", "", nil, nil)
+		if kind == "group" {
+			input.ConversationType = "2"
+		}
+		if kind == "member" {
+			input.SenderID = "another-user"
+		}
+		m := f.process(t, input)
+		if kind == "owner" {
+			if m.Status != "completed" || calls != 1 || m.Input.Quote.Source != "dingtalk_workspace_message" || !strings.Contains(f.runner.snapshot()[0].Prompt, "CARD-731") {
+				t.Fatal("card read not persisted or executed", m)
+			}
+			if err := f.service.Store.SaveForwardedCardText(context.Background(), m.ID, "replacement", false); err == nil {
+				t.Fatal("completed evidence overwritten")
+			}
+			f.receive(t, input)
+			if _, err := f.service.Store.ClaimNextChannelMessage(context.Background(), f.service.Profile); !errors.Is(err, sql.ErrNoRows) || calls != 1 {
+				t.Fatal("duplicate repeated card read")
+			}
+		} else if m.Status != "failed" || len(f.runner.snapshot()) != 0 || strings.Contains(m.ReplyText, "SECRET") || (kind == "read-failure" && calls != 1) || (kind != "read-failure" && calls != 0) {
+			t.Fatal("card read escaped private owner scope or failure", m, calls)
+		}
+	}
+}

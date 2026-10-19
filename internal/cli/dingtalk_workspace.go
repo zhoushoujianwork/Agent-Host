@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"agent-host/internal/channel"
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/harness"
+	"agent-host/internal/state"
 )
 
 const dingtalkWorkspaceUsage = `Built-in DingTalk personal workspace (official DWS package; no dws executable).
@@ -150,5 +152,27 @@ func resolveDingTalkWorkspace(o *options) error {
 	}
 	o.dingtalkWorkspaceFingerprint = fp
 	o.mcpServers = append(o.mcpServers, harness.MCPServer{Name: "dingtalk", Command: executable, Args: []string{"dingtalk-workspace", "serve", "--config", path, "--fingerprint", fp, "--profile", profile}})
+	return nil
+}
+
+func configureForwardedCardReader(s *channel.Service, o options) error {
+	s.ReadForwardedCard = nil
+	if s.Channel != "" && s.Channel != "dingtalk" || o.audienceID != "owner" {
+		return nil
+	}
+	o.mcpServers = nil
+	if err := resolveDingTalkWorkspace(&o); err != nil {
+		return err
+	}
+	for _, server := range o.mcpServers {
+		if server.Name != "dingtalk" {
+			continue
+		}
+		// These arguments are assembled above by the Host, never message text.
+		workspace := dingtalkworkspace.Service{Path: server.Args[3], Fingerprint: server.Args[5], ExpectedProfile: server.Args[7], Run: dingtalkworkspace.Process(server.Command)}
+		s.ReadForwardedCard = func(ctx context.Context, m state.ChannelMessage) (string, error) {
+			return workspace.ReadForwardedCard(ctx, m.ConversationID, m.MessageID)
+		}
+	}
 	return nil
 }

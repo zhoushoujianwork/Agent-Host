@@ -31,6 +31,13 @@ type quotedCallback struct {
 const maxQuoteRunes = 4000
 const maxQuoteTitleRunes = 256
 
+// ForwardedCardText applies the same redaction and bounds to a separately read
+// forwarded copy; it does not authenticate the approval's original author.
+func ForwardedCardText(body string) *MessageQuote {
+	raw, _ := json.Marshal(map[string]string{"text": body})
+	return parseQuote("", true, &quotedCallback{MsgType: "interactiveCard", Content: raw})
+}
+
 // Markdown forwards use text.content in current callbacks, with content.text
 // in older shapes. Retain the supplied body as reference material; linked
 // images are not download capabilities and are never fetched here.

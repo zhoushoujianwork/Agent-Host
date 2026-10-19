@@ -26,12 +26,31 @@ type ChannelAttachment struct {
 }
 
 type ChannelQuote struct {
+	Source      string `json:"source,omitempty"`
 	MessageID   string `json:"message_id,omitempty"`
 	MessageType string `json:"message_type,omitempty"`
 	Body        string `json:"body,omitempty"`
 	Title       string `json:"title,omitempty"`
 	SummaryOnly bool   `json:"summary_only,omitempty"`
 	Truncated   bool   `json:"truncated,omitempty"`
+}
+
+// SaveForwardedCardText only fills an absent preview before execution. The
+// provider message ID remains on the receipt; it is not an original-card ID.
+func (s *Store) SaveForwardedCardText(ctx context.Context, id, body string, truncated bool) error {
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		m, err := readChannelMessage(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if m.Status != "claimed" || m.RunID != "" || m.MessageType != "interactiveCard" || m.Input == nil || m.Input.Quote == nil ||
+			m.Input.Quote.MessageType != "interactiveCard" || m.Input.Quote.Body != "" || m.Input.Quote.Title != "" || body == "" || len([]rune(body)) > 4001 {
+			return errors.New("forwarded card enrichment requires an unreadable unexecuted claimed card and bounded text")
+		}
+		m.Input.Quote.Body, m.Input.Quote.Truncated = body, truncated
+		m.Input.Quote.Source, m.Input.Quote.SummaryOnly = "dingtalk_workspace_message", true
+		return writeChannelMessage(ctx, tx, m)
+	})
 }
 
 const schemaChannelInputV11 = `
@@ -44,6 +63,11 @@ func receiptInput(input *ChannelInput) *ChannelInput {
 		return nil
 	}
 	copy := *input
+	if input.Quote != nil && input.Quote.Source == "dingtalk_workspace_message" {
+		quote := *input.Quote
+		quote.Source, quote.Body, quote.Truncated = "", "", false
+		copy.Quote = &quote
+	}
 	copy.Attachments = append([]ChannelAttachment(nil), input.Attachments...)
 	for i := range copy.Attachments {
 		copy.Attachments[i].Path, copy.Attachments[i].SHA256, copy.Attachments[i].ContentType, copy.Attachments[i].Bytes = "", "", "", 0

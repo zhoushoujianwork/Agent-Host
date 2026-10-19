@@ -25,6 +25,56 @@ func messageTarget(a Args) error {
 	return nil
 }
 
+// ReadForwardedCard reads exactly the authenticated forwarded copy. A result
+// from another conversation cannot enrich the current channel request.
+func (s Service) ReadForwardedCard(ctx context.Context, conversationID, messageID string) (string, error) {
+	if err := messageTarget(Args{ConversationID: conversationID}); err != nil {
+		return "", err
+	}
+	if messageID == "" || len(messageID) > 512 || strings.ContainsAny(messageID, ",\x00\r\n") || strings.TrimSpace(messageID) != messageID {
+		return "", errors.New("invalid forwarded message ID")
+	}
+	c, fp, configured, err := Binding(s.Path, s.ExpectedProfile)
+	if err != nil || !configured || fp != s.Fingerprint || !slices.Contains(c.Services, "chat") {
+		return "", errors.New("forwarded card read requires the configured owner chat workspace")
+	}
+	r := Request{Config: s.Path, Fingerprint: fp}
+	schema, err := describe(ctx, s.Run, r, "chat message list-by-ids")
+	if err != nil || schema["effect"] != "read" {
+		return "", errors.New("exact message read is unavailable in the official contract")
+	}
+	args, err := commandArguments([]string{"chat", "message", "list-by-ids"}, map[string]string{"msg-ids": messageID}, schema)
+	if err != nil {
+		return "", err
+	}
+	if err = verifyIdentity(ctx, s.Run, r, c); err != nil {
+		return "", err
+	}
+	r.Args = append(args, "--profile", c.Profile, "--format", "json")
+	body, err := s.Run(ctx, r)
+	if err != nil || len(body) > 12000 {
+		return "", errors.New("forwarded message read failed or exceeded its result limit")
+	}
+	var result struct {
+		Success bool `json:"success"`
+		Result  struct {
+			Messages []struct {
+				ID             string `json:"openMessageId"`
+				ConversationID string `json:"openConversationId"`
+				Content        string `json:"content"`
+			} `json:"messages"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(body, &result) != nil || !result.Success || len(result.Result.Messages) != 1 {
+		return "", errors.New("forwarded message read did not return exactly one message")
+	}
+	m := result.Result.Messages[0]
+	if m.ID != messageID || m.ConversationID != conversationID || strings.TrimSpace(m.Content) == "" {
+		return "", errors.New("forwarded message content is absent or its source does not match")
+	}
+	return m.Content, nil
+}
+
 // The generic command entry point must preserve the dedicated message tools'
 // identity, deduplication and bounded-read contracts as well.
 func enforceMessaging(c Config, a *Args) error {

@@ -69,10 +69,17 @@ object/stringified `content` and top-level preview fields supply bounded text,
 title and an optional action link. The receipt retains the provider type and a
 neutral forwarding marker; the preview stays separate reference material with
 `summary_only`, no inferred original-card ID, media downloads or approval action.
-An unreadable preview retains the receipt but returns `card preview unavailable`
-and a specific request for a quoted card, screenshot or copied text without
-starting native execution. Earlier rejected callbacks are not replayed or
-reconstructed from empty normalized receipts.
+An unreadable preview in an owner-private chat can use the configured owner
+workspace's `chat` service to read exactly the current forwarded copy. The private
+adapter checks the official read contract, owner profile, returned message ID
+and conversation ID, with a 30-second timeout and 12,000-byte result limit.
+The same redaction/preview bounds apply before saving `source` as
+`dingtalk_workspace_message` on the unexecuted claimed receipt. Saved enrichment
+does not change duplicate identity or overwrite the original callback preview.
+Groups, other senders and tool-disabled/workspace-disabled agents do not use the
+owner's reader. Missing/failed reads return an explicit explanation without
+starting native execution. Earlier failed receipts are never automatically
+rewritten, replayed or replied to again.
 
 Validation on 2026-10-19 reproduced the unsupported standalone-card path before
 the change. Parser and assembled-channel regressions cover object/stringified
@@ -86,8 +93,19 @@ state with fixture delivery; no platform message was sent by that test.
 The independent production binary was replaced with a retained rollback copy.
 Fresh Feishu and DingTalk readiness appeared at 12:17:30 and 12:17:33 Singapore
 time, both workers remained running and the workbench returned HTTP 200.
-A fresh client forward remains necessary to validate the originally reported
-card's exact schema; the old rejected receipt has no saved preview to recover.
+The fresh client forward at 12:24 still produced an empty parsed preview, so the
+initial deployment did not establish support for that card. An exact authorized
+owner-workspace read then recovered its approval text. An isolated assembled
+channel/native test independently exercised empty-preview intake, the embedded
+workspace read, source persistence and real Claude interpretation of the actual
+VM-upgrade request. Delivery remained a fixture; this test did not send an IM or
+perform an approval action. Regressions cover source mismatch, unavailable text,
+reader scope, duplicate reads and post-execution evidence preservation.
+`make check` passed for the correction. The corrected independent runtime
+reconnected Feishu at 12:29:56 and DingTalk at 12:29:59 Singapore time; both
+workers stayed running and the shared workbench returned HTTP 200. The prior
+failed production receipt remains unchanged. New inbound delivery through this
+fallback remains a separate client round trip from the isolated real-card test.
 
 | Material | Bound and treatment |
 | --- | --- |

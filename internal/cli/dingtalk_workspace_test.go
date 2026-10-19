@@ -10,8 +10,29 @@ import (
 	"strings"
 	"testing"
 
+	"agent-host/internal/channel"
 	"agent-host/internal/dingtalkworkspace"
 )
+
+func TestForwardedCardReaderFollowsOwnerWorkspacePolicy(t *testing.T) {
+	path, _, _ := writeBotFixture(t)
+	for _, tc := range []struct {
+		audience                string
+		noTools, disabled, want bool
+	}{
+		{"owner", false, false, true}, {"group", false, false, false}, {"member", false, false, false},
+		{"owner", true, false, false}, {"owner", false, true, false},
+	} {
+		s := &channel.Service{}
+		o := options{dingtalkConfig: path, audienceID: tc.audience, noTools: tc.noTools, disableDingTalkWorkspace: tc.disabled}
+		if err := configureForwardedCardReader(s, o); err != nil {
+			t.Fatal(err)
+		}
+		if (s.ReadForwardedCard != nil) != tc.want {
+			t.Fatal("card reader escaped owner workspace policy", tc)
+		}
+	}
+}
 
 func TestDingTalkWorkspaceMountOwnerAndCoexistence(t *testing.T) {
 	path, _, bot := writeBotFixture(t)

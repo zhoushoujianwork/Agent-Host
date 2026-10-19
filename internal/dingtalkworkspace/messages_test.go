@@ -8,6 +8,67 @@ import (
 	"testing"
 )
 
+// Opt-in reads one explicitly selected real forwarded copy with the embedded
+// worker and configured owner's session. It sends no message or approval action.
+func TestForwardedCardReadLive(t *testing.T) {
+	path := os.Getenv("AGENT_HOST_CARD_READ_CONFIG")
+	if path == "" {
+		t.Skip("requires explicit real card read opt-in")
+	}
+	c, fp, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := Service{Path: path, Fingerprint: fp, ExpectedProfile: c.Profile, Run: Process(os.Getenv("AGENT_HOST_CARD_READ_BINARY"))}
+	body, err := s.ReadForwardedCard(t.Context(), os.Getenv("AGENT_HOST_CARD_READ_CONVERSATION"), os.Getenv("AGENT_HOST_CARD_READ_MESSAGE"))
+	if err != nil || !strings.Contains(body, "4C16G") {
+		t.Fatalf("exact real card read failed: %v", err)
+	}
+	t.Logf("Exact forwarded approval text read through embedded owner workspace (%d characters); no delivery or approval action", len([]rune(body)))
+}
+
+func TestForwardedCardReadRequiresExactMessageAndConversation(t *testing.T) {
+	path, c, _ := configuration(t)
+	c.Services = append(c.Services, "chat")
+	b, _ := json.Marshal(c)
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, fp, _ := Load(path)
+	executable, _ := os.Executable()
+	contract, err := Process(executable)(context.Background(), Request{Config: path, Fingerprint: fp, Args: []string{"schema", "--cli-path", "chat message list-by-ids", "--compact", "--format", "json"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id, conversation, content string
+		want                      bool
+	}{
+		{"source", "conversation", "Approval preview", true},
+		{"other", "conversation", "Wrong message", false},
+		{"source", "other", "Wrong conversation", false},
+		{"source", "conversation", "", false},
+	} {
+		run := func(_ context.Context, r Request) (json.RawMessage, error) {
+			if r.Args[0] == "schema" {
+				return contract, nil
+			}
+			if r.Args[0] == "profile" {
+				return json.RawMessage(`{"success":true,"profiles":[{"profile":"corp:owner","corpId":"corp","userId":"owner"}]}`), nil
+			}
+			if !strings.Contains(strings.Join(r.Args, " "), "--msg-ids=source --profile corp:owner") {
+				t.Fatal("unbounded or unbound card read", r.Args)
+			}
+			body, _ := json.Marshal(map[string]any{"success": true, "result": map[string]any{"messages": []any{map[string]string{"openMessageId": tc.id, "openConversationId": tc.conversation, "content": tc.content}}}})
+			return body, nil
+		}
+		text, err := (Service{Path: path, Fingerprint: fp, ExpectedProfile: c.Profile, Run: run}).ReadForwardedCard(context.Background(), "conversation", "source")
+		if (err == nil) != tc.want || tc.want && text != tc.content {
+			t.Fatal("wrong card lookup result", text, err)
+		}
+	}
+}
+
 func TestPersonalMessagingUsesOfficialContractsAndOwnerIdentity(t *testing.T) {
 	path, c, _ := configuration(t)
 	c.Services = append(c.Services, "chat")

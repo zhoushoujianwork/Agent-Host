@@ -55,16 +55,17 @@ type Service struct {
 	TextReplier        TextReplier
 	SelectMessageAgent func(context.Context, Message) (AgentSelection, error)
 
-	Downloader      MediaDownloader
-	MediaRoot       string
-	Store           *state.Store
-	Host            Host
-	ResolveHost     func(context.Context, string) (Host, assembly.Runtime, error)
-	ResolveProjects func(context.Context, []string, string) (Host, assembly.Runtime, error)
-	Router          routing.Decider
-	SelectAgent     func(context.Context, dingtalk.Message) (AgentSelection, error)
-	ResolveAgent    func(context.Context, state.ChannelMessage) (*Service, error)
-	Projects        func(context.Context) ([]state.Project, error)
+	Downloader        MediaDownloader
+	ReadForwardedCard func(context.Context, state.ChannelMessage) (string, error)
+	MediaRoot         string
+	Store             *state.Store
+	Host              Host
+	ResolveHost       func(context.Context, string) (Host, assembly.Runtime, error)
+	ResolveProjects   func(context.Context, []string, string) (Host, assembly.Runtime, error)
+	Router            routing.Decider
+	SelectAgent       func(context.Context, dingtalk.Message) (AgentSelection, error)
+	ResolveAgent      func(context.Context, state.ChannelMessage) (*Service, error)
+	Projects          func(context.Context) ([]state.Project, error)
 	// Runtime lookup may expose local candidates without registering them. Only
 	// projects selected by a validated routing decision are enrolled.
 	PrepareProjects func(context.Context, state.ChannelMessage, []state.Project) ([]state.Project, error)
@@ -330,8 +331,26 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	var run state.Run
 	var runErr error
 	waiting := false
+	if resolutionErr == nil && m.MessageType == "interactiveCard" && !supportedInput(m) && s.ReadForwardedCard != nil &&
+		m.ConversationType == "1" && s.OwnerID != "" && m.SenderID == s.OwnerID && m.AudienceID == "owner" && m.ReplyExpiresAt.After(time.Now()) {
+		readCtx, stopRead := context.WithTimeout(turnCtx, 30*time.Second)
+		body, err := s.ReadForwardedCard(readCtx, m)
+		stopRead()
+		if err != nil {
+			resolutionErr = errors.New("forwarded card message read failed")
+		} else {
+			q := dingtalk.ForwardedCardText(body)
+			resolutionErr = s.Store.SaveForwardedCardText(turnCtx, m.ID, q.Body, q.Truncated)
+			if resolutionErr == nil {
+				m, resolutionErr = s.Store.ChannelMessage(turnCtx, m.ID)
+			}
+		}
+	}
 	if resolutionErr != nil {
 		status, cause, reply = "failed", resolutionErr.Error(), "当前助手配置不可用，本次请求没有执行。请联系管理员。"
+		if m.MessageType == "interactiveCard" {
+			reply = "已收到卡片，但未能读取它的正文，本次没有解读。请发送截图或复制审批文字。"
+		}
 	} else if m.ReplyTarget == nil && !m.ReplyExpiresAt.After(time.Now()) {
 		status, cause, reply = "failed", "reply capability expired before execution", "消息回复凭据已过期，本次请求没有执行。请重新发送问题。"
 	} else if !supportedInput(m) {

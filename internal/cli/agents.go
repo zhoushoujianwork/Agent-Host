@@ -356,6 +356,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	store := parent.Store.WithPartition(id, audience)
 	child := *parent
 	child.Store, child.ResolveAgent, child.SelectAgent = store, nil, nil
+	if err := configureForwardedCardReader(&child, o); err != nil {
+		return nil, err
+	}
 	child.SelectMessageAgent = nil
 	child.Projects = func(ctx context.Context) ([]state.Project, error) { return a.projects(ctx, store) }
 	o.runtimeWorkspaces = make(map[string]string)
