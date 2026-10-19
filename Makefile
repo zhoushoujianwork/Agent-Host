@@ -74,6 +74,7 @@ check:
 	go test ./...
 	$(PYTHON) -B tools/install_test.py
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py
+	$(PYTHON) -B skills/agent-host-tasks/scripts/chat_test.py
 	python3 -B tools/service/install_test.py
 	python3 -B tools/service/autostart_test.py
 	python3 -B tools/service/migrate_runtime_test.py

@@ -1,5 +1,29 @@
 # CLI task handoff reference
 
+## Configured launcher
+
+When `~/.config/agent-host/task-handoff.json` exists, use this skill's
+`scripts/chat.py --check`, then `scripts/chat.py -m MESSAGE`. Resolve the skill
+directory before invoking its script. It defaults to JSON events and accepts
+`--resume SESSION_ID` and `--format text|json`. A nonzero child exit is preserved;
+there is no provider fallback or automatic replay.
+
+The private JSON selects `binary`, `cwd`, `environment_file`, and `args` (CLI
+options). `args` must explicitly select `--home`, `--agents-config`, `--agent`,
+`--workspace`, and `--native-profile`. Keep credential values only in the private
+environment file, using the same documented provider keys as the service. The
+launcher clears inherited provider credentials before loading that file.
+
+CLI chat starts its own Host; it does **not** submit work to a running channel
+service. Use the existing dedicated `ROOT/cli-state`, not
+`ROOT/channels/<channel>/state`. A channel's Agent catalog may reference projects
+registered only in that channel. Configure a separate daily-task Agent catalog
+with the intended workspace and no unrelated project bindings; do not copy the
+channel catalog wholesale. A locked CLI home remains an explicit blocker; do
+not delete lock files or create a fresh home to evade ownership.
+
+## Direct CLI
+
 Resolve `agent-host` from the configured executable or PATH. When installed as
 a source link, resolve the skill directory and use `../../bin/agent-host` from
 that resolved directory if needed. Do not build, install or restart a runtime

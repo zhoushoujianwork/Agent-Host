@@ -136,6 +136,10 @@ and verify its result. `make install` links this skill alongside the memory
 skill for detected clients; older independent runtime bundles report
 `not-bundled` until explicitly updated. This is agent guidance using existing
 CLI commands; automatic external-agent routing is not implemented.
+For a saved CLI destination, use the skill's `scripts/chat.py` launcher with
+private `~/.config/agent-host/task-handoff.json`. It loads explicit Agent,
+workspace, state and provider settings; `--check` validates configuration without
+running a task. CLI state is separate from the running channel service's state.
 
 ## More
 

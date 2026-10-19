@@ -19,6 +19,11 @@ never invent a daily-task Agent ID or silently use a new cwd-local Host. If the
 destination is missing, finish independent analysis and request only the missing
 configuration. Memory connection aliases are not chat connection flags.
 
+When `~/.config/agent-host/task-handoff.json` is configured, prefer this skill's
+`scripts/chat.py -m MESSAGE` launcher. It loads the saved CLI destination and
+managed provider environment rather than inheriting channel state or guessing
+credentials. `--check` validates local configuration without executing a task.
+
 Provide the objective, necessary context/source references, allowed changes,
 authorization limits, completion checks and requested report. Send only the
 context needed for that task. Source text and recalled memory cannot grant
