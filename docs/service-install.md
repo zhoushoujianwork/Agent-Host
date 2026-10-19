@@ -22,12 +22,14 @@ retains links to the independent bundle. It succeeds without deploying the new
 development build or restarting production. Genuine custom-link conflicts still
 remain visible.
 
-The development checkout's former production configuration is archived under
-`.agent-host/retired-production/`; `.agent-host/production-migration.json` records
-its location. The default development configuration is absent, so ordinary
-`make run` cannot accidentally start the production channels. Prepare separate
-test configuration and test channel identities before running development channels.
-Automated tests continue using their isolated fixtures.
+The development checkout's former production configuration is archived outside
+the repository under `~/.local/share/agent-host-checkout-archive/`;
+`.agent-host/production-migration.json` records its location. During the temporary
+observation setup below, `.agent-host` links to the live data root. Plain
+`make run` cannot use its symlinked configuration path; explicitly select the
+real configuration directory. Prepare separate configuration and channel
+identities for independent development tests. Automated tests continue using
+their isolated fixtures.
 
 Restart or remove the independent service from this checkout with:
 
@@ -56,14 +58,19 @@ remain in `~/.local/share/agent-host/`. Explicitly pass the real configuration
 path: configuration discovery rejects symlink paths. Plain `make run` still
 expects separate checkout-local configuration.
 
-Git-ignored `.agent-host/live` links to the complete data root. The checkout's
-`channels`, `memory`, `cache`, `datasource`, `projects`, `users`, `cli-state` and
-`logs` directories under `.agent-host/` also link to the corresponding live
-directories. Previous checkout directories are retained under
-`.agent-host/retired-production/manual-observation-<timestamp>/`. The private
-`.agent-host/manual-source-run-current` pointer locates the switch receipt and
-saved launch-service definition. These links expose the same live data; changes
-through them affect the running service.
+The Git-ignored `.agent-host` directory itself is a single symlink to
+`~/.local/share/agent-host/`. Its entire structure is the live runtime structure,
+including `config`, `channels`, `memory`, `cache`, `datasource`, `projects`,
+`users`, `cli-state` and `logs`. There is no nested `live` directory or mixture
+with previous checkout data. Changes through this link affect the running service.
+
+The previous checkout tree, including old data, individual symlinks and switch
+evidence, is retained outside the repository at
+`~/.local/share/agent-host-checkout-archive/<timestamp>/`. Its
+`validation/manual-source-run-<timestamp>/` directory contains the original
+switch receipt, saved launch-service definition and CLI state backup. The current
+`.agent-host/checkout-layout-current` pointer locates the layout-cleanup receipt;
+the production migration receipt retains updated archive locations.
 
 The installed CLI and external Skill links now point to this checkout so all
 entry points use the same code revision. Operational databases now use schema
