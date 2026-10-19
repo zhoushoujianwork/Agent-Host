@@ -42,6 +42,43 @@ only builds the development checkout. The [migration details](service-install-de
 describe preservation, verification and recovery. The source-bound setup below
 remains available for new installations.
 
+### Temporary source-checkout observation
+
+On 2026-10-19, local automatic startup was removed to observe the current source
+build against the existing data. Start it from this checkout with:
+
+```sh
+make run CONFIG_DIR="$HOME/.local/share/agent-host/config" RUN_ARGS=--no-browser
+```
+
+The executable and viewer come from the checkout; configuration and live data
+remain in `~/.local/share/agent-host/`. Explicitly pass the real configuration
+path: configuration discovery rejects symlink paths. Plain `make run` still
+expects separate checkout-local configuration.
+
+Git-ignored `.agent-host/live` links to the complete data root. The checkout's
+`channels`, `memory`, `cache`, `datasource`, `projects`, `users`, `cli-state` and
+`logs` directories under `.agent-host/` also link to the corresponding live
+directories. Previous checkout directories are retained under
+`.agent-host/retired-production/manual-observation-<timestamp>/`. The private
+`.agent-host/manual-source-run-current` pointer locates the switch receipt and
+saved launch-service definition. These links expose the same live data; changes
+through them affect the running service.
+
+The installed CLI and external Skill links now point to this checkout so all
+entry points use the same code revision. Operational databases now use schema
+15; the schema-14 CLI state was backed up and upgraded through
+the existing, identity-preserving memory migration command. Published memory
+manifests were unchanged. The private switch receipt retains previous link
+targets and the CLI database backup.
+
+The production migration receipt remains as historical installation provenance.
+`make install` still selects that independent bundle and is not the command for
+restarting this temporary setup. Before restoring its automatic startup, stop
+the foreground runtime and verify that the independent binary supports the
+current database schema. Keep only one supervisor connected to these channel
+identities.
+
 ## Configure and check
 
 `make install` builds and links the CLI and external memory skill into detected
