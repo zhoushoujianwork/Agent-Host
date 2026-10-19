@@ -1,10 +1,10 @@
 # External-agent collaboration through a Skill
 
-Status: proposed refinement of the existing CLI handoff. The installed
-`agent-host-tasks` Skill can already submit and resume work; the simpler result
-and inspection experience below is not implemented. This document owns scope;
-[implementation notes](external-agent-handoff-detail.md) describe the current
-foundation and delivery checks.
+Status: implemented in the `agent-host-tasks` Skill and configured Python
+launcher. Result mode, read-only inspection and receipt-based continuation reuse
+the existing Host CLI. This document owns scope;
+[implementation notes](external-agent-handoff-detail.md) describe the boundary
+and validation.
 
 ## Goal
 
@@ -114,10 +114,14 @@ Use the caller's existing background execution support for long work. New
 scheduling services, parallel dispatch, task boards and automatic retries are
 outside this increment.
 
-## Delivery order
+## Usage
 
-1. Refine the Skill: task selection, brief, authority, return report and follow-up.
-2. Wrap existing execution and read-only inspection so callers can retrieve the
-   result and evidence without interpreting the full event stream themselves.
-3. Validate a successful task, a real blocker and a continuation with external
-   agents. Verify interrupted work is inspectable and never silently repeated.
+The installed Skill teaches the external agent to call `chat.py --format result`
+with its brief. The launcher announces a private evidence directory immediately,
+then returns the report and execution receipt. `--inspect` reads that directory
+and current Host records. `--resume-from` takes the directory and a new message,
+checks the saved destination and continues the observed session.
+
+Existing raw CLI modes remain available. An unobserved process exit blocks
+receipt-based continuation until the caller investigates the original process
+and any partial effects; there is no automatic retry.

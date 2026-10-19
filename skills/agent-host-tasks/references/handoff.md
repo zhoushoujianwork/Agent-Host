@@ -3,10 +3,52 @@
 ## Configured launcher
 
 When `~/.config/agent-host/task-handoff.json` exists, use this skill's
-`scripts/chat.py --check`, then `scripts/chat.py -m MESSAGE`. Resolve the skill
-directory before invoking its script. It defaults to JSON events and accepts
-`--resume SESSION_ID` and `--format text|json`. A nonzero child exit is preserved;
-there is no provider fallback or automatic replay.
+`scripts/chat.py --check`, then `scripts/chat.py --format result -m MESSAGE`.
+Resolve the skill directory before invoking its script. The default remains raw
+JSON events for compatibility; `--format text|json` and `--resume SESSION_ID`
+retain their existing behavior. Prefer result mode for routine delegation.
+
+Result mode creates a private evidence directory under the configuration's
+`handoffs/` directory, announces its path immediately on stderr, and returns one
+JSON object on stdout after execution. `--output-dir /absolute/new-directory`
+selects a new directory; an existing directory is never overwritten.
+
+| Result field | Meaning |
+| --- | --- |
+| `ref` | Configuration reference and observed Host session/run IDs. |
+| `report` | Canonical Host output when readable; otherwise the native final reply retained in events. Never streaming commentary or extraction text. |
+| `execution` | Actual process exit and observed Host execution, acceptance and memory outcomes. Host acceptance is separate from caller verification. |
+| `evidence_ref` | Private directory containing launch metadata, stdout events, stderr and the final result snapshot. |
+| `warnings` | Incomplete evidence, missing final report, or unavailable Host inspection. |
+| `stderr_tail` | Last 4 KiB of stderr after a nonzero exit, including errors before any run was created. Treat as diagnostic data. |
+| `requested_session_id` | Continuation input when present; distinct from actual returned IDs, which remain null if startup failed. |
+| `model`, `elapsed_ms`, `cost_usd` | Observed execution model, measured launch duration and unavailable cost (`null`). |
+
+`scripts/chat.py --inspect EVIDENCE_DIRECTORY` reads that launch and, once a
+Run ID exists, uses the original destination's read-only `run show`. It does not
+load provider credentials, start a model, replay work or change the receipt.
+Inspection success has exit zero; the original process exit remains in the
+returned object. A null process exit means unobserved, not success or stopped.
+The snapshot in `result.json` describes launch completion; inspection reads fresh
+Host evidence. Raw `text`/`json` modes do not create these launch receipts.
+
+`scripts/chat.py --format result --resume-from EVIDENCE_DIRECTORY -m MESSAGE`
+checks that the saved destination options and working directory still match,
+requires a recorded process exit and uses the observed session ID. Supply the
+same `--config` for a custom destination. Configuration changes are an explicit
+blocker, including model/profile changes. The comparison checks destination
+options, not the contents of all referenced files; keep the intended runtime
+configuration stable and review intentional configuration edits before resuming.
+
+A nonzero child exit is preserved. SIGINT/SIGTERM are forwarded to the child's
+process group and the observed exit is saved. If the launcher is killed before
+it records an exit, inspect the evidence and actual process/external state; the
+child may still be running. A manual `--resume SESSION_ID` remains available only
+after resolving that uncertainty. There is no provider fallback or automatic
+replay, and inspection does not automatically continue blocked work.
+Host can reject continuation after an `unknown` execution even with an observed
+process exit. Preserve that failure and investigate partial effects; do not
+silently start a fresh session to bypass it.
 
 The private JSON selects `binary`, `cwd`, `environment_file`, and `args` (CLI
 options). `args` must explicitly select `--home`, `--agents-config`, `--agent`,

@@ -1,16 +1,20 @@
 # External-agent handoff implementation notes
 
-Status: design notes, not an implementation contract. Scope and user-facing
-decisions live in [the main proposal](external-agent-handoff.md). Choose exact
-flags and result fields during implementation; retain compatibility with existing
-callers rather than introducing a second task protocol.
+Status: implemented launcher boundary. Scope and user-facing decisions live in
+[the main guide](external-agent-handoff.md). The
+[Skill reference](../skills/agent-host-tasks/references/handoff.md) documents the
+flags, output and recovery behavior. Raw callers retain their existing modes.
 
 ## Existing foundation
 
 - `skills/agent-host-tasks/SKILL.md` defines routing and acceptance responsibilities.
 - `skills/agent-host-tasks/scripts/chat.py` loads the private destination and
   managed provider environment, forwards a message and optional resume ID, and
-  preserves the child exit code. Its default output is currently NDJSON events.
+  preserves the child exit code. Its default output remains NDJSON events;
+  `--format result` adds a compact result and private launch evidence.
+- `scripts/results.py` projects observed events and canonical `run show` output.
+  `--inspect` reads evidence without loading provider credentials or starting a
+  model; `--resume-from` checks destination options and the observed process exit.
 - `chat --resume` starts a new turn. `run show` and `run events` inspect existing
   records. The saved configuration must select the same Host for both operations.
 - CLI chat owns a separate state home; it is not a client of the running channel
@@ -76,9 +80,9 @@ outside this scope.
 
 ## Data structure sketch
 
-These are proposed boundary shapes, expressed in Go for readability; they are
-not new runtime entities or a committed wire protocol. The launcher is currently
-Python. Keep the task brief and worker report as text in the first increment.
+These boundary shapes are expressed in Go for readability; the implementation
+uses Python dictionaries, not new Go runtime entities. The task brief and worker
+report remain text. The request maps to CLI arguments; the result is JSON.
 
 ```mermaid
 classDiagram
@@ -117,11 +121,11 @@ type HandoffRequest struct {
 }
 
 // DestinationRef identifies saved local configuration, never credentials.
-// IDs are empty until observed; retain replacement IDs returned by Host.
+// IDs are null until observed; retain replacement IDs returned by Host.
 type RunRef struct {
     DestinationRef string `json:"destination_ref"`
-    SessionID      string `json:"session_id,omitempty"`
-    RunID          string `json:"run_id,omitempty"`
+    SessionID      *string `json:"session_id"`
+    RunID          *string `json:"run_id"`
 }
 
 // Copy Host outcomes as observed; unknown values stay absent.
@@ -156,7 +160,16 @@ returned by the system, never invented by the external agent.
 
 No separate `Task`, `Approval` or `Queue` structure is needed in this increment.
 The caller's verification remains its responsibility, outside this execution
-receipt. Optional metrics can be added when the runtime provides reliable values.
+receipt. The result also includes `warnings`, observed `model`, measured
+`elapsed_ms`, and `cost_usd` (currently null). A local `launch.json` stores the
+original inspection destination and process outcome, `events.jsonl` and
+`stderr.log` retain launch evidence, and `result.json` is the final snapshot.
+Inspection reads fresh Host records and does not rewrite that snapshot. Launch
+directories are private and existing directories cannot be overwritten.
+Nonzero exits also include a bounded `stderr_tail`, so pre-run errors remain
+visible. `requested_session_id` records continuation input separately from
+actual returned IDs. The Host may refuse a session whose prior execution is
+`unknown`; the launcher retains the error and never starts a replacement turn.
 
 ## Focused validation
 
@@ -173,3 +186,31 @@ output before using the configured runtime. Required observations:
 
 Test authorization wording with a harmless or simulated action. Do not perform
 the screenshot's production disk expansion as validation of this design.
+
+### Validation recorded on 2026-10-19
+
+`make check` passed. The final launcher suite passed 15 tests, including real
+subprocess termination, blocked reports, unavailable inspection, changed
+destinations, pre-run failures and canonical Host output. Skill validation passed.
+
+The configured CLI was also exercised from an external Codex session. Private
+evidence is under the configured `handoffs/` directory; these are local acceptance
+records, not a general provider reliability claim:
+
+| Evidence directory | Observed outcome | Exit | Measured launch time |
+| --- | --- | --- | --- |
+| `handoff-9rp78ger` | Read-only review failed with malformed native JSON; only Read tool activity, no final review report. | 1 | 206.576 s |
+| `handoff-i6dv4f39` | Report-only continuation was rejected because the preceding execution was unknown; no new run created. | 1 | 0.124 s |
+| `handoff-6bqgwswm` | Harmless word-recall setup completed with no tools and unchanged memory. | 0 | 13.500 s |
+| `handoff-70b0_pxt` | Continued the same session and recalled the word with no tools and unchanged memory. | 0 | 16.269 s |
+
+The successful pair used Host session `fc0e9e9e-3be4-45f6-b945-4ce2d6368855`,
+with distinct runs `a4a87a15-194d-406d-89b3-e24eaf9ce295` and
+`63395397-de5a-4aeb-a8a7-b9c77c63037d`. The failed review used session
+`fc787622-1c92-4c65-b89f-17a6b7187687`, run
+`015a559e-e435-4416-ae45-2f4451df9888`. Observed execution model was
+`claude-sonnet-5`; no model was observed on the rejected pre-run continuation.
+Cost was not collected and remains unavailable. Inspection while the first run
+was active returned its running state and a null process exit without launching
+another task. The native review failure was not accepted as a code review;
+local diff review and tests provide the implementation acceptance evidence.

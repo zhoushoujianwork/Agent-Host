@@ -140,8 +140,10 @@ For a saved CLI destination, use the skill's `scripts/chat.py` launcher with
 private `~/.config/agent-host/task-handoff.json`. It loads explicit Agent,
 workspace, state and provider settings; `--check` validates configuration without
 running a task. CLI state is separate from the running channel service's state.
-The proposed [external-agent collaboration flow](docs/external-agent-handoff.md)
-keeps the next increment to a Skill and submit/inspect/continue operations.
+The [external-agent collaboration flow](docs/external-agent-handoff.md) provides
+submit/inspect/continue through that launcher. Use `--format result` for a compact
+report with private evidence, `--inspect EVIDENCE_DIRECTORY` for read-only status,
+and `--resume-from EVIDENCE_DIRECTORY` with a follow-up message to continue.
 
 ## More
 

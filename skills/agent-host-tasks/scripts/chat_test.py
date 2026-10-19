@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import signal
+import time
 import unittest
 from unittest.mock import patch
 
@@ -81,6 +83,188 @@ class HandoffTests(unittest.TestCase):
         with patch.object(CHAT.subprocess, "run") as run, contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(CHAT.main(["--config", str(self.config), "--check"]), 2)
         run.assert_not_called()
+
+    def fake_host(self, **behavior):
+        (self.root / "behavior.json").write_text(json.dumps(behavior))
+        binary = self.root / "host"
+        binary.write_text(f"#!{sys.executable}\n" + '''
+import json, pathlib, sys, time
+root = pathlib.Path(__file__).parent
+config = json.loads((root / "behavior.json").read_text())
+with (root / "calls.jsonl").open("a") as output:
+    output.write(json.dumps(sys.argv[1:]) + "\\n")
+if config.get("preflight_error") and sys.argv[1] == "chat":
+    print("session cannot resume after unknown execution", file=sys.stderr)
+    sys.exit(1)
+run = {"id": "run-1", "session_id": "actual-session", "output": config.get("report", "BLOCKED: account denied; no changes"),
+       "execution_status": "completed", "acceptance_status": "unreviewed", "memory_status": "failed", "memory_error": "memory unavailable", "model": "fixture-model"}
+if sys.argv[1:3] == ["run", "show"]:
+    if config.get("inspect_failure"):
+        sys.exit(3)
+    if not (root / "finished").exists():
+        run.update(output="", execution_status="running", memory_status="pending_execution")
+    elif "canonical_report" in config:
+        run["output"] = config["canonical_report"]
+    print(json.dumps(run))
+    sys.exit(0)
+def emit(kind, **fields):
+    print(json.dumps({"type": kind, "run_id": "run-1", "session_id": "actual-session", **fields}), flush=True)
+emit("run.started")
+time.sleep(config.get("sleep", 0))
+emit("text.delta", phase="execute", component="harness.claude", delta="Checking...")
+emit("agent.result", phase="execute", component="harness.claude", model="fixture-model", data={"raw": {"result": run["output"]}})
+emit("text.delta", phase="extract", component="harness.claude.extractor", delta="Secret memory extraction")
+emit("run.finished", data={key: run[key] for key in ("execution_status", "acceptance_status", "memory_status", "memory_error")})
+(root / "finished").touch()
+print("fixture stderr", file=sys.stderr)
+sys.exit(config.get("exit_code", 0))
+''')
+        binary.chmod(0o700)
+        self.value["binary"] = str(binary)
+        self.save()
+
+    def result_launch(self, directory, *extra):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+            code = CHAT.main(["--config", str(self.config), "--format", "result", "--output-dir", str(directory), "-m", "Exact $HOME `literal` task", *extra])
+        return code, json.loads(output.getvalue())
+
+    def calls(self):
+        return [json.loads(line) for line in (self.root / "calls.jsonl").read_text().splitlines()]
+
+    def test_result_preserves_blocked_report_memory_failure_and_exit(self):
+        self.fake_host(exit_code=7)
+        directory = self.root / "evidence"
+        code, result = self.result_launch(directory)
+        self.assertEqual(code, 7)
+        self.assertEqual(result["execution"]["exit_code"], 7)
+        self.assertEqual(result["execution"]["memory_status"], "failed")
+        self.assertEqual(result["report"], "BLOCKED: account denied; no changes")
+        self.assertEqual(result["ref"]["session_id"], "actual-session")
+        self.assertIsNone(result["cost_usd"])
+        self.assertNotIn("Secret memory", result["report"])
+        self.assertEqual((directory / "stderr.log").read_text().strip(), "fixture stderr")
+        self.assertEqual(result["stderr_tail"].strip(), "fixture stderr")
+        self.assertEqual(directory.stat().st_mode & 0o077, 0)
+        self.assertEqual((directory / "launch.json").stat().st_mode & 0o077, 0)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def test_inspect_needs_no_credentials_and_never_starts_chat(self):
+        self.fake_host()
+        directory = self.root / "evidence"
+        self.result_launch(directory)
+        self.credentials.unlink()
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(CHAT.main(["--inspect", str(directory)]), 0)
+        self.assertEqual(json.loads(output.getvalue())["execution"]["exit_code"], 0)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def test_canonical_output_keeps_host_notices(self):
+        self.fake_host(canonical_report="BLOCKED: account denied. Host notice retained.")
+        _, result = self.result_launch(self.root / "evidence")
+        self.assertEqual(result["report"], "BLOCKED: account denied. Host notice retained.")
+
+    def test_resume_uses_observed_session_and_rejects_destination_changes(self):
+        self.fake_host()
+        directory = self.root / "first"
+        self.result_launch(directory)
+        self.result_launch(self.root / "second", "--resume-from", str(directory))
+        chats = [call for call in self.calls() if call[0] == "chat"]
+        self.assertEqual(chats[1][-2:], ["--resume", "actual-session"])
+        self.assertEqual(chats[1][chats[1].index("-m") + 1], "Exact $HOME `literal` task")
+        self.value["args"] += ["--model", "different"]
+        self.save()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(CHAT.main(["--config", str(self.config), "--resume-from", str(directory), "-m", "continue"]), 2)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 2)
+
+    def test_unavailable_host_and_truncated_events_preserve_partial_evidence(self):
+        self.fake_host(inspect_failure=True)
+        directory = self.root / "evidence"
+        _, result = self.result_launch(directory)
+        self.assertIn("BLOCKED", result["report"])
+        self.assertTrue(result["warnings"])
+        receipt = CHAT.private_json(directory / "launch.json")
+        receipt["exit_code"] = None
+        CHAT.save_json(directory / "launch.json", receipt)
+        (directory / "events.jsonl").write_text('{"type":"run.started","run_id":"run-1","session_id":"actual-session"}\n{"type":')
+        result = CHAT.inspect_receipt(directory, CHAT.private_json)
+        self.assertEqual(result["report"], "")
+        self.assertIsNone(result["execution"]["exit_code"])
+        self.assertIn("incomplete_or_invalid_events", result["warnings"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(CHAT.main(["--config", str(self.config), "--resume-from", str(directory), "-m", "continue"]), 2)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def test_termination_preserves_evidence_and_exit_without_replay(self):
+        self.fake_host(sleep=30)
+        directory = self.root / "interrupted"
+        launcher = subprocess.Popen([sys.executable, "-B", str(Path(CHAT.__file__)), "--config", str(self.config),
+                                     "--format", "result", "--output-dir", str(directory), "-m", "wait"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                events = directory / "events.jsonl"
+                if events.exists() and events.stat().st_size:
+                    break
+                time.sleep(0.02)
+            else:
+                self.fail("fixture never started")
+            launcher.send_signal(signal.SIGTERM)
+            output, _ = launcher.communicate(timeout=5)
+            self.assertEqual(launcher.returncode, 143)
+            self.assertEqual(json.loads(output)["execution"]["exit_code"], 143)
+            self.assertEqual(json.loads(output)["report"], "")
+            self.assertTrue((directory / "events.jsonl").read_text())
+            self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+        finally:
+            if launcher.poll() is None:
+                launcher.kill()
+                launcher.communicate()
+
+    def test_saved_task_or_duplicate_destination_overrides_are_rejected(self):
+        original = self.value["args"].copy()
+        for override in (["-m", "unexpected"], ["--message=unexpected"], ["-format", "text"], ["--home=/other"]):
+            self.value["args"] = original + override
+            self.save()
+            with contextlib.redirect_stderr(io.StringIO()), patch.object(CHAT.subprocess, "run") as run:
+                self.assertEqual(CHAT.main(["--config", str(self.config), "--check"]), 2)
+            run.assert_not_called()
+
+    def test_inspect_rejects_execution_options_and_existing_output_is_preserved(self):
+        self.fake_host()
+        directory = self.root / "evidence"
+        self.result_launch(directory)
+        old_receipt = (directory / "launch.json").read_bytes()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(CHAT.main(["--config", str(self.config), "--format", "result", "--output-dir", str(directory), "-m", "again"]), 2)
+            with self.assertRaises(SystemExit):
+                CHAT.main(["--inspect", str(directory), "-m", "again"])
+        self.assertEqual((directory / "launch.json").read_bytes(), old_receipt)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def test_preflight_failure_surfaces_error_without_inventing_actual_ids(self):
+        self.fake_host(preflight_error=True)
+        code, result = self.result_launch(self.root / "evidence", "--resume", "requested-session")
+        self.assertEqual(code, 1)
+        self.assertIn("cannot resume", result["stderr_tail"])
+        self.assertEqual(result["requested_session_id"], "requested-session")
+        self.assertIsNone(result["ref"]["session_id"])
+        self.assertIsNone(result["ref"]["run_id"])
+
+    def test_inspection_rejects_a_mutating_receipt_command(self):
+        self.fake_host()
+        directory = self.root / "evidence"
+        self.result_launch(directory)
+        receipt = CHAT.private_json(directory / "launch.json")
+        receipt["inspect_command"] = [self.value["binary"], "chat", "-m", "unexpected"]
+        CHAT.save_json(directory / "launch.json", receipt)
+        with patch.object(CHAT.subprocess, "run") as run:
+            result = CHAT.inspect_receipt(directory, CHAT.private_json)
+        run.assert_not_called()
+        self.assertTrue(result["warnings"])
 
 
 if __name__ == "__main__":
