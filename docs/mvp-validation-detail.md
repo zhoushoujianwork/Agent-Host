@@ -248,7 +248,7 @@ model-quality comparison, and there is no runtime provider fallback.
 
 | Automated validation | Evidence |
 | --- | --- |
-| Native protocol, completion, errors and cancellation | Real synthetic subprocess fixtures; false-success fields, nonzero exit, missing/malformed/mismatched/duplicate result, callback errors, descendant cancellation |
+| Native protocol, completion, errors and cancellation | Real synthetic subprocess fixtures; false-success fields, nonzero exit, missing/malformed/mismatched/duplicate result, callback errors, descendant cancellation; slow event sinks drain buffered output after native exit, while idle inherited stdout remains bounded |
 | Memory failure and independent retry | Host integration with real SQLite and injected decision failure; retry completes without a second native dispatch |
 | Execution versus display/persistence | Completed native result remains completed if rendering fails; committed memory is not relabeled failed after output failure |
 | Journal and terminal | Contiguous persistence and typed-event replay equality, incremental text, phase durations, control-character stripping, writer failures |

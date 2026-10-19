@@ -236,6 +236,10 @@ func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, exist
 		}
 		known[m.ID] = true
 		key := fmt.Sprintf("m%d", i)
+		// Compare the retained claims, not earlier model decision envelopes.
+		// Those audits remain on the original record; nesting them in each new
+		// decision needlessly exhausts the bounded comparison input.
+		m.RevisionDecision, m.ObjectAudit = nil, nil
 		memories[key] = m
 		if SameProcedure(candidate.Draft, m) {
 			exact[key] = m

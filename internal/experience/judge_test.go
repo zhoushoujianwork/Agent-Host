@@ -29,6 +29,30 @@ func answer(choice string, p float64) jev.Answer {
 	return jev.Answer{Type: "choice", Choice: choice, Probabilities: map[string]float64{choice: p}}
 }
 
+func TestComparisonDoesNotRecursivelyEmbedStoredDecisionAudits(t *testing.T) {
+	m := fixtureMemory("m1", "reviewed_experience")
+	m.RevisionDecision = json.RawMessage(`{"old_audit":"` + strings.Repeat("x", MaxDecisionBytes) + `"}`)
+	m.ObjectAudit = json.RawMessage(`{"old_object_audit":"` + strings.Repeat("y", MaxDecisionBytes) + `"}`)
+	f := &fakeEvaluator{fn: func(_ context.Context, input any, questions map[string]jev.Question) (jev.Response, error) {
+		b, err := json.Marshal(input)
+		if err != nil || len(b) > MaxDecisionBytes || strings.Contains(string(b), "old_audit") || strings.Contains(string(b), "old_object_audit") {
+			t.Fatalf("comparison contains stored audits: bytes=%d err=%v", len(b), err)
+		}
+		got := input.(map[string]any)["existing"].(map[string]state.Memory)["m0"]
+		if got.ID != m.ID || got.Text != m.Text || got.SourceType != m.SourceType || got.Revision != m.Revision || got.Status != m.Status {
+			t.Fatal("comparison lost memory identity, provenance, or claims")
+		}
+		return jev.Response{Model: "resolved-jev", Answers: map[string]jev.Answer{"m0": answer("independent", .95)}}, nil
+	}}
+	out, err := (&JevJudge{client: f}).Compare(t.Context(), fixtureCandidate(), []state.Memory{m})
+	if err != nil || f.calls != 1 || len(out.ConflictIDs) != 0 || len(out.DuplicateIDs) != 0 {
+		t.Fatalf("calls=%d out=%+v err=%v", f.calls, out, err)
+	}
+	if len(m.RevisionDecision) < MaxDecisionBytes || len(m.ObjectAudit) < MaxDecisionBytes {
+		t.Fatal("stored audit was mutated")
+	}
+}
+
 func TestAssessmentPreservesEvidenceAndRejectsUnsupportedClaims(t *testing.T) {
 	for _, mode := range []string{"eligible", "not-durable", "assistant-claim", "uncertain", "low-durability", "low-support"} {
 		t.Run(mode, func(t *testing.T) {

@@ -32,6 +32,10 @@ func TestMain(m *testing.M) {
 func fixture(mode string) {
 	apiError := strings.HasPrefix(mode, "api_error_nonzero")
 	repeatedInit := strings.HasPrefix(mode, "image_reinit_") || strings.HasPrefix(mode, "image_background_")
+	if mode == "pipe_holder" {
+		time.Sleep(10 * time.Second)
+		return
+	}
 	if mode == "grandchild" {
 		time.Sleep(350 * time.Millisecond)
 		_ = os.WriteFile(os.Getenv("AGENT_HOST_FIXTURE_MARKER"), []byte("still alive"), 0600)
@@ -102,6 +106,35 @@ func fixture(mode string) {
 			init["mcp_servers"] = servers
 		}
 		write(init)
+	}
+	if mode == "slow_sink" {
+		// Wait until the sink holds the first event, then exit with unread output.
+		marker := os.Getenv("AGENT_HOST_FIXTURE_MARKER")
+		for i := 0; i < 1000; i++ {
+			if _, err := os.Stat(marker); err == nil {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		write(map[string]any{"type": "assistant", "session_id": session,
+			"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": strings.Repeat("x", 4000)}}}})
+		write(map[string]any{"type": "result", "subtype": "success", "session_id": session,
+			"is_error": false, "result": strings.Repeat("x", 4000)})
+		_ = os.WriteFile(marker+".exit", []byte("output written"), 0600)
+		return
+	}
+	if mode == "held_stdout" || mode == "held_stdout_partial" {
+		exe, _ := os.Executable()
+		child := exec.Command(exe)
+		child.Env = append(os.Environ(), "AGENT_HOST_CLAUDE_FIXTURE=pipe_holder")
+		child.Stdout = os.Stdout
+		if err := child.Start(); err != nil {
+			panic(err)
+		}
+		if mode == "held_stdout_partial" {
+			fmt.Print(`{"type":"result"`)
+			return
+		}
 	}
 	if mode == "cancel_tree" {
 		exe, _ := os.Executable()
@@ -180,7 +213,7 @@ func fixture(mode string) {
 	if mode == "error_subtype" {
 		final["subtype"] = "error_max_turns"
 	}
-	if mode == "unterminated_line" {
+	if mode == "unterminated_line" || mode == "nonzero_unterminated" {
 		body, _ := json.Marshal(final)
 		fmt.Print(string(body))
 	} else {
@@ -189,7 +222,7 @@ func fixture(mode string) {
 	if mode == "duplicate" || mode == "image_reinit_duplicate_final" {
 		write(final)
 	}
-	if mode == "nonzero" {
+	if mode == "nonzero" || mode == "nonzero_unterminated" {
 		os.Exit(7)
 	}
 	if apiError {
@@ -375,11 +408,60 @@ func TestStreamingArrivesBeforeNativeExit(t *testing.T) {
 	}
 }
 
+func TestSlowSinkDrainsOutputAfterNativeExit(t *testing.T) {
+	adapter, request := fixtureAdapter(t, "slow_sink")
+	marker := filepath.Join(t.TempDir(), "sink")
+	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	first := true
+	result, err := adapter.Run(ctx, request, func(o harness.Observation) error {
+		if !first {
+			return nil
+		}
+		first = false
+		if err := os.WriteFile(marker, []byte("sink entered"), 0600); err != nil {
+			return err
+		}
+		for {
+			if _, err := os.Stat(marker + ".exit"); err == nil {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Millisecond):
+			}
+		}
+		// Exceed WaitDelay after the child has written its entire result.
+		time.Sleep(3 * time.Second)
+		return nil
+	})
+	if err != nil || result.Status != "completed" || result.Text != strings.Repeat("x", 4000) {
+		t.Fatalf("status=%s text bytes=%d err=%v", result.Status, len(result.Text), err)
+	}
+}
+
+func TestInheritedStdoutRemainsBoundedWithoutMalformedTail(t *testing.T) {
+	for _, mode := range []string{"held_stdout", "held_stdout_partial"} {
+		t.Run(mode, func(t *testing.T) {
+			adapter, request := fixtureAdapter(t, mode)
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			result, err := adapter.Run(ctx, request, nil)
+			if !errors.Is(err, exec.ErrWaitDelay) || result.Status != "unknown" || ctx.Err() != nil {
+				t.Fatalf("status=%s err=%v context=%v", result.Status, err, ctx.Err())
+			}
+		})
+	}
+}
+
 func TestCompletionNeedsProtocolAndExitAgreement(t *testing.T) {
 	cases := []struct{ mode, status, contains string }{
 		{"error", "failed", "unsuccessful"},
 		{"error_subtype", "failed", "error_max_turns"},
 		{"nonzero", "failed", "exit status 7"},
+		{"nonzero_unterminated", "failed", "exit status 7"},
 		{"missing_final", "unknown", "missing final"},
 		{"missing_init", "unknown", "missing session initialization"},
 		{"malformed", "unknown", "malformed event"},

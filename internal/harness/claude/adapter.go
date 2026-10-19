@@ -408,10 +408,8 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 		output.limit = maxNativeLine + len(input)
 	}
 	var stderr boundedBuffer
-	cmd.Stdout, cmd.Stderr = &output, &stderr
-	// os/exec drains both pipes while waiting. WaitDelay bounds inherited pipes
-	// held open by descendants after the native process exits.
-	waitErr := cmd.Run()
+	cmd.Stderr = &stderr
+	waitErr := runWithDrainedStdout(cmd, &output)
 	if cmd.ProcessState != nil {
 		failure = harness.FailureProvider
 	}
@@ -421,7 +419,8 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	if cmd.ProcessState != nil {
 		result.ExitCode = cmd.ProcessState.ExitCode()
 	}
-	if output.err == nil && ctx.Err() == nil {
+	var nativeExit *exec.ExitError
+	if (waitErr == nil || errors.As(waitErr, &nativeExit)) && output.err == nil && ctx.Err() == nil {
 		output.finish()
 		if waitErr == nil && output.err == nil && ctx.Err() == nil {
 			protocol.finish()

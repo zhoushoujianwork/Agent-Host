@@ -158,6 +158,12 @@ identity, source type or the review requirement.
 
 ## Candidate and decision contract
 
+Experience comparison retains each selected memory's claims, identity, revision,
+provenance and applicability. Prior `revision_decision` and `object_audit`
+envelopes stay on the original record rather than being recursively embedded in
+the new model input. The 48 KiB comparison-state limit still applies to the
+remaining complete records; oversized claims fail explicitly without truncation.
+
 A draft contains `title`, `summary`, `conditions`, ordered `steps`, and exact
 `evidence_ids`. Extractor output is decoded strictly; missing/unknown fields,
 malformed JSON, out-of-bound fields, and unknown/repeated evidence references
