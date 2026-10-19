@@ -22,7 +22,8 @@ personal workspace.
 When DingTalk is enabled, owner-private tasks automatically receive one built-in
 `dingtalk` MCP. Before configuration it reports setup is needed. After setup,
 the AI discovers selected products and their official commands on demand.
-Group tasks do not receive the owner's personal workspace.
+During Beta, group and private users share the configured workspace tools;
+upstream permissions and explicit operation authorization still apply.
 
 ## Setup
 

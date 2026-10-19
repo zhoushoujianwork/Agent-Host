@@ -113,7 +113,7 @@ approval reply before dispatching a separate run.
 
 ## Prepare and start
 
-Owner-private tasks automatically discover the [built-in DingTalk workspace](dingtalk-workspace.md).
+DingTalk tasks automatically discover the shared [built-in DingTalk workspace](dingtalk-workspace.md).
 It uses separate personal authorization for selected business products and
 does not require installing DWS. Add `workspace_config` to the bot JSON, or
 place `data-dingtalk-workspace.json` beside it. Without setup, the tool reports the

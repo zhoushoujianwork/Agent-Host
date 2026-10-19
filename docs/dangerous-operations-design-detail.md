@@ -3,12 +3,14 @@
 As of 2026-10-19, `resolveAgentChannel` selects `bypassPermissions` for every
 sender on DingTalk, Feishu IM and Feishu meeting channels. It does not install
 `RestrictedReadOnly` or an approval callback. The Host-supplied authorization
-envelope uses `shared-execution-v1`, preserves the actual `is_owner` identity and
+envelope uses `shared-execution-v2`, preserves the actual `is_owner` identity and
 adds `execution_access: owner-equivalent`. Owner identity no longer restricts
 execution. The changed prompt and permission mode participate in runtime
 compatibility, so existing restricted conversations cannot retain the old policy.
 
-User partitions, private profile selection and source grants are unchanged.
+User partitions and private profile selection remain unchanged. During Beta,
+all enabled datasource, mailbox and DWS tools are shared; user/group source
+allowlists are suspended. See [datasource details](datasource-plugins-design-detail.md).
 Explicit `--no-tools` remains effective. `chat --debug-non-owner` deliberately
 uses the previous restricted policy for local tests only. This is a temporary
 source policy, not a new user-editable configuration switch.

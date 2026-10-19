@@ -23,9 +23,9 @@ const dingtalkWorkspaceUsage = `Built-in DingTalk personal workspace (official D
   agent-host chat --dingtalk-workspace-config ABSOLUTE_PATH [options]
 
 Configuration: exact profile corpId:userId, private state_directory and services.
-DingTalk channel owner tasks automatically mount this MCP. workspace_config in
+All DingTalk channel users share this configured MCP during Beta. workspace_config in
 the bot JSON selects the file; default is data-dingtalk-workspace.json beside bot JSON.
-Group tasks do not receive the owner's workspace. check is local-only.
+Group tasks receive the same configured workspace tools. check is local-only.
 login uses official browser/device authorization and encrypted credential storage.
 status reads the configured profile; it never sends messages or runs tasks.
 Unknown write outcomes must be inspected, never automatically replayed.
@@ -92,7 +92,7 @@ func runDingTalkWorkspace(ctx context.Context, args []string, in io.Reader, out,
 
 func resolveDingTalkWorkspace(o *options) error {
 	o.dingtalkWorkspaceFingerprint = ""
-	if o.disableDingTalkWorkspace || o.noTools || o.audienceID != "" && o.audienceID != "owner" {
+	if o.disableDingTalkWorkspace || o.noTools {
 		return nil
 	}
 	path := o.dingtalkWorkspaceConfig
@@ -157,7 +157,7 @@ func resolveDingTalkWorkspace(o *options) error {
 
 func configureForwardedCardReader(s *channel.Service, o options) error {
 	s.ReadForwardedCard = nil
-	if s.Channel != "" && s.Channel != "dingtalk" || o.audienceID != "owner" {
+	if s.Channel != "" && s.Channel != "dingtalk" {
 		return nil
 	}
 	o.mcpServers = nil

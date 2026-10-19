@@ -14,13 +14,13 @@ import (
 	"agent-host/internal/dingtalkworkspace"
 )
 
-func TestForwardedCardReaderFollowsOwnerWorkspacePolicy(t *testing.T) {
+func TestForwardedCardReaderSharesConfiguredWorkspaceDuringBeta(t *testing.T) {
 	path, _, _ := writeBotFixture(t)
 	for _, tc := range []struct {
 		audience                string
 		noTools, disabled, want bool
 	}{
-		{"owner", false, false, true}, {"group", false, false, false}, {"member", false, false, false},
+		{"owner", false, false, true}, {"group", false, false, true}, {"member", false, false, true},
 		{"owner", true, false, false}, {"owner", false, true, false},
 	} {
 		s := &channel.Service{}
@@ -29,7 +29,7 @@ func TestForwardedCardReaderFollowsOwnerWorkspacePolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 		if (s.ReadForwardedCard != nil) != tc.want {
-			t.Fatal("card reader escaped owner workspace policy", tc)
+			t.Fatal("card reader did not follow Beta tool availability", tc)
 		}
 	}
 }
@@ -64,8 +64,8 @@ func TestDingTalkWorkspaceMountOwnerAndCoexistence(t *testing.T) {
 		t.Fatal("repeated assembly duplicated MCP", err)
 	}
 	o.audienceID = "group:one"
-	if err := resolveKnowledge(&o); err != nil || len(o.mcpServers) != 0 || o.dingtalkWorkspaceFingerprint != "" {
-		t.Fatal("owner capabilities exposed to group", err)
+	if err := resolveKnowledge(&o); err != nil || len(o.mcpServers) != 2 || o.dingtalkWorkspaceFingerprint == "" {
+		t.Fatal("shared tools missing from group", err)
 	}
 	o.audienceID = "owner"
 	o.noTools = true

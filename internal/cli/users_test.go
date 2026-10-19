@@ -383,3 +383,48 @@ func TestFirstContactCreatesPrivateProfileWithoutOverwritingEdits(t *testing.T) 
 		t.Fatal("channel intake wrote configuration", err)
 	}
 }
+
+func TestBetaSharesEnabledSourcesAcrossUsersGroupsAndAgents(t *testing.T) {
+	_, catalog := usersFixture(t)
+	_, dir := unifiedFixture(t)
+	paths := []string{
+		datasourceDocumentFixture(t, dir, "confluence", "company"),
+		datasourceDocumentFixture(t, dir, "local-documents", "notes"),
+	}
+	fingerprint := ""
+	for _, agentID := range []string{"default", "other"} {
+		for _, audience := range []string{"owner", "user:alice", "user:unknown", "group-audience"} {
+			t.Run(agentID+"/"+audience, func(t *testing.T) {
+				o := options{agentID: agentID, audienceID: audience, permissionMode: "bypassPermissions", knowledgeConfigs: paths, pluginNames: []string{}, knowledgeNames: []string{}}
+				if err := catalog.userOptions(&o, audience, audience == "group-audience"); err != nil {
+					t.Fatal(err)
+				}
+				if o.userKnowledgeRestricted || len(o.userKnowledgeSources) != 0 || o.permissionMode != "bypassPermissions" {
+					t.Fatal("Beta policy still filters by user", o.userKnowledgeRestricted, o.permissionMode)
+				}
+				if err := resolveKnowledge(&o); err != nil {
+					t.Fatal(err)
+				}
+				if len(o.knowledgeSources) != 2 || len(o.mcpServers) != 2 {
+					t.Fatal("enabled sources were not shared", o.knowledgeSources)
+				}
+				current := assemblyConfig(o).KnowledgeFingerprint
+				if fingerprint == "" {
+					fingerprint = current
+				}
+				if current != fingerprint {
+					t.Fatal("agent or audience changed source capabilities")
+				}
+				if validate := knowledgeValidator(o); validate == nil {
+					t.Fatal("missing runtime validation")
+				} else if err := validate(); err != nil {
+					t.Fatal(err)
+				}
+				o.noTools = true
+				if err := resolveKnowledge(&o); err != nil || len(o.mcpServers) != 0 {
+					t.Fatal("explicit no-tools ignored", err)
+				}
+			})
+		}
+	}
+}

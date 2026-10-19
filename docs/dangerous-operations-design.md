@@ -7,8 +7,10 @@ All channel users now receive `bypassPermissions` and the same native execution
 tools as the Owner. Requests proceed without an @Owner approval step, including
 read-only cloud CLI queries. Cloud-provider permissions still apply.
 
-Owner identity, private-user partitions, group visibility and datasource grants
-remain distinct from execution access. Users are not relabelled as the Owner.
+During Beta, all enabled datasources, mailboxes and configured DingTalk workspace
+tools are shared across users and Agents. User/group source allowlists are paused.
+Owner identity, private-user partitions and private Host history remain separate;
+users are not relabelled as the Owner.
 Before irreversible work, the assistant still confirms the exact scope and impact
 with the requester unless the request already acknowledges them.
 

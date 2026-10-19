@@ -4,6 +4,29 @@ The [main design](datasource-plugins-design.md) defines the current global
 availability policy. This supersedes the scope filtering used in the historical
 rollout recorded below.
 
+## Beta capability sharing
+
+As of 2026-10-19, `agentCatalog.userOptions` does not activate per-user or group
+knowledge filtering and retains `bypassPermissions` for private users.
+`resolveDingTalkWorkspace` and `resolveEmail` no longer exclude shared audiences.
+Configured service enablement, exact workspace-account binding, explicit no-tools,
+upstream permissions and source-change validation remain effective. Owner-context
+derived from private Host conversations remains private.
+
+The authorization envelope is `shared-execution-v2`. This and the changed
+datasource/DWS fingerprints rotate incompatible native sessions on the next turn;
+there is no automatic replay of previously refused requests.
+
+## Beta validation
+
+On 2026-10-19, regression tests compared enabled source fingerprints across two
+Agents and owner, registered-user, unknown-user and group audiences. They also
+verified explicit no-tools, private profile separation and shared email/DWS mounts.
+A real isolated CLI chat with an empty group source allowlist mounted all six
+configured business MCP servers, called Confluence search twice and returned a
+matching signature-document result. It exited successfully without writes or
+messages. Production group delivery remains distinct from this CLI evidence.
+
 ## Configuration and identity
 
 The registry accepts `local-documents`, `dokki`, `confluence` and `email`.
@@ -46,7 +69,7 @@ Tool-free extraction mounts no plugins.
 Old `access` fields are accepted but ignored. Unified document loading discards
 source `projects` and `audiences`; these fields are optional and absent from
 current examples. Legacy standalone knowledge configurations retain their prior
-selectors, and legacy standalone email retains its owner-only mounting behavior.
+selectors; during Beta, configured standalone email is also available to shared audiences.
 The service requires explicit migration of old `plugins.*.json` files.
 
 Source configuration, credentials and the connector policy version participate

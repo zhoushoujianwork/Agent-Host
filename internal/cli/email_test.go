@@ -47,8 +47,8 @@ func TestEmailAssemblyPreservesKnowledgeAndScope(t *testing.T) {
 		t.Fatal("email wrongly depends on project", e)
 	}
 	o.audienceID = "group:test"
-	if e := resolveKnowledge(&o); e != nil || len(o.mcpServers) != 0 || o.emailFingerprint != "" {
-		t.Fatal("personal mail exposed in group", e)
+	if e := resolveKnowledge(&o); e != nil || len(o.mcpServers) != 1 || o.emailFingerprint == "" {
+		t.Fatal("configured Beta mail missing in group", e)
 	}
 	o.audienceID = "owner"
 	o.noTools = true

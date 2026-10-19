@@ -18,7 +18,7 @@ platform access. The pinned official contracts provide `oa approval detail`,
 `tasks` and `records` for reads, `oa approval oa-comments` with `instance-id` and
 `content`, and `oa approval approve` with `instance-id`, `task-id` and optional
 `remark`. Current detail/tasks establish the selected user's pending task rather
-than a stale card URL. Existing owner-only workspace mounting still applies.
+than a stale card URL. During Beta, the configured workspace tools are shared across users and groups.
 
 A selected close-out uses observed work and verification to write its completion
 comment, verifies the comment, submits the chosen approval and reads back task

@@ -25,8 +25,8 @@ Examples in the video are illustrative; current support is listed below.
   on demand; create or update authorized Confluence pages and personal blogs.
 - **Operate managed email:** AI lists configured Gmail/163 accounts, selects an
   account, then searches, reads, sends or replies through one email MCP.
-- **Identify users:** keep verified private-user profiles and source grants separate.
-  All channel users currently share Owner-equivalent execution; approval gating is paused.
+- **Identify users:** keep verified private-user profiles and histories separate.
+  All channel users share Owner-equivalent execution and enabled datasource tools during Beta.
 - **See what happened:** inspect execution steps, tool results and memory in
   the local workbench or terminal logs; retain encrypted recovery backups.
 
@@ -43,7 +43,7 @@ Built-in capabilities use MCP tools or channel adapters:
 | Integration | Current support |
 | --- | --- |
 | Email MCP | Gmail and personal 163 accounts; AI lists accounts and selects one for each read/send operation. |
-| Knowledge MCP | Dokki/local Markdown retrieval; Confluence search/read and authorized page/blog writes. Sender grants and execution profiles constrain access. |
+| Knowledge MCP | Dokki/local Markdown retrieval; Confluence search/read and authorized page/blog writes. Enabled sources are shared during Beta; upstream permissions still apply. |
 | Host MCP tools | Scoped conversation history, eligible memory, current matters and private suggestions. |
 | Channel adapters | CLI, DingTalk, Feishu chat and optional Feishu meeting text. |
 

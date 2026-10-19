@@ -295,37 +295,27 @@ Automatic identification of natural-language conflicts, runtime profile-edit
 MCPs and hot reload are not implemented. Deleting profile text alone is not a
 request to delete independently learned records or old execution evidence.
 
-### External retrieval and grants
+### External retrieval during Beta
 
-`knowledge_sources` authorizes exact names such as `confluence:team-notes`.
-`group_knowledge_sources` authorizes the shared conversations in multi-user mode.
-Both default to no sources for non-owner/shared audiences. The owner retains
-existing source access; existing installations without users.json retain their
-legacy source policy. New grants intersect existing source selection, filtering
-before credential resolution. Missing/ungranted sources do not grant access to
-another source. Normal source pinning, fingerprints and execution-time validation
-still apply. Email, DWS and owner-context tools remain owner-only.
+All enabled document sources and configured mail/DWS tools are shared across
+users, groups and Agents. `knowledge_sources` and `group_knowledge_sources`
+remain readable configuration fields but are inactive during Beta. Disabled
+plugins, source validation and upstream permissions still apply.
 
-A grant authorizes the entire configured source reachable through its credential.
-There is no per-person Confluence impersonation or additional remote page ACL.
-Operators must grant only sources whose complete reachable contents are suitable
-for the recipient, using appropriately scoped remote credentials. Tools keep their
-existing explicit write behavior; profiles, retrieval and generated reports do not
-authorize automatic publication.
-
-No full external collection or AGH-authored blog is automatically injected or
-imported. Existing on-demand MCP search/read/write and source receipts remain.
-Optional version-aware external-page caching is not implemented. Future caches
-must retain identity/source/version boundaries and remain distinct from durable
-evidence snapshots. Useful selected local lessons may cite a report, but the
-report cannot count as independent confirmation of the originating task.
+The connector account determines the complete reachable source scope; this does
+not impersonate each requester. Host-private profiles, conversations, learned
+memory and owner-context tools retain their existing visibility boundaries.
+See [datasource details](datasource-plugins-design-detail.md). Tools retain their
+explicit write rules; retrieval and generated reports do not authorize automatic
+publication. External collections are not automatically imported into learned
+memory; select only useful, supported local knowledge.
 
 ### Validation and remaining scope
 
 Automated tests cover two private users with independent profiles/native paths,
 unknown account stability across reloads, explicit cross-channel account binding,
 owner compatibility, forged-audience rejection, duplicate/unsafe profile rejection,
-group exclusion, source grants before credentials, local inspection, concurrent
+group profile exclusion, shared Beta source capabilities, local inspection, concurrent
 identity receipts and encrypted backup/restore. Memory isolation, fresh-session
 recall and explicit correction/invalidation are exercised with file and SQLite
 backends. Both channel parsers test opt-in private intake and foreign-tenant denial.

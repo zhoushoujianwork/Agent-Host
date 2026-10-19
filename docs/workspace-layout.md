@@ -96,10 +96,10 @@ share Owner-equivalent execution with `bypassPermissions`; owner approval is pau
 
 Private memory and group/project knowledge have separate visibility. A shared
 Agent or project does not merge users. Group/meeting tasks exclude private USER
-content. In multi-user mode, non-owner users and shared conversations get only
-explicitly granted knowledge sources; the default is none. Grants authorize the
-whole configured source reachable through its credential, not remote impersonation
-of the person. Do not grant a broad owner-private source to other users.
+content. During Beta, all users and Agents receive all enabled datasource, mailbox
+and configured DWS tools. User/group source allowlists are suspended. Access uses
+the configured connector account and its full reachable scope; it does not
+impersonate the requesting user in the upstream service.
 
 Confluence remains on-demand MCP search/read/write. Do not preload all posts or
 automatically re-import AGH-authored reports into memory. Select a concise local

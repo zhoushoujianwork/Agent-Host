@@ -84,7 +84,7 @@ func resolveEmail(o *options) error {
 	if !global && o.pluginNames != nil && !slices.Contains(o.pluginNames, "email") {
 		return nil
 	}
-	if o.emailConfig == "" || o.noTools || (!global && o.audienceID != "" && o.audienceID != "owner") {
+	if o.emailConfig == "" || o.noTools {
 		return nil
 	}
 	_, fp, e := email.Load(o.emailConfig)

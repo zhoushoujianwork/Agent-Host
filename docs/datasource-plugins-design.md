@@ -5,14 +5,13 @@ conversation, including groups. Users configure the sources or mailboxes and
 set `enabled: true`; no effective-scope configuration is required. Restart
 `make run` after changing configuration.
 
-With the optional [multi-user registry](workspace-layout.md#multiple-users-and-external-knowledge),
-non-owner users and shared conversations additionally require exact source grants
-in `users.json`; they receive none by default. Owner access and installations
-without the registry retain the existing policy. Grants cover the whole reachable
-source and are applied before credential resolution; they do not impersonate the
-requesting person in the upstream service. The [restricted member profile](dangerous-operations-design.md)
-currently omits business MCP servers, even when a source grant exists. Source
-grants do not restore tools removed by execution policy.
+During Beta, all users and Agents receive every enabled datasource, including
+group conversations. Per-user `knowledge_sources` and `group_knowledge_sources`
+allowlists are retained in configuration but do not restrict availability.
+Configured mailboxes and DingTalk workspace tools are also shared. Disabled
+sources stay disabled; upstream account permissions and operation settings
+still apply. Host profiles, private conversation history and memory remain
+separate between users.
 
 The supported plugins are `local-documents`, `dokki`, `confluence` and `email`.
 Each has one `.agent-host/config/datasource.plugins.<name>.json` file containing
