@@ -38,6 +38,9 @@ func invocationInstructions(policy string, run state.Run) string {
 	if run.ProjectID == "" && len(run.Projects) == 0 {
 		policy += "\n\nCurrent-request scope supplied by the Host: no registered project was selected for this request, so you are handling it in the configured default workspace. Use the current request and available tools to make progress. An older default-workspace topic does not establish this request's target, and the default cwd is not evidence of the intended repository. Ask for a concrete missing target only when needed to perform the requested action. Do not require project registration."
 	}
+	if run.Source.TaskRootID != "" {
+		policy += "\n\nHost task boundary: this is one isolated private forwarded-card task. Use only its card and linked follow-ups as the work scope. Other tickets in memory/history do not establish this task's target or approval. Ask for the exact target when a follow-up is ambiguous."
+	}
 	policy += "\n\n" + channelContinuityInstructions
 	actor, _ := json.Marshal(struct {
 		SenderID         string `json:"sender_id"`

@@ -33,6 +33,7 @@ type historyGrant struct {
 }
 
 type historyScope struct {
+	TaskRoot                                                                  string `json:"task_root,omitempty"`
 	Channel, Account, Tenant, Agent, Audience, Conversation, ConversationType string
 	Grants                                                                    []historyGrant
 }
@@ -176,7 +177,7 @@ func historyCurrent(ctx context.Context, tx *sql.Tx, messageID string) (historyA
 		return authority, ErrHistoryUnavailable
 	}
 	agent, audience := normalizedPartition(m.AgentID, m.AudienceID)
-	authority.historyScope = historyScope{Channel: m.Channel, Account: m.AccountID, Tenant: m.TenantID,
+	authority.historyScope = historyScope{TaskRoot: m.TaskRootID, Channel: m.Channel, Account: m.AccountID, Tenant: m.TenantID,
 		Agent: agent, Audience: audience, Conversation: m.ConversationID, ConversationType: conversationType(m.ConversationType), Grants: grants}
 	authority.Snapshot = rowID - 1
 	return authority, nil
@@ -212,7 +213,7 @@ func historyRun(ctx context.Context, tx *sql.Tx, m ChannelMessage) (*Run, error)
 		scope = m.ResolvedScope
 	}
 	if run.ID != m.RunID || run.SessionID != m.SessionID || run.ExecutionStatus != status || run.Scope != scope || run.Input != m.Text || !samePartition(run.AgentID, run.AudienceID, m.AgentID, m.AudienceID) ||
-		source.ChannelMessageID != m.ID || source.Channel != m.Channel || source.AccountID != m.AccountID || source.TenantID != m.TenantID || source.MessageID != m.MessageID || source.ConversationID != m.ConversationID || source.SenderID != m.SenderID || !samePartition(source.AgentID, source.AudienceID, m.AgentID, m.AudienceID) || conversationType(source.ConversationType) != conversationType(m.ConversationType) {
+		source.TaskRootID != m.TaskRootID || source.ChannelMessageID != m.ID || source.Channel != m.Channel || source.AccountID != m.AccountID || source.TenantID != m.TenantID || source.MessageID != m.MessageID || source.ConversationID != m.ConversationID || source.SenderID != m.SenderID || !samePartition(source.AgentID, source.AudienceID, m.AgentID, m.AudienceID) || conversationType(source.ConversationType) != conversationType(m.ConversationType) {
 		return nil, errors.New("history execution scope does not match its receipt")
 	}
 	if m.RouteBinding != "" && (run.ProjectID != m.ProjectID || !sameProjectRefs(run.Projects, m.Projects) || run.Workspace != m.Workspace || run.RuntimeFingerprint != m.RuntimeFingerprint) {
@@ -286,8 +287,9 @@ func historyView(ctx context.Context, tx *sql.Tx, binding ConversationHistoryBin
 		AND json_extract(payload,'$.tenant_id')=? AND json_extract(payload,'$.conversation_id')=?
 		AND COALESCE(NULLIF(json_extract(payload,'$.agent_id'),''),'default')=?
 		AND COALESCE(NULLIF(json_extract(payload,'$.audience_id'),''),'owner')=?
-		AND COALESCE(NULLIF(json_extract(payload,'$.conversation_type'),''),'1')=? ORDER BY rowid DESC`,
-		authority.Snapshot, authority.Channel, authority.Account, authority.Tenant, authority.Conversation, authority.Agent, authority.Audience, authority.ConversationType)
+		AND COALESCE(NULLIF(json_extract(payload,'$.conversation_type'),''),'1')=?
+ AND (?='' OR COALESCE(json_extract(payload,'$.task_root_id'),'')=?) ORDER BY rowid DESC`,
+		authority.Snapshot, authority.Channel, authority.Account, authority.Tenant, authority.Conversation, authority.Agent, authority.Audience, authority.ConversationType, authority.TaskRoot, authority.TaskRoot)
 	if err != nil {
 		return authority, nil, errors.New("conversation history source unavailable")
 	}

@@ -169,6 +169,9 @@ The SQLite backend is implemented; no public plugin loader is provided.
 
 The channel scheduler serializes each conversation binding and shared
 agent/audience memory partition through execution, memory finalization and reply.
+Independent private card tasks use separate bindings and skip automatic memory
+writeback; they may overlap within the same audience. Quoted follow-ups stay
+within their original task, while ambiguous confirmations ask for a target.
 Other audiences use a bounded pool; SQLite transactions remain short and
 single-writer. This protects memory read/decision/write ordering without
 isolating shared checkout files. Queued commands follow the same lane, including

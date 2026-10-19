@@ -477,10 +477,10 @@ func TestForwardedCardReachesExecutionWithoutTreatingPreviewAsSenderInstructions
 	message := f.process(t, input)
 	run := f.run(t, message)
 	requests := f.runner.snapshot()
-	if message.Status != "completed" || message.ReplyStatus != "accepted" || message.SessionID != first.SessionID || len(requests) != 2 || !requests[1].Resume {
+	if message.Status != "completed" || message.ReplyStatus != "accepted" || message.SessionID == first.SessionID || len(requests) != 2 || requests[1].Resume {
 		t.Fatalf("forwarded card rejected or invoked a Host command: %+v", message)
 	}
-	if run.Input != "Forwarded interactive card" || len(memoryInputs) != 1 || memoryInputs[0] != run.Input || run.Source == nil || run.Source.Input == nil || run.Source.Input.Quote == nil {
+	if run.Input != "Forwarded interactive card" || len(memoryInputs) != 0 || run.AutomaticMemorySkipReason() != "independent_card_task" || run.Source == nil || run.Source.Input == nil || run.Source.Input.Quote == nil {
 		t.Fatal("forwarded card became sender memory or lost evidence", run, memoryInputs)
 	}
 	q := run.Source.Input.Quote

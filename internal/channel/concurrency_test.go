@@ -11,6 +11,7 @@ import (
 
 	"agent-host/internal/harness"
 	"agent-host/internal/routing"
+	"agent-host/internal/state"
 )
 
 func newConcurrentFixture(t *testing.T) *projectFixture {
@@ -320,5 +321,73 @@ func TestConversationWorkerFatalFailureCancelsAndJoinsOtherConversations(t *test
 	}
 	if m := f.next(t); m.MessageID != queued.ID {
 		t.Fatal("restart did not preserve only unclaimed work", m)
+	}
+}
+
+func TestPrivateForwardedCardsRunConcurrentlyWithQuotedFollowupFIFO(t *testing.T) {
+	f := newConcurrentFixture(t)
+	f.service.MaxConcurrentConversations = 2
+	a := inputCallback(t, f.serviceFixture, "card-a", "interactiveCard", "", map[string]any{"title": "CARD_ALPHA", "cardContent": []any{map[string]string{"elementType": "TEXT", "value": "CARD_ALPHA read-only ticket"}}}, nil)
+	b := inputCallback(t, f.serviceFixture, "card-b", "interactiveCard", "", map[string]any{"title": "CARD_BRAVO", "cardContent": []any{map[string]string{"elementType": "TEXT", "value": "CARD_BRAVO read-only ticket"}}}, nil)
+	follow := inputCallback(t, f.serviceFixture, "card-a-follow", "text", "Continue this ticket only.", nil, map[string]any{"msgId": a.ID, "msgType": "interactiveCard", "content": map[string]any{"title": "CARD_ALPHA"}})
+	f.receive(t, a)
+	f.receive(t, follow)
+	f.receive(t, b)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	entered := make(chan string, 3)
+	releaseA := make(chan struct{})
+	releaseB := make(chan struct{})
+	f.runner.run = func(ctx context.Context, req harness.Request) (harness.Result, error) {
+		if req.Resume {
+			return harness.Result{Status: "completed", Text: "followup complete", Model: req.Model}, nil
+		}
+		name, release := "alpha", releaseA
+		if strings.Contains(req.Prompt, "CARD_BRAVO") {
+			name, release = "bravo", releaseB
+			if strings.Contains(req.Prompt, "CARD_ALPHA") {
+				return harness.Result{Status: "failed"}, errors.New("other ticket entered fresh context")
+			}
+		}
+		entered <- name
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return harness.Result{Status: "canceled"}, ctx.Err()
+		}
+		return harness.Result{Status: "completed", Text: name + " complete", Model: req.Model}, nil
+	}
+	delivered := make(chan string, 3)
+	f.replier.reply = func(_ context.Context, call replyCall) (string, error) { delivered <- call.url; return "accepted", nil }
+	done := make(chan error, 1)
+	go func() { done <- f.service.Work(ctx) }()
+	first, second := waitForWorkerSignal(t, ctx, entered), waitForWorkerSignal(t, ctx, entered)
+	if first == second {
+		t.Fatal("both independent cards did not start")
+	}
+	if f.receipt(t, follow.ID).Status != "queued" {
+		t.Fatal("same-ticket followup overtook card")
+	}
+	close(releaseB)
+	if url := waitForWorkerSignal(t, ctx, delivered); !strings.Contains(url, "cap-card-b") {
+		t.Fatal("independent ticket did not finish first", url)
+	}
+	close(releaseA)
+	for range 2 {
+		waitForWorkerSignal(t, ctx, delivered)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	ra, rb, rf := f.receipt(t, a.ID), f.receipt(t, b.ID), f.receipt(t, follow.ID)
+	if ra.TaskRootID == "" || rb.TaskRootID == "" || ra.SessionID == rb.SessionID || rf.SessionID != ra.SessionID || rf.TaskRootID != ra.TaskRootID {
+		t.Fatal("task session boundaries lost", ra, rb, rf)
+	}
+	for _, m := range []state.ChannelMessage{ra, rb, rf} {
+		run := f.run(t, m)
+		if run.AutomaticMemorySkipReason() != "independent_card_task" || run.MemoryStatus != "skipped" {
+			t.Fatal("parallel task mutated shared memory", run)
+		}
 	}
 }

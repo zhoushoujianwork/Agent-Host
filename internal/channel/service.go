@@ -200,9 +200,10 @@ func (s *Service) Work(ctx context.Context) error {
 }
 
 // Native turns in the same authenticated binding remain FIFO, including reply
-// delivery. A shared agent/audience memory partition also stays serial so two
-// conversations cannot finalize against stale memory snapshots. Independent
-// audiences share a bounded pool; interrupted claimed work is never replayed.
+// delivery. Ordinary conversations sharing memory also stay serial, so their
+// decisions cannot finalize against stale snapshots. Isolated card lanes skip
+// automatic memory writes. Independent audiences and card lanes use a bounded
+// pool; interrupted claimed work is never replayed.
 func (s *Service) workMessages(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -353,6 +354,8 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 		}
 	} else if m.ReplyTarget == nil && !m.ReplyExpiresAt.After(time.Now()) {
 		status, cause, reply = "failed", "reply capability expired before execution", "消息回复凭据已过期，本次请求没有执行。请重新发送问题。"
+	} else if m.AmbiguousTask {
+		reply = "你转发了多张工单，请引用目标工单再发送处理指令，避免串单。本次没有执行任何操作。"
 	} else if !supportedInput(m) {
 		status, cause, reply = "failed", "unsupported message type", "这条消息的内容格式暂不支持，请发送文字、图片或文件。"
 		if m.MessageType == "interactiveCard" {

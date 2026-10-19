@@ -609,7 +609,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	if reason := r.AutomaticMemorySkipReason(); reason != "" {
 		err = h.Store.SkipAutomaticMemory(finishCtx, r.ID, reason)
 		if err == nil {
-			err = j.emit(event.Event{Type: "memory.skipped", Phase: "remember", Component: "host", Status: "skipped", Message: "automatic memory and experience are paused until project attribution is established", Data: map[string]any{"reason": reason, "projects": r.Projects, "memory_attribution": r.MemoryAttribution}})
+			err = j.emit(event.Event{Type: "memory.skipped", Phase: "remember", Component: "host", Status: "skipped", Message: "automatic memory and experience are paused for this run", Data: map[string]any{"reason": reason, "projects": r.Projects, "memory_attribution": r.MemoryAttribution}})
 		}
 		return h.receipt(j, err)
 	}

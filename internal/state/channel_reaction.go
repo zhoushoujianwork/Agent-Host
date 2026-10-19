@@ -46,7 +46,8 @@ func queueChannelReactionLabel(ctx context.Context, tx *sql.Tx, m ChannelMessage
 	}
 	media := (m.MessageType == "picture" || m.MessageType == "file") && m.Input != nil && len(m.Input.Attachments) > 0
 	forwarded := m.MessageType == "markdown" && strings.TrimSpace(m.Text) != "" && m.Input != nil && m.Input.Quote != nil && m.Input.Quote.MessageType == "markdown" && strings.TrimSpace(m.Input.Quote.Body) != ""
-	if !media && !forwarded && m.MessageType != "text" && (m.MessageType != "richText" || strings.TrimSpace(m.Text) == "") {
+	card := m.MessageType == "interactiveCard" && strings.TrimSpace(m.Text) != "" && m.Input != nil && m.Input.Quote != nil && m.Input.Quote.MessageType == "interactiveCard"
+	if !media && !forwarded && !card && m.MessageType != "text" && (m.MessageType != "richText" || strings.TrimSpace(m.Text) == "") {
 		return nil
 	}
 	text := m.Text
@@ -120,7 +121,7 @@ func projectChannelPhase(ctx context.Context, tx *sql.Tx, run Run, e event.Event
 	if err != nil {
 		return err
 	}
-	if m.ConversationType != "" {
+	if m.ConversationType != "" && m.TaskRootID == "" {
 		return nil
 	}
 	scope := m.Scope

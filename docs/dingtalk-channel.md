@@ -31,14 +31,22 @@ pending; the new isolation path has automated coverage.
 
 Messages in each conversation run in order; different audiences can run
 concurrently, up to four by default. Conversations sharing an agent/audience
-memory partition also stay serial. A turn holds its place through memory
-processing and reply delivery. Shared checkouts are not isolated and concurrent
+memory partition also stay serial, except independent private forwarded-card
+tasks. A turn holds its place through memory processing and reply delivery. Shared checkouts are not isolated and concurrent
 file edits can conflict. See the [conversation and attachment guide](channel-conversations.md)
 for configuration, input handling and the separate validation boundary.
 
+Private forwarded cards each start a separate task and native session. Two
+tickets can execute in parallel within the configured worker limit. Quote the
+original card to continue its task; that task's follow-ups remain ordered.
+With multiple recent tickets, an unquoted confirmation asks which card to use.
+These isolated tasks retain execution evidence but skip automatic memory learning.
+Cards receive receipt, execution, reply and terminal reactions; platform failures
+remain explicit and uncertain sends are not retried.
+
 The original question shows generic receipt, processing, completion or failure
-markers. Detailed execution, knowledge and memory phases remain in the local
-event journal and viewer. Fast steps may pass too quickly to appear; the worker
+markers. Detailed execution phases also appear on isolated private card tasks; other
+knowledge and memory phases remain in the local event journal and viewer. Fast steps may pass too quickly to appear; the worker
 skips obsolete unsent steps to keep feedback current.
 
 A completed marker requires successful processing and a platform-accepted

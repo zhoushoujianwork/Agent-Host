@@ -124,6 +124,9 @@ type Run struct {
 // AutomaticMemorySkipReason keeps execution independent from whether its
 // results can safely be attributed to one durable memory namespace.
 func (r Run) AutomaticMemorySkipReason() string {
+	if r.Source != nil && r.Source.TaskRootID != "" {
+		return "independent_card_task"
+	}
 	if r.MemoryAttribution == "unresolved" {
 		return "unresolved_project_memory_attribution"
 	}
@@ -143,6 +146,7 @@ func (r Run) WorkingDirectory() string {
 
 // RunSource links native execution and derived memory to an accepted channel input.
 type RunSource struct {
+	TaskRootID       string        `json:"task_root_id,omitempty"`
 	Input            *ChannelInput `json:"input_material,omitempty"`
 	ConversationType string        `json:"conversation_type,omitempty"`
 	AgentID          string        `json:"agent_id,omitempty"`
@@ -173,6 +177,10 @@ const (
 // ChannelMessage is safe to inspect without disclosing its private reply URL.
 // Execution and delivery have independent status fields.
 type ChannelMessage struct {
+	// Host-derived private task lane; it never changes audience or sender identity.
+	TaskRootID            string            `json:"task_root_id,omitempty"`
+	ConversationBinding   string            `json:"conversation_binding,omitempty"`
+	AmbiguousTask         bool              `json:"ambiguous_task,omitempty"`
 	ReplyToID             string            `json:"reply_to_id,omitempty"`
 	Input                 *ChannelInput     `json:"input_material,omitempty"`
 	ConversationType      string            `json:"conversation_type,omitempty"`

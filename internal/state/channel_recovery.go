@@ -186,7 +186,7 @@ func recoveryRunMatchesSession(run Run, session Session) bool {
 }
 
 func sameRecoveryConversation(a, b ChannelMessage) bool {
-	return a.Channel == b.Channel && a.AccountID == b.AccountID && a.TenantID == b.TenantID &&
+	return a.TaskRootID == b.TaskRootID && a.Channel == b.Channel && a.AccountID == b.AccountID && a.TenantID == b.TenantID &&
 		a.ConversationID == b.ConversationID && conversationType(a.ConversationType) == conversationType(b.ConversationType) &&
 		samePartition(a.AgentID, a.AudienceID, b.AgentID, b.AudienceID)
 }

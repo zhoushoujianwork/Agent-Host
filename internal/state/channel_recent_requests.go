@@ -65,9 +65,10 @@ func (s *Store) ChannelRecentRequests(ctx context.Context, sessionID, currentRec
 		AND COALESCE(NULLIF(json_extract(m.payload,'$.agent_id'),''),'default')=?
 		AND COALESCE(NULLIF(json_extract(m.payload,'$.audience_id'),''),'owner')=?
 		AND COALESCE(NULLIF(json_extract(m.payload,'$.conversation_type'),''),'1')=?
-		AND r.scope=? AND COALESCE(json_extract(r.payload,'$.project_id'),'')=?
+		AND COALESCE(json_extract(m.payload,'$.task_root_id'),'')=?
+ AND r.scope=? AND COALESCE(json_extract(r.payload,'$.project_id'),'')=?
 		ORDER BY m.rowid DESC LIMIT 8`, snapshot, current.Channel, current.AccountID, current.TenantID,
-		current.ConversationID, agent, audience, conversationType(current.ConversationType), currentRun.Scope, currentRun.ProjectID)
+		current.ConversationID, agent, audience, conversationType(current.ConversationType), current.TaskRootID, currentRun.Scope, currentRun.ProjectID)
 	if err != nil {
 		return nil, err
 	}

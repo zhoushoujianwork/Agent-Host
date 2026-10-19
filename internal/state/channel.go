@@ -123,6 +123,9 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+		if err := bindPrivateCardTask(ctx, tx, &m); err != nil {
+			return err
+		}
 		payload, err = json.Marshal(m)
 		if err != nil {
 			return err
@@ -225,9 +228,8 @@ func (s *Store) ClaimNextChannelMessage(ctx context.Context, profile string) (Ch
 	return s.ClaimNextEligibleChannelMessage(ctx, profile, nil)
 }
 
-// ClaimNextEligibleChannelMessage excludes active bindings and memory partitions.
-// Different conversations sharing an agent/audience cannot finalize against stale
-// memory snapshots. Legacy missing ownership fields normalize to default/owner.
+// ClaimNextEligibleChannelMessage excludes active bindings and shared-memory writers.
+// Isolated card lanes skip automatic memory writes and may overlap other lanes. Legacy missing ownership fields normalize to default/owner.
 func (s *Store) ClaimNextEligibleChannelMessage(ctx context.Context, profile string, busy []ChannelMessage) (ChannelMessage, error) {
 	var m ChannelMessage
 	if strings.TrimSpace(profile) == "" {
@@ -239,8 +241,8 @@ func (s *Store) ClaimNextEligibleChannelMessage(ctx context.Context, profile str
 		args := []any{profile}
 		for _, active := range busy {
 			agent, audience := normalizedPartition(active.AgentID, active.AudienceID)
-			query += " AND NOT (json_extract(CAST(payload AS TEXT),'$.binding')=? OR (COALESCE(NULLIF(json_extract(CAST(payload AS TEXT),'$.agent_id'),''),'default')=? AND COALESCE(NULLIF(json_extract(CAST(payload AS TEXT),'$.audience_id'),''),'owner')=?))"
-			args = append(args, active.Binding, agent, audience)
+			query += " AND NOT (json_extract(CAST(payload AS TEXT),'$.binding')=? OR (?=0 AND COALESCE(json_extract(CAST(payload AS TEXT),'$.task_root_id'),'')='' AND COALESCE(NULLIF(json_extract(CAST(payload AS TEXT),'$.agent_id'),''),'default')=? AND COALESCE(NULLIF(json_extract(CAST(payload AS TEXT),'$.audience_id'),''),'owner')=?))"
+			args = append(args, active.Binding, active.TaskRootID != "", agent, audience)
 		}
 		query += " ORDER BY received_at,rowid LIMIT 1"
 		if err := tx.QueryRowContext(ctx, query, args...).Scan(&id); err != nil {
@@ -445,7 +447,7 @@ func (s *Store) CreateChannelRun(ctx context.Context, run Run, messageID string)
 		if sessionID != run.SessionID || scope != run.Scope || m.Text != run.Input {
 			return errors.New("channel run does not match its message session, scope, or text")
 		}
-		run.Source = &RunSource{Input: m.Input, AgentID: run.AgentID, AudienceID: run.AudienceID, ConversationType: m.ConversationType, Channel: m.Channel, ChannelMessageID: m.ID, AccountID: m.AccountID, TenantID: m.TenantID, MessageID: m.MessageID, ConversationID: m.ConversationID, SenderID: m.SenderID}
+		run.Source = &RunSource{TaskRootID: m.TaskRootID, Input: m.Input, AgentID: run.AgentID, AudienceID: run.AudienceID, ConversationType: m.ConversationType, Channel: m.Channel, ChannelMessageID: m.ID, AccountID: m.AccountID, TenantID: m.TenantID, MessageID: m.MessageID, ConversationID: m.ConversationID, SenderID: m.SenderID}
 		run.MemoryAttribution, err = memoryAttributionForChannel(ctx, tx, m)
 		if err != nil {
 			return err
@@ -500,7 +502,7 @@ func (s *Store) PrepareChannelReply(ctx context.Context, id, text string) error 
 		if err := writeChannelMessage(ctx, tx, m); err != nil {
 			return err
 		}
-		if m.ConversationType != "" {
+		if m.ConversationType != "" && m.TaskRootID == "" {
 			return nil
 		}
 		return queueChannelReaction(ctx, tx, m, "replying")

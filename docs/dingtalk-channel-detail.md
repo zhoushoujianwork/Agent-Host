@@ -152,6 +152,36 @@ can inspect that run's raw payload and events; it does not provide a channel
 inbox UI. Native execution, business acceptance, memory persistence, reviewed
 experience and reply delivery keep distinct states.
 
+Private `interactiveCard` receipts create a Host-derived `task_root_id` and a
+distinct binding before claiming. The original conversation binding, account,
+tenant, sender, Agent and audience constrain any quoted continuation. A quoted
+provider message ID can only select an already recorded lane in that exact
+scope. Unquoted continuation commands select a lane only when there is one
+recent root (24 hours, cleared for implicit selection by `/new`); multiple roots
+produce clarification without native execution. Duplicates never rebind or replay.
+
+Card lanes skip automatic memory/experience writeback, so they can share an
+audience without racing the memory snapshot decision/write cycle. The original
+memory-serialization rule remains for ordinary conversations. Recent-request
+assembly, recovery handoffs and task history are scoped to the same root;
+broader private history remains available to ordinary requests. No filesystem
+isolation or cross-ticket file locking is claimed.
+
+Card reaction eligibility includes empty callback previews, allowing an initial
+receipt before DWS fetch. Durable source-bound execution phases and reply stages
+are projected for isolated task lanes. Old receipts are not backfilled with
+historical reactions. No failed or uncertain business action is replayed.
+
+Validation on 2026-10-19: `make check` and the focused race check passed.
+Regression tests cover two same-private-conversation cards entering before either
+is released, ordered quoted follow-ups, ambiguous confirmation without native
+execution, sender isolation, no duplicate replay, root-scoped recent context and
+history, and source-linked card phases through terminal delivery. The opt-in
+`TestPrivateCardConcurrentNativeLive` also passed with two real Claude processes
+whose execution intervals overlapped and synthetic reactions accepted through
+completion. It used tool-free synthetic cards and did not send platform messages
+or operate on real tickets.
+
 Recovery keeps never-claimed queued messages eligible under their original
 profile. Interrupted `claimed` work becomes `unknown`, and interrupted
 `sending` replies become `unknown`; neither is automatically repeated. Unknown
