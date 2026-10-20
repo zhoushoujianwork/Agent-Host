@@ -33,33 +33,52 @@
       if (!item) {
         const root = node("article","chat-turn");
         const user = node("div","chat-user",turn.input);
-        const label = node("div","chat-answer-label","AGH");
-        const output = node("div","chat-answer");
-        const steps = node("details","chat-steps");
-        steps.open = true;
-        const summary = node("summary","","执行步骤");
-        const list = node("ol",""); steps.append(summary,list);
+        const label = node("div","chat-answer-label","Claude");
+        const output = node("div","chat-native-output");
         const status = node("div","chat-turn-status");
         const error = node("p","chat-turn-error");
         const record = node("a","chat-record","查看执行记录 ↗");
-        root.append(user,label,output,steps,status,error,record);
+        root.append(user,label,output,status,error,record);
         el("chat-messages").append(root);
-        item = {root,output,steps,summary,list,status,error,record,stepCount:0}; rendered.set(turn.id,item);
+        item = {root,output,status,error,record,blocks:new Map()}; rendered.set(turn.id,item);
       }
-      if (item.output.textContent !== turn.text) item.output.textContent = turn.text;
-      item.output.hidden = !turn.text;
+      const rows = turn.output || (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
+      const rowIds = new Set(rows.map(row => row.id));
+      for (const [id, block] of item.blocks) if (!rowIds.has(id)) { block.root.remove(); item.blocks.delete(id); }
+      for (const row of rows) {
+        let block = item.blocks.get(row.id);
+        if (!block) {
+          const root = node("div","chat-native-row"); root.dataset.kind = row.kind;
+          const header = node("div","chat-native-heading");
+          const name = node("code","");
+          const state = node("span","chat-native-state"); header.append(name,state);
+          const content = node(row.kind === "text" ? "div" : "pre",row.kind === "text" ? "chat-answer" : "chat-native-content");
+          const progress = node("pre","chat-native-progress");
+          const params = node("details","chat-native-parameters");
+          const summary = node("summary","","parameters");
+          const raw = node("pre","chat-native-content"); params.append(summary,raw);
+          root.append(header,content,params,progress); item.output.append(root);
+          block = {root,header,name,state,content,params,raw,progress}; item.blocks.set(row.id,block);
+        }
+        block.header.hidden = row.kind === "text";
+        block.name.textContent = row.name || row.label || "";
+        const stage = row.stage === "call" ? "tool_use" : "tool_result";
+        block.state.textContent = row.kind === "tool" ? `${stage} · ${row.status}` : "";
+        block.root.dataset.status = row.status || "";
+        if (block.content.textContent !== row.content) block.content.textContent = row.content;
+        block.content.hidden = !row.content;
+        block.progress.hidden = !row.progress;
+        if (block.progress.textContent !== row.progress) block.progress.textContent = row.progress || "";
+        block.params.hidden = !row.parameters || row.parameters === row.content;
+        if (block.raw.textContent !== row.parameters) block.raw.textContent = row.parameters || "";
+      }
+      item.output.hidden = !rows.length;
       item.root.dataset.status = turn.status;
       item.status.textContent = statusNames[turn.status] || turn.status;
       item.error.textContent = turn.error || ""; item.error.hidden = !turn.error;
-      const stepsKey = JSON.stringify(turn.steps);
-      if (item.stepsKey !== stepsKey) {
-        item.list.replaceChildren(...turn.steps.map(step => {
-          const li = node("li","",step.label);
-          li.dataset.status = step.status; li.append(node("span","",statusNames[step.status] || step.status));
-          return li;
-        }));
-        item.summary.textContent = `执行步骤 · ${turn.steps.length}`;
-        item.steps.hidden = !turn.steps.length; item.stepsKey = stepsKey;
+      if (turn.output_truncated && !item.truncation) {
+        item.truncation = node("p","chat-native-truncated","仅显示最近的原生输出，完整内容见执行记录。");
+        item.root.append(item.truncation);
       }
       item.record.hidden = !turn.record_key;
       item.record.href = `#executions?key=${encodeURIComponent(turn.record_key || "")}`;

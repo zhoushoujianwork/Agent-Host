@@ -97,7 +97,7 @@ bot accounts and retain delivery evidence independently from execution.
 
 The local workbench opens a [Web interface](web-workspace.md) on the memory graph,
 with execution records, settings and right-side Chat execution through the configured
-CLI destination. Chat displays incremental answers and observed execution steps,
+CLI destination. Chat displays incremental answers and native Claude tool/status output,
 and can cancel the owned Host process. The conversation canvas is temporarily
 disabled. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other

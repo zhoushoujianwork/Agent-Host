@@ -13,11 +13,11 @@ disabled. [Implementation notes](web-workspace-detail.md).
   compact [settings page](settings-console.md). Advanced options stay in config.
 - Open or close the right Chat panel from the top bar. Switching modules keeps
   its current state. Enter sends to the configured Host Agent; Shift+Enter adds
-  a line. Text and execution steps appear as Host emits them.
+  a line. Claude text, native tool calls, parameters and results appear in stream order.
 - Drafts save locally. The composer grows with the draft and shows its character
   count. Clear can be undone until the next edit. Escape collapses Chat.
 - Stop requests cancellation of the active Host execution and waits for its exit.
-  Partial text and steps remain visible. After failure or interruption, choose
+  Partial text and native output remain visible. After failure or interruption, choose
   New conversation before sending again; no task is automatically replayed.
 - Chat reconnects to the current viewer conversation after refresh. New conversation
   clears that Web view while durable Host execution records remain available.

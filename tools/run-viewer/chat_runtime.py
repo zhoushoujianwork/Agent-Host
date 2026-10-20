@@ -20,10 +20,21 @@ ROOT = Path(__file__).resolve().parents[2]
 PROVIDER_KEYS = {"TYPESAFE_API_KEY", "JEV_API_KEY", "ANTHROPIC_BASE_URL",
                  "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY",
                  "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK", "CLAUDE_CODE_MAX_OUTPUT_TOKENS"}
-PHASES = {"recall": "检索记忆", "execute": "AI 执行", "remember": "判断长期记忆",
-          "persist": "保存记忆", "evidence": "整理执行证据", "extract": "提取经验",
-          "assess": "评估经验", "candidates": "保存经验候选",
-          "knowledge_search": "检索知识", "knowledge_read": "阅读资料"}
+OUTPUT_LIMIT = 64 * 1024
+
+
+def native_text(value):
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, list):
+        text = "\n".join(native_text(item) for item in value)
+    elif isinstance(value, dict) and value.get("type") == "text":
+        text = str(value.get("text", ""))
+    elif isinstance(value, dict) and value.get("type") == "image":
+        text = "[image output]"
+    else:
+        text = json.dumps(value, ensure_ascii=False, indent=2)
+    return text if len(text) <= OUTPUT_LIMIT else text[:OUTPUT_LIMIT] + "\n[output truncated; full evidence remains in the execution record]"
 
 
 def default_config(root):
@@ -93,6 +104,8 @@ class ChatRuntime:
         self.needs_new = False
         self.closed = False
         self.state_home = None
+        self.native_indexes = {}
+        self.native_messages = {}
 
     def snapshot(self):
         with self.lock:
@@ -120,7 +133,7 @@ class ChatRuntime:
             if len(self.turns) >= 20:
                 raise ChatConflict("此对话已达 20 轮，请开启新对话。")
             turn = {"id": uuid.uuid4().hex, "request_id": request_id, "input": message,
-                    "text": "", "steps": [], "status": "starting", "error": "",
+                    "text": "", "output": [], "status": "starting", "error": "",
                     "run_id": "", "session_id": "", "exit_code": None}
             self.turns.append(turn)
             self.active = turn["id"]
@@ -134,6 +147,8 @@ class ChatRuntime:
                 raise ChatConflict("请先中止当前执行，再开启新对话。")
             self.turns = []
             self.session = self.identity = None
+            self.native_indexes = {}
+            self.native_messages = {}
             self.needs_new = False
 
     def stop(self, turn_id):
@@ -154,37 +169,115 @@ class ChatRuntime:
                 except ProcessLookupError:
                     pass
 
+    def _output(self, turn, kind, **fields):
+        rows = turn["output"]
+        row = {"id": str(int(rows[-1]["id"]) + 1 if rows else 1), "kind": kind, **fields}
+        rows.append(row)
+        if len(rows) > 200:
+            del rows[0]
+            turn["output_truncated"] = True
+        return row
+
+    def _tool_call(self, turn, tool_id, name):
+        row = next((row for row in turn["output"] if row["kind"] == "tool" and
+                    row["stage"] == "call" and row["tool_id"] == tool_id), None)
+        return row if row is not None else self._output(turn, "tool", stage="call",
+            tool_id=tool_id, name=name, content="", parameters="", status="running")
+
+    def _text(self, turn, delta):
+        if not isinstance(delta, str) or len(turn["text"]) + len(delta) > 512 * 1024:
+            raise ValueError("回答超过页面显示上限，请查看执行记录。")
+        turn["text"] += delta
+        if turn["output"] and turn["output"][-1]["kind"] == "text":
+            turn["output"][-1]["content"] += delta
+        else:
+            self._output(turn, "text", content=delta)
+
+    def _native(self, turn, event):
+        data = event.get("data") or {}
+        raw = data.get("raw") or {}
+        if not isinstance(raw, dict):
+            return
+        parent = raw.get("parent_tool_use_id", "")
+        indexes = self.native_indexes.setdefault(turn["id"], {})
+        partial = raw.get("event") or {}
+        if raw.get("type") == "stream_event" and isinstance(partial, dict):
+            key = (parent, partial.get("index", 0))
+            if partial.get("type") == "message_start":
+                for index in list(indexes):
+                    if index[0] == parent:
+                        del indexes[index]
+            block = partial.get("content_block") or {}
+            if partial.get("type") == "content_block_start" and block.get("type") == "tool_use":
+                tool_id, name = block.get("id"), block.get("name")
+                if tool_id and name:
+                    indexes[key] = (tool_id, name)
+                    self._tool_call(turn, tool_id, name)
+            delta = partial.get("delta") or {}
+            if delta.get("type") == "input_json_delta" and key in indexes:
+                tool_id, name = indexes[key]
+                row = self._tool_call(turn, tool_id, name)
+                row["content"] = native_text(row["content"] + delta.get("partial_json", ""))
+        native_type = raw.get("type")
+        if native_type == "system":
+            subtype = raw.get("subtype", "")
+            if subtype == "init":
+                self._output(turn, "status", label="init", content=str(raw.get("model", "")))
+            elif subtype in {"status", "compact_boundary", "task_started", "task_progress", "task_notification", "hook_started", "hook_progress", "hook_response"}:
+                content = {key: raw[key] for key in ("status", "task_id", "description", "summary", "message", "last_tool_name", "elapsed_time_seconds", "hook_name", "hook_event", "stdout", "stderr", "output", "exit_code", "outcome") if key in raw}
+                self._output(turn, "status", label=subtype, content=native_text(content))
+        elif native_type == "tool_progress" and raw.get("tool_use_id") and raw.get("tool_name"):
+            row = self._tool_call(turn, raw["tool_use_id"], raw["tool_name"])
+            row["progress"] = native_text({key:raw[key] for key in ("elapsed_time_seconds", "status", "task_id") if key in raw})
+        elif native_type == "rate_limit_event" and raw.get("rate_limit_info"):
+            self._output(turn, "status", label=native_type, content=native_text(raw["rate_limit_info"]))
+        elif event.get("type") == "agent.result":
+            self._output(turn, "status", label=str(raw.get("subtype") or "result"),
+                         content=native_text(raw["errors"]) if raw.get("errors") else "")
+        elif native_type == "assistant":
+            message = raw.get("message") or {}
+            identity = raw.get("uuid") or message.get("id") or hashlib.sha256(json.dumps(message, sort_keys=True).encode()).hexdigest()
+            seen = self.native_messages.setdefault(turn["id"], set())
+            if identity not in seen:
+                seen.add(identity)
+                text = "".join(block.get("text", "") for block in message.get("content", []) if block.get("type") == "text")
+                if raw.get("is_api_error_message"):
+                    self._output(turn, "status", label="api_error", content=native_text(text))
+                elif text and not turn["text"].endswith(text):
+                    # Native full messages backfill adapters that supplied no
+                    # text deltas. Streamed/full envelopes must never repeat it.
+                    self._text(turn, text)
+
     def _event(self, turn, event):
         with self.lock:
             kind = event.get("type")
             if kind == "run.started":
                 turn["run_id"] = str(event.get("run_id", ""))
                 turn["session_id"] = str(event.get("session_id", ""))
-            if kind == "text.delta" and event.get("agent") != "memory-extractor":
-                delta = event.get("delta", "")
-                if not isinstance(delta, str) or len(turn["text"]) + len(delta) > 512 * 1024:
-                    raise ValueError("回答超过页面显示上限，请查看执行记录。")
-                turn["text"] += delta
-            phase = event.get("phase", "")
-            if kind in ("phase.started", "phase.resumed", "phase.finished") and phase in PHASES:
-                previous = next((s for s in reversed(turn["steps"]) if s.get("phase") == phase and s["status"] == "running"), None)
-                if kind == "phase.finished" and previous:
-                    previous["status"] = event.get("status", "unknown")
-                else:
-                    turn["steps"].append({"label": PHASES[phase], "phase": phase, "status": event.get("status", "running")})
+            # Only the business Claude stream belongs in Chat. Host memory and
+            # experience processing retain their evidence in the inspector.
+            if event.get("agent") == "memory-extractor" or event.get("phase") not in (None, "", "execute", "knowledge_search", "knowledge_read"):
+                return event.get("status") if kind == "run.finished" else None
+            if kind == "text.delta":
+                self._text(turn, event.get("delta", ""))
+            if kind in {"native.evidence", "agent.started", "agent.result", "tool.activity"}:
+                self._native(turn, event)
             if kind == "tool.activity":
                 tool = (event.get("data") or {}).get("tool") or {}
-                if not tool.get("name"):
-                    return None
-                status = "failed" if tool.get("is_error") else "completed" if tool.get("stage") == "result" else "running"
-                previous = next((s for s in reversed(turn["steps"]) if tool.get("id") and s.get("tool_id") == tool["id"]), None)
-                if previous:
-                    previous["status"] = status
-                else:
-                    turn["steps"].append({"label": str(tool.get("name") or "工具调用")[:120],
-                                          "tool_id": tool.get("id"), "status": status})
-            if len(turn["steps"]) > 200:
-                turn["steps"] = turn["steps"][-200:]
+                tool_id, name = tool.get("id"), tool.get("name")
+                if tool_id and name and tool.get("stage") == "call":
+                    row = self._tool_call(turn, tool_id, name)
+                    payload = tool.get("input", {})
+                    row["parameters"] = native_text(payload)
+                    row["content"] = native_text(payload["command"]) if name == "Bash" and isinstance(payload, dict) and isinstance(payload.get("command"), str) else row["parameters"]
+                elif tool_id and tool.get("stage") == "result":
+                    call = next((row for row in turn["output"] if row.get("tool_id") == tool_id and row.get("stage") == "call"), None)
+                    status = "failed" if tool.get("is_error") else "completed"
+                    if call:
+                        call["status"] = status
+                    self._output(turn, "tool", stage="result", tool_id=tool_id,
+                        name=name or (call["name"] if call else tool_id), content=native_text(tool.get("result", "")),
+                        parameters="", status=status)
             if kind == "run.finished":
                 return event.get("status")
         return None
@@ -240,9 +333,9 @@ class ChatRuntime:
                 turn["exit_code"] = child.returncode if child else None
                 completed = not failure and child and child.returncode == 0 and finished == "completed"
                 turn["status"] = "completed" if completed else "canceled" if stopping else "failed"
-                for step in turn["steps"]:
-                    if step["status"] == "running":
-                        step["status"] = "canceled" if stopping else "unknown"
+                for row in turn["output"]:
+                    if row.get("status") == "running":
+                        row["status"] = "canceled" if stopping else "unknown"
                 turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" else "")
                 if turn["status"] == "completed":
                     self.session = turn["session_id"] or None

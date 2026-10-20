@@ -30,6 +30,7 @@ emit('run.started')
 emit('phase.started',phase='execute',status='running')
 emit('text.delta',delta='First ')
 if message == 'slow':
+ emit('tool.activity',phase='execute',data={'tool':{'id':'waiting-tool','name':'Bash','stage':'call','input':{'command':'sleep 60'}}})
  child = subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'])
  open(os.path.join(sys.argv[sys.argv.index('--home')+1],'child.pid'),'w').write(str(child.pid))
  time.sleep(60)
@@ -87,6 +88,9 @@ class RuntimeTests(unittest.TestCase):
         done = self.wait_for(lambda s: s["active_id"] is None)
         self.assertEqual(done["turns"][0]["status"], "canceled")
         self.assertEqual(done["turns"][0]["text"], "First ")
+        calls = [row for row in done["turns"][0]["output"] if row["kind"] == "tool"]
+        self.assertEqual(calls[0]["content"], "sleep 60")
+        self.assertEqual(calls[0]["status"], "canceled")
         with self.assertRaises(ProcessLookupError):
             os.kill(pid, 0)
         with self.assertRaises(ChatConflict):
@@ -127,6 +131,59 @@ class RuntimeTests(unittest.TestCase):
 
     def test_default_never_selects_an_unrelated_host(self):
         self.assertIsNone(default_config(self.root))
+
+    def test_native_stream_keeps_text_calls_results_and_status_in_order(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        def emit(kind, **value):
+            self.runtime._event(turn, {"type":kind, "phase":"execute", **value})
+        def partial(kind, **value):
+            emit("native.evidence", data={"raw":{"type":"stream_event", "event":{"type":kind, **value}}})
+        emit("agent.started", data={"raw":{"type":"system", "subtype":"init", "model":"claude-fixture", "apiKey":"SECRET_SENTINEL"}})
+        emit("text.delta", delta="Before call.")
+        emit("native.evidence", data={"raw":{"type":"assistant", "message":{"content":[{"type":"text","text":"Before call."}]}}})
+        partial("content_block_start", index=1, content_block={"type":"tool_use", "id":"bash-1", "name":"Bash"})
+        partial("content_block_delta", index=1, delta={"type":"input_json_delta", "partial_json":'{"command":"printf'})
+        self.assertEqual(turn["output"][-1]["content"], '{"command":"printf')
+        emit("tool.activity", data={"tool":{"id":"bash-1", "name":"Bash", "stage":"call", "input":{"command":"printf '<script>literal</script>'", "description":"Print fixture"}}})
+        emit("native.evidence", data={"raw":{"type":"tool_progress","tool_use_id":"bash-1","tool_name":"Bash","elapsed_time_seconds":2}})
+        emit("text.delta", delta="During tool.")
+        emit("tool.activity", data={"tool":{"id":"bash-1", "name":"Bash", "stage":"result", "result":[{"type":"text","text":"<script>literal</script>"}], "is_error":False}})
+        emit("text.delta", delta="After tool.")
+        emit("agent.result", data={"raw":{"type":"result","subtype":"success","result":"Before call.During tool.After tool."}})
+        rows = turn["output"]
+        self.assertEqual([row["kind"] for row in rows], ["status","text","tool","text","tool","text","status"])
+        self.assertEqual(rows[2]["content"], "printf '<script>literal</script>'")
+        self.assertIn("Print fixture",rows[2]["parameters"])
+        self.assertEqual(rows[2]["status"], "completed")
+        self.assertIn('"elapsed_time_seconds": 2',rows[2]["progress"])
+        self.assertEqual(rows[4]["content"], "<script>literal</script>")
+        self.assertEqual(turn["text"], "Before call.During tool.After tool.")
+        self.assertNotIn("SECRET_SENTINEL",json.dumps(rows))
+
+    def test_host_phases_extractor_and_nontext_native_deltas_do_not_become_chat_output(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        events = [{"type":"phase.started","phase":"recall","message":"Host recall"},
+                  {"type":"text.delta","phase":"extract","agent":"memory-extractor","delta":"Extractor output"},
+                  {"type":"native.evidence","phase":"execute","data":{"raw":{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Not answer text"}}}}}]
+        for event in events:
+            self.runtime._event(turn,event)
+        self.assertEqual(turn["output"],[])
+        self.assertNotIn("steps",turn)
+
+    def test_native_tool_errors_keep_the_original_result(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        self.runtime._event(turn,{"type":"tool.activity","phase":"execute","data":{"tool":{"id":"read-1","name":"Read","stage":"call","input":{"file_path":"missing.txt"}}}})
+        self.runtime._event(turn,{"type":"tool.activity","phase":"execute","data":{"tool":{"id":"read-1","name":"Read","stage":"result","is_error":True,"result":"File does not exist"}}})
+        self.assertEqual(turn["output"][0]["status"],"failed")
+        self.assertEqual(turn["output"][1]["content"],"File does not exist")
+
+    def test_full_native_messages_backfill_missing_deltas_once(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        event = {"type":"native.evidence","phase":"execute","data":{"raw":{"type":"assistant","uuid":"message-1","message":{"content":[{"type":"text","text":"Original answer"}]}}}}
+        self.runtime._event(turn,event)
+        self.runtime._event(turn,{"type":"text.delta","phase":"execute","delta":" next"})
+        self.runtime._event(turn,event)
+        self.assertEqual(turn["text"],"Original answer next")
 
     def test_private_config_validator_reports_no_credentials(self):
         config = self.root / "config.json"

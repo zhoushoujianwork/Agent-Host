@@ -5,7 +5,7 @@ with execution records, settings and right-side Chat execution. The conversation
 canvas/workbench is temporarily disabled; saved layout data is retained.
 The full execution inspector remains at `/executions.html`; existing `/?key=...`
 bookmarks open the selected execution inside the workspace. Chat sends through
-the configured CLI destination and displays incremental answers and steps.
+the configured CLI destination and displays incremental answers and native Claude output.
 
 Status: local execution inspection and owner memory management are implemented.
 Memory actions use the running Host; Chat owns a separate configured CLI process
@@ -200,7 +200,7 @@ saving does not restart services or run a task. See the
 ### Web Chat
 
 Right-side Chat now sends messages to a configured Host CLI Agent and displays
-incremental answer text, observed phases and tools. Enter sends; Shift+Enter
+incremental answer text, native tool calls, parameters, results and status messages. Enter sends; Shift+Enter
 adds a line. Stop cancels the active owned Host process and waits for its exit.
 Closing Chat only collapses it. Interrupted/failed sessions require New conversation.
 

@@ -292,12 +292,21 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 .chat-turn[data-status="failed"] .chat-turn-status,.chat-turn-error { color: var(--danger); }
 [data-page="workspace"] .chat-body .chat-turn-error { color: var(--danger); font-size: 11px; margin-top: 8px; }
 .chat-record { display: inline-block; margin-top: 10px; font-size: 10px; color: var(--accent); }
-.chat-steps { margin-top: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); padding: 9px 11px; font-size: 11px; color: var(--muted); }
-.chat-steps summary { cursor: pointer; }
-.chat-steps ol { margin: 12px 0 0; padding-left: 18px; max-height: 220px; overflow: auto; }
-.chat-steps li { padding: 5px 0; }
-.chat-steps li span { display: block; font-size: 9px; color: var(--subtle); }
-.chat-steps li[data-status="failed"] { color: var(--danger); }
+.chat-native-row { margin: 0 0 16px; min-width: 0; }
+.chat-native-row[data-kind="tool"] { border-left: 2px solid var(--line); padding: 1px 0 1px 11px; }
+.chat-native-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 9px; margin-bottom: 7px; font-size: 11px; color: var(--muted); }
+.chat-native-heading code { font: 11px var(--mono); color: var(--accent); overflow-wrap: anywhere; }
+.chat-native-state { font: 9px var(--mono); color: var(--subtle); }
+.chat-native-content { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; margin: 0; padding: 0; font: 11px/1.8 var(--mono); color: var(--ink); max-height: 300px; overflow: auto; }
+.chat-native-row[data-kind="status"] { color: var(--subtle); font: 10px var(--mono); }
+.chat-native-row[data-kind="status"] .chat-native-content { font-size: 10px; color: var(--muted); }
+.chat-native-row[data-status="failed"] { border-color: var(--danger); }
+.chat-native-row[data-status="failed"] .chat-native-state { color: var(--danger); }
+.chat-native-parameters { margin-top: 7px; font-size: 9px; color: var(--subtle); }
+.chat-native-parameters summary { cursor: pointer; }
+.chat-native-parameters pre { margin-top: 8px; }
+.chat-native-progress { white-space: pre-wrap; font: 9px/1.7 var(--mono); color: var(--subtle); margin: 7px 0 0; }
+[data-page="workspace"] .chat-body .chat-native-truncated { font-size: 10px; color: var(--muted); margin-top: 8px; }
 [data-page="workspace"] .chat-stop { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 #latest-chat { position: sticky; bottom: 0; display: block; margin: 10px auto 0; background: var(--surface); box-shadow: var(--shadow); color: var(--accent); font-size: 11px; }
 #chat-state { width: 100%; color: var(--muted); }

@@ -95,10 +95,18 @@ loopback Host, same-Origin, token and bounded-JSON checks. Messages are at most
 16 KiB. Only one turn executes at a time. Request IDs are idempotent within the
 current conversation; a lost HTTP response must not cause automatic replay.
 
-Host emits NDJSON; the bridge projects `text.delta`, phase transitions and tool
-activity. It excludes memory-extractor text, raw evidence and provider stderr.
+Host emits NDJSON; Chat projects Claude text and native tool/status events in
+arrival order. It does not display the Host phase summary or memory-extractor
+output. Tool calls show their actual names and parameters; Bash shows its original
+command with full parameters available inline. Tool results remain separate
+entries in arrival order, so parallel calls do not reorder returned content.
+Partial tool-input JSON and native `tool_progress`, system, hook and result
+notifications stay tied to their source events. Full native assistant envelopes
+backfill missing text deltas once without duplicating streamed answers.
+Initialization exposes its native model/status, not its configuration envelope.
+Provider stderr and non-answer content blocks are not projected.
 The browser polls the current projection every 350 ms during execution, keeping
-partial answers visible and preserving the user's expanded step controls and
+partial answers visible and preserving the user's expanded parameter controls and
 scroll position. It reconnects without resubmitting. Execution completion requires
 a successful Host exit and a completed receipt; execution is separate from task
 acceptance and memory persistence.
@@ -112,7 +120,9 @@ A failed or interrupted conversation requires an explicit New conversation;
 changing the configured destination cannot silently resume a prior session.
 
 Conversation UI state is process-local, shared by owner tabs, with at most 20
-turns, 512 Ki characters per answer and 200 projected steps per turn. Restarting
+turns, 512 Ki characters per answer and 200 native output entries per turn.
+Individual parameter/result displays are capped at 64 Ki characters with an
+explicit truncation notice; original evidence stays in the Host journal. Restarting
 the viewer clears its conversation view, not the Host's durable journal. Native
 execution and provider failures are surfaced without a fallback provider. Startup
 stderr is not sent to the browser; inspect CLI configuration and Host records
@@ -122,7 +132,10 @@ so another CLI process can cause an explicit launch failure.
 Validation: `python3 -B tools/run-viewer/chat_runtime_test.py` exercises incremental
 output, duplicate requests, real process cancellation, queued cancellation,
 configuration changes and HTTP boundaries. `node --test tools/run-viewer/chat_test.cjs`
-checks safe text rendering, response-loss retry identity and stop acknowledgement.
+checks literal native text/payload rendering, transcript ordering, response-loss
+retry identity and stop acknowledgement. Native projection tests cover partial
+parameters, text/full-message deduplication, original tool errors and omission of
+Host phases and initialization configuration.
 
 An isolated real-provider check on 2026-10-20 observed incremental answer text,
 a running Bash tool and refresh reconnection. Clicking Stop during `sleep 90`
