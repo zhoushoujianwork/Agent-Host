@@ -9,6 +9,12 @@ opted-in group preferences. The original scope came from
 see [implementation notes](person-profiles-detail.md) and
 [current priorities](release-follow-up.md#proposed-development-order).
 
+Reviewed on 2026-10-20: keep issue #1 open for this remaining work. Its
+[Skill publication proposal](experience-skills.md) is already implemented;
+profile learning is not part of the CLI workbench fix. The next implementation
+slice is the owner-private pilot in steps 1–2 below. Account linking and group
+preferences follow only after that pilot passes its lifecycle and privacy checks.
+
 ## Goal and usage
 
 Remember how a person wants the assistant to reply without making them repeat

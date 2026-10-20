@@ -3,6 +3,12 @@
 状态：2026-10-13 文件后端已实现并完成本地切换，真实 Claude 已发现并调用历史 Skill。
 存储与迁移见[文件记忆方案](file-memory-design.md)，装配细节见[详细稿](experience-skills-detail.md)。
 
+Issue [#1](https://github.com/zhoushoujianwork/Agent-Host/issues/1) status reviewed
+on 2026-10-20: scoped Skill publication, fresh-task mounting and withdrawal are
+implemented. The separate [learned personal preferences](person-profiles.md)
+proposal remains open. The issue's original SQLite-authoritative comparison is
+historical; published files now own migrated knowledge.
+
 ## 使用方式
 
 有证据支持的处理方法保存为正式 `SKILL.md`，新任务检索到适用方法后，

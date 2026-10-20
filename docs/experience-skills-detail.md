@@ -75,3 +75,23 @@ checks, scope exclusion and no-tools cases are recorded in the
 This is bounded discovery/invocation acceptance. A general benefit comparison,
 new automatic-learning native loop, large-corpus performance, handwritten
 config/skills mounting, generated code and Codex mounting remain separate work.
+
+## Issue #1 acceptance mapping (2026-10-20)
+
+The original roadmap combines Skill export and learned personal profiles. These
+have separate delivery status; completing Skill publication does not complete
+the profile proposal. The original SQLite source-of-truth assumption was
+superseded by the explicit file-memory migration.
+
+| Skill requirement | Existing evidence |
+| --- | --- |
+| Published experience is available in a fresh task, and withdrawn after invalidation | `internal/host/file_memory_test.go`: `TestFileHostAutomaticSkillPublicationFreshUseAndBlacklist` |
+| Exact revision, evidence, conditions and procedure survive rendering | `internal/assembly/skills_test.go`: `TestNativeSkillSnapshotIsDeterministicScopedAndImmutable` |
+| Other Agents/audiences/projects, expired knowledge and invalid sources cannot mount | `internal/assembly/skills_test.go`: `TestNativeSkillEligibilityAndPathBoundaries` |
+| Official Chat continuation retains unchanged skills and drops changed/withdrawn context | `internal/cli/file_resume_test.go` |
+| Real native discovery/invocation | The bounded historical 2026-10-13 experiment described above; not rerun by the CLI workbench change |
+
+Automated fixtures establish the lifecycle and isolation rules, not general
+model usefulness. The remaining profile implementation and acceptance plan is
+tracked in the [profile main proposal](person-profiles.md) and its
+[implementation notes](person-profiles-detail.md).
