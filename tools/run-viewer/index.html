@@ -3,36 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Agent-Host · 执行观察台</title>
-  <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
+  <title>Agent-Host · Workspace</title>
+  <link rel="stylesheet" href="/workspace.css">
+  <script src="/workspace.js" defer></script>
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="brand"><span class="brand-mark">a<span>h</span></span><div>Agent-Host<small>执行观察台</small></div></div>
-    <div class="nav-label">WORKSPACE / OBSERVABILITY</div>
-    <label class="search"><span>⌕</span><input id="search" type="search" placeholder="搜索请求、项目或编号" aria-label="搜索执行记录"></label>
-    <div class="filters"><select id="source-filter" aria-label="筛选记录来源"><option value="all">全部来源</option><option value="database">本机执行库</option><option value="report">归档实测报告</option></select><span id="record-count">—</span></div>
-    <div id="record-list" class="record-list" aria-label="执行记录列表"><div class="loading">正在加载执行记录…</div></div>
-    <a class="button quiet" href="/settings.html">⚙ Settings</a>
-    <div class="sidebar-foot"><span class="dot"></span><div>本地只读连接<small>原始记录不会被修改</small></div></div>
+  <aside class="rail">
+    <a class="brand" href="#workbench" aria-label="Agent-Host 工作台">ah</a>
+    <nav aria-label="主导航">
+      <a href="#workbench" data-view="workbench"><span>▦</span>工作台</a>
+      <a href="#chat" data-view="chat"><span>＋</span>Chat</a>
+      <a href="#memory" data-view="memory"><span>◇</span>记忆</a>
+      <a href="#executions" data-view="executions"><span>≋</span>记录</a>
+    </nav>
+    <a class="settings-link" href="#settings" data-view="settings"><span>⚙</span>设置</a>
+    <span class="local-indicator" title="本地工作台">●</span>
   </aside>
-
   <main>
-    <header class="topbar"><span>运行空间 <span class="slash">/</span> 执行记录</span><div class="sync"><a class="button quiet" href="/memory.html">◇ 记忆工作台</a><span id="sync-state">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 每 5 秒刷新</label><button id="refresh" class="button quiet">↻ 刷新</button></div></header>
-    <div id="error" class="error-banner" role="alert" hidden></div>
-    <div id="backup-status" class="snapshot-note" aria-live="polite" hidden></div>
-    <div id="source-status" class="snapshot-note" aria-live="polite"></div>
-    <div id="empty" class="empty" hidden><span>◇</span><h1>还没有执行记录</h1><p>Check the source status above and confirm Chat uses the same state home.</p></div>
-    <div id="content" hidden>
-      <div class="page-heading"><div><div class="eyebrow">EXECUTION TRACE</div><h1 id="run-title">执行详情</h1><div class="run-meta"><span id="run-id"></span><span id="run-time"></span><span id="source-badge"></span></div></div><div id="overall-status"></div></div>
-      <div id="snapshot-note" class="snapshot-note" hidden></div>
-      <div class="metrics" id="metrics"></div>
-      <div class="tabs" role="tablist" aria-label="记录详情"><button class="tab active" data-tab="overview" role="tab" aria-selected="true">核心过程</button><button class="tab" data-tab="events" role="tab" aria-selected="false">阶段事件</button><button class="tab" data-tab="tools" role="tab" aria-selected="false">工具证据</button><button class="tab" data-tab="decisions" role="tab" aria-selected="false">模型判断</button><button class="tab" data-tab="memory" role="tab" aria-selected="false">记忆流转</button><button class="tab" data-tab="raw" role="tab" aria-selected="false">原始记录</button></div>
-      <section id="panel" aria-live="polite"></section>
-      <footer><span>Agent-Host · 同一份事件记录，多种展示方式</span><span id="event-count"></span></footer>
+    <header class="topbar"><div><strong>Agent-Host</strong><span class="divider">/</span><span id="view-title">工作台</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection" role="status">正在连接…</span><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
+    <div class="studio">
+      <section id="workbench" class="view board-view" aria-label="对话工作台">
+        <div class="board-heading"><div><div class="eyebrow">YOUR CONTINUOUS WORKSPACE</div><h1>让每次对话，都有位置。</h1><p>在画布上整理对话，回到上下文，连接长期记忆。</p></div><a class="primary" href="#chat">＋ 新对话草稿</a></div>
+        <div class="board-tools"><label>⌕ <input id="board-search" type="search" placeholder="搜索对话、Agent 或项目" aria-label="搜索对话"></label><span id="board-count">—</span><button id="refresh">↻ 刷新</button><button id="arrange">整理画布</button></div>
+        <p id="board-notice" class="notice" role="status">拖动卡片标题可调整位置；聚焦标题后也可用方向键移动。布局仅保存在当前浏览器。</p>
+        <div id="canvas-scroll" class="canvas-scroll"><div id="canvas" class="canvas"><div id="board-empty" class="board-empty">正在读取真实对话记录…</div></div></div>
+        <footer><span>CONVERSATIONS → CONTEXT → MEMORY</span><span>本地布局 · 原始执行记录保持独立</span></footer>
+      </section>
+      <section id="chat" class="view chat-home" hidden><div class="welcome-mark">✳</div><div class="eyebrow">A PLACE TO BEGIN</div><h1>从一个想法开始。</h1><p>在右侧写下任务，准备下一次对话。</p><div class="suggestions"><button data-prompt="帮我整理这个项目的当前进展和下一步。">↗ 整理项目进展</button><button data-prompt="查找与当前任务有关的记忆，并列出来源。">◇ 找回相关记忆</button><button data-prompt="帮我检查 Agent、模型和渠道配置。">⚙ 检查工作配置</button></div><p class="boundary">本期提供工作台框架。Web 对话执行接口尚未接入，草稿不会发送给 Agent。</p></section>
+      <section id="memory" class="view frame-view" hidden><iframe title="记忆图谱与记忆库" data-src="/memory.html"></iframe></section>
+      <section id="executions" class="view frame-view" hidden><iframe title="执行记录与证据" data-src="/executions.html"></iframe></section>
+      <section id="settings" class="view frame-view" hidden><iframe title="Agent-Host 设置" data-src="/settings.html"></iframe></section>
+      <aside id="chat-panel" class="chat-panel" aria-label="Chat 草稿">
+        <div class="chat-heading"><div><strong>Chat</strong><small>为下一次工作准备上下文</small></div><span class="draft-badge">草稿</span></div>
+        <div class="chat-context"><span>◈</span><div><strong id="context-title">新的工作</strong><small id="context-subtitle">选择对话卡片查看关联记录</small></div></div>
+        <div class="chat-body"><div class="assistant-mark">✳</div><h2>工作从这里继续。</h2><p>把目标和背景留在这里。你可以随时切换到记忆图谱或设置，草稿会留在当前浏览器。</p><div class="capability"><span>◇</span><div><strong>有来源的记忆</strong><small>查看对象、主题与记忆之间的关系</small></div></div><div class="capability"><span>▦</span><div><strong>可整理的对话</strong><small>移动卡片，打开真实执行过程</small></div></div></div>
+        <div class="composer"><label for="draft">任务草稿</label><textarea id="draft" placeholder="你想一起完成什么？" rows="5"></textarea><div class="composer-actions"><button id="clear-draft">清空</button><button id="save-draft" class="primary">保存草稿 ↓</button></div><p id="draft-status" role="status">仅保存到此浏览器，不会执行任务。</p></div>
+      </aside>
     </div>
   </main>
-  <dialog id="phase-dialog"><div class="dialog-head"><div><div class="eyebrow">PHASE DETAIL</div><h2 id="phase-title"></h2></div><button id="close-dialog" class="button quiet" aria-label="关闭阶段详情">✕</button></div><div id="phase-body"></div></dialog>
 </body>
 </html>

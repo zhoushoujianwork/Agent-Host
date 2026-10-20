@@ -1,5 +1,11 @@
 # Local execution viewer
 
+The root page is now the [Web workspace](../../docs/web-workspace.md): a draggable
+conversation canvas, local Chat drafts, memory graph and settings navigation.
+The full execution inspector remains at `/executions.html`; existing `/?key=...`
+bookmarks open the selected execution inside the workspace. Web Chat execution
+is not yet connected; drafts remain local to the browser.
+
 Status: local execution inspection and owner memory management are implemented.
 Memory actions use the running Host; the page does not submit business tasks.
 

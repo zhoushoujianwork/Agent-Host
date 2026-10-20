@@ -438,11 +438,12 @@ class HTTPTests(unittest.TestCase):
         error.exception.close()
 
     def test_assets_api_headers_and_write_boundary(self):
-        for asset in ("/", "/app.js", "/style.css"):
+        for asset in ("/", "/app.js", "/style.css", "/workspace.js", "/workspace.css", "/embedded.css", "/executions.html"):
             with urlopen(self.base + asset) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
                 self.assertIn("script-src 'self'", response.headers["Content-Security-Policy"])
+                self.assertIn("frame-ancestors 'self'", response.headers["Content-Security-Policy"])
                 self.assertEqual(response.headers["Cache-Control"], "no-store")
         with urlopen(self.base + "/api/records") as response:
             self.assertEqual(json.load(response)["database_count"], 1)

@@ -95,7 +95,9 @@ bot accounts and retain delivery evidence independently from execution.
 | Personal assistance | Selected DWS intake, cited current matters, private suggestions and user-selected preparation | Automatic conversation learning and proactive delivery remain planned |
 | Operations | Shared workbench, automatic user-login services, independent production runtime and verified encrypted backups | Backup excludes external account sessions and complete external project directories |
 
-The local workbench also provides a [settings console](settings-console.md) for
+The local workbench opens a [Web workspace](web-workspace.md) with draggable
+conversation cards, local Chat drafts and the existing memory graph. Browser
+task execution is not yet connected. It also provides a [settings console](settings-console.md) for
 saved Agent, execution, provider, channel and datasource configuration. Checked
 saves retain private previous versions; applying service changes still requires
 a restart. The console does not turn CLI chat into a client of a running channel

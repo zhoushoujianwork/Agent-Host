@@ -1,0 +1,7 @@
+/* Same-origin workspace panels retain their existing editors and state. */
+.rail .brand,.rail .rail-nav,.rail .rail-label:first-of-type,.rail .rail-note,.rail .rail-foot{display:none}
+.rail{width:185px;padding-top:18px}body:has(.rail) main{margin-left:185px}
+.navigation .brand,.navigation .nav-bottom{display:none}
+.navigation{width:205px;padding-top:20px}body:has(.navigation) main{margin-left:205px;width:calc(100% - 205px)}
+.sidebar .brand,.sidebar>a,.sidebar .sidebar-foot{display:none}
+@media(max-width:750px){.rail{display:none}body:has(.rail) main{margin-left:0}.navigation{position:static;width:100%}body:has(.navigation) main{margin:0;width:100%}}
