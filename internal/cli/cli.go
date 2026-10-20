@@ -116,6 +116,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 
 type options struct {
 	renewRuntime                                                                       bool
+	feedbackOtherUsersOnly                                                             bool
 	renewedFrom                                                                        string
 	executionConfig, executionFingerprint                                              string
 	executionProfile                                                                   *acp.Config
@@ -188,6 +189,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	if name == "chat" {
+		fs.BoolVar(&o.feedbackOtherUsersOnly, "feedback-other-users-only", false, "Keep requester feedback local; notify only other verified users")
 		fs.BoolVar(&o.debugNonOwner, "debug-non-owner", false, "Simulate a non-owner with restricted read tools and no channel approval transport")
 		fs.StringVar(&o.requestFor, "request-for", "", "Verified user ID whose demand this task fulfills")
 		fs.StringVar(&o.notifyTo, "notify-to", "", "Verified user ID to notify after task completion")

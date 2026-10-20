@@ -132,6 +132,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(command_a[command_a.index("--agent")+1],"a")
         self.assertEqual(command_b[command_b.index("--agent")+1],"b")
         self.assertEqual(command_b[command_b.index("--home")+1],str(self.root))
+        self.assertEqual(command_a[-1],"--feedback-other-users-only=true")
+        self.assertEqual(command_b[-1],"--feedback-other-users-only=true")
         self.assertNotEqual(identity_a,identity_b)
         with self.assertRaises(ValueError):configured_launch(config,"unconfigured")
 

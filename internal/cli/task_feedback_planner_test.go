@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,30 @@ import (
 	"agent-host/internal/host"
 	"agent-host/internal/state"
 )
+
+func TestWebFeedbackFlagKeepsSelfOutOfQueue(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "config")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeBotJSON(t, filepath.Join(directory, "users.json"), userCatalog{Version: 1, Users: []userDefinition{{ID: "owner", Accounts: []userAccount{{Channel: "feishu", AccountID: "app", TenantID: "tenant", SenderID: "ou_owner"}}}}})
+	o, _, err := parse("chat", []string{"--feedback-other-users-only=true", "--feedback-config-dir", directory, "--notify-to", "owner"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &host.Host{}
+	configureTaskFeedback(h, o, nil)
+	p, err := h.Config.PrepareFeedback(t.Context(), state.Run{Input: "Check my service"}, nil)
+	if err != nil || p.Mode != "terminal" || p.Target != nil {
+		t.Fatal(p, err)
+	}
+	if err := h.Config.BindFeedback(t.Context(), state.Run{Feedback: p}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(directory), "feedback")); !os.IsNotExist(err) {
+		t.Fatal("self notification created a queue", err)
+	}
+}
 
 func TestFeedbackPlannerUsesAuthenticatedOwnerAndMemberIdentity(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "config")

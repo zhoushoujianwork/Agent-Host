@@ -126,7 +126,7 @@ def configured_launch(path, agent_id=None):
     env = {k: v for k, v in os.environ.items() if k not in PROVIDER_KEYS and
            not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k not in ("CLAUDE_CONFIG_DIR", "CLAUDECODE")}
     env.update(managed)
-    command, cwd = [*result["command"], "--renew-runtime"], result["cwd"]
+    command, cwd = [*result["command"], "--renew-runtime", "--feedback-other-users-only=true"], result["cwd"]
     if agent_id is not None:
         command[command.index("--agent") + 1] = agent_id
     identity = hashlib.sha256(json.dumps([command, cwd, managed], sort_keys=True).encode()).hexdigest()

@@ -58,6 +58,7 @@ func configureTaskFeedback(h *host.Host, o options, client *jev.Client) {
 			return nil, err
 		}
 		req := taskfeedback.Request{Text: run.Input, Requester: "owner", RequestFor: o.requestFor, NotifyTo: o.notifyTo, Channel: o.notifyChannel, Interpret: dir != ""}
+		req.OtherUsersOnly = o.feedbackOtherUsersOnly
 		for _, supplement := range run.Supplements {
 			req.Text += "\n\nLater authenticated task clarification:\n" + supplement.Text
 		}

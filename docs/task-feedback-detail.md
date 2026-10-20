@@ -45,6 +45,13 @@ otherwise ordinary self-owned CLI work retains terminal output. A new request
 is attributed independently; an explicitly recognized continuation retains its
 prior recipient and revalidates the account binding.
 
+Web Chat always appends `--feedback-other-users-only=true` to its Host launch.
+After attribution, a recipient equal to the requester retains local (Web) output
+without selecting an IM account or binding a notification queue item. This also
+applies to an explicit self recipient and a self-owned continuation. Other verified
+recipients retain the normal account validation and delivery path; unresolved
+identities remain unresolved. Ordinary CLI defaults and channel replies are unchanged.
+
 Channel requests must use the source channel/application/tenant, regardless of
 the recipient's default or a supplied channel option. A CLI request can select
 a channel; otherwise use the configured notification channel or the sole

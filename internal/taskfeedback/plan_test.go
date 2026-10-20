@@ -99,6 +99,38 @@ func TestSemanticRecipientRequiresConfidenceAndUniqueName(t *testing.T) {
 	}
 }
 
+func TestOtherUsersOnlyKeepsSelfFeedbackLocal(t *testing.T) {
+	r := fixtureResolver("self")
+	r.Users = append(r.Users, User{ID: "owner", Accounts: []Account{
+		{Channel: "feishu", AccountID: "app", TenantID: "tenant", SenderID: "ou_owner"},
+		{Channel: "dingtalk", AccountID: "bot", TenantID: "corp", SenderID: "owner"},
+	}})
+	for _, req := range []Request{
+		{Text: "Check my service", Requester: "owner", Interpret: true},
+		{Requester: "owner", NotifyTo: "owner", Channel: "feishu"},
+		{Requester: "owner", RequestFor: "owner"},
+	} {
+		req.OtherUsersOnly = true
+		p := r.Resolve(t.Context(), req)
+		if p.Mode != "terminal" || p.NotifyTo != "owner" || p.Target != nil {
+			t.Fatal("self feedback escaped local entry", p)
+		}
+	}
+	r = fixtureResolver("user:alice")
+	previous := r.Resolve(t.Context(), Request{Requester: "owner", RequestFor: "alice"})
+	for _, choice := range []string{"user:alice", "continue", "unresolved"} {
+		r.Evaluator = fixtureResolver(choice).Evaluator
+		p := r.Resolve(t.Context(), Request{Text: "Handle Alice issue", Requester: "owner", Interpret: true, OtherUsersOnly: true, Previous: &previous})
+		if choice == "unresolved" {
+			if p.Mode != "needs_recipient" || p.Target != nil {
+				t.Fatal("unresolved recipient acquired a target", p)
+			}
+		} else if p.Mode != "notify" || p.NotifyTo != "alice" || p.Target == nil {
+			t.Fatal("other recipient lost delivery", p)
+		}
+	}
+}
+
 func TestLargeDirectoryOnlyProvidesMentionedCandidates(t *testing.T) {
 	r := fixtureResolver("user:alice")
 	for i := range 1000 {

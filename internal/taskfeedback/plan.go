@@ -45,6 +45,7 @@ type Request struct {
 	Text, Requester, RequestFor, NotifyTo, Channel string
 	Origin                                         *Origin
 	Interpret                                      bool
+	OtherUsersOnly                                 bool
 	Previous                                       *Plan
 }
 
@@ -160,6 +161,9 @@ func (r Resolver) Resolve(ctx context.Context, req Request) Plan {
 			}
 			p.RequestFor, p.NotifyTo = id, id
 		}
+	}
+	if req.OtherUsersOnly && req.Origin == nil && p.NotifyTo == p.Requester {
+		return p
 	}
 	if p.NotifyTo == p.Requester && req.Origin != nil && req.NotifyTo == "" {
 		return p
