@@ -23,6 +23,14 @@
     if (text !== undefined) result.textContent = text;
     return result;
   }
+  function duration(ms) {
+    const seconds = Math.floor(Math.max(0,ms) / 1000);
+    return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+  }
+  function reconcile(parent, children) {
+    const current = Array.from(parent.children);
+    if (current.length !== children.length || current.some((child,index) => child !== children[index])) parent.replaceChildren(...children);
+  }
   function render() {
     el("chat-welcome").hidden = state.turns.length > 0;
     el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";
@@ -33,19 +41,32 @@
       if (!item) {
         const root = node("article","chat-turn");
         const user = node("div","chat-user",turn.input);
-        const label = node("div","chat-answer-label","Claude");
+        const work = node("details","chat-work");
+        const summary = node("summary","chat-work-summary");
+        const activity = node("div","chat-work-content"); work.append(summary,activity);
         const output = node("div","chat-native-output");
         const status = node("div","chat-turn-status");
         const error = node("p","chat-turn-error");
         const record = node("a","chat-record","查看执行记录 ↗");
-        root.append(user,label,output,status,error,record);
+        root.append(user,work,output,status,error,record);
         el("chat-messages").append(root);
-        item = {root,output,status,error,record,blocks:new Map()}; rendered.set(turn.id,item);
+        work.open = ["starting","running","stopping"].includes(turn.status);
+        item = {root,work,summary,activity,output,status,error,record,blocks:new Map()}; rendered.set(turn.id,item);
       }
       const rows = turn.output || (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
+      const active = ["starting","running","stopping"].includes(turn.status);
+      const calls = rows.filter(row => row.kind === "tool" && row.stage === "call");
+      const lastTool = rows.findLastIndex(row => row.kind === "tool");
+      const usefulStatus = row => row.kind === "status" && !["init","status","success"].includes(row.label);
+      item.work.hidden = !calls.length && !rows.some(usefulStatus);
+      const working = calls.findLast(row => row.status === "running");
+      item.summary.textContent = [active ? working ? `正在调用 ${working.name}` : statusNames[turn.status] : turn.status === "completed" ? "处理完成" : statusNames[turn.status],
+        Number.isFinite(turn.elapsed_ms) ? duration(turn.elapsed_ms) : "",
+        calls.length ? `${turn.output_truncated ? "最近 " : ""}${calls.length} 次工具调用` : ""].filter(Boolean).join(" · ");
       const rowIds = new Set(rows.map(row => row.id));
       for (const [id, block] of item.blocks) if (!rowIds.has(id)) { block.root.remove(); item.blocks.delete(id); }
-      for (const row of rows) {
+      const workNodes = [], answerNodes = [];
+      for (const [index,row] of rows.entries()) {
         let block = item.blocks.get(row.id);
         if (!block) {
           const root = node("div","chat-native-row"); root.dataset.kind = row.kind;
@@ -55,26 +76,39 @@
           const content = node(row.kind === "text" ? "div" : "pre",row.kind === "text" ? "chat-answer" : "chat-native-content");
           const progress = node("pre","chat-native-progress");
           const params = node("details","chat-native-parameters");
-          const summary = node("summary","","parameters");
+          const summary = node("summary","","查看原始参数");
           const raw = node("pre","chat-native-content"); params.append(summary,raw);
-          root.append(header,content,params,progress); item.output.append(root);
+          root.append(header,content,params,progress);
           block = {root,header,name,state,content,params,raw,progress}; item.blocks.set(row.id,block);
         }
+        // Only text after the final tool result is the reply. Earlier commentary
+        // and native work stay in chronological order inside the disclosure.
+        const inWork = row.kind !== "text" || index < lastTool;
+        (inWork ? workNodes : answerNodes).push(block.root);
+        block.root.hidden = row.kind === "status" && !usefulStatus(row);
         block.header.hidden = row.kind === "text";
         block.name.textContent = row.name || row.label || "";
-        const stage = row.stage === "call" ? "tool_use" : "tool_result";
-        block.state.textContent = row.kind === "tool" ? `${stage} · ${row.status}` : "";
+        const stage = row.stage === "call" ? "调用" : "输出";
+        block.state.textContent = row.kind === "tool" ? `${stage} · ${{running:"执行中",completed:"完成",failed:"失败",canceled:"已中止",unknown:"未确认"}[row.status] || row.status}` : "";
         block.root.dataset.status = row.status || "";
-        if (block.content.textContent !== row.content) block.content.textContent = row.content;
+        if (row.kind === "text") globalThis.AGHMarkdown(block.content,row.content || "");
+        else if (block.content.textContent !== row.content) block.content.textContent = row.content;
         block.content.hidden = !row.content;
         block.progress.hidden = !row.progress;
         if (block.progress.textContent !== row.progress) block.progress.textContent = row.progress || "";
         block.params.hidden = !row.parameters || row.parameters === row.content;
         if (block.raw.textContent !== row.parameters) block.raw.textContent = row.parameters || "";
       }
-      item.output.hidden = !rows.length;
+      // Reuse nodes so open parameter disclosures survive streaming updates.
+      reconcile(item.activity,workNodes);
+      reconcile(item.output,answerNodes);
+      item.output.hidden = !rows.some((row,index) => row.kind === "text" && index > lastTool);
       item.root.dataset.status = turn.status;
-      item.status.textContent = statusNames[turn.status] || turn.status;
+      const model = turn.model || rows.find(row => row.kind === "status" && row.label === "init")?.content || "Claude";
+      item.status.textContent = `${model} · ${statusNames[turn.status] || turn.status}`;
+      const isLatest = state.turns.at(-1)?.id === turn.id;
+      if (item.wasLatest && !isLatest) item.work.open = false;
+      item.wasLatest = isLatest;
       item.error.textContent = turn.error || ""; item.error.hidden = !turn.error;
       if (turn.output_truncated && !item.truncation) {
         item.truncation = node("p","chat-native-truncated","仅显示最近的原生输出，完整内容见执行记录。");

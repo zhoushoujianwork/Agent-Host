@@ -103,8 +103,35 @@ entries in arrival order, so parallel calls do not reorder returned content.
 Partial tool-input JSON and native `tool_progress`, system, hook and result
 notifications stay tied to their source events. Full native assistant envelopes
 backfill missing text deltas once without duplicating streamed answers.
-Initialization exposes its native model/status, not its configuration envelope.
+Initialization supplies the model footer, not its configuration envelope.
+Routine initialization, requesting and success notices do not occupy transcript
+rows. Other native notices remain inside the activity disclosure.
 Provider stderr and non-answer content blocks are not projected.
+
+The right Chat follows OpenFilm desktop's separation of activity and answer:
+text before the last tool output belongs to the expandable process; later text
+is the answer. Counts include tool calls once, never their result envelopes or
+Host phases. Duration uses Host's `run.finished.elapsed_ms`, with measured Web
+turn time while active or when no final timing arrives. Completed historical
+turns start folded. A watched turn keeps its expansion until the next turn, and
+manual expansion survives polling. Interrupted work retains partial text.
+
+Markdown uses the MIT-licensed OpenFilm shared parser, vendored as plain
+JavaScript in `markdown-parser.js` (license retained in the file), and a small
+DOM renderer in `markdown.js`. It supports headings, bold/italic, inline code,
+lists, quotes, fenced code, tables and web links, including unfinished streamed
+blocks. Raw HTML stays text. Only HTTP(S) links are clickable and open with
+`noopener noreferrer`; local file references remain text pending a workspace
+file viewer. Tool parameters and results remain literal native output. Stable
+Markdown blocks and native row nodes are reused across updates.
+
+This presentation does not require ACP. OpenFilm desktop's `src/agents.mjs`
+uses ACP adapters, while its `agent-activity-runs.ts` and Markdown components
+implement the presentation independently. AGH currently keeps its existing
+Claude stream-json harness behind Host. A future ACP adapter would belong at
+that harness boundary; this change adds no ACP transport, interactive permission
+protocol, plan UI or file-diff collection.
+
 The browser polls the current projection every 350 ms during execution, keeping
 partial answers visible and preserving the user's expanded parameter controls and
 scroll position. It reconnects without resubmitting. Execution completion requires
@@ -132,10 +159,12 @@ so another CLI process can cause an explicit launch failure.
 Validation: `python3 -B tools/run-viewer/chat_runtime_test.py` exercises incremental
 output, duplicate requests, real process cancellation, queued cancellation,
 configuration changes and HTTP boundaries. `node --test tools/run-viewer/chat_test.cjs`
-checks literal native text/payload rendering, transcript ordering, response-loss
+checks Markdown/native payload separation, activity counts/folding, transcript ordering, response-loss
 retry identity and stop acknowledgement. Native projection tests cover partial
 parameters, text/full-message deduplication, original tool errors and omission of
 Host phases and initialization configuration.
+`node --test tools/run-viewer/markdown_test.cjs` checks streamed Markdown blocks,
+stable-node reuse, HTML handling and link safety.
 
 An isolated real-provider check on 2026-10-20 observed incremental answer text,
 a running Bash tool and refresh reconnection. Clicking Stop during `sleep 90`

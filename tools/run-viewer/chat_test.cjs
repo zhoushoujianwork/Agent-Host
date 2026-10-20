@@ -19,15 +19,16 @@ async function setup() {
     }
     return {ok:true,json:async()=>JSON.parse(JSON.stringify(snapshot))};
   }};
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"chat.js"),"utf8"),context);
+  vm.createContext(context);
+  for(const file of ["markdown-parser.js","markdown.js","chat.js"]) vm.runInContext(fs.readFileSync(path.join(__dirname,file),"utf8"),context);
   await flush();
   return {el,calls,events,set snapshot(v){snapshot=v;},get snapshot(){return snapshot;},loseResponse(){failResponse=true;},async poll(){timers.shift()();await flush();}};
 }
-test("accepted sends clear the matching draft and render streamed text as literal content",async()=>{
+test("accepted sends clear the matching draft and render HTML as inert Markdown text",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();await h.el("send-chat").onclick();
   assert.equal(h.el("draft").value,"");assert.equal(h.el("stop-chat").hidden,false);
   h.snapshot.turns[0].output=[{id:"1",kind:"text",content:'<img src=x onerror="bad()">'}];await h.poll();
-  const turn=h.el("chat-messages").children[0];assert.equal(turn.children[2].children[0].children[1].textContent,'<img src=x onerror="bad()">');
+  const turn=h.el("chat-messages").children[0];assert.equal(turn.children[2].children[0].children[1].children[0].children[0].textContent,'<img src=x onerror="bad()">');
   assert.equal(h.calls.filter(c=>c.method==="POST").length,1);
 });
 test("a lost response keeps text and request identity for explicit retry without automatic replay",async()=>{
@@ -46,9 +47,29 @@ test("stop remains pending until the Host snapshot confirms process exit",async(
 test("native tool payloads stay in transcript order and use safe literal nodes",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();await h.el("send-chat").onclick();
   h.snapshot.turns[0].output=[{id:"1",kind:"text",content:"before"},{id:"2",kind:"tool",stage:"call",name:"Bash",status:"running",content:"printf '<b>literal</b>'",parameters:'{"command":"printf"}'},{id:"3",kind:"tool",stage:"result",name:"Bash",status:"completed",content:"<b>literal</b>"},{id:"4",kind:"text",content:"after"}];
-  await h.poll();const rows=h.el("chat-messages").children[0].children[2].children;
-  assert.deepEqual(rows.map(row=>row.dataset.kind),["text","tool","tool","text"]);
+  await h.poll();const turn=h.el("chat-messages").children[0],rows=turn.children[1].children[1].children;
+  assert.deepEqual(rows.map(row=>row.dataset.kind),["text","tool","tool"]);
+  assert.equal(turn.children[2].children[0].dataset.kind,"text");
   assert.equal(rows[1].children[0].children[0].textContent,"Bash");assert.equal(rows[2].children[1].textContent,"<b>literal</b>");
   assert.equal(rows[1].children[2].hidden,false);rows[1].children[2].open=true;
   h.snapshot.turns[0].output[1].status="completed";await h.poll();assert.equal(rows[1].children[2].open,true);
+});
+
+test("completed work folds separately from Markdown reply and counts calls only",async()=>{
+  const h=await setup();h.snapshot.turns=[{id:"old",input:"test",status:"completed",elapsed_ms:87000,output:[
+    {id:"1",kind:"status",label:"init",content:"claude-test"},
+    {id:"2",kind:"text",content:"Checking."},
+    {id:"3",kind:"tool",stage:"call",name:"Bash",status:"completed",content:"pwd"},
+    {id:"4",kind:"tool",stage:"result",name:"Bash",status:"completed",content:"/tmp"},
+    {id:"5",kind:"status",label:"status",content:'{"status":"requesting"}'},
+    {id:"6",kind:"text",content:"**Done**\n\n- Read `README.md`"},
+    {id:"7",kind:"status",label:"success",content:""}]}];await h.poll();
+  const turn=h.el("chat-messages").children[0],work=turn.children[1];
+  assert.equal(work.open,false);assert.match(work.children[0].textContent,/1m 27s · 1 次工具调用/);
+  assert.equal(work.children[1].children[0].hidden,true);
+  const answer=turn.children[2].children[0].children[1];
+  assert.equal(answer.children[0].children[0].tag,"strong");
+  assert.equal(answer.children[1].tag,"ul");
+  work.open=true;await h.poll();assert.equal(work.open,true);
+  assert.match(turn.children[3].textContent,/claude-test/);
 });

@@ -69,6 +69,8 @@ class RuntimeTests(unittest.TestCase):
     def test_streaming_is_observed_before_completion_and_deduplicated(self):
         turn = self.runtime.start("one", "hello")
         midway = self.wait_for(lambda s: s["turns"][0]["text"] == "First ")
+        self.assertGreaterEqual(midway["turns"][0]["elapsed_ms"], 0)
+        self.assertNotIn("started_at", midway["turns"][0])
         self.assertEqual(midway["active_id"], turn)
         self.assertEqual(self.runtime.start("one", "hello"), turn)
         with self.assertRaises(ChatConflict):
@@ -76,9 +78,16 @@ class RuntimeTests(unittest.TestCase):
         done = self.wait_for(lambda s: s["active_id"] is None)
         self.assertEqual(done["turns"][0]["text"], "First answer")
         self.assertEqual(done["turns"][0]["status"], "completed")
+        self.assertGreater(done["turns"][0]["elapsed_ms"], 0)
         self.assertEqual(self.runtime.session, "session-test")
         self.assertEqual(self.runtime.start("one", "hello"), turn)
         self.assertEqual(len(self.runtime.snapshot()["turns"]), 1)
+
+    def test_native_final_duration_survives_phase_filter(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        self.runtime._event(turn, {"type":"run.finished", "phase":"memory", "status":"completed", "elapsed_ms":87234})
+        self.assertEqual(turn["elapsed_ms"], 87234)
+        self.assertEqual(turn["output"], [])
 
     def test_stop_signals_host_and_waits_for_child_exit_without_replay(self):
         turn = self.runtime.start("stop", "slow")

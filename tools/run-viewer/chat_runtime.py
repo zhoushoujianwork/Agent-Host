@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import uuid
 
 from settings_store import private_bytes
@@ -109,9 +110,14 @@ class ChatRuntime:
 
     def snapshot(self):
         with self.lock:
-            return json.loads(json.dumps({"enabled": self.config is not None,
+            snapshot = json.loads(json.dumps({"enabled": self.config is not None,
                 "notice": "" if self.config else "尚未配置 Chat 执行环境，请配置此 Host 的 CLI 连接。",
                 "active_id": self.active, "needs_new": self.needs_new, "turns": self.turns}))
+            for turn in snapshot["turns"]:
+                started = turn.pop("started_at", None)
+                if turn["id"] == self.active and started:
+                    turn["elapsed_ms"] = max(0, int((time.time() - started) * 1000))
+            return snapshot
 
     def start(self, request_id, message):
         if not isinstance(request_id, str) or len(request_id) > 64 or not request_id:
@@ -134,7 +140,8 @@ class ChatRuntime:
                 raise ChatConflict("此对话已达 20 轮，请开启新对话。")
             turn = {"id": uuid.uuid4().hex, "request_id": request_id, "input": message,
                     "text": "", "output": [], "status": "starting", "error": "",
-                    "run_id": "", "session_id": "", "exit_code": None}
+                    "run_id": "", "session_id": "", "exit_code": None,
+                    "started_at": time.time()}
             self.turns.append(turn)
             self.active = turn["id"]
             self.worker = threading.Thread(target=self._run, args=(turn,), daemon=True)
@@ -251,6 +258,8 @@ class ChatRuntime:
     def _event(self, turn, event):
         with self.lock:
             kind = event.get("type")
+            if kind == "run.finished" and isinstance(event.get("elapsed_ms"), (int, float)):
+                turn["elapsed_ms"] = max(0, event["elapsed_ms"])
             if kind == "run.started":
                 turn["run_id"] = str(event.get("run_id", ""))
                 turn["session_id"] = str(event.get("session_id", ""))
@@ -333,6 +342,8 @@ class ChatRuntime:
                 turn["exit_code"] = child.returncode if child else None
                 completed = not failure and child and child.returncode == 0 and finished == "completed"
                 turn["status"] = "completed" if completed else "canceled" if stopping else "failed"
+                if "elapsed_ms" not in turn:
+                    turn["elapsed_ms"] = max(0, int((time.time() - turn["started_at"]) * 1000))
                 for row in turn["output"]:
                     if row.get("status") == "running":
                         row["status"] = "canceled" if stopping else "unknown"
