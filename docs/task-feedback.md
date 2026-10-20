@@ -43,7 +43,9 @@ flowchart TD
 ```
 
 Success, failure and blocked outcomes all receive feedback. Notifications carry
-the result and available usage/cost metadata. Delivery success is recorded
+the result, execution time, model and available cost rounded to three decimal
+places (`$0.235`). Detailed token counts and cost coverage stay in execution
+records. Delivery success is recorded
 separately from task execution and memory persistence. Service recovery resumes
 notification work without repeating business operations; uncertain sends are
 never blindly replayed.

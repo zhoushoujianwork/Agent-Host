@@ -23,9 +23,14 @@ func TestReplyUsageEvidence(t *testing.T) {
 		event.Event{Phase: "extract", Component: "harness.claude.extractor", Data: map[string]any{"raw": json.RawMessage(usageReplyExtraction)}},
 	)
 	text := resultText(run, nil)
-	for _, want := range []string{"$3.325365", "不含 Jev", "Token 入 1030840 / 出 8803 / 缓存写 0 / 缓存读 0"} {
+	for _, want := range []string{"$3.325"} {
 		if !strings.Contains(text, want) {
 			t.Fatal("missing observed accounting", want, text)
+		}
+	}
+	for _, unwanted := range []string{"Token", "已记录", "估算", "Jev", "$3.325365", "💰"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatal("verbose accounting remains in footer", text)
 		}
 	}
 	if strings.Contains(text, "native-execution") || strings.Contains(text, run.ID) {
@@ -34,15 +39,18 @@ func TestReplyUsageEvidence(t *testing.T) {
 	t.Log("Rendered reply from sanitized recorded metrics:\n" + text)
 }
 
-func TestReplyUsageMarksPartialMetricsAndKeepsRecordedZero(t *testing.T) {
+func TestReplyUsageKeepsRecordedZeroCompact(t *testing.T) {
 	run := formattedRun()
 	run.Events = append(run.Events,
 		event.Event{Phase: "execute", Component: "harness.claude", Data: map[string]any{"raw": json.RawMessage(`{"type":"result","uuid":"one","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":2}}`)}},
 		event.Event{Phase: "extract", Component: "harness.claude.extractor", Data: map[string]any{"raw": json.RawMessage(`{"type":"result","uuid":"two"}`)}},
 	)
 	text := resultText(run, nil)
-	if !strings.Contains(text, "$0.000000（不含 Jev）（部分调用）") || !strings.Contains(text, "Token 入 0 / 出 2（部分调用）") || strings.Contains(text, "缓存读 0") {
-		t.Fatal("missing metrics became free usage or partial totals looked complete", text)
+	if !strings.Contains(text, "$0.000") || strings.Contains(text, "Token") || strings.Contains(text, "部分调用") {
+		t.Fatal("recorded zero did not use compact footer", text)
+	}
+	if strings.Contains(resultText(formattedRun(), nil), "$") {
+		t.Fatal("unavailable cost rendered as zero")
 	}
 }
 
@@ -85,14 +93,14 @@ func TestReplyUsageSurvivesChannelDeliveryAndLongBody(t *testing.T) {
 				wire = "[AI]\n" + wire
 			}
 			if m.ReplyStatus != "accepted" || len(wire) > 4000 || !utf8.ValidString(wire) || closingFence(wire) != "" ||
-				!strings.Contains(wire, "节选") || !strings.Contains(wire, "$3.111876") || !strings.Contains(wire, "Token 入 999902 / 出 6952") {
+				!strings.Contains(wire, "节选") || !strings.Contains(wire, "$3.112") || strings.Contains(wire, "Token") {
 				t.Fatal("channel lost usage or exceeded its byte budget", wire)
 			}
 			saved, err := f.service.Store.WithPartition(m.AgentID, m.AudienceID).Run(t.Context(), m.RunID)
 			if err != nil || saved.Output != full || len(saved.Events) == 0 {
 				t.Fatal("presentation changed saved native evidence", err)
 			}
-			t.Logf("%s: stored and fixture-delivered reply match; %d bytes; cost and tokens retained", channel, len(wire))
+			t.Logf("%s: stored and fixture-delivered reply match; %d bytes; compact cost retained", channel, len(wire))
 		})
 	}
 }
