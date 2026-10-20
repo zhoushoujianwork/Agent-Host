@@ -43,6 +43,8 @@ the simplified settings page uses `settings-simple.css` and curated controls.
 Each standalone page shares the theme; embedded panels hide
 duplicate navigation while retaining filters and editing state. The memory
 review queue follows the graph and library in both document and visual order.
+The shared theme hides scrollbar tracks and thumbs across pages, Chat, editors
+and nested panels while preserving native scrolling and keyboard navigation.
 
 `theme.js` applies the validated `agent-host.appearance.v1` localStorage value
 before content renders. System mode listens for OS appearance changes. Storage

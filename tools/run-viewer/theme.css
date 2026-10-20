@@ -27,6 +27,9 @@
   --dot-grid: #354831; --graph-object: #2c412e; --graph-memory: #3c3d28; --graph-topic: #383146;
 }
 html,body { background: var(--bg); color: var(--ink); }
+/* Keep every scroll region usable without visible scrollbar chrome. */
+* { scrollbar-width: none !important; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
 body { font-family: var(--font); font-size: 13px; line-height: 1.6; }
 button,input,textarea,select { font-family: inherit; color: var(--ink); accent-color: var(--accent); }
 button { transition: background .15s, border-color .15s, box-shadow .15s; }
