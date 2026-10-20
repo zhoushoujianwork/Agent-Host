@@ -55,6 +55,21 @@ func EvidenceFromEvents(events []event.Event) ([]ToolEvidence, error) {
 			}
 			calls[o.ID] = &ToolEvidence{ID: o.ID, Name: o.Name, Input: append(json.RawMessage(nil), o.Input...), CallSeq: e.Seq}
 			order = append(order, o.ID)
+		case "update":
+			call := calls[o.ID]
+			if call == nil || call.ResultSeq != 0 {
+				return nil, fmt.Errorf("tool update %s has no open preceding call", o.ID)
+			}
+			if o.Name != "" && call.Name != o.Name {
+				return nil, fmt.Errorf("tool update %s name mismatch", o.ID)
+			}
+			if len(o.Input) > 0 {
+				if !json.Valid(o.Input) {
+					return nil, fmt.Errorf("tool update %s has invalid input", o.ID)
+				}
+				call.Input = append(json.RawMessage(nil), o.Input...)
+				call.CallSeq = e.Seq
+			}
 		case "result":
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(b, &fields); err != nil {

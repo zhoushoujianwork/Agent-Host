@@ -73,3 +73,9 @@ test("completed work folds separately from Markdown reply and counts calls only"
   work.open=true;await h.poll();assert.equal(work.open,true);
   assert.match(turn.children[3].textContent,/claude-test/);
 });
+
+test("ACP footer distinguishes observed model from a default configuration alias",async()=>{
+  const h=await setup();h.snapshot.turns=[{id:"acp",input:"hello",status:"completed",transport:"acp",model:"default",output:[]}];await h.poll();
+  const turn=h.el("chat-messages").children[0];assert.equal(turn.children[3].textContent,"模型未确认 · ACP · 执行完成");
+  h.snapshot.turns[0].model="observed-native-model";await h.poll();assert.equal(turn.children[3].textContent,"observed-native-model · ACP · 执行完成");
+});

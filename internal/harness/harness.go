@@ -83,3 +83,19 @@ type Result struct {
 type Runner interface {
 	Run(context.Context, Request, func(Observation) error) (Result, error)
 }
+
+// Identity describes the execution boundary, independently of the logical Agent.
+type Identity struct {
+	Agent     string `json:"agent"`
+	Component string `json:"component"`
+	Engine    string `json:"engine"`
+	Transport string `json:"transport"`
+	Version   string `json:"version,omitempty"`
+}
+
+func RunnerIdentity(r Runner) Identity {
+	if described, ok := r.(interface{ Identity() Identity }); ok {
+		return described.Identity()
+	}
+	return Identity{Agent: "local-claude", Component: "harness.claude", Engine: "claude", Transport: "print"}
+}

@@ -104,8 +104,8 @@
       reconcile(item.output,answerNodes);
       item.output.hidden = !rows.some((row,index) => row.kind === "text" && index > lastTool);
       item.root.dataset.status = turn.status;
-      const model = turn.model || rows.find(row => row.kind === "status" && row.label === "init")?.content || "Claude";
-      item.status.textContent = `${model} · ${statusNames[turn.status] || turn.status}`;
+      const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
+      item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[turn.status] || turn.status}`;
       const isLatest = state.turns.at(-1)?.id === turn.id;
       if (item.wasLatest && !isLatest) item.work.open = false;
       item.wasLatest = isLatest;

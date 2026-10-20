@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"agent-host/internal/harness/acp"
+
 	"context"
 	"errors"
 	"fmt"
@@ -24,6 +26,7 @@ import (
 
 // Instance configuration is local policy, never inferred from message content.
 type agentDefinition struct {
+	ExecutionConfig  string   `json:"execution_config,omitempty"`
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
 	InstructionsFile string   `json:"instructions_file,omitempty"`
@@ -68,6 +71,14 @@ func loadAgents(path string) (agentCatalog, error) {
 	seen := map[string]bool{}
 	for i := range c.Agents {
 		a := &c.Agents[i]
+		if a.ExecutionConfig != "" {
+			if !filepath.IsAbs(a.ExecutionConfig) {
+				a.ExecutionConfig = filepath.Join(filepath.Dir(path), a.ExecutionConfig)
+			}
+			if _, _, err := acp.Load(a.ExecutionConfig); err != nil {
+				return c, fmt.Errorf("agent %s execution profile: %w", a.ID, err)
+			}
+		}
 		if !agentIdentifier.MatchString(a.ID) || seen[a.ID] {
 			return c, errors.New("agent IDs must be unique letters, digits, hyphens or underscores (1–64 characters)")
 		}
@@ -205,6 +216,12 @@ func (a agentDefinition) projects(ctx context.Context, store *state.Store) ([]st
 
 func (a agentDefinition) options(base options, audience string, group, prepare bool) (options, error) {
 	o := base
+	if a.ExecutionConfig != "" {
+		o.executionConfig = a.ExecutionConfig
+		if err := loadExecutionOptions(&o); err != nil {
+			return o, err
+		}
+	}
 	o.projectAllowlist = a.Projects
 	o.agentID, o.audienceID = a.ID, audience
 	o.hostInstructions = host.ChannelInstructions(a.role, group)

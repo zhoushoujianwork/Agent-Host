@@ -12,6 +12,7 @@ import (
 )
 
 type runtimeActivity struct {
+	agent                   string
 	phase, source, tool, id string
 	started                 time.Time
 }
@@ -19,15 +20,16 @@ type runtimeActivity struct {
 // runtimePhases derives child phases from observed tool calls/results only.
 // It never parses assistant text or performs tools itself.
 type runtimePhases struct {
-	mu     sync.Mutex
-	emit   event.Sink
-	active map[string]runtimeActivity
-	order  []string
-	resume bool
+	identity harness.Identity
+	mu       sync.Mutex
+	emit     event.Sink
+	active   map[string]runtimeActivity
+	order    []string
+	resume   bool
 }
 
 func newRuntimePhases(emit event.Sink) *runtimePhases {
-	return &runtimePhases{emit: emit, active: map[string]runtimeActivity{}}
+	return &runtimePhases{emit: emit, active: map[string]runtimeActivity{}, identity: harness.RunnerIdentity(nil)}
 }
 
 func knowledgeActivity(name string) (phase, source string) {
@@ -58,7 +60,7 @@ func (p *runtimePhases) observe(e event.Event, tool *harness.ToolObservation) er
 	if tool == nil {
 		if p.resume && e.Type == "text.delta" {
 			p.resume = false
-			return p.emit(event.Event{Type: "phase.resumed", Phase: "execute", Component: "harness.claude", Agent: "local-claude", Status: "running", Message: "native agent continued after knowledge lookup"})
+			return p.emit(event.Event{Type: "phase.resumed", Phase: "execute", Component: p.identity.Component, Agent: p.identity.Agent, Status: "running", Message: "native agent continued after knowledge lookup"})
 		}
 		return nil
 	}
@@ -67,14 +69,14 @@ func (p *runtimePhases) observe(e event.Event, tool *harness.ToolObservation) er
 		if phase == "" {
 			if p.resume {
 				p.resume = false
-				return p.emit(event.Event{Type: "phase.resumed", Phase: "execute", Component: "harness.claude", Agent: "local-claude", Status: "running", Message: "native agent continued with another tool"})
+				return p.emit(event.Event{Type: "phase.resumed", Phase: "execute", Component: p.identity.Component, Agent: p.identity.Agent, Status: "running", Message: "native agent continued with another tool"})
 			}
 			return nil
 		}
 		if _, exists := p.active[tool.ID]; exists {
 			return errors.New("duplicate runtime activity call ID")
 		}
-		a := runtimeActivity{phase: phase, source: source, tool: tool.Name, id: tool.ID, started: time.Now()}
+		a := runtimeActivity{agent: p.identity.Agent, phase: phase, source: source, tool: tool.Name, id: tool.ID, started: time.Now()}
 		p.active[tool.ID] = a
 		p.order = append(p.order, tool.ID)
 		p.resume = false
@@ -128,5 +130,5 @@ func (a runtimeActivity) event(kind, status string) event.Event {
 	if kind == "phase.finished" {
 		data["duration_ms"] = time.Since(a.started).Milliseconds()
 	}
-	return event.Event{Type: kind, Phase: a.phase, Component: "knowledge.mcp", Agent: "local-claude", Status: status, Message: fmt.Sprintf("source=%s tool=%s %s", a.source, a.tool, status), Data: data}
+	return event.Event{Type: kind, Phase: a.phase, Component: "knowledge.mcp", Agent: a.agent, Status: status, Message: fmt.Sprintf("source=%s tool=%s %s", a.source, a.tool, status), Data: data}
 }

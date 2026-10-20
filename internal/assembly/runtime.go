@@ -31,6 +31,7 @@ type Runtime struct {
 }
 
 type Configuration struct {
+	ExecutionFingerprint         string `json:",omitempty"`
 	AgentID, AudienceID          string
 	PermissionMode               string
 	HostInstructions             string

@@ -2,6 +2,8 @@
 package cli
 
 import (
+	"agent-host/internal/harness/acp"
+
 	"bufio"
 	"context"
 	"database/sql"
@@ -97,6 +99,7 @@ Options (place before positional IDs/queries):
   --agent ID            Logical instance for chat and local state (default default)
   --audience ID         Conversation partition for local state (default owner)
   --native-profile PATH Native Claude configuration directory
+  --execution-config PATH Shared ACP execution profile; omitted keeps legacy print
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
@@ -112,6 +115,8 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	executionConfig, executionFingerprint                                              string
+	executionProfile                                                                   *acp.Config
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
@@ -202,6 +207,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.format, "format", "text", "text or json (NDJSON)")
 	fs.StringVar(&o.model, "model", model, "Claude model")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
+	fs.StringVar(&o.executionConfig, "execution-config", "", "Shared execution profile JSON (ACP); omitted preserves explicit legacy configuration")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
@@ -254,6 +260,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 		fs.StringVar(&o.feishuConfig, "config", "", "Private Feishu meeting JSON configuration")
 	}
 	if err := fs.Parse(args); err != nil {
+		return o, nil, err
+	}
+	if err := loadExecutionOptions(&o); err != nil {
 		return o, nil, err
 	}
 	if o.debugNonOwner {

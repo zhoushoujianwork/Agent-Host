@@ -14,7 +14,7 @@ import (
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	harnessusage "agent-host/internal/harness/usage"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
@@ -137,8 +137,8 @@ func runFooter(run state.Run) string {
 			metadata = append(metadata, "🤖 "+label)
 		}
 	}
-	usage := claude.SummarizeUsage(run.Events)
-	if usage.CostUSD != nil {
+	usage := harnessusage.Summarize(run.Events)
+	if usage.CostUSD != nil && usage.MissingACPCosts == 0 {
 		metadata = append(metadata, fmt.Sprintf("$%.3f", *usage.CostUSD))
 	}
 	if len(metadata) == 0 {

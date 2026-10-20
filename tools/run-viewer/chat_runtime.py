@@ -31,6 +31,8 @@ def native_text(value):
         text = "\n".join(native_text(item) for item in value)
     elif isinstance(value, dict) and value.get("type") == "text":
         text = str(value.get("text", ""))
+    elif isinstance(value, dict) and value.get("type") == "content":
+        text = native_text(value.get("content", ""))
     elif isinstance(value, dict) and value.get("type") == "image":
         text = "[image output]"
     else:
@@ -263,18 +265,28 @@ class ChatRuntime:
             if kind == "run.started":
                 turn["run_id"] = str(event.get("run_id", ""))
                 turn["session_id"] = str(event.get("session_id", ""))
+            if kind == "agent.dispatched":
+                execution = (event.get("data") or {}).get("execution") or {}
+                if isinstance(execution, dict):
+                    turn["transport"] = str(execution.get("transport", ""))
+                    turn["engine"] = str(execution.get("engine", ""))
             # Only the business Claude stream belongs in Chat. Host memory and
             # experience processing retain their evidence in the inspector.
             if event.get("agent") == "memory-extractor" or event.get("phase") not in (None, "", "execute", "knowledge_search", "knowledge_read"):
                 return event.get("status") if kind == "run.finished" else None
+            if event.get("component") == "harness.acp" and event.get("model") and (kind in {"text.delta", "agent.result"} or (event.get("data") or {}).get("native_type") == "native_configuration"):
+                turn["model"] = str(event["model"])
             if kind == "text.delta":
                 self._text(turn, event.get("delta", ""))
             if kind in {"native.evidence", "agent.started", "agent.result", "tool.activity"}:
-                self._native(turn, event)
+                if event.get("component") == "harness.acp":
+                    self._acp(turn, event)
+                else:
+                    self._native(turn, event)
             if kind == "tool.activity":
                 tool = (event.get("data") or {}).get("tool") or {}
                 tool_id, name = tool.get("id"), tool.get("name")
-                if tool_id and name and tool.get("stage") == "call":
+                if tool_id and name and tool.get("stage") in {"call", "update"}:
                     row = self._tool_call(turn, tool_id, name)
                     payload = tool.get("input", {})
                     row["parameters"] = native_text(payload)
@@ -290,6 +302,24 @@ class ChatRuntime:
             if kind == "run.finished":
                 return event.get("status")
         return None
+
+    def _acp(self, turn, event):
+        raw = (event.get("data") or {}).get("raw") or {}
+        if not isinstance(raw, dict):
+            return
+        if event.get("type") == "agent.started":
+            self._output(turn, "status", label="init", content=str(event.get("model") or "Claude ACP"))
+        elif raw.get("sessionUpdate") == "plan":
+            content = "\n".join(("✓ " if entry.get("status") == "completed" else "→ " if entry.get("status") == "in_progress" else "· ") + str(entry.get("content", "")) for entry in raw.get("entries", []) if isinstance(entry, dict))
+            row = next((row for row in turn["output"] if row.get("label") == "原生计划"), None)
+            if row is None:
+                row = self._output(turn, "status", label="原生计划", content="")
+            row["content"] = native_text(content)
+        elif raw.get("sessionUpdate") == "notice":
+            self._output(turn, "status", label=str(raw.get("title") or "Agent 通知"), content=native_text(raw.get("description", "")))
+        elif raw.get("sessionUpdate") == "permission_request":
+            allowed = (raw.get("outcome") or {}).get("outcome") == "selected"
+            self._output(turn, "status", label="原生权限请求", content="按执行配置允许本次调用。" if allowed else "已取消：当前入口尚不支持交互审批。")
 
     def _run(self, turn):
         finished = None

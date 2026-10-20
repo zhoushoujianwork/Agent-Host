@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "transport": "acp",
+  "engine": "claude",
+  "command": "/absolute/path/to/claude-agent-acp",
+  "adapter_version": "0.81.2"
+}

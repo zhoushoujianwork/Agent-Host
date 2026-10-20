@@ -1,6 +1,6 @@
 //go:build unix
 
-package claude
+package process
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func bindProcessGroup(cmd *exec.Cmd) error {
+func Bind(cmd *exec.Cmd) error {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var once sync.Once
 	var stopErr error
@@ -29,7 +29,7 @@ func bindProcessGroup(cmd *exec.Cmd) error {
 	return nil
 }
 
-func stopProcessGroup(cmd *exec.Cmd) {
+func Stop(cmd *exec.Cmd) {
 	if cmd.Process != nil && cmd.Cancel != nil {
 		_ = cmd.Cancel()
 	}

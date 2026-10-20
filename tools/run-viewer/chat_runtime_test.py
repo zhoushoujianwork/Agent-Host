@@ -89,6 +89,30 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(turn["elapsed_ms"], 87234)
         self.assertEqual(turn["output"], [])
 
+    def test_acp_projects_real_tool_patches_and_plan_without_duplicate_calls(self):
+        turn = {"id":"acp", "text":"", "output":[]}
+        def event(kind, raw=None, tool=None, **fields):
+            data = {"raw":raw or {}}
+            if tool is not None:
+                data["tool"] = tool
+            self.runtime._event(turn, {"component":"harness.acp", "phase":"execute", "type":kind, "data":data, **fields})
+        event("agent.started", model="observed-acp-model")
+        event("tool.activity", tool={"id":"one", "name":"Bash", "stage":"call", "input":{}})
+        event("tool.activity", tool={"id":"one", "name":"Bash", "stage":"update", "input":{"command":"printf acp"}})
+        event("tool.activity", tool={"id":"one", "name":"Bash", "stage":"result", "result":[{"type":"content", "content":{"type":"text", "text":"acp"}}]})
+        event("native.evidence", {"sessionUpdate":"plan", "entries":[{"content":"Check", "status":"in_progress"}]})
+        event("native.evidence", {"sessionUpdate":"plan", "entries":[{"content":"Check", "status":"completed"}]})
+        event("text.delta", delta="**Done**")
+        calls = [row for row in turn["output"] if row.get("stage") == "call"]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["content"], "printf acp")
+        self.assertEqual(calls[0]["status"], "completed")
+        self.assertEqual(turn["output"][2]["content"], "acp")
+        plans = [row for row in turn["output"] if row.get("label") == "原生计划"]
+        self.assertEqual(len(plans), 1)
+        self.assertEqual(plans[0]["content"], "✓ Check")
+        self.assertEqual(turn["text"], "**Done**")
+
     def test_stop_signals_host_and_waits_for_child_exit_without_replay(self):
         turn = self.runtime.start("stop", "slow")
         self.wait_for(lambda s: (self.root / "child.pid").exists())

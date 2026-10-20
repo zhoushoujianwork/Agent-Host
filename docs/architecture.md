@@ -1,7 +1,7 @@
 # Agent-Host architecture
 
 Current technical direction and delivery status, reviewed against source on
-2026-10-16, with the shared ACP direction added on 2026-10-20.
+2026-10-16, with the first shared Claude ACP backend implemented on 2026-10-20.
 [Implementation notes](architecture-detail.md) map the components and
 contracts; [progress and next steps](release-follow-up.md) own the remaining work.
 Historical acceptance records describe their original revision, not every later change.
@@ -15,8 +15,8 @@ context, runs the selected execution engine and retains evidence and reusable kn
 The technical route is **a Go host around native execution engines**. Host owns
 business tasks, routing, context, delivery and durable memory. Native engines own
 their model/tool loops and conversations. **ACP is the chosen direction for a shared
-execution interface across every channel.** Today the executable backend is
-Claude Code through its print/stream-JSON adapter; ACP is not implemented yet.
+execution interface across every channel.** Claude Code can now use the shared
+ACP backend or the existing print/stream-JSON backend through explicit configuration.
 Codex execution remains a scaffold; installing the external memory skill into
 Codex does not implement that adapter.
 
@@ -24,7 +24,7 @@ Codex does not implement that adapter.
 
 **目标主链路：所有渠道 → Host → 统一 ACP 接入层 → 可切换的执行引擎。**
 绿色为现有 Host 职责，蓝色虚线框为待实现或待扩展部分，灰色为迁移期兼容后端。
-当前执行仍使用 Claude print/stream-JSON；本图表达已确定的目标架构，不表示 ACP 已上线。
+Claude ACP 已实现，可按配置启用；Codex、完整交互控件与文件变更视图仍待完成，生产实例未自动切换。
 
 ```mermaid
 flowchart TD
@@ -35,8 +35,8 @@ flowchart TD
         P["项目发现与登记"] --> R
         R --> A["上下文、记忆、Skills 与工具装配"]
         A --> H["执行管理与会话绑定"]
-        H <--> ACP["统一 ACP 接入层 · 待实现<br/>会话 / 提示词 / 中止 / 权限交互"]
-        ACP --> EV["统一会话事件 · 待扩展<br/>流式正文 / 工具调用与结果 / 计划 / 文件变更证据"]
+        H <--> ACP["统一 ACP 接入层 · Claude 已实现<br/>会话续接 / 流式输出 / 执行中止"]
+        ACP --> EV["统一会话事件 · 部分已实现<br/>正文 / 工具 / 计划已接入，文件变更视图待完成"]
         EV --> D["渠道呈现与交付<br/>Web Markdown / CLI 输出 / IM 进度与最终回复"]
         H --> E[("执行状态与原始证据")]
         EV --> E
@@ -46,8 +46,8 @@ flowchart TD
         E --> V["Web 记忆图谱 / 执行记录 / 设置"]
     end
     U --> C
-    subgraph Engines["可切换的执行引擎 · ACP 路径待接入"]
-        CL["Claude Code<br/>Claude ACP 桥接"]
+    subgraph Engines["可切换的执行引擎"]
+        CL["Claude Code<br/>Claude ACP 桥接 · 已实现"]
         CX["Codex<br/>Codex ACP 桥接"]
         OT["其他 ACP Agent"]
     end
@@ -64,8 +64,8 @@ flowchart TD
     classDef existing fill:#edf4e9,stroke:#607d52,color:#20331c;
     classDef planned fill:#edf3ff,stroke:#5476ae,color:#203759,stroke-dasharray:5 4;
     classDef legacy fill:#f2f2f2,stroke:#888,color:#444;
-    class C,R,P,A,H,D,E,M,K,V,T existing;
-    class ACP,EV,CL,CX,OT planned;
+    class C,R,P,A,H,D,E,M,K,V,T,ACP,CL existing;
+    class EV,CX,OT planned;
     class L legacy;
 ```
 
@@ -109,7 +109,13 @@ Execution-engine, authorization and storage terms are explained in the
 [bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
 执行引擎、权限和存储相关术语见同一份详细稿中的双语解释。
 
-## Shared ACP execution — planned
+## Shared ACP execution
+
+The [first Claude ACP backend](acp-execution.md) is implemented behind Host's
+shared harness boundary. Agent, CLI and managed service configuration can select
+it for all current conversation entries. Real Claude streaming, tool execution,
+session continuation and cancellation have bounded local evidence. Real channel
+platform acceptance and a second engine remain open.
 
 Every conversation entry uses the same Host execution boundary. DingTalk and
 Feishu receive the same engine events as Web; each channel presents them using
@@ -133,9 +139,9 @@ continue to handle user identity, messages and delivery.
   Host/native policy, with each entry supplying its supported controls. Channels
   without interactive approval support cannot silently approve a native request.
 
-This increment covers the execution architecture and its delivery sequence;
-runtime adapters, richer channel controls and cross-channel Web attachment are
-still to be implemented. Existing channel services and the standalone Web CLI
+Claude ACP now executes through the common boundary. Richer channel controls,
+other engines and cross-channel Web attachment remain to be implemented.
+Existing channel services and the standalone Web CLI
 destination remain separate today. The [ACP implementation notes](architecture-detail.md#shared-acp-execution--planned)
 define the boundary and acceptance checks.
 
@@ -149,7 +155,7 @@ bot accounts and retain delivery evidence independently from execution.
 | Area | Current behavior | Boundary / next gap |
 | --- | --- | --- |
 | Execution and channels | Claude Code streaming/continuation; CLI, DingTalk and Feishu chat; Feishu meeting text; attachments, queues and failed-session handoff | Codex execution and meeting audio are planned; broader platform acceptance remains open |
-| Shared engine interface | CLI and channel workers call the existing harness boundary; Web launches the configured Host CLI | ACP is the chosen migration path for all entries; no ACP backend or transparent engine-session migration is delivered |
+| Shared engine interface | Configurable Claude ACP runner shared by CLI/channel workers and the Web Host CLI destination; streamed events, native continuation and cancellation implemented | Codex, interactive approval UI, channel Stop controls, warm bridge reuse and platform acceptance remain open; native sessions do not migrate across engines |
 | Project work | Bounded local Git discovery, selected-target enrollment, automatic routing and shared execution receipts | No durable feature/worktree ownership or PR/MR delivery lifecycle |
 | Memory and Skills | Explicitly migrated file backend, source-grounded facts and procedures, automatic selected-experience publication, blacklist and scoped native Skills | Legacy SQLite experience requires review; general extraction quality and scale remain unmeasured |
 | Knowledge and actions | Dokki/Confluence/local Markdown retrieval, authorized Confluence page/blog writes and managed Gmail/163 email tools | Source enablement and upstream account permissions apply; Gmail onboarding and real mail send/reply acceptance remain separate |
@@ -202,9 +208,9 @@ implementation. A passing automated check does not establish production quality.
 
 ## Next direction
 
-The next execution increment is shared ACP support: implement the Host adapter,
-validate Claude through CLI and Web, then exercise the same adapter through
-DingTalk and Feishu and connect a second engine. Channel delivery limits and
+The next execution increment builds on the shared Claude ACP adapter: complete
+live DingTalk/Feishu acceptance and supported channel interactions, then connect
+a second engine. Channel delivery limits and
 existing authorization policy remain explicit. The current print backend stays
 available during this controlled migration; it is not the long-term-only interface.
 

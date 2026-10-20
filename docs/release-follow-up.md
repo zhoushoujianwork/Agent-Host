@@ -1,7 +1,7 @@
 # Progress and next steps
 
 Source status reviewed on 2026-10-16; the shared ACP execution track was added
-on 2026-10-20. This is the current backlog, not a release
+on 2026-10-20, with the first Claude ACP runner implemented that day. This is the current backlog, not a release
 commitment. [Architecture](architecture.md) explains the technical route;
 [validation notes](release-follow-up-detail.md) retain evidence and open checks.
 
@@ -46,21 +46,24 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
    transient event-write wait. Later retrieval fixes and cancellation decoupling
    do not by themselves resolve their original causes.
 
-## Execution integration track — planned
+## Execution integration track
 
-Adopt [shared ACP execution](architecture.md#shared-acp-execution--planned) for
+Adopt [shared ACP execution](architecture.md#shared-acp-execution) for
 CLI, Web, DingTalk, Feishu and future conversation entries. This is a Host
 harness change shared by channels, not a Web-only Claude connection.
 
-1. Implement Claude through the shared ACP adapter and validate Host context,
-   streamed events, continuation and cancellation through CLI/Web.
-2. Use the same adapter in DingTalk/Feishu, with channel-appropriate progress,
+1. **Implemented:** configurable Claude ACP adapter, Host context/tool policy,
+   streamed events, native continuation and execution cancellation. Bounded real
+   Claude checks passed; [setup and limits](acp-execution.md).
+2. **Pending platform acceptance:** exercise the shared adapter in DingTalk/Feishu,
+   with channel-appropriate progress,
    final delivery and authenticated interaction/stop controls.
 3. Connect a second engine to prove switching; retain explicit legacy print
    selection until required execution contracts pass. Never silently fall back
    or reuse native sessions across engines/transports.
 
-ACP implementation and live acceptance remain open. The
+The second engine, warm bridge reuse, interactive channel controls and real
+platform acceptance remain open. The
 [detailed boundary](architecture-detail.md#shared-acp-execution--planned) records
 session isolation, capability limits and separate auxiliary extraction checks.
 The product proposals below remain a separate track.
@@ -96,5 +99,5 @@ member permissions are defined by the [authorization guide](dangerous-operations
 Keep `/new`, `/status` and `/help` as current chat controls. Add retry/review/usage
 features only when observed use justifies them. The existing local workbench is
 delivered, including Web Chat submission through a separately configured Host CLI.
-Shared ACP execution, channel stop controls and a general plugin marketplace
-remain future work.
+Claude ACP execution is selectable through the common Host boundary. Additional
+engines, channel stop controls and a general plugin marketplace remain future work.

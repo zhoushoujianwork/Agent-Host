@@ -1,7 +1,8 @@
 # Agent-Host implementation notes
 
 Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
-The shared ACP proposal below was added on 2026-10-20; it is not delivered behavior.
+The shared ACP proposal and first Claude implementation were added on 2026-10-20;
+delivered behavior is separated from the remaining design below.
 The main document owns scope; [progress](release-follow-up.md) owns priorities.
 Feature-specific details retain historical schemas and bounded acceptance results;
 they are not a claim that every current path passed live validation.
@@ -16,7 +17,7 @@ memory objects. These terms explain how they are executed, authorized and stored
 | --- | --- |
 | Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code. 负责模型推理、工具调用循环和原生会话的程序，当前为 Claude Code。 |
 | Harness adapter / 执行引擎适配器 | Translates Host requests and engine events across their boundary. 在 Host 与执行引擎之间转换请求和事件，不接管引擎内部循环。 |
-| ACP / Agent Client Protocol / 智能体客户端协议 | The planned shared protocol between Host and execution engines for conversations and tool activity. 计划用于 Host 与底层执行引擎通信的统一协议；不替代钉钉、飞书等渠道接口。 |
+| ACP / Agent Client Protocol / 智能体客户端协议 | A shared Host-to-engine protocol, implemented for the pinned Claude bridge. Host 与底层执行引擎通信的统一协议，首版已支持 Claude；不替代钉钉、飞书等渠道接口。 |
 | Routing / 路由 | Selects the Agent and project environment for a request. 为请求选择智能体配置和项目环境；选中项目本身不会增加权限。 |
 | Context assembly / 上下文装配 | Prepares the instructions, eligible memory and tools for a run. 执行前准备指令、可用记忆和工具；不会预先读取所有资料正文。 |
 | MCP / Model Context Protocol / 模型上下文协议 | A protocol exposing tool calls to the native engine. 让原生引擎调用资料检索、邮件等工具的协议；接入工具不等于授权任何操作。 |
@@ -57,7 +58,7 @@ receipts exclude original request/response text and native context.
 ### Current execution path before ACP
 
 The [main architecture diagram](architecture.md#core-architecture) shows the
-chosen target. This diagram records the executable baseline: all current entries
+chosen target and ACP delivery status. This diagram records the retained print baseline: entries
 reach Host, and Host runs Claude's print/stream-JSON adapter. Web currently
 launches a separately configured Host CLI, not a running channel worker.
 
@@ -78,7 +79,8 @@ flowchart TD
 
 Business execution, acceptance, delivery and memory publication retain separate
 outcomes. Source documents, remembered text and model output cannot grant
-permissions. ACP implementation is still pending.
+permissions. The shared Claude ACP alternative is described in
+[the execution guide](acp-execution.md).
 
 ## Storage and context authority
 
@@ -217,13 +219,20 @@ semantics remain unchanged.
 
 ## Shared ACP execution — planned
 
-Scope follows the [main architecture](architecture.md#shared-acp-execution--planned).
+**Delivery status, 2026-10-20:** the Claude ACP runner, profile selection,
+native-binding persistence, tool patches, Web projection and execution cancellation
+are implemented. See [configuration, boundaries and validation](acp-execution-detail.md).
+The remaining design below includes warm process reuse, additional engines and
+channel interaction controls; these are not delivered by the first increment.
+
+Scope follows the [main architecture](architecture.md#shared-acp-execution).
 Source inspection on 2026-10-20 found a shared `harness.Runner` contract in
 `internal/harness/harness.go`; channel execution reaches it through Host.
 `internal/harness/claude/adapter.go` currently launches `--print` with
 `stream-json`, partial messages and native session continuation. Web reaches
-the same Host CLI through `tools/run-viewer/chat_runtime.py`. No ACP client,
-channel ACP session manager or working Codex runner exists today.
+the same Host CLI through `tools/run-viewer/chat_runtime.py`. The new
+`internal/harness/acp` client can replace business print execution through the
+same boundary. There is no warm channel ACP process pool or working Codex runner.
 
 ### Ownership and entry points
 
@@ -244,10 +253,11 @@ make it a client of an already-running channel service or share that service's
 locked state. A later Web view of channel conversations must use an authorized
 Host read/control API owned by that runtime.
 
-Initially, one ACP bridge process belongs to one live conversation binding
-within its owning Host process. Reuse it across compatible turns, with bounded
-concurrency and idle cleanup. This avoids terminating another conversation when
-a stuck adapter requires process cancellation. A short-lived CLI invocation can
+The first implementation owns one ACP bridge process per turn and restores its
+compatible session across turns. Warm reuse of a process within a conversation
+binding remains planned, with bounded concurrency and idle cleanup. Process
+ownership must continue to prevent cancellation from terminating another
+conversation. A short-lived CLI invocation can
 reconnect only through supported session loading/resume; do not promise persistent
 in-process sessions across separate CLI invocations.
 

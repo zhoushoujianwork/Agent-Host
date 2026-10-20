@@ -83,7 +83,7 @@ function tools(record) {
     const tool = event.data?.tool;
     if (event.phase !== "execute" || !tool?.id) continue;
     const value = grouped.get(tool.id) || {id: tool.id, name: tool.name || "未记录名称"};
-    if (tool.stage === "call") Object.assign(value, {input: tool.input, call_seq: event.seq});
+    if (tool.stage === "call" || tool.stage === "update") Object.assign(value, {input: tool.input, call_seq: event.seq});
     if (tool.stage === "result") Object.assign(value, {result: tool.result, is_error: tool.is_error, result_seq: event.seq});
     grouped.set(tool.id, value);
   }

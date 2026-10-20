@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"agent-host/internal/harness"
+	"agent-host/internal/harness/acp"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -52,6 +55,7 @@ The secret is read from a private local file and is never printed.
 Common execution options: --home, --workspace or --project, --model, --claude, --no-tools,
 --allowed-tools, --agents-config, --native-profile, --jev-provider, --jev-endpoint, --jev-model,
 --timeout, --format text|json, --discovery-config.
+--execution-config selects the same ACP backend used by CLI and Web.
 Agent history search/read is mounted automatically when tools are enabled.
 Owner-private tasks also discover the built-in DingTalk workspace MCP.
 workspace_config selects its private configuration; default is data-dingtalk-workspace.json beside the bot JSON.
@@ -152,10 +156,14 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	if o.scope == "" {
 		o.scope = o.workspace
 	}
-	runner := claude.New(o.binary)
-	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(runner, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
+	legacy := claude.New(o.binary)
+	var runner harness.Runner = legacy
+	if o.executionProfile != nil {
+		runner = acp.New(*o.executionProfile, o.binary)
+	}
+	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(legacy, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
-	h.Objects = objectmemory.New(runner, o.model)
+	h.Objects = objectmemory.New(legacy, o.model)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
 	h.Config.ProcedureRecallHints = append([]state.ProcedureRecallHint(nil), o.procedureRecallHints...)

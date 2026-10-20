@@ -322,7 +322,8 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	if !h.matchesRuntime(s) {
 		return state.Run{}, errors.New("session does not match the assembled runtime")
 	}
-	r := state.Run{AgentID: s.AgentID, AudienceID: s.AudienceID, Projects: append([]state.ProjectRef(nil), s.Projects...), AdditionalDirectories: append([]string(nil), s.AdditionalDirectories...), Supplements: append([]state.UserSupplement(nil), h.Config.Supplements...), ID: ID(), SessionID: s.ID, Scope: s.Scope, ProjectID: s.ProjectID, ProjectName: s.ProjectName, Workspace: s.Workspace, RuntimeFingerprint: s.RuntimeFingerprint, Input: input, Agent: "local-claude", RequestedModel: h.Config.Model, NativeSessionID: s.NativeSessionID, ExecutionStatus: "running", MemoryStatus: "blocked", AcceptanceStatus: "unverified", CreatedAt: time.Now().UTC()}
+	execution := harness.RunnerIdentity(h.Runner)
+	r := state.Run{AgentID: s.AgentID, AudienceID: s.AudienceID, Projects: append([]state.ProjectRef(nil), s.Projects...), AdditionalDirectories: append([]string(nil), s.AdditionalDirectories...), Supplements: append([]state.UserSupplement(nil), h.Config.Supplements...), ID: ID(), SessionID: s.ID, Scope: s.Scope, ProjectID: s.ProjectID, ProjectName: s.ProjectName, Workspace: s.Workspace, RuntimeFingerprint: s.RuntimeFingerprint, Input: input, Agent: execution.Agent, RequestedModel: h.Config.Model, NativeSessionID: s.NativeSessionID, ExecutionStatus: "running", MemoryStatus: "blocked", AcceptanceStatus: "unverified", CreatedAt: time.Now().UTC()}
 	r.Preparation = preparation
 	if preparation != nil {
 		var sources []string
@@ -570,18 +571,19 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			mcpServers = []harness.MCPServer{approval.Server(h.Config.ApprovalExecutable, proposalDirectory)}
 		}
 	}
-	err = j.phase(ctx, "execute", "harness.claude", h.Config.Model, func(ctx context.Context) error {
-		if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: "host", Status: "running", Model: h.Config.Model, Message: "dispatch local-claude through native CLI", Data: map[string]any{"native_session_id": s.NativeSessionID, "resume": resume, "requested_model": h.Config.Model, "tools_disabled": h.Config.ToolsDisabled, "allowed_tools": h.Config.AllowedTools, "native_profile": h.Config.NativeProfile, "permission_mode": h.Config.PermissionMode, "restricted_read_only": h.Config.RestrictedReadOnly}}); err != nil {
+	err = j.phase(ctx, "execute", execution.Component, h.Config.Model, func(ctx context.Context) error {
+		if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: "host", Status: "running", Model: h.Config.Model, Message: "dispatch " + execution.Agent + " through " + execution.Transport, Data: map[string]any{"execution": execution, "native_session_id": s.NativeSessionID, "resume": resume, "requested_model": h.Config.Model, "tools_disabled": h.Config.ToolsDisabled, "allowed_tools": h.Config.AllowedTools, "native_profile": h.Config.NativeProfile, "permission_mode": h.Config.PermissionMode, "restricted_read_only": h.Config.RestrictedReadOnly}}); err != nil {
 			return err
 		}
 		var runErr error
 		activity := newRuntimePhases(j.emit)
+		activity.identity = execution
 		directories := append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...)
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
 		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
-			e := event.Event{Type: "native.evidence", Phase: "execute", Component: "harness.claude", Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
+			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
 			}
@@ -591,7 +593,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 				e.Delta = o.Delta
 			case "init":
 				e.Type = "agent.started"
-			case "tool_start", "tool_result":
+			case "tool_start", "tool_update", "tool_result":
 				e.Type = "tool.activity"
 			case "result":
 				e.Type = "agent.result"
