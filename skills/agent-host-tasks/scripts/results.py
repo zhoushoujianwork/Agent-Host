@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
 import tempfile
 
 
@@ -95,6 +96,8 @@ def new_receipt(config, command, cwd, output_dir=None):
         "inspect_command": inspect_command, "cwd": cwd,
         "exit_code": None, "elapsed_ms": None,
     }
+    if "--agents-config" in command:
+        receipt["feedback_config_dir"] = str(Path(command[command.index("--agents-config") + 1]).parent)
     save_json(directory / "launch.json", receipt)
     return directory, receipt
 
@@ -106,6 +109,7 @@ def event_result(directory, receipt):
         "evidence_ref": str(directory), "model": None,
         "elapsed_ms": receipt.get("elapsed_ms"), "cost_usd": None,
         "warnings": [], "usage": native_usage([])[0],
+        "feedback": None, "notifications": [],
     }
     if receipt.get("requested_session_id"):
         result["requested_session_id"] = receipt["requested_session_id"]
@@ -144,6 +148,8 @@ def event_result(directory, receipt):
                 for key in ("execution_status", "acceptance_status", "memory_status", "error", "memory_error"):
                     if key in data:
                         result["execution"][key] = data[key]
+            if event.get("type") == "feedback.bound" and isinstance(data.get("feedback"), dict):
+                result["feedback"] = data["feedback"]
             if event.get("type") == "agent.result" and event.get("component") == "harness.claude" and event.get("phase") == "execute":
                 raw = data.get("raw")
                 if isinstance(raw, dict) and isinstance(raw.get("result"), str):
@@ -187,11 +193,23 @@ def inspect_receipt(directory, private_json):
             result["ref"]["session_id"] = run["session_id"]
             result["report"] = run.get("output") or ""
             result["model"] = run.get("model") or None
+            result["feedback"] = run.get("feedback") or result["feedback"]
             for key in ("execution_status", "acceptance_status", "memory_status", "error", "memory_error"):
                 if key in run:
                     result["execution"][key] = run[key]
         except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.TimeoutExpired):
             result["warnings"].append("host_inspection_unavailable; retained launch evidence only")
+    if result["feedback"]:
+        try:
+            directory = receipt.get("feedback_args", {}).get("--feedback-config-dir") or receipt.get("feedback_config_dir")
+            if directory:
+                database = Path(directory).parent / "feedback/state.db"
+                if database.exists():
+                    with sqlite3.connect(database.absolute().as_uri() + "?mode=ro", uri=True) as connection:
+                        result["notifications"] = [json.loads(row[0]) for row in connection.execute(
+                            "SELECT payload FROM feedback WHERE json_extract(CAST(payload AS TEXT),'$.run_id')=?", (run_id,))]
+        except (OSError, ValueError, KeyError, TypeError, IndexError, sqlite3.Error):
+            result["warnings"].append("notification_inspection_unavailable")
     if receipt["exit_code"] is None:
         result["warnings"].append("process_exit_unobserved; inspect before continuation")
     if not result["report"]:

@@ -25,6 +25,24 @@ selects a new directory; an existing directory is never overwritten.
 | `model`, `elapsed_ms` | Observed execution model and measured launch duration. |
 | `usage` | Observed terminal Claude results: input/output/cache tokens, per-call phase/session/model details, separate native per-model accounting, and coverage limits. |
 | `cost_usd` | Sum of observed Claude terminal `total_cost_usd` estimates; `null` when none were reported. Not a verified bill or complete Host cost. |
+| `feedback` | Host-bound submitting identity, demand owner, recipient and routing disposition. |
+| `notifications` | Matching shared-queue items, including observed platform acceptance/failure/unknown status. An empty list does not prove delivery. |
+
+For a known requester, supply `--request-for VERIFIED_USER_ID`; optionally add
+`--notify-to VERIFIED_RECIPIENT_ID` and `--notify-channel dingtalk|feishu`.
+The launcher retains these arguments in the private receipt and inherits them
+on `--resume-from` unless the operator explicitly supplies a correction. They
+do not change the CLI execution-state destination. Without IDs, preserve whose
+issue is being handled in the brief; Host performs semantic attribution using
+configured display names and aliases. It never guesses channel account IDs.
+See [the task feedback design](../../../docs/task-feedback.md).
+
+CLI execution and notification are asynchronous. A configured channel service
+consumes the shared queue; CLI does not take the service's execution lock or
+borrow the owner's personal messaging login. Inspect pending delivery rather
+than sending the same result again. An unresolved target can be corrected with
+`agent-host notifications resolve ID --config-dir ROOT/config --notify-to USER_ID`;
+this sends the existing result without replaying the business task.
 
 Usage is projected from retained events in both result mode and read-only
 inspection, so old evidence can expose metrics without replaying the task.

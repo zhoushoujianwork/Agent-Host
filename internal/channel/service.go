@@ -47,6 +47,7 @@ type AgentSelection struct {
 // Service owns durable channel intake and automatic project dispatch.
 // Inbound text cannot invent directories or change the routing policy.
 type Service struct {
+	StartFeedback  func(context.Context) (func(), error)
 	OwnerID        string
 	ApprovalSender ApprovalSender
 	// Empty Channel preserves the existing DingTalk adapter and receipt shape.
@@ -185,6 +186,13 @@ func (s *Service) enqueue(ctx context.Context, message state.ChannelMessage, rep
 func (s *Service) Work(ctx context.Context) error {
 	if err := s.Validate(); err != nil {
 		return err
+	}
+	if s.StartFeedback != nil {
+		stop, err := s.StartFeedback(ctx)
+		if err != nil {
+			return err
+		}
+		defer stop()
 	}
 	if s.DisableReactions {
 		return s.workMessages(ctx)
@@ -415,6 +423,10 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	if err := s.Store.PrepareChannelReply(finishCtx, m.ID, message.Text); err != nil {
 		return fmt.Errorf("prepare channel reply: %w", err)
 	}
+	return s.deliverChannelReply(finishCtx, m, message)
+}
+
+func (s *Service) deliverChannelReply(finishCtx context.Context, m state.ChannelMessage, message dingtalk.ReplyMessage) error {
 	var delivery string
 	var sendErr error
 	if m.ReplyTarget != nil {

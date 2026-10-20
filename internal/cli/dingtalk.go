@@ -29,6 +29,7 @@ import (
 	"agent-host/internal/objectmemory"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
+	"agent-host/internal/taskfeedback"
 	"agent-host/internal/terminal"
 )
 
@@ -167,6 +168,7 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	if o.debugNonOwner {
 		configureNonOwnerDebugHost(h)
 	}
+	configureTaskFeedback(h, o, client)
 	return h
 }
 
@@ -217,6 +219,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		return err
 	}
 	agents.ownerID = cfg.OwnerUserID
+	o.feedbackOwnerID = cfg.OwnerUserID
 	if err := agents.users.validateOwner("dingtalk", cfg.ClientID, cfg.CorpID, cfg.OwnerUserID); err != nil {
 		return err
 	}
@@ -309,6 +312,9 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	o.runtimeWorkspaces = make(map[string]string)
 	configureChannelRuntimeProjects(service, store, o, "dingtalk")
 	service.OwnerID = cfg.OwnerUserID
+	service.StartFeedback = func(ctx context.Context) (func(), error) {
+		return startTaskFeedbackWorker(ctx, o, taskfeedback.Account{Channel: "dingtalk", AccountID: cfg.ClientID, TenantID: cfg.CorpID}, service, &dingtalk.Reactor{Config: cfg, RobotCode: cfg.RobotCode}, observe)
+	}
 	service.SelectAgent = func(ctx context.Context, m dingtalk.Message) (channel.AgentSelection, error) {
 		return agents.selectAgent(cfg.ClientID, m)
 	}

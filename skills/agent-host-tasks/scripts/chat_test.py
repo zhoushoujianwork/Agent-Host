@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import signal
+import sqlite3
 import time
 import unittest
 from unittest.mock import patch
@@ -98,6 +99,7 @@ if config.get("preflight_error") and sys.argv[1] == "chat":
     sys.exit(1)
 run = {"id": "run-1", "session_id": "actual-session", "output": config.get("report", "BLOCKED: account denied; no changes"),
        "execution_status": "completed", "acceptance_status": "unreviewed", "memory_status": "failed", "memory_error": "memory unavailable", "model": "fixture-model"}
+run["feedback"] = config.get("feedback")
 if sys.argv[1:3] == ["run", "show"]:
     if config.get("inspect_failure"):
         sys.exit(3)
@@ -110,6 +112,8 @@ if sys.argv[1:3] == ["run", "show"]:
 def emit(kind, **fields):
     print(json.dumps({"type": kind, "run_id": "run-1", "session_id": "actual-session", **fields}), flush=True)
 emit("run.started")
+if run["feedback"]:
+    emit("feedback.bound", data={"feedback": run["feedback"]})
 time.sleep(config.get("sleep", 0))
 emit("text.delta", phase="execute", component="harness.claude", delta="Checking...")
 emit("agent.result", phase="execute", component="harness.claude", model="fixture-model", data={"raw": {"result": run["output"]}})
@@ -221,6 +225,34 @@ sys.exit(config.get("exit_code", 0))
         self.fake_host(canonical_report="BLOCKED: account denied. Host notice retained.")
         _, result = self.result_launch(self.root / "evidence")
         self.assertEqual(result["report"], "BLOCKED: account denied. Host notice retained.")
+
+    def test_feedback_metadata_is_carried_into_continuation_and_receipts(self):
+        self.fake_host(feedback={"mode": "notify", "request_for": "alice", "notify_to": "alice"})
+        directory = self.root / "first"
+        config_dir = self.root / "config"
+        database_dir = self.root / "feedback"
+        database_dir.mkdir(mode=0o700)
+        database = database_dir / "state.db"
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE feedback(payload BLOB)")
+            connection.execute("INSERT INTO feedback VALUES(?)", (json.dumps({"run_id": "run-1", "status": "accepted", "receipt": "platform-receipt"}),))
+        flags = ["--request-for", "alice", "--notify-channel", "feishu", "--feedback-config-dir", str(config_dir)]
+        _, result = self.result_launch(directory, *flags)
+        self.assertEqual(result["feedback"]["notify_to"], "alice")
+        self.assertEqual(result["notifications"][0]["status"], "accepted")
+        self.result_launch(self.root / "second", "--resume-from", str(directory))
+        chats = [call for call in self.calls() if call[0] == "chat"]
+        for call in chats:
+            for flag in ("--request-for", "--notify-channel", "--feedback-config-dir"):
+                self.assertEqual(call.count(flag), 1)
+                self.assertEqual(call[call.index(flag) + 1], flags[flags.index(flag) + 1])
+        self.config.unlink()
+        self.credentials.unlink()
+        before = database.stat().st_mtime_ns
+        inspected = CHAT.inspect_receipt(directory, CHAT.private_json)
+        self.assertEqual(inspected["notifications"][0]["receipt"], "platform-receipt")
+        self.assertEqual(database.stat().st_mtime_ns, before)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 2)
 
     def test_resume_uses_observed_session_and_rejects_destination_changes(self):
         self.fake_host()

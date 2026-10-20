@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,9 +26,12 @@ import (
 	"agent-host/internal/memory"
 	"agent-host/internal/objectmemory"
 	"agent-host/internal/state"
+	"agent-host/internal/taskfeedback"
 )
 
 type Config struct {
+	PrepareFeedback       func(context.Context, state.Run, *taskfeedback.Plan) (*taskfeedback.Plan, error)
+	BindFeedback          func(context.Context, state.Run) error
 	RestrictedReadOnly    bool
 	ApprovalExecutable    string
 	RequestApproval       func(context.Context, state.Run, approval.Proposal) error
@@ -297,6 +301,15 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 
 func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource) (state.Run, error) {
 	h = h.partitioned()
+	var previousFeedback *taskfeedback.Plan
+	if h.Config.PrepareFeedback != nil {
+		previous, e := h.Store.LatestSessionRun(ctx, s.ID)
+		if e == nil {
+			previousFeedback = previous.Feedback
+		} else if !errors.Is(e, sql.ErrNoRows) {
+			return state.Run{}, e
+		}
+	}
 	resume, err := h.Store.SessionHasRun(ctx, s.ID)
 	if err != nil {
 		return state.Run{}, err
@@ -335,6 +348,24 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	}
 	if h.Config.ApprovedOperationID != "" {
 		if err := h.Store.BindOperationApprovalRun(ctx, h.Config.ApprovedOperationID, channelMessageID, r.ID); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
+	if h.Config.PrepareFeedback != nil {
+		plan, prepareErr := h.Config.PrepareFeedback(ctx, r, previousFeedback)
+		if prepareErr != nil {
+			return h.failBeforeExecution(j, prepareErr)
+		}
+		if err = h.Store.BindRunFeedback(ctx, r.ID, plan); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+		r.Feedback, j.run.Feedback = plan, plan
+		if h.Config.BindFeedback != nil {
+			if err = h.Config.BindFeedback(ctx, r); err != nil {
+				return h.failBeforeExecution(j, err)
+			}
+		}
+		if err = j.emit(event.Event{Type: "feedback.bound", Phase: "request", Component: "host.feedback", Status: plan.Mode, Data: map[string]any{"feedback": plan}}); err != nil {
 			return h.failBeforeExecution(j, err)
 		}
 	}

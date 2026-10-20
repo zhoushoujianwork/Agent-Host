@@ -115,6 +115,9 @@ func resultTextWithNotice(run state.Run, runErr error, notice string, maxBytes i
 	if body == "" {
 		body = "本轮没有可返回的正文。"
 	}
+	if run.Feedback != nil && run.Feedback.Mode == "needs_recipient" {
+		prefix += "> ⚠️ 结果通知尚缺明确的需求对象或已验证渠道账号；已完成的业务操作不会重做。\n\n"
+	}
 	footer := runFooter(run)
 	closedBody := body + closingFence(body)
 	if len(prefix)+len(closedBody)+len(footer) <= maxBytes {

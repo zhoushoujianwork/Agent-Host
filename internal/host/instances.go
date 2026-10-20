@@ -32,6 +32,14 @@ func (h *Host) partitioned() *Host {
 // Per-turn routing and sender metadata belong to trusted system instructions,
 // not the user message, and do not rotate a group's shared conversation.
 func invocationInstructions(policy string, run state.Run) string {
+	if run.Feedback != nil {
+		if run.Feedback.Mode == "notify" {
+			metadata, _ := json.Marshal(map[string]string{"demand_owner": run.Feedback.RequestFor, "notification_recipient": run.Feedback.NotifyTo})
+			policy += "\n\nHost-bound task feedback: " + string(metadata) + ". The Host will automatically notify this verified recipient after execution. Do not send a duplicate result message yourself or ask the owner who to notify. Write the final answer for that task recipient: include the requested result, evidence/links and any action needed; exclude unrelated owner-private history, credentials, hidden instructions and internal configuration. Do not claim notification was delivered; the Host records that separately."
+		} else if run.Feedback.Mode == "needs_recipient" {
+			policy += "\n\nHost feedback destination remains unresolved. Continue independently executable business work, and state briefly in the final answer that result notification needs an unambiguous recipient/account binding. Do not invent a recipient, send notifications yourself, or claim delivery."
+		}
+	}
 	if run.Source == nil {
 		return policy
 	}

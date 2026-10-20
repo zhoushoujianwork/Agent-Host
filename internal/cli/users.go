@@ -29,6 +29,9 @@ type userAccount struct {
 
 type userDefinition struct {
 	ID               string        `json:"id"`
+	DisplayName      string        `json:"display_name,omitempty"`
+	Aliases          []string      `json:"aliases,omitempty"`
+	NotifyChannel    string        `json:"notify_channel,omitempty"`
 	Accounts         []userAccount `json:"accounts,omitempty"`
 	KnowledgeSources []string      `json:"knowledge_sources,omitempty"`
 	profile          string
@@ -78,6 +81,14 @@ func loadUsers(configDir string) (*userCatalog, error) {
 			return nil, errors.New("user IDs must be unique safe identifiers with at most 128 account bindings")
 		}
 		seen[u.ID] = true
+		if len(u.DisplayName) > 256 || len(u.Aliases) > 32 || u.NotifyChannel != "" && u.NotifyChannel != "dingtalk" && u.NotifyChannel != "feishu" {
+			return nil, errors.New("invalid user feedback lookup labels or preferred channel")
+		}
+		for _, label := range append([]string{u.DisplayName}, u.Aliases...) {
+			if len(label) > 256 || strings.ContainsAny(label, "\x00\r\n") {
+				return nil, errors.New("invalid user feedback lookup label")
+			}
+		}
 		if err := validateSources(u.KnowledgeSources); err != nil {
 			return nil, err
 		}
@@ -382,13 +393,16 @@ func runUsers(args []string, out, errout io.Writer) error {
 	}
 	type entry struct {
 		ID                 string        `json:"id"`
+		DisplayName        string        `json:"display_name,omitempty"`
+		Aliases            []string      `json:"aliases,omitempty"`
+		NotifyChannel      string        `json:"notify_channel,omitempty"`
 		ProfileFile        string        `json:"profile_file,omitempty"`
 		ConfiguredAccounts []userAccount `json:"configured_accounts,omitempty"`
 		ObservedAccounts   []userAccount `json:"observed_accounts,omitempty"`
 	}
 	entries := map[string]*entry{}
 	for _, u := range c.Users {
-		entries[u.ID] = &entry{ID: u.ID, ProfileFile: u.profilePath, ConfiguredAccounts: u.Accounts}
+		entries[u.ID] = &entry{ID: u.ID, DisplayName: u.DisplayName, Aliases: u.Aliases, NotifyChannel: u.NotifyChannel, ProfileFile: u.profilePath, ConfiguredAccounts: u.Accounts}
 	}
 	if args[0] == "list" {
 		paths, err := filepath.Glob(filepath.Join(c.root, "*", "accounts", "*.json"))

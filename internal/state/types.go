@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"agent-host/internal/event"
+	"agent-host/internal/taskfeedback"
 )
 
 type Session struct {
@@ -112,6 +113,7 @@ type Run struct {
 	ExperienceError       string             `json:"experience_error,omitempty"`
 	ExperienceDecision    json.RawMessage    `json:"experience_decision,omitempty"`
 	Source                *RunSource         `json:"source,omitempty"`
+	Feedback              *taskfeedback.Plan `json:"feedback,omitempty"`
 	ProjectID             string             `json:"project_id,omitempty"`
 	ProjectName           string             `json:"project_name,omitempty"`
 	Workspace             string             `json:"workspace,omitempty"`

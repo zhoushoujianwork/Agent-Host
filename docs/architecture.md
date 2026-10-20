@@ -78,6 +78,11 @@ A native run, business acceptance, reply delivery and memory publication have
 separate outcomes. Failure recovery preserves evidence and does not replay work.
 Source documents, remembered text and model output cannot grant permissions.
 
+[Task ownership and completion feedback](task-feedback.md) binds a demand owner
+and result destination at intake. Configured CLI/channel executions persist this
+plan before native work; channel workers deliver queued results using verified
+bot accounts and retain delivery evidence independently from execution.
+
 ## Delivered foundation
 
 | Area | Current behavior | Boundary / next gap |

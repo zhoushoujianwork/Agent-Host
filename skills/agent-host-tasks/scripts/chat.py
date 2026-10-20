@@ -21,6 +21,8 @@ PROVIDER_KEYS = {
     "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
 }
 
+FEEDBACK_FLAGS = ("--request-for", "--notify-to", "--notify-channel", "--feedback-config-dir")
+
 
 class HandoffError(ValueError):
     """An actionable error containing no configuration values or credentials."""
@@ -84,8 +86,11 @@ def configured_command(path):
     return [binary, "chat", *args], cwd, env
 
 
-def run_result(command, cwd, env, config, output_dir, base_command):
+def run_result(command, cwd, env, config, output_dir, base_command, feedback_args=None):
     directory, receipt = new_receipt(config, base_command, cwd, output_dir)
+    if feedback_args:
+        receipt["feedback_args"] = feedback_args
+        save_json(directory / "launch.json", receipt)
     if "--resume" in command:
         receipt["requested_session_id"] = command[command.index("--resume") + 1]
         save_json(directory / "launch.json", receipt)
@@ -125,6 +130,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/agent-host/task-handoff.json")
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--request-for", help="verified user ID whose demand this task fulfills")
+    parser.add_argument("--notify-to", help="verified user ID to receive completion feedback")
+    parser.add_argument("--notify-channel", choices=("dingtalk", "feishu"))
+    parser.add_argument("--feedback-config-dir", help="absolute unified config directory for task feedback")
     parser.add_argument("-m", "--message")
     parser.add_argument("--resume")
     parser.add_argument("--resume-from", type=Path, help="continue a completed launch using its evidence directory")
@@ -132,6 +141,14 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, help="new private evidence directory for result mode")
     parser.add_argument("--format", choices=("text", "json", "result"), default="json")
     options = parser.parse_args(argv)
+    feedback_args = {flag: getattr(options, flag[2:].replace("-", "_")) for flag in FEEDBACK_FLAGS
+                     if getattr(options, flag[2:].replace("-", "_")) is not None}
+    if any(not value or value.strip() != value or any(c in value for c in "\x00\r\n") for value in feedback_args.values()):
+        parser.error("feedback arguments require nonempty, single-line values")
+    if feedback_args and (options.inspect or options.check):
+        parser.error("feedback arguments require task execution")
+    if options.feedback_config_dir and not Path(options.feedback_config_dir).is_absolute():
+        parser.error("--feedback-config-dir must be absolute")
     if options.inspect and (options.message or options.resume or options.resume_from or options.check or options.output_dir):
         parser.error("--inspect cannot be combined with execution options")
     if options.check and (options.message or options.resume or options.resume_from or options.output_dir):
@@ -154,6 +171,10 @@ def main(argv=None):
             parser.error("message exceeds the CLI limit of 16 KiB")
         if options.resume_from:
             previous = private_json(options.resume_from.absolute() / "launch.json")
+            inherited = previous.get("feedback_args", {})
+            if not isinstance(inherited, dict) or not inherited.keys() <= set(FEEDBACK_FLAGS) or not all(isinstance(v, str) and v for v in inherited.values()):
+                raise HandoffError("Invalid saved feedback metadata; inspect the original receipt.")
+            feedback_args = {**inherited, **feedback_args}
             # The command stored in a receipt is the pre-message destination.
             if previous["destination_key"] != destination_key(command, cwd):
                 raise HandoffError("Destination changed; restore the original configuration before continuing.")
@@ -164,11 +185,13 @@ def main(argv=None):
             if not options.resume:
                 raise HandoffError("No observed session to continue; inspect the launch failure first.")
         base_command = command.copy()
+        for flag, value in feedback_args.items():
+            command += [flag, value]
         command += ["--format", "json" if options.format == "result" else options.format, "-m", options.message]
         if options.resume:
             command += ["--resume", options.resume]
         if options.format == "result":
-            return run_result(command, cwd, env, options.config.absolute(), options.output_dir, base_command)
+            return run_result(command, cwd, env, options.config.absolute(), options.output_dir, base_command, feedback_args)
         result = subprocess.run(command, cwd=cwd, env=env, check=False)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
     except HandoffError as error:

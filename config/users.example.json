@@ -3,6 +3,9 @@
   "users": [
     {
       "id": "alice",
+      "display_name": "Alice",
+      "aliases": ["Alice Zhang"],
+      "notify_channel": "dingtalk",
       "accounts": [
         {
           "channel": "dingtalk",
@@ -15,6 +18,9 @@
     },
     {
       "id": "bob",
+      "display_name": "Bob",
+      "aliases": ["Bob Chen"],
+      "notify_channel": "feishu",
       "accounts": [
         {
           "channel": "feishu",

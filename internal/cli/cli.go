@@ -74,6 +74,7 @@ Usage:
   agent-host service run --root ABSOLUTE_PATH
   agent-host knowledge check --config ABSOLUTE_PATH
   agent-host users list|check --config-dir ABSOLUTE_CONFIG_DIRECTORY
+  agent-host notifications list|show ID|resolve ID --config-dir ABSOLUTE_CONFIG_DIRECTORY
   agent-host email --help
   agent-host discovery --help
   agent-host assistance --help
@@ -111,6 +112,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
 	userKnowledgeSources                                                               []string
@@ -180,6 +182,10 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.SetOutput(errout)
 	if name == "chat" {
 		fs.BoolVar(&o.debugNonOwner, "debug-non-owner", false, "Simulate a non-owner with restricted read tools and no channel approval transport")
+		fs.StringVar(&o.requestFor, "request-for", "", "Verified user ID whose demand this task fulfills")
+		fs.StringVar(&o.notifyTo, "notify-to", "", "Verified user ID to notify after task completion")
+		fs.StringVar(&o.notifyChannel, "notify-channel", "", "Preferred configured notification channel: dingtalk or feishu")
+		fs.StringVar(&o.feedbackConfigDir, "feedback-config-dir", "", "Unified configuration directory for verified users and the shared feedback queue")
 	}
 	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
@@ -385,6 +391,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	if args[0] == "feedback" {
 		return runFeedback(ctx, args[1:], out, errout)
+	}
+	if args[0] == "notifications" {
+		return runNotifications(ctx, args[1:], out, errout)
 	}
 	if args[0] == "backup" {
 		return runBackup(ctx, args[1:], out, errout)
@@ -613,6 +622,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
 		defer cancel()
 		run, err := h.Run(turnCtx, s, input)
+		if notice := feedbackNotice(run); notice != "" {
+			fmt.Fprintln(errout, notice)
+		}
 		if run.ID != "" {
 			rememberRoutingRun(&o, run)
 		}

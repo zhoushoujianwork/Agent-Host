@@ -21,6 +21,7 @@ import (
 	"agent-host/internal/event"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
+	"agent-host/internal/taskfeedback"
 	"agent-host/internal/terminal"
 )
 
@@ -173,6 +174,7 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		return err
 	}
 	agents.ownerID = cfg.OwnerOpenID
+	o.feedbackOwnerID = cfg.OwnerOpenID
 	if cfg.IMChat {
 		if err := agents.users.validateOwner(state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID, cfg.OwnerOpenID); err != nil {
 			return err
@@ -272,6 +274,9 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		Store: store, Host: composeHost(store, o, client, sink), Router: routing.New(client), ClientID: cfg.AppID,
 		Scope: o.scope, Profile: profile, Timeout: o.timeout, MaxConcurrentConversations: o.maxConcurrentConversations, Observe: observe}
 	service.OwnerID = cfg.OwnerOpenID
+	service.StartFeedback = func(ctx context.Context) (func(), error) {
+		return startTaskFeedbackWorker(ctx, o, taskfeedback.Account{Channel: "feishu", AccountID: cfg.AppID, TenantID: cfg.TenantID}, service, feishu.Replier{Config: feishuIMConfig(cfg)}, observe)
+	}
 	if cfg.IMChat {
 		service.ApprovalSender = feishu.Replier{Config: feishuIMConfig(cfg)}
 	}
