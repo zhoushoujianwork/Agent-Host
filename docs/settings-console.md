@@ -13,7 +13,7 @@ to keep the defaults. [Implementation details](settings-console-detail.md).
   a custom service, its address and API key. Existing keys remain hidden.
 - **Channels / 消息渠道:** enable an already configured channel and fill in its
   required account or application identities.
-- **Shortcuts / 快捷键:** find the keys for closing a chat and moving cards.
+- **Shortcuts / 快捷键:** find the key for closing Chat or a selected record.
 
 Save Agent, model and channel changes explicitly. Local task settings apply to
 the next task; service settings apply after restarting Host. Saving checks the

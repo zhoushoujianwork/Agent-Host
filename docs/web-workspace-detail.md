@@ -6,17 +6,16 @@ The Python workbench serves `index.html`, `workspace.js` and `workspace.css` as
 the new entry. The former root execution inspector remains at `executions.html`.
 Legacy `/?key=...` links route to that inspector inside the workspace.
 
-The canvas consumes `/api/records`. It groups by source ID/kind, Agent, audience
-and Host session ID, falling back to native session ID and then run ID. Each
-card links to its most recent loaded execution. Source and partition identities
-keep unrelated sessions separate. The existing API's record limits still apply.
-The canvas refreshes on entry and on explicit refresh; it does not submit tasks.
+The conversation canvas is temporarily disabled. The root shell has no canvas
+markup, drag handlers, grouping, layout controls or `/api/records` fetch. Execution
+records remain accessible through their existing inspector. The default route is
+`#memory`; dormant `#workbench` and unknown routes are normalized there.
 
-Layout coordinates and draft text use `agent-host.workspace.v1` in same-origin
-localStorage. Corrupt values and unavailable storage do not block the workspace;
+Draft text uses `agent-host.workspace.v1` in same-origin localStorage. Saving or
+clearing a draft preserves dormant layout coordinates and unrelated saved keys.
+Corrupt values and unavailable storage do not block the interface;
 save failures are visible. This is browser-local convenience state, not Host
 memory or an execution receipt. It is not synchronized across devices or ports.
-Cards use pointer capture for dragging and arrow keys for keyboard movement.
 
 Memory, execution and settings panels load lazily into retained same-origin
 frames. `embedded.css` removes duplicate navigation without changing those
@@ -56,17 +55,16 @@ executes the configured Host task.
 `shortcuts.js` handles unmodified Meta+W when the right Chat panel or a selected
 `#executions?key=...` route is open, including focus in retained frames. The panel
 takes priority: closing it leaves the route intact and focuses the Chat toggle.
-With the panel already closed, a selected detail returns to the canvas and focuses
-navigation. `showChat` emits `agh:chat-visibility` to synchronize the close button.
+With the panel already closed, a selected detail returns to `#executions` and
+focuses that navigation entry. `showChat` emits `agh:chat-visibility` to synchronize the close button.
 The handler neither deletes data nor stops a run.
 Browser-reserved shortcuts may not be delivered to JavaScript in every host.
 
 The standalone Chat view and rail entry have been removed. Old `#chat` links use
-`replaceState` to open the right panel on the canvas without losing drafts. The
+`replaceState` to open the right panel on memory without losing drafts. The
 panel keeps its open/closed state across module navigation; compact screens start
-with it closed. Canvas dimensions are recalculated after navigation and panel
-changes, only while visible. `workspace_test.cjs` covers navigation, compatibility
-and non-destructive draft starters.
+with it closed. `workspace_test.cjs` covers the disabled canvas, absence of shell
+record fetches, legacy routes, panel state and non-destructive draft persistence.
 
 `logo.svg` is an original vector AGH monogram, used by the rail, standalone
 headers, settings and favicon. It has no font or external asset dependency.

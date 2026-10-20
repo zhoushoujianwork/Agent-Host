@@ -1,7 +1,8 @@
 # Local execution viewer
 
-The root page is now the [Web workspace](../../docs/web-workspace.md): a draggable
-conversation canvas, local Chat drafts, memory graph and settings navigation.
+The root page is the [Web interface](../../docs/web-workspace.md): memory first,
+with execution records, settings and right-side Chat drafts. The conversation
+canvas/workbench is temporarily disabled; saved layout data is retained.
 The full execution inspector remains at `/executions.html`; existing `/?key=...`
 bookmarks open the selected execution inside the workspace. Web Chat execution
 is not yet connected; drafts remain local to the browser.
@@ -184,7 +185,7 @@ existing channel setup and shortcut help. Advanced parameters keep their saved
 defaults and are managed in configuration files. Editing a visible field retains
 unlisted values. Chat is only a right-side panel; its open/closed state survives
 module switches. Cmd+W closes that panel in place, or returns a selected
-conversation detail to the canvas when the panel is already closed.
+conversation detail to execution records when the panel is already closed.
 
 Secret fields load as retained markers, never as their saved values. You can
 replace or explicitly clear them. Saves reject conflicting revisions, keep a

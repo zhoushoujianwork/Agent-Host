@@ -9,14 +9,14 @@ function setup(hash,chatOpen=false){
   return {location,button,panel,key,events,frameEvents,frameDocumentEvents,focused:()=>focused};
 }
 test("Cmd+W closes the right Chat and preserves the current module",()=>{
-  for(const route of ["#workbench","#memory","#settings","#executions?key=db%3Aone"]){const h=setup(route,true);assert.equal(h.button.hidden,false);assert.equal(h.key(),true);assert.equal(h.location.hash,route);assert.equal(h.panel.hidden,true);assert.equal(h.focused(),true);}
+  for(const route of ["#memory","#settings","#executions?key=db%3Aone"]){const h=setup(route,true);assert.equal(h.button.hidden,false);assert.equal(h.key(),true);assert.equal(h.location.hash,route);assert.equal(h.panel.hidden,true);assert.equal(h.focused(),true);}
 });
 test("opened conversation detail receives the same shortcut from its frame",()=>{
-  const h=setup("#executions?key=db%3Aone");h.frameEvents.load();assert.equal(h.key({},h.frameDocumentEvents.keydown),true);assert.equal(h.location.hash,"workbench");
+  const h=setup("#executions?key=db%3Aone");h.frameEvents.load();assert.equal(h.key({},h.frameDocumentEvents.keydown),true);assert.equal(h.location.hash,"executions");
 });
-test("settings, memory, plain journal and workbench keep native close behavior",()=>{
-  for(const route of ["#settings","#memory","#executions","#workbench"]){const h=setup(route);assert.equal(h.button.hidden,true);assert.equal(h.key(),false);assert.equal(h.location.hash,route);}
+test("settings, memory and plain journal keep native close behavior when Chat is closed",()=>{
+  for(const route of ["#settings","#memory","#executions"]){const h=setup(route);assert.equal(h.button.hidden,true);assert.equal(h.key(),false);assert.equal(h.location.hash,route);}
 });
 test("other modifiers, composition, repetition and handled events are ignored",()=>{
-  for(const overrides of [{metaKey:false,ctrlKey:true},{shiftKey:true},{altKey:true},{ctrlKey:true},{isComposing:true},{repeat:true},{defaultPrevented:true}])assert.equal(setup("#workbench",true).key(overrides),false);
+  for(const overrides of [{metaKey:false,ctrlKey:true},{shiftKey:true},{altKey:true},{ctrlKey:true},{isComposing:true},{repeat:true},{defaultPrevented:true}])assert.equal(setup("#memory",true).key(overrides),false);
 });

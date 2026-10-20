@@ -95,8 +95,9 @@ bot accounts and retain delivery evidence independently from execution.
 | Personal assistance | Selected DWS intake, cited current matters, private suggestions and user-selected preparation | Automatic conversation learning and proactive delivery remain planned |
 | Operations | Shared workbench, automatic user-login services, independent production runtime and verified encrypted backups | Backup excludes external account sessions and complete external project directories |
 
-The local workbench opens a [Web workspace](web-workspace.md) with draggable
-conversation cards, local Chat drafts and the existing memory graph. Browser
+The local workbench opens a [Web interface](web-workspace.md) on the memory graph,
+with execution records, settings and right-side Chat drafts. The conversation
+canvas is temporarily disabled. Browser
 task execution is not yet connected. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other
 options retain their configuration-file defaults. Checked

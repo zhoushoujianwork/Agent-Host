@@ -11,8 +11,8 @@
       document.getElementById("chat-toggle").focus();
       return true;
     }
-    location.hash = "workbench";
-    document.querySelector('[data-view="workbench"]').focus();
+    location.hash = "executions";
+    document.querySelector('[data-view="executions"]').focus();
     return true;
   }
   function keydown(event) {
