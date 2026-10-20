@@ -5,7 +5,7 @@ description: Save durable decisions, preferences, facts, evidence-backed procedu
 
 # Agent-Host memory
 
-For execution of a clear routine task, use the separate `agent-host-tasks`
+For execution of a clear daily operations or business task, use `agent-host-tasks`
 skill when installed. This skill handles knowledge intake and recall; memory
 connection aliases do not configure CLI chat destinations.
 

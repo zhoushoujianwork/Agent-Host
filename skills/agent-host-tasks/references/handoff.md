@@ -88,7 +88,7 @@ For example, replace every placeholder below from the intended configuration:
 agent-host chat --home /absolute/host/cli-state \
   --agents-config /absolute/config/agents.json --agent DAILY_AGENT_ID \
   --workspace /absolute/workspace --format json \
-  -m 'Objective: summarize the named source. Scope: read-only; no external sends or file changes. Return cited findings and unresolved questions. Execute directly; do not delegate this task again. If scope or design is unclear, report BLOCKED with evidence.'
+  -m 'Objective: check the named service against the supplied operations runbook. Scope: read-only status and log queries; no restarts, configuration changes or external sends. Return observed health, evidence and any required action. Execute directly; do not delegate this task again. If scope or a required decision is unclear, report BLOCKED with evidence.'
 ```
 
 Use `--project REGISTERED_ID` instead of `--workspace` for a known registered

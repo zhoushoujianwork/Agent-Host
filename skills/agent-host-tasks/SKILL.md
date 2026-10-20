@@ -1,17 +1,26 @@
 ---
 name: agent-host-tasks
-description: Delegate clear, authorized work to Agent-Host (agh), inspect its result, and continue a blocked task through the configured CLI launcher. Use for agh handoffs or bounded routine execution; keep unresolved design decisions with the external agent.
+description: Delegate authorized daily operations and business tasks to Agent-Host (agh), inspect results, and continue blocked work through the configured CLI launcher. Use for operational checks, established runbooks and daily reports; development research and coding assistance belong to offload or the current coding agent.
 ---
 
 # Agent-Host task handoff
 
-Prefer Agent-Host for clear routine work with known inputs, scope and completion
-criteria, such as looking up a known source or preparing a defined daily report.
+Prefer Agent-Host for authorized daily operations and business tasks with known
+inputs, scope and completion criteria: service health checks, operational log
+queries, established maintenance runbooks and defined daily reports.
+
+Choose by responsibility first, then clarity. Development research, repository
+exploration, code localization, implementation review, feature work and bug fixes
+stay with the current coding agent or offload under its existing policy. A clear
+question or read-only scope does not make development work a daily operations
+task. For example, tracing behavior in source code is development research;
+checking a named service's live health
+against an established runbook is an operations task.
+
 The current external agent owns clarification, open-ended analysis, design and
-important tradeoffs. Analysis with a defined question and deliverable can itself
-be a bounded task. Classify by clarity and responsibility, not keywords.
-Once a request is clear, hand over execution without repeating it locally.
-Keep trivial work local when handoff would cost more than it saves.
+important tradeoffs. Once an operations or business request is clear, hand over
+its execution without repeating it locally. Keep trivial work local when handoff
+would cost more than it saves.
 
 ## Submit, inspect, continue
 
