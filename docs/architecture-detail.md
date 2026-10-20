@@ -54,6 +54,32 @@ Runtime state and native sessions remain channel-local. Memory publication can
 share file storage without merging Agent/audience visibility. Shared project
 receipts exclude original request/response text and native context.
 
+### Current execution path before ACP
+
+The [main architecture diagram](architecture.md#core-architecture) shows the
+chosen target. This diagram records the executable baseline: all current entries
+reach Host, and Host runs Claude's print/stream-JSON adapter. Web currently
+launches a separately configured Host CLI, not a running channel worker.
+
+```mermaid
+flowchart TD
+    U["CLI / Web via CLI / DingTalk / Feishu"] --> C["Identity and conversation queue"]
+    C --> R["Host: routing, authorization and context assembly"]
+    K["Memory and Skills"] --> R
+    R --> H["Run supervision and existing harness boundary"]
+    H <--> N["Claude Code: --print / stream-json"]
+    N <--> T["Selected MCP tools"]
+    H --> E[("State and original evidence")]
+    E --> M["Memory selection and validation"]
+    M --> K
+    H --> D["Channel progress and reply delivery"]
+    D --> U
+```
+
+Business execution, acceptance, delivery and memory publication retain separate
+outcomes. Source documents, remembered text and model output cannot grant
+permissions. ACP implementation is still pending.
+
 ## Storage and context authority
 
 - `config/`: user-maintained inputs, read-only during execution. Automatic first

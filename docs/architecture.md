@@ -20,6 +20,60 @@ Claude Code through its print/stream-JSON adapter; ACP is not implemented yet.
 Codex execution remains a scaffold; installing the external memory skill into
 Codex does not implement that adapter.
 
+## Core architecture
+
+**目标主链路：所有渠道 → Host → 统一 ACP 接入层 → 可切换的执行引擎。**
+绿色为现有 Host 职责，蓝色虚线框为待实现或待扩展部分，灰色为迁移期兼容后端。
+当前执行仍使用 Claude print/stream-JSON；本图表达已确定的目标架构，不表示 ACP 已上线。
+
+```mermaid
+flowchart TD
+    U["渠道入口：Web Chat / CLI / 钉钉 / 飞书 / 其他渠道"]
+    subgraph Host["Agent-Host · Go"]
+        C["身份校验与对话队列"]
+        C --> R["Agent / 项目路由与授权"]
+        P["项目发现与登记"] --> R
+        R --> A["上下文、记忆、Skills 与工具装配"]
+        A --> H["执行管理与会话绑定"]
+        H <--> ACP["统一 ACP 接入层 · 待实现<br/>会话 / 提示词 / 中止 / 权限交互"]
+        ACP --> EV["统一会话事件 · 待扩展<br/>流式正文 / 工具调用与结果 / 计划 / 文件变更证据"]
+        EV --> D["渠道呈现与交付<br/>Web Markdown / CLI 输出 / IM 进度与最终回复"]
+        H --> E[("执行状态与原始证据")]
+        EV --> E
+        E --> M["记忆筛选与校验"]
+        M --> K["长期记忆与 Skills"]
+        K --> A
+        E --> V["Web 记忆图谱 / 执行记录 / 设置"]
+    end
+    U --> C
+    subgraph Engines["可切换的执行引擎 · ACP 路径待接入"]
+        CL["Claude Code<br/>Claude ACP 桥接"]
+        CX["Codex<br/>Codex ACP 桥接"]
+        OT["其他 ACP Agent"]
+    end
+    ACP <--> CL
+    ACP <--> CX
+    ACP <--> OT
+    H -. "迁移期显式选择" .-> L["现有兼容后端<br/>Claude --print / stream-json"]
+    L --> EV
+    A --> T["MCP 工具：资料、邮件、历史与辅助能力"]
+    CL <--> T
+    CX <--> T
+    OT <--> T
+    D --> U
+    classDef existing fill:#edf4e9,stroke:#607d52,color:#20331c;
+    classDef planned fill:#edf3ff,stroke:#5476ae,color:#203759,stroke-dasharray:5 4;
+    classDef legacy fill:#f2f2f2,stroke:#888,color:#444;
+    class C,R,P,A,H,D,E,M,K,V,T existing;
+    class ACP,EV,CL,CX,OT planned;
+    class L legacy;
+```
+
+ACP 会话事件驱动各渠道呈现；Host 的路由、记忆处理与引擎活动分别记录。
+执行完成、业务验收、回复交付和记忆发布保留独立结果。引擎切换使用新原生会话，
+延续所需信息由 Host 按授权范围装配；兼容后端只按配置选择，不因 ACP 失败自动回退。
+当前运行路径见[实现说明](architecture-detail.md#current-execution-path-before-acp)。
+
 ## Key objects / 关键对象
 
 Read these as separate responsibilities, even when they work on the same request.
@@ -55,50 +109,12 @@ Execution-engine, authorization and storage terms are explained in the
 [bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
 执行引擎、权限和存储相关术语见同一份详细稿中的双语解释。
 
-## Core architecture
-
-Current execution and ownership, before the planned ACP migration:
-
-```mermaid
-flowchart TD
-    U[CLI / Web via CLI / 钉钉 / 飞书] --> C[Identity and queue / 身份与对话队列]
-    subgraph Host[Agent-Host · Go]
-        C --> R[Routing and authorization / 路由与授权]
-        P[Project discovery and registry / 项目发现与登记] --> R
-        R --> A[Context assembly / 上下文与工具装配]
-        K[Memory and Skills / 长期记忆与方法] --> A
-        A --> H[Run supervision and adapter / 执行管理与适配]
-        H --> E[(State and evidence / 状态与证据)]
-        E --> M[Memory selection and validation / 记忆筛选与校验]
-        M --> K
-        H --> D[Replies and progress / 回复与进度交付]
-        E --> V[Workbench / 本地工作台]
-    end
-    H <--> N[Claude Code / 原生执行引擎]
-    A --> T[MCP tools / 资料、邮件、历史与辅助工具]
-    N <--> T
-    D --> U
-```
-
-A native run, business acceptance, reply delivery and memory publication have
-separate outcomes. Failure recovery preserves evidence and does not replay work.
-Source documents, remembered text and model output cannot grant permissions.
-
 ## Shared ACP execution — planned
 
 Every conversation entry uses the same Host execution boundary. DingTalk and
 Feishu receive the same engine events as Web; each channel presents them using
 its supported reply format. ACP is a Host-to-engine protocol, and channel APIs
 continue to handle user identity, messages and delivery.
-
-```mermaid
-flowchart LR
-    C[Web / CLI / DingTalk / Feishu] --> H[Host: routing, context, queue and memory]
-    H <--> A[Shared ACP execution adapter]
-    A <--> E[Claude Code / Codex / other ACP agents]
-    H --> D[Channel delivery and Web timeline]
-    D --> C
-```
 
 - **One execution path for all channels.** Start with Claude through ACP, then
   connect a second engine to prove switching. Keep direct Claude print execution
