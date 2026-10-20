@@ -1,20 +1,24 @@
 # Agent-Host architecture
 
 Current technical direction and delivery status, reviewed against source on
-2026-10-16. [Implementation notes](architecture-detail.md) map the components and
+2026-10-16, with the shared ACP direction added on 2026-10-20.
+[Implementation notes](architecture-detail.md) map the components and
 contracts; [progress and next steps](release-follow-up.md) own the remaining work.
 Historical acceptance records describe their original revision, not every later change.
 
 ## Goal and usage
 
 Give AI work continuity across conversations and projects. Send a request through
-CLI, DingTalk or Feishu; Host selects the Agent and project, assembles authorized
-context, runs Claude Code and retains evidence and reusable knowledge locally.
+CLI, Web, DingTalk or Feishu; Host selects the Agent and project, assembles authorized
+context, runs the selected execution engine and retains evidence and reusable knowledge locally.
 
 The technical route is **a Go host around native execution engines**. Host owns
-business tasks, routing, context, delivery and durable memory. Claude Code owns
-its model/tool loop and native conversations. Codex execution remains a scaffold;
-installing the external memory skill into Codex does not implement that adapter.
+business tasks, routing, context, delivery and durable memory. Native engines own
+their model/tool loops and conversations. **ACP is the chosen direction for a shared
+execution interface across every channel.** Today the executable backend is
+Claude Code through its print/stream-JSON adapter; ACP is not implemented yet.
+Codex execution remains a scaffold; installing the external memory skill into
+Codex does not implement that adapter.
 
 ## Key objects / 关键对象
 
@@ -29,7 +33,7 @@ Read these as separate responsibilities, even when they work on the same request
 | Task / 任务 | The business work requested by the user. 用户希望完成的工作，例如“修复登录测试”；跨多轮的持久功能任务仍待实现。 |
 | Run / 执行记录 | One execution attempt with its own events and outcome. 一次执行尝试及其过程、结果；执行结束不等于业务验收通过。 |
 | Conversation / 对话 | Related channel messages and replies within an authorized binding. 授权范围内关联的渠道消息与回复；群成员可以共享同一对话。 |
-| Native session / 原生会话 | Conversation state maintained by Claude Code across compatible turns. Claude Code 自己保存的连续执行上下文；可重置或替换，Host 的长期记忆另行保留。 |
+| Native session / 原生会话 | Conversation state maintained by the selected execution engine across compatible turns. 所选执行引擎自己保存的连续上下文；切换引擎不自动迁移，Host 的长期记忆另行保留。 |
 | Project / 项目 | A stable registered identity for a repository and its execution environment. 仓库及执行环境的稳定登记身份，用于路由和关联记录。 |
 | Workspace / 工作目录 | The filesystem location where execution works on files. 执行时实际操作文件的目录；项目身份与目录路径分别记录。 |
 | Context / 上下文 | The instructions and information available to the engine for the current work. 引擎处理当前工作时可用的指令与信息；长期记忆只是其中一种来源。 |
@@ -53,9 +57,11 @@ Execution-engine, authorization and storage terms are explained in the
 
 ## Core architecture
 
+Current execution and ownership, before the planned ACP migration:
+
 ```mermaid
 flowchart TD
-    U[CLI / 钉钉 / 飞书] --> C[Identity and queue / 身份与对话队列]
+    U[CLI / Web via CLI / 钉钉 / 飞书] --> C[Identity and queue / 身份与对话队列]
     subgraph Host[Agent-Host · Go]
         C --> R[Routing and authorization / 路由与授权]
         P[Project discovery and registry / 项目发现与登记] --> R
@@ -78,6 +84,45 @@ A native run, business acceptance, reply delivery and memory publication have
 separate outcomes. Failure recovery preserves evidence and does not replay work.
 Source documents, remembered text and model output cannot grant permissions.
 
+## Shared ACP execution — planned
+
+Every conversation entry uses the same Host execution boundary. DingTalk and
+Feishu receive the same engine events as Web; each channel presents them using
+its supported reply format. ACP is a Host-to-engine protocol, and channel APIs
+continue to handle user identity, messages and delivery.
+
+```mermaid
+flowchart LR
+    C[Web / CLI / DingTalk / Feishu] --> H[Host: routing, context, queue and memory]
+    H <--> A[Shared ACP execution adapter]
+    A <--> E[Claude Code / Codex / other ACP agents]
+    H --> D[Channel delivery and Web timeline]
+    D --> C
+```
+
+- **One execution path for all channels.** Start with Claude through ACP, then
+  connect a second engine to prove switching. Keep direct Claude print execution
+  as an explicitly selected compatibility backend during migration.
+- **One conversation timeline.** Preserve streamed replies, real tool activity,
+  plans and file-change evidence when available. Web can expand details; chat
+  channels use supported progress updates and a final answer. Host routing and
+  memory phases remain separate from the engine's activity.
+- **Safe continuity and switching.** Preserve channel/audience isolation. Reuse
+  only compatible sessions; changing engines starts a new native session with
+  authorized Host context and memory. Switching never silently retries work.
+- **Simple configuration.** Agent configuration selects an execution engine and
+  connection. Channel bindings select the Agent. Users do not configure separate
+  ACP implementations for each channel. Advanced launch options stay in config.
+- **Shared controls.** Host coordinates cancellation and permission requests under
+  Host/native policy, with each entry supplying its supported controls. Channels
+  without interactive approval support cannot silently approve a native request.
+
+This increment covers the execution architecture and its delivery sequence;
+runtime adapters, richer channel controls and cross-channel Web attachment are
+still to be implemented. Existing channel services and the standalone Web CLI
+destination remain separate today. The [ACP implementation notes](architecture-detail.md#shared-acp-execution--planned)
+define the boundary and acceptance checks.
+
 [Task ownership and completion feedback](task-feedback.md) binds a demand owner
 and result destination at intake. Configured CLI/channel executions persist this
 plan before native work; channel workers deliver queued results using verified
@@ -88,6 +133,7 @@ bot accounts and retain delivery evidence independently from execution.
 | Area | Current behavior | Boundary / next gap |
 | --- | --- | --- |
 | Execution and channels | Claude Code streaming/continuation; CLI, DingTalk and Feishu chat; Feishu meeting text; attachments, queues and failed-session handoff | Codex execution and meeting audio are planned; broader platform acceptance remains open |
+| Shared engine interface | CLI and channel workers call the existing harness boundary; Web launches the configured Host CLI | ACP is the chosen migration path for all entries; no ACP backend or transparent engine-session migration is delivered |
 | Project work | Bounded local Git discovery, selected-target enrollment, automatic routing and shared execution receipts | No durable feature/worktree ownership or PR/MR delivery lifecycle |
 | Memory and Skills | Explicitly migrated file backend, source-grounded facts and procedures, automatic selected-experience publication, blacklist and scoped native Skills | Legacy SQLite experience requires review; general extraction quality and scale remain unmeasured |
 | Knowledge and actions | Dokki/Confluence/local Markdown retrieval, authorized Confluence page/blog writes and managed Gmail/163 email tools | Source enablement and upstream account permissions apply; Gmail onboarding and real mail send/reply acceptance remain separate |
@@ -97,7 +143,7 @@ bot accounts and retain delivery evidence independently from execution.
 
 The local workbench opens a [Web interface](web-workspace.md) on the memory graph,
 with execution records, settings and right-side Chat execution through the configured
-CLI destination. Chat displays incremental answers and native Claude tool/status output,
+CLI destination. Chat renders streamed Markdown and expandable native Claude activity,
 and can cancel the owned Host process. The conversation canvas is temporarily
 disabled. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other
@@ -140,7 +186,13 @@ implementation. A passing automated check does not establish production quality.
 
 ## Next direction
 
-The next proposed product increment is [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md):
+The next execution increment is shared ACP support: implement the Host adapter,
+validate Claude through CLI and Web, then exercise the same adapter through
+DingTalk and Feishu and connect a second engine. Channel delivery limits and
+existing authorization policy remain explicit. The current print backend stays
+available during this controlled migration; it is not the long-term-only interface.
+
+A separate proposed product increment is [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md):
 answer supported routine questions addressed to the owner, wait silently on
 incomplete or complex requests, and learn from owner conversations. Start with
 selected private chats and visibly marked AI replies. It is not implemented.

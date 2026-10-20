@@ -1,6 +1,7 @@
 # Progress and next steps
 
-Source status reviewed on 2026-10-16. This is the current backlog, not a release
+Source status reviewed on 2026-10-16; the shared ACP execution track was added
+on 2026-10-20. This is the current backlog, not a release
 commitment. [Architecture](architecture.md) explains the technical route;
 [validation notes](release-follow-up-detail.md) retain evidence and open checks.
 
@@ -45,6 +46,25 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
    transient event-write wait. Later retrieval fixes and cancellation decoupling
    do not by themselves resolve their original causes.
 
+## Execution integration track — planned
+
+Adopt [shared ACP execution](architecture.md#shared-acp-execution--planned) for
+CLI, Web, DingTalk, Feishu and future conversation entries. This is a Host
+harness change shared by channels, not a Web-only Claude connection.
+
+1. Implement Claude through the shared ACP adapter and validate Host context,
+   streamed events, continuation and cancellation through CLI/Web.
+2. Use the same adapter in DingTalk/Feishu, with channel-appropriate progress,
+   final delivery and authenticated interaction/stop controls.
+3. Connect a second engine to prove switching; retain explicit legacy print
+   selection until required execution contracts pass. Never silently fall back
+   or reuse native sessions across engines/transports.
+
+ACP implementation and live acceptance remain open. The
+[detailed boundary](architecture-detail.md#shared-acp-execution--planned) records
+session isolation, capability limits and separate auxiliary extraction checks.
+The product proposals below remain a separate track.
+
 ## Proposed development order
 
 1. **Owner Answering Beta / Owner 代答 BETA.** Observe selected private DingTalk
@@ -75,4 +95,6 @@ member permissions are defined by the [authorization guide](dangerous-operations
 
 Keep `/new`, `/status` and `/help` as current chat controls. Add retry/review/usage
 features only when observed use justifies them. The existing local workbench is
-delivered; Web task submission and a general plugin marketplace remain future work.
+delivered, including Web Chat submission through a separately configured Host CLI.
+Shared ACP execution, channel stop controls and a general plugin marketplace
+remain future work.

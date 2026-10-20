@@ -1,6 +1,7 @@
 # Agent-Host implementation notes
 
 Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
+The shared ACP proposal below was added on 2026-10-20; it is not delivered behavior.
 The main document owns scope; [progress](release-follow-up.md) owns priorities.
 Feature-specific details retain historical schemas and bounded acceptance results;
 they are not a claim that every current path passed live validation.
@@ -15,6 +16,7 @@ memory objects. These terms explain how they are executed, authorized and stored
 | --- | --- |
 | Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code. 负责模型推理、工具调用循环和原生会话的程序，当前为 Claude Code。 |
 | Harness adapter / 执行引擎适配器 | Translates Host requests and engine events across their boundary. 在 Host 与执行引擎之间转换请求和事件，不接管引擎内部循环。 |
+| ACP / Agent Client Protocol / 智能体客户端协议 | The planned shared protocol between Host and execution engines for conversations and tool activity. 计划用于 Host 与底层执行引擎通信的统一协议；不替代钉钉、飞书等渠道接口。 |
 | Routing / 路由 | Selects the Agent and project environment for a request. 为请求选择智能体配置和项目环境；选中项目本身不会增加权限。 |
 | Context assembly / 上下文装配 | Prepares the instructions, eligible memory and tools for a run. 执行前准备指令、可用记忆和工具；不会预先读取所有资料正文。 |
 | MCP / Model Context Protocol / 模型上下文协议 | A protocol exposing tool calls to the native engine. 让原生引擎调用资料检索、邮件等工具的协议；接入工具不等于授权任何操作。 |
@@ -175,7 +177,8 @@ within their original task, while ambiguous confirmations ask for a target.
 Other audiences use a bounded pool; SQLite transactions remain short and
 single-writer. This protects memory read/decision/write ordering without
 isolating shared checkout files. Queued commands follow the same lane, including
-`/status`; no asynchronous memory work or `/stop` is introduced.
+`/status`; the current channel implementation introduces no asynchronous memory
+work or `/stop`. The ACP control path below is proposed separately.
 
 Schema v11 adds protected `input_capabilities` alongside existing private reply
 capabilities. Attachment and quote metadata remain in source-linked task input,
@@ -185,6 +188,168 @@ image bytes cross only the execution boundary; the Claude adapter owns native
 stream-JSON encoding. Download codes and image base64 stay outside public run
 payloads and observations. Old queued receipts and claimed-task no-replay
 semantics remain unchanged.
+
+## Shared ACP execution — planned
+
+Scope follows the [main architecture](architecture.md#shared-acp-execution--planned).
+Source inspection on 2026-10-20 found a shared `harness.Runner` contract in
+`internal/harness/harness.go`; channel execution reaches it through Host.
+`internal/harness/claude/adapter.go` currently launches `--print` with
+`stream-json`, partial messages and native session continuation. Web reaches
+the same Host CLI through `tools/run-viewer/chat_runtime.py`. No ACP client,
+channel ACP session manager or working Codex runner exists today.
+
+### Ownership and entry points
+
+| Layer | Proposed responsibility |
+| --- | --- |
+| Web, CLI, DingTalk, Feishu and future channels | Authenticate input, preserve source/attachment identity, deduplicate intake and deliver replies using their platform APIs |
+| Host and channel scheduler | Resolve Agent/project/audience, assemble authorized context and tools, serialize compatible turns, supervise execution, record outcomes and select memory |
+| Shared harness boundary | Accept engine-neutral requests and publish attributed conversation events and terminal results; extend the current narrow observations for plans, patch updates and interaction requests |
+| ACP execution adapter | Act as the ACP client, supervise the configured agent/bridge subprocess, negotiate capabilities, map sessions/prompts/updates and correlate cancellation and permission requests |
+| Engine-specific bridge/profile | Supply the supported Claude/Codex executable, authentication environment, configuration and engine extensions; the native engine retains its model/tool loop |
+| Delivery projection | Build Web timelines or bounded channel progress/final replies from the same saved events; retain delivery receipts separately |
+
+Implement the ACP transport and session lifecycle behind `internal/harness`,
+with engine-specific launch details kept behind their profiles/adapters. No
+channel handler or browser launches Claude/Codex directly. The Web server may
+continue to invoke the Host CLI during the first increment; using ACP does not
+make it a client of an already-running channel service or share that service's
+locked state. A later Web view of channel conversations must use an authorized
+Host read/control API owned by that runtime.
+
+Initially, one ACP bridge process belongs to one live conversation binding
+within its owning Host process. Reuse it across compatible turns, with bounded
+concurrency and idle cleanup. This avoids terminating another conversation when
+a stuck adapter requires process cancellation. A short-lived CLI invocation can
+reconnect only through supported session loading/resume; do not promise persistent
+in-process sessions across separate CLI invocations.
+
+The intended configuration separates **engine** (Claude/Codex), **execution
+transport** (ACP or explicit legacy print), and **model/provider**. A channel
+binding chooses an Agent, which resolves that execution profile. Defaults and
+advanced process/version settings belong in configuration; routine settings need
+only expose supported choices. ACP/provider authentication remains server-side.
+Changing an engine does not implicitly change the user's provider/account.
+
+### Sessions, events and controls
+
+Use a negotiated supported stable ACP version, initially v1; do not depend on
+v2 draft behavior. Initialize the configured agent and check its capabilities
+before creating a session. Supply the prepared workspace and selected MCP
+servers through supported session setup; retain engine-specific instructions,
+Skills, additional-directory and permission handling in the adapter. A missing
+required execution constraint is an explicit incompatibility, not permission to
+launch a weaker profile. See [ACP initialization](https://agentclientprotocol.com/protocol/v1/initialization).
+
+The execution flow is `initialize` and required authentication, then
+`session/new` (or supported load/resume), `session/prompt`, streamed
+`session/update` notifications and the prompt result. Required authentication
+failure is surfaced as a setup error; it does not switch accounts/providers.
+
+Persist session bindings with runtime/channel account, conversation/audience,
+Agent, project/workspace and execution-profile compatibility. Record the engine,
+transport, adapter/protocol version and native session identity with each run.
+Keep private conversations and shared groups separate; sharing authorized memory
+does not share native sessions. Serialize prompts within a session and retain
+the current ordering through memory finalization and delivery. Reuse an active
+compatible session; after reconnect, use only a supported `session/load` or
+`session/resume` path. Treat load-time history as replay, never as new business
+output or a reason to redeliver replies or publish memory. Preserve replay
+provenance and reconcile it before accepting fresh turn events. See
+[ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup).
+
+Map streamed message chunks, tool calls and their ID-addressed updates, plans,
+notices and available configuration into engine-neutral conversation events,
+retaining source order and raw protocol evidence under existing privacy rules.
+The current `call`/`result` projection needs explicit patch semantics so that a
+tool status update does not create a second tool call. Durable Host run IDs,
+native session IDs, message IDs and tool IDs retain distinct meanings. Map ACP
+stop reasons into Host's execution result; a transport close, answered permission
+request or completed tool is not successful task completion. Acceptance, delivery
+and memory publication retain their own outcomes.
+
+Move engine-specific usage parsing behind the harness projection as well:
+`internal/channel/format.go` currently calls `claude.SummarizeUsage`. Channel
+footers should consume normalized, observed usage/model metadata. Missing usage
+or cost stays unavailable; it must not appear as zero or be inferred from a
+different engine's fields.
+
+Only native-reported content is shown as engine activity. File-change cards
+require actual adapter diff/location content or separately collected attributed
+workspace evidence; ACP support alone does not supply complete Git statistics.
+Host routing, knowledge preparation and memory extraction keep their own event
+namespaces. Never present extractor output as the business reply. See
+[ACP turn updates](https://agentclientprotocol.com/protocol/v1/prompt-turn) and
+[tool calls](https://agentclientprotocol.com/protocol/v1/tool-calls).
+
+Cancellation targets an authenticated conversation's active run through Host.
+Send `session/cancel`, cancel outstanding interaction requests, keep collecting
+terminal evidence and wait for the prompt outcome. A bounded timeout may require
+terminating the adapter's owned processes and tools; record an unknown outcome
+when it cannot be established. Do not kill unrelated sessions on a shared
+process. The initial process ownership strategy must support this guarantee.
+See [ACP cancellation](https://agentclientprotocol.com/protocol/v1/cancellation).
+Channel stop actions need a verified route outside the busy conversation lane;
+ordinary queued text cannot interrupt the run holding that lane. Existing
+`/new`, `/status` and `/help` behavior remains current until these controls are
+implemented and accepted.
+
+Permission requests are correlated with the active run and evaluated under the
+configured Host/native policy. Where human input is required, Web can present
+an interaction and a channel can use a supported card or correlated reply.
+Verify the actor and audience, expire stale requests and handle rejection or
+cancellation explicitly. An unsupported interaction must fail or cancel clearly,
+never become implicit approval. Introducing ACP does not reactivate suspended
+owner/member approval workflows or change today's configured Beta permissions.
+
+### Channel presentation and delivery
+
+Web renders the saved event stream as Markdown, expandable activity and available
+file changes. DingTalk/Feishu can coalesce progress into supported message/card
+updates, then deliver the final reply through their existing delivery paths.
+CLI uses its terminal renderer. Rich UI parity is limited by each channel and
+the negotiated agent capabilities. A channel without streaming edits can still
+use ACP execution and deliver a final reply; that is an explicit presentation
+limit, not an alternate execution backend.
+
+Keep tool arguments/results and private workspace paths in the authorized
+inspector by default, following existing channel redaction and audience policy.
+Publish only eligible progress and reply content to external channels. Record
+platform rate limits, failed edits and final-send outcomes independently from
+execution. Reconnect must neither replay native work nor resend uncertain
+deliveries automatically.
+
+### Migration and acceptance
+
+1. Implement the shared ACP runner and capability checks. Exercise Claude with
+   the existing Host routing/context/memory path through CLI and Web. Preserve
+   existing provider selection, native instructions, scoped Skills, MCP access,
+   attachments and permission constraints, or report unsupported combinations.
+2. Select that same runner from DingTalk and Feishu Agent profiles. Validate
+   private/group continuity, queues, channel progress/final replies and separate
+   delivery receipts. Add usable stop/interaction routes without bypassing the
+   conversation ownership checks.
+3. Connect a second ACP engine and verify configuration-based switching. A new
+   engine/transport uses a fresh native session; assemble only authorized Host
+   context and memory. Existing Claude print session IDs are not assumed to be
+   ACP session IDs, even for the same underlying Claude installation.
+4. Keep legacy print explicitly selectable during rollout. Do not fall back to
+   it, another engine or another provider after an ACP failure. Retire it only
+   after required channel and auxiliary execution contracts pass acceptance.
+
+Tool-free memory extraction and structured decision calls remain separately
+configured. Migrating business chat to ACP does not prove that an adapter can
+enforce extraction isolation or structured-output constraints. Validate those
+contracts before moving the auxiliary path; keep Jev decision APIs distinct
+from conversational harnesses.
+
+Acceptance must cover actual streamed replies and tool-update ordering, compatible
+continuation/reconnect without duplicate delivery, engine switching without
+session reuse, cancellation of owned tools, channel/account/audience isolation,
+explicit unsupported capabilities and distinct execution/delivery/memory results.
+Current print-backend tests are regression evidence, not ACP acceptance. No
+production runtime or channel is switched by this documentation change.
 
 ## Execution and memory
 
