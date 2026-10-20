@@ -113,6 +113,8 @@ emit("run.started")
 time.sleep(config.get("sleep", 0))
 emit("text.delta", phase="execute", component="harness.claude", delta="Checking...")
 emit("agent.result", phase="execute", component="harness.claude", model="fixture-model", data={"raw": {"result": run["output"]}})
+for event in config.get("accounting_events", []):
+    print(json.dumps(event), flush=True)
 emit("text.delta", phase="extract", component="harness.claude.extractor", delta="Secret memory extraction")
 emit("run.finished", data={key: run[key] for key in ("execution_status", "acceptance_status", "memory_status", "memory_error")})
 (root / "finished").touch()
@@ -159,6 +161,61 @@ sys.exit(config.get("exit_code", 0))
             self.assertEqual(CHAT.main(["--inspect", str(directory)]), 0)
         self.assertEqual(json.loads(output.getvalue())["execution"]["exit_code"], 0)
         self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def accounting_event(self, phase, session, **fields):
+        return {"type": "agent.result" if phase == "execute" else "extraction.evidence",
+                "run_id": "run-1", "phase": phase, "model": "fixture-model",
+                "component": "harness.claude" if phase == "execute" else "harness.claude.extractor",
+                "data": {"raw": {"type": "result", "session_id": session, **fields}}}
+
+    def test_usage_aggregates_terminal_calls_without_stream_or_model_double_counting(self):
+        execute = self.accounting_event("execute", "task-session", uuid="task-result",
+            usage={"input_tokens": 10, "output_tokens": 3, "cache_creation_input_tokens": 20, "cache_read_input_tokens": 30},
+            total_cost_usd=0.12, modelUsage={"fixture-model": {"inputTokens": 999, "costUSD": 99}})
+        extract = self.accounting_event("extract", "memory-session", uuid="memory-result",
+            usage={"input_tokens": 4, "output_tokens": 2, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+            total_cost_usd=0.03)
+        stream = self.accounting_event("execute", "task-session", usage={"input_tokens": 10000}, total_cost_usd=100)
+        stream["data"]["raw"]["type"] = "stream_event"
+        other = self.accounting_event("execute", "other", total_cost_usd=100)
+        other["component"] = "unrelated"
+        self.fake_host(accounting_events=[stream, execute, execute, extract, other])
+        directory = self.root / "evidence"
+        _, result = self.result_launch(directory)
+        self.assertAlmostEqual(result["cost_usd"], 0.15)
+        usage = result["usage"]
+        self.assertEqual(usage["tokens"], {"input_tokens": 14, "output_tokens": 5,
+                         "cache_creation_input_tokens": 20, "cache_read_input_tokens": 30})
+        self.assertEqual(len(usage["calls"]), 2)
+        self.assertEqual(usage["calls"][0]["model_usage"]["fixture-model"]["inputTokens"], 999)
+        self.assertEqual(usage["cost_basis"], "native_reported_estimate")
+        self.assertIn("jev", usage["excludes"])
+        self.credentials.unlink()
+        inspected = CHAT.inspect_receipt(directory, CHAT.private_json)
+        self.assertEqual(inspected["usage"], usage)
+        self.assertEqual(inspected["cost_usd"], result["cost_usd"])
+        self.assertEqual(json.loads((directory / "result.json").read_text())["usage"], usage)
+        self.assertEqual(sum(call[0] == "chat" for call in self.calls()), 1)
+
+    def test_unknown_and_invalid_usage_stays_unknown_while_reported_zero_is_kept(self):
+        valid = self.accounting_event("execute", "task", usage={"input_tokens": 0, "output_tokens": 2}, total_cost_usd=0)
+        invalid = self.accounting_event("extract", "memory", usage={"input_tokens": True, "output_tokens": -1,
+                    "cache_read_input_tokens": "7"}, total_cost_usd=float("nan"))
+        self.fake_host(accounting_events=[valid, invalid])
+        _, result = self.result_launch(self.root / "evidence")
+        self.assertEqual(result["cost_usd"], 0)
+        self.assertEqual(result["usage"]["missing_cost_calls"], 1)
+        self.assertEqual(result["usage"]["tokens"]["input_tokens"], 0)
+        self.assertIsNone(result["usage"]["tokens"]["cache_read_input_tokens"])
+        self.assertEqual(result["usage"]["missing_token_calls"]["input_tokens"], 1)
+        self.assertIsNone(result["usage"]["calls"][1]["cost_usd"])
+
+    def test_old_events_without_usage_do_not_invent_zero_consumption(self):
+        self.fake_host()
+        _, result = self.result_launch(self.root / "evidence")
+        self.assertIsNone(result["cost_usd"])
+        self.assertTrue(all(value is None for value in result["usage"]["tokens"].values()))
+        self.assertEqual(result["usage"]["calls"], [])
 
     def test_canonical_output_keeps_host_notices(self):
         self.fake_host(canonical_report="BLOCKED: account denied. Host notice retained.")

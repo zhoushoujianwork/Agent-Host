@@ -71,7 +71,8 @@ another Agent or runtime home.
 Review the returned evidence and relevant artifacts before accepting completion;
 independently check changed files and appropriate validation. Distinguish native
 execution, business acceptance and memory persistence. Tell the user the verified
-outcome and next action; retain IDs and detailed evidence for recovery. Model and
-elapsed time are reported when observed; unavailable cost stays null. Offload's
+outcome and next action; retain IDs and detailed evidence for recovery. Report
+observed token use and native-reported estimated cost with their coverage limits;
+neither is a verified provider bill. Missing metrics stay null. Offload's
 cost/session schema does not apply to CLI chat. Use `agent-host-memory` separately
 for explicit knowledge intake/recall.

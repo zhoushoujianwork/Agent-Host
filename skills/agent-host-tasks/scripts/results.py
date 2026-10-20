@@ -2,10 +2,62 @@
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+
+
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+
+
+def native_usage(events):
+    """Project terminal Claude results; streaming snapshots are not additive."""
+    calls, seen = [], set()
+    for event in events:
+        data = event.get("data")
+        raw = data.get("raw") if isinstance(data, dict) else None
+        if (event.get("component") not in ("harness.claude", "harness.claude.extractor") or
+                not isinstance(raw, dict) or raw.get("type") != "result"):
+            continue
+        # A terminal result can be mirrored in the journal. Scope identity to the
+        # Host run/phase and native invocation, preserving distinct extraction calls.
+        identity = (event.get("run_id"), event.get("phase"), event.get("component"),
+                    raw.get("uuid") or json.dumps(raw, sort_keys=True))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        reported = raw.get("usage")
+        reported = reported if isinstance(reported, dict) else {}
+        tokens = {key: value if type(value := reported.get(key)) is int and value >= 0 else None
+                  for key in TOKEN_FIELDS}
+        cost = raw.get("total_cost_usd")
+        if type(cost) not in (int, float) or not math.isfinite(cost) or cost < 0:
+            cost = None
+        calls.append({
+            "phase": event.get("phase"), "component": event.get("component"),
+            "native_session_id": raw.get("session_id") or data.get("native_session_id"),
+            "event_seq": event.get("seq"), "model": event.get("model") or None,
+            "tokens": tokens, "cost_usd": cost,
+            # Keep native per-model accounting separately: it can differ from the
+            # result-level usage and must never be added to it a second time.
+            "model_usage": raw.get("modelUsage") if isinstance(raw.get("modelUsage"), dict) else None,
+        })
+    totals = {}
+    missing = {}
+    for key in TOKEN_FIELDS:
+        values = [call["tokens"][key] for call in calls if call["tokens"][key] is not None]
+        totals[key] = sum(values) if values else None
+        missing[key] = len(calls) - len(values)
+    costs = [call["cost_usd"] for call in calls if call["cost_usd"] is not None]
+    return {
+        "source": "claude_terminal_results", "scope": "observed_native_calls_only",
+        "excludes": ["jev", "other_unreported_provider_calls"],
+        "tokens": totals, "calls": calls, "missing_token_calls": missing,
+        "cost_basis": "native_reported_estimate" if costs else None,
+        "missing_cost_calls": len(calls) - len(costs),
+    }, math.fsum(costs) if costs else None
 
 
 def destination_key(command, cwd):
@@ -53,7 +105,7 @@ def event_result(directory, receipt):
         "report": "", "execution": {"exit_code": receipt["exit_code"]},
         "evidence_ref": str(directory), "model": None,
         "elapsed_ms": receipt.get("elapsed_ms"), "cost_usd": None,
-        "warnings": [],
+        "warnings": [], "usage": native_usage([])[0],
     }
     if receipt.get("requested_session_id"):
         result["requested_session_id"] = receipt["requested_session_id"]
@@ -68,6 +120,7 @@ def event_result(directory, receipt):
     events = directory / "events.jsonl"
     if not events.exists():
         return result
+    observed = []
     with events.open(encoding="utf-8", errors="replace") as source:
         for line in source:
             try:
@@ -84,6 +137,9 @@ def event_result(directory, receipt):
             data = event.get("data") or {}
             if not isinstance(data, dict):
                 continue
+            raw = data.get("raw")
+            if isinstance(raw, dict) and raw.get("type") == "result":
+                observed.append(event)
             if event.get("type") == "run.finished":
                 for key in ("execution_status", "acceptance_status", "memory_status", "error", "memory_error"):
                     if key in data:
@@ -93,6 +149,7 @@ def event_result(directory, receipt):
                 if isinstance(raw, dict) and isinstance(raw.get("result"), str):
                     result["report"] = raw["result"]
                 result["model"] = event.get("model") or None
+    result["usage"], result["cost_usd"] = native_usage(observed)
     return result
 
 

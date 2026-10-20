@@ -22,7 +22,27 @@ selects a new directory; an existing directory is never overwritten.
 | `warnings` | Incomplete evidence, missing final report, or unavailable Host inspection. |
 | `stderr_tail` | Last 4 KiB of stderr after a nonzero exit, including errors before any run was created. Treat as diagnostic data. |
 | `requested_session_id` | Continuation input when present; distinct from actual returned IDs, which remain null if startup failed. |
-| `model`, `elapsed_ms`, `cost_usd` | Observed execution model, measured launch duration and unavailable cost (`null`). |
+| `model`, `elapsed_ms` | Observed execution model and measured launch duration. |
+| `usage` | Observed terminal Claude results: input/output/cache tokens, per-call phase/session/model details, separate native per-model accounting, and coverage limits. |
+| `cost_usd` | Sum of observed Claude terminal `total_cost_usd` estimates; `null` when none were reported. Not a verified bill or complete Host cost. |
+
+Usage is projected from retained events in both result mode and read-only
+inspection, so old evidence can expose metrics without replaying the task.
+Only terminal native results are additive: streaming message snapshots and
+`modelUsage` are not added to result-level `usage`. The latter is retained
+separately because the native values can differ. Mirrored terminal events are
+deduplicated within their Host run, phase and component.
+
+`usage.tokens` sums each reported token category independently; absent or invalid
+values remain `null` when none were observed. `missing_token_calls` and
+`missing_cost_calls` count terminal calls lacking each metric. Explicit zero is
+preserved. `usage.calls` separates execution from memory extraction.
+`usage.cost_basis=native_reported_estimate` identifies costs supplied by Claude;
+no price table or provider invoice is inferred. `usage.scope` is
+`observed_native_calls_only`: Jev and other unreported provider calls are excluded.
+Interrupted or incomplete event logs can therefore yield partial usage/cost,
+even when every observed terminal result includes metrics. Preserve the normal
+execution status and warnings alongside these numbers.
 
 `scripts/chat.py --inspect EVIDENCE_DIRECTORY` reads that launch and, once a
 Run ID exists, uses the original destination's read-only `run show`. It does not
