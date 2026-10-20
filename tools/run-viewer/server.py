@@ -314,7 +314,7 @@ class Catalog:
                 base = Path(marker["memory_root"]) / "domains" / domain / directory / identifier / "revisions" / str(number)
                 paths.update((base / "record.json", base / ("SKILL.md" if directory == "skills" else "content.md")))
 
-        def fingerprint(files):
+        def fingerprint(files, identity_only=()):
             # Include ancestors so replacing a directory with a symlink cannot
             # preserve a cached result. Directory timestamps are irrelevant.
             dependencies = set(files)
@@ -330,12 +330,15 @@ class Catalog:
                 if stat.S_ISLNK(info.st_mode):
                     raise ValueError("file-memory path contains a symlink")
                 identity = (info.st_dev, info.st_ino, info.st_mode)
-                if not stat.S_ISDIR(info.st_mode):
+                if not stat.S_ISDIR(info.st_mode) and path not in identity_only:
                     identity += (info.st_size, info.st_mtime_ns, info.st_ctime_ns)
                 result.append((str(path), identity))
             return tuple(result)
 
-        return fingerprint(paths), fingerprint({index, Path(str(index) + "-wal")})
+        # The lock coordinates publication; its bytes/timestamps are not published
+        # knowledge. Metadata maintenance must not look like an authority edit.
+        # Keep device/inode/mode so replacement and unsafe permissions invalidate.
+        return fingerprint(paths, {source / "publish.lock"}), fingerprint({index, Path(str(index) + "-wal")})
 
     def _memory_connection(self, verified_authority=None):
         marker = self.file_memory_marker()

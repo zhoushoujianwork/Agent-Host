@@ -175,3 +175,18 @@ terminated the Host, tool shell and sleep process; the durable receipt recorded
 `execution_status=canceled`, `acceptance_status=unverified` and skipped memory.
 Native adapter regressions also exercise descendants in a separate session and
 verify that an unrelated sibling process remains alive.
+
+## File-memory verification signatures
+
+The viewer verifies published files through the configured Host before trusting
+the derived index. Revision records, document bytes, publication pointers,
+backend markers and the verifier retain full metadata signatures, including
+ctime, to detect same-size edits with restored mtime.
+
+The advisory `publish.lock` file participates through device, inode and mode
+only. Its content and timestamps are coordination metadata, not a publication
+version; maintenance of an unchanged lock must not produce a publication-change
+error on every verification. Lock replacement, unsafe permissions and symlink
+paths still invalidate or reject the snapshot. A shared publication lock remains
+held throughout projection, and genuine source changes during Host verification
+remain visible failures rather than falling back to legacy memory rows.

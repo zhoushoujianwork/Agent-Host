@@ -303,6 +303,49 @@ class MemoryTests(unittest.TestCase):
             verifier.assert_called_once_with()
             self.assertEqual(validation.call_count, 1)
 
+    def test_publication_lock_metadata_refresh_does_not_invalidate_verified_knowledge(self):
+        conn = self.database()
+        conn.close()
+        marker, _, _, _ = self.file_backend([
+            {"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
+        lock = Path(marker["memory_root"]) / "sources" / key / "publish.lock"
+
+        def verify():
+            # chmod to the existing mode changes ctime without changing knowledge.
+            lock.chmod(0o600)
+            os.utime(lock, ns=(1, 1))
+            return {"generation": 1}
+
+        with patch.object(self.catalog, "verify_file_memory", side_effect=verify) as verifier:
+            self.assertEqual(memory_catalog(self.catalog)["database_total"], 1)
+            lock.chmod(0o600)
+            self.assertEqual(memory_catalog(self.catalog)["database_total"], 1)
+            verifier.assert_called_once_with()
+
+    def test_replaced_or_nonprivate_publication_lock_is_still_rejected(self):
+        conn = self.database()
+        conn.close()
+        marker, _, _, _ = self.file_backend([
+            {"id": "current", "scope": "/project-a", "text": "Current knowledge", "status": "active"}])
+        key = hashlib.sha256(marker["source_id"].encode()).hexdigest()[:24]
+        lock = Path(marker["memory_root"]) / "sources" / key / "publish.lock"
+
+        def replace_lock():
+            replacement = lock.with_name("replacement.lock")
+            replacement.write_bytes(b"")
+            replacement.chmod(0o600)
+            os.replace(replacement, lock)
+            return {"generation": 1}
+
+        with patch.object(self.catalog, "verify_file_memory", side_effect=replace_lock):
+            with self.assertRaisesRegex(ValueError, "changed during verification"):
+                memory_catalog(self.catalog)
+        self.assertIsNone(self.catalog._verified_memory_signature)
+        lock.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "unsafe file-memory publication lock"):
+            memory_catalog(self.catalog)
+
     def test_cached_reads_detect_same_size_edit_even_with_restored_mtime(self):
         conn = self.database()
         conn.close()
