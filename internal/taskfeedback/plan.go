@@ -161,7 +161,7 @@ func (r Resolver) Resolve(ctx context.Context, req Request) Plan {
 			p.RequestFor, p.NotifyTo = id, id
 		}
 	}
-	if p.NotifyTo == p.Requester && req.Origin != nil && req.Channel == "" && req.NotifyTo == "" {
+	if p.NotifyTo == p.Requester && req.Origin != nil && req.NotifyTo == "" {
 		return p
 	}
 	if p.NotifyTo == p.Requester && req.Origin == nil && req.NotifyTo == "" && req.RequestFor == "" && req.Channel == "" {
@@ -174,7 +174,7 @@ func (r Resolver) Resolve(ctx context.Context, req Request) Plan {
 		return unresolved("notification_user_not_configured")
 	}
 	channel := req.Channel
-	if channel == "" && req.Origin != nil {
+	if req.Origin != nil {
 		channel = req.Origin.Channel
 	}
 	if channel == "" {

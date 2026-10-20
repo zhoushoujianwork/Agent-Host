@@ -116,6 +116,36 @@ func TestLargeDirectoryOnlyProvidesMentionedCandidates(t *testing.T) {
 	}
 }
 
+func TestNotificationChannelFollowsOriginBeforeCLIDefault(t *testing.T) {
+	r := fixtureResolver("user:alice")
+	r.Users[0].NotifyChannel = "dingtalk"
+	r.Users[0].Accounts = append(r.Users[0].Accounts, Account{Channel: "dingtalk", AccountID: "bot", TenantID: "corp", SenderID: "alice-staff"})
+	origin := &Origin{Account: Account{Channel: "feishu", AccountID: "app", TenantID: "tenant", SenderID: "ou_owner"}, MessageID: "source"}
+	for _, override := range []string{"", "dingtalk"} {
+		p := r.Resolve(t.Context(), Request{Requester: "owner", RequestFor: "alice", Origin: origin, Channel: override})
+		if p.Mode != "notify" || p.Target == nil || p.Target.Channel != "feishu" {
+			t.Fatalf("source channel overridden: %+v", p)
+		}
+		p = r.Resolve(t.Context(), Request{Requester: "alice", Origin: origin, Channel: override})
+		if p.Mode != "origin" || p.Target == nil || p.Target.Channel != "feishu" {
+			t.Fatalf("original reply redirected: %+v", p)
+		}
+	}
+	p := r.Resolve(t.Context(), Request{Requester: "owner", RequestFor: "alice"})
+	if p.Mode != "notify" || p.Target.Channel != "dingtalk" {
+		t.Fatalf("CLI default ignored: %+v", p)
+	}
+	p = r.Resolve(t.Context(), Request{Requester: "owner", RequestFor: "alice", Channel: "feishu"})
+	if p.Mode != "notify" || p.Target.Channel != "feishu" {
+		t.Fatalf("explicit CLI channel ignored: %+v", p)
+	}
+	r.Users[0].Accounts = r.Users[0].Accounts[1:]
+	p = r.Resolve(t.Context(), Request{Requester: "owner", RequestFor: "alice", Origin: origin})
+	if p.Mode != "needs_recipient" || p.Target != nil {
+		t.Fatalf("missing source-channel account fell back: %+v", p)
+	}
+}
+
 func TestLiveOwnershipAttribution(t *testing.T) {
 	if os.Getenv("AGH_FEEDBACK_LIVE") != "1" {
 		t.Skip("explicit live classifier check")

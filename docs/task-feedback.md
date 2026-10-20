@@ -22,6 +22,11 @@ Mentioning a person as a data subject does not automatically make them the
 requester. Names select existing identities; model output cannot create account
 bindings or supply arbitrary message destinations.
 
+Channel tasks always deliver through their source channel and application.
+Only CLI tasks use an explicitly selected notification channel or the recipient's
+configured default. A missing account on the source channel remains unresolved;
+it does not fall back to another channel.
+
 ```mermaid
 flowchart TD
     C[Channel request] --> S[Authenticated sender and original conversation]

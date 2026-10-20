@@ -45,10 +45,12 @@ otherwise ordinary self-owned CLI work retains terminal output. A new request
 is attributed independently; an explicitly recognized continuation retains its
 prior recipient and revalidates the account binding.
 
-Prefer the source channel/application/tenant when choosing an account. A CLI
-request can select a channel; otherwise use the configured notification channel
-or the sole unambiguous account. Missing or multiple matching accounts leave a
-visible unresolved plan. A channel's ordinary reply still goes to its original
+Channel requests must use the source channel/application/tenant, regardless of
+the recipient's default or a supplied channel option. A CLI request can select
+a channel; otherwise use the configured notification channel or the sole
+unambiguous account. Defaults apply only when there is no channel origin.
+Missing or multiple matching source accounts leave a visible unresolved plan,
+without cross-channel fallback. A channel's ordinary reply still goes to its original
 conversation. A transferred request adds a separate bot notification to the
 resolved demand owner; it does not silently move the original conversation.
 
