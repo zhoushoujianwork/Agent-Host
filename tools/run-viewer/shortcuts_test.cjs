@@ -1,10 +1,10 @@
 "use strict";
 const {test}=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
-function setup(hash,chatOpen=false){
+function setup(hash,chatOpen=false,modalOpen=false){
   const events={},frameEvents={},frameDocumentEvents={},windowEvents={},location={hash};let focused=false;
   const button={hidden:true,setAttribute(){},addEventListener(k,v){events[k]=v;}},panel={hidden:!chatOpen};
-  const doc={getElementById(id){return id==="close-chat"?button:id==="chat-panel"?panel:{setAttribute(){},focus(){focused=true;}};},querySelector(){return {focus(){focused=true;}};},querySelectorAll(){return [{addEventListener(k,v){frameEvents[k]=v;},contentDocument:{addEventListener(k,v){frameDocumentEvents[k]=v;}}}];},addEventListener(k,v){events[k]=v;}};
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"shortcuts.js"),"utf8"),{document:doc,window:{showChat(show){panel.hidden=!show;events["agh:chat-visibility"]();},addEventListener(k,v){windowEvents[k]=v;}},location,URLSearchParams});
+  const doc={getElementById(id){return id==="close-chat"?button:id==="chat-panel"?panel:id==="settings-dialog"?{open:modalOpen}:{setAttribute(){},focus(){focused=true;}};},querySelector(){return {focus(){focused=true;}};},querySelectorAll(){return [{addEventListener(k,v){frameEvents[k]=v;},contentDocument:{addEventListener(k,v){frameDocumentEvents[k]=v;}}}];},addEventListener(k,v){events[k]=v;}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,"shortcuts.js"),"utf8"),{document:doc,window:{closeSettings(){modalOpen=false;location.hash="#memory";return true;},showChat(show){panel.hidden=!show;events["agh:chat-visibility"]();},addEventListener(k,v){windowEvents[k]=v;}},location,URLSearchParams});
   const key=(overrides={},handler=events.keydown)=>{let prevented=false;handler({key:"w",metaKey:true,preventDefault(){prevented=true;},stopPropagation(){},...overrides});return prevented;};
   return {location,button,panel,key,events,frameEvents,frameDocumentEvents,focused:()=>focused};
 }
@@ -19,4 +19,9 @@ test("settings, memory and plain journal keep native close behavior when Chat is
 });
 test("other modifiers, composition, repetition and handled events are ignored",()=>{
   for(const overrides of [{metaKey:false,ctrlKey:true},{shiftKey:true},{altKey:true},{ctrlKey:true},{isComposing:true},{repeat:true},{defaultPrevented:true}])assert.equal(setup("#memory",true).key(overrides),false);
+});
+
+test("Cmd+W dismisses settings before the underlying Chat",()=>{
+  const h=setup("#settings",true,true);assert.equal(h.key(),true);
+  assert.equal(h.location.hash,"#memory");assert.equal(h.panel.hidden,false);
 });

@@ -21,3 +21,14 @@ button,input,select { font: inherit; } button { cursor: pointer; } [hidden] { di
 .notice,#feedback { padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 20px; font-size: 11px; }.empty { font-size: 12px; padding: 38px 20px; line-height: 1.9; text-align: center; color: var(--muted); } kbd { padding: 5px 9px; border: 1px solid var(--line); border-bottom-width: 2px; background: var(--bg); border-radius: 6px; color: var(--muted); font: 11px var(--mono); white-space: nowrap; }
 @media(max-width:800px) { body.simple-settings { padding: 16px; }.preferences-nav { width: 180px; padding: 20px 10px; }.preferences-heading { padding: 26px 24px; }.preferences-content { padding: 0 24px 26px; }.preferences-save { padding: 16px 24px; }.simple-row { gap: 18px; padding: 18px; }.simple-control { width: 50%; } }
 @media(max-width:580px) { body.simple-settings { padding: 0; }.preferences { display: block; min-height: 100dvh; border: 0; border-radius: 0; }.preferences-nav { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 18px; }.preferences-brand { padding: 0 0 18px; }.preferences-foot { display: none; }#categories { flex-direction: row; overflow: auto; }.category { width: auto; white-space: nowrap; padding: 8px; gap: 6px; font-size: 11px; }.category .symbol { font-size: 15px; width: 15px; }.preferences-search { margin-bottom: 12px; }.preferences-heading { padding: 24px 20px; }.preferences-content { padding: 0 20px 25px; }.simple-row { display: block; }.simple-control { width: 100%; max-width: none; margin-top: 13px; }.theme-options { margin-top: 18px; }.preferences-save { padding: 14px 20px; flex-wrap: wrap; }.start-note { padding: 18px; }.theme-preview { height: 50px; } }
+
+.modal-settings,.modal-settings body.simple-settings { height: 100%; overflow: hidden; }
+.modal-settings body.simple-settings { padding: 0; }
+.modal-settings .preferences { width: 100%; height: 100%; min-height: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none; overflow: hidden; }
+.modal-settings .preferences-main { min-height: 0; }
+.modal-settings .preferences-heading { flex-shrink: 0; padding-right: 64px; }
+.modal-settings .preferences-content { min-height: 0; overflow: auto; scrollbar-width: none; }
+.modal-settings .preferences-content::-webkit-scrollbar { display: none; }
+.modal-settings .preferences-save { flex-shrink: 0; }
+.modal-settings .preferences-foot a { display: none; }
+@media(max-width:580px) { .modal-settings .preferences { display: flex; flex-direction: column; }.modal-settings .preferences-nav { padding: 16px; }.modal-settings .preferences-brand { padding-right: 40px; }.modal-settings .preferences-main { overflow: hidden; } }

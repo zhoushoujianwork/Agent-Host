@@ -46,3 +46,15 @@ boundary and `node --test tools/run-viewer/shortcuts_test.cjs` for close handlin
 iframe keyboard events and modifier guards. Browser acceptance saved an Agent
 name in an isolated fixture and exercised Cmd+W in both Chat and an opened
 conversation detail without closing the containing workbench tab.
+
+## Settings modal
+
+The workspace opens the existing settings iframe in a native modal dialog.
+The underlying route, selected record and Chat remain mounted and inert while
+it is open. The frame is retained on dismissal, so unsaved edits survive
+close/reopen within the same page; page reload retains the existing unload guard.
+The close button, backdrop, Escape (including inside the iframe) and Cmd+W
+return to the underlying route. Cmd+W dismisses settings before closing Chat.
+Header/navigation and the save bar remain visible while the form content scrolls
+without a visible scrollbar. Direct `#settings` links open over the memory page;
+the standalone settings document remains available.

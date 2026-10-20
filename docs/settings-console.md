@@ -1,7 +1,10 @@
 # Simple settings
 
 AGH settings follow OpenFilm's compact layout: a short navigation on the left,
-only the choices needed to get started on the right. Most users should be able
+only the choices needed to get started on the right. Settings open in a modal
+over the current module; close with the × button, backdrop, Escape or Cmd+W.
+Closing keeps unsaved form edits available when reopened in the same page.
+The background module and Chat keep their state. Most users should be able
 to keep the defaults. [Implementation details](settings-console-detail.md).
 
 ## What to set
@@ -38,5 +41,5 @@ group-binding editing remain planned. CLI and channel destinations stay separate
 
 The page edits existing owner-local Host configuration. Initial installation and
 native account sign-in remain in their existing tools. Standalone previews can
-change appearance without a configured Host. Web Chat remains a local draft
-entry until task submission is connected.
+change appearance without a configured Host. Web Chat submits tasks through
+its configured local Agent connection.

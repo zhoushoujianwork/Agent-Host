@@ -377,3 +377,10 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
   [data-page="workspace"] .chat-home h1 { font-size: 29px; } [data-page="workspace"] .suggestions button { width: 100%; padding: 16px; }
 }
 @media(max-width:850px) { [data-page="workspace"] .chat-panel { width: min(350px,calc(100vw - 65px)); } }
+
+/* Settings float above the current module and retain their form on dismissal. */
+.settings-modal { position: fixed; inset: 0; width: min(1050px,calc(100vw - 64px)); height: min(800px,calc(100dvh - 64px)); max-width: none; max-height: none; padding: 0; margin: auto; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--ink); box-shadow: 0 28px 100px #10251940; overflow: hidden; }
+.settings-modal::backdrop { background: #15261e66; backdrop-filter: blur(5px); }
+.settings-modal iframe { display: block; width: 100%; height: 100%; border: 0; }
+.settings-modal-close { position: absolute; z-index: 1; top: 17px; right: 17px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 22px; line-height: 1; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+@media(max-width:600px) { .settings-modal { width: calc(100vw - 20px); height: calc(100dvh - 24px); border-radius: 12px; } }

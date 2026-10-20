@@ -37,10 +37,36 @@ function showChat(show) {
   document.dispatchEvent(new Event("agh:chat-visibility"));
   if (show) updateComposer();
 }
+const settingsDialog = $("settings-dialog");
+let backgroundRoute = "#memory";
+function closeSettings() {
+  if (!settingsDialog.open) return false;
+  settingsDialog.close();
+  if (location.hash.split("?")[0] === "#settings") history.replaceState(null, "", backgroundRoute);
+  navigate();
+  document.dispatchEvent(new Event("agh:settings-visibility"));
+  document.querySelector('[data-view="settings"]').focus();
+  return true;
+}
+window.closeSettings = closeSettings;
+$("settings-close").onclick = closeSettings;
+settingsDialog.addEventListener("cancel", event => { event.preventDefault(); closeSettings(); });
+settingsDialog.addEventListener("click", event => {
+  if (event.target !== settingsDialog) return;
+  const rect = settingsDialog.getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeSettings();
+});
 function navigate() {
   const requested = location.hash.slice(1).split("?")[0];
-  const view = Object.hasOwn(titles, requested) ? requested : "memory";
-  if (requested !== view) history.replaceState(null, "", `#${view}`);
+  const settings = requested === "settings";
+  const view = settings ? backgroundRoute.slice(1).split("?")[0] : Object.hasOwn(titles, requested) ? requested : "memory";
+  if (!settings && requested !== view) history.replaceState(null, "", `#${view}`);
+  if (!settings) backgroundRoute = location.hash;
+  if (settings) {
+    const frame = settingsDialog.querySelector("iframe");
+    if (!frame.getAttribute("src")) frame.src = frame.dataset.src;
+    if (!settingsDialog.open) settingsDialog.showModal();
+  } else if (settingsDialog.open) settingsDialog.close();
   if (requested === "chat") showChat(true);
   document.querySelectorAll(".view").forEach(node => { node.hidden = node.id !== view; });
   document.querySelectorAll("[data-view]").forEach(node => {
@@ -51,7 +77,7 @@ function navigate() {
   $("view-title").textContent = titles[view];
   const frame = $(view).querySelector("iframe");
   if (!frame) return;
-  const key = new URLSearchParams(location.hash.split("?")[1] || "").get("key");
+  const key = new URLSearchParams((settings ? backgroundRoute : location.hash).split("?")[1] || "").get("key");
   const src = frame.dataset.src + (view === "executions" && key ? `?key=${encodeURIComponent(key)}` : "");
   if (!frame.getAttribute("src") || view === "executions" && key && frame.dataset.key !== key) {
     frame.src = src;
@@ -63,6 +89,13 @@ for (const frame of document.querySelectorAll("iframe")) frame.addEventListener(
   if (!doc) return;
   const css = doc.createElement("link");
   css.rel = "stylesheet"; css.href = "/embedded.css"; doc.head.append(css);
+  if (frame.closest("#settings-dialog")) {
+    doc.documentElement.classList.add("modal-settings");
+    doc.addEventListener("keydown", event => {
+      if (event.defaultPrevented || event.isComposing || event.key !== "Escape") return;
+      event.preventDefault(); closeSettings();
+    });
+  }
   doc.addEventListener("click", event => {
     const anchor = event.target.closest("a[href]");
     if (!anchor) return;

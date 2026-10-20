@@ -30,7 +30,6 @@
     <div class="studio">
       <section id="memory" class="view frame-view" hidden><iframe title="记忆图谱与记忆库" data-src="/memory.html"></iframe></section>
       <section id="executions" class="view frame-view" hidden><iframe title="执行记录与证据" data-src="/executions.html"></iframe></section>
-      <section id="settings" class="view frame-view" hidden><iframe title="Agent-Host 设置" data-src="/settings.html"></iframe></section>
       <aside id="chat-panel" class="chat-panel" aria-label="Chat 对话">
         <div class="chat-heading"><div class="chat-identity"><img src="/logo.svg" width="30" height="30" alt=""><div><strong>Chat <span class="draft-badge">本地执行</span></strong><small>原生输出，实时可见</small></div></div><button id="new-chat" type="button" class="chat-new">新对话</button><button id="panel-close" class="chat-icon-button" type="button" aria-label="收起 Chat" title="收起 Chat (⌘W)">×</button></div>
         <div id="chat-agent-bar" class="chat-agent-bar" hidden><label for="chat-agent">智能体</label><select id="chat-agent" aria-label="Chat 智能体" title="切换智能体会保留各自的对话；只列出当前 Web 连接中的本地智能体。"></select></div>
@@ -39,5 +38,6 @@
       </aside>
     </div>
   </main>
+  <dialog id="settings-dialog" class="settings-modal" aria-label="设置"><button id="settings-close" class="settings-modal-close" type="button" aria-label="关闭设置" title="关闭设置 (Esc)">×</button><iframe title="Agent-Host 设置" data-src="/settings.html"></iframe></dialog>
 </body>
 </html>

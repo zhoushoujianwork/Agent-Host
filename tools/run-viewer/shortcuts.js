@@ -3,9 +3,11 @@
   const button = document.getElementById("close-chat");
   const panel = document.getElementById("chat-panel");
   const detailOpen = () => location.hash.startsWith("#executions?") && new URLSearchParams(location.hash.split("?")[1]).has("key");
-  const canClose = () => !panel.hidden || detailOpen();
+  const settingsOpen = () => document.getElementById("settings-dialog")?.open;
+  const canClose = () => settingsOpen() || !panel.hidden || detailOpen();
   function close() {
     if (!canClose()) return false;
+    if (settingsOpen()) return window.closeSettings();
     if (!panel.hidden) {
       window.showChat(false);
       document.getElementById("chat-toggle").focus();
@@ -25,12 +27,13 @@
   button.addEventListener("click", close);
   const update = () => {
     button.hidden = !canClose();
-    const label = !panel.hidden ? "关闭右侧 Chat" : "关闭当前对话";
+    const label = settingsOpen() ? "关闭设置" : !panel.hidden ? "关闭右侧 Chat" : "关闭当前对话";
     button.setAttribute("aria-label", label);
     button.title = `${label} (⌘W)`;
   };
   window.addEventListener("hashchange", update);
   document.addEventListener("agh:chat-visibility", update);
+  document.addEventListener("agh:settings-visibility", update);
   document.addEventListener("keydown", keydown, true);
   document.querySelectorAll("iframe").forEach(frame => frame.addEventListener("load", () => {
     frame.contentDocument?.addEventListener("keydown", keydown, true);
