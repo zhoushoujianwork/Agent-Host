@@ -4,14 +4,17 @@ import json
 from contextlib import closing
 from pathlib import Path
 import sqlite3
-from settings_store import private_bytes
+from settings_store import private_bytes, redact
+from chat_runtime import agent_destination
+import hashlib
 
 
-def execution_engine(store, agent, execution, assigned):
+def execution_engine(store, agent, execution, assigned, origin=None):
     reference = agent.get("execution_config") or execution.get("execution_config")
     if not reference:
         return {"engine": "Claude Code", "transport": "print / stream-json"} if assigned else {"engine": None, "transport": None}
-    path = store.config / reference
+    base = Path(origin).parent if agent.get("execution_config") and origin else store.config
+    path = base / reference
     try:
         value = json.loads(private_bytes(path))
         return {"engine": value.get("engine"), "transport": value.get("transport")}
@@ -77,12 +80,17 @@ def configured_destinations(store, rows):
 
 def observations(catalog, destination, agent_id):
     """Use only explicitly attached state sources; never infer a production path."""
-    result = {"activity": [], "groups": [], "skills": [], "evidence_state": "unknown"}
+    result = {"activity": [], "groups": [], "skills": [], "native_inventory": None, "evidence_state": "unknown"}
     sources = getattr(catalog, "catalogs", {})
-    source = sources.get(destination["channel"])
+    source_name = destination["channel"]
+    if source_name == "web":
+        source_name = next((name for name, source in sources.items() if destination.get("state_home") and source.database.parent.resolve() == Path(destination["state_home"]).resolve()), None)
+    source = sources.get(source_name)
+    if source is None and destination["channel"] == "web" and hasattr(catalog, "database") and destination.get("state_home") and catalog.database.parent.resolve() == Path(destination["state_home"]).resolve():
+        source, source_name = catalog, ""
     if source is None or not source.database.exists():
         return result
-    if destination["channel"] == "cli" and (not destination.get("state_home") or
+    if destination["channel"] in {"cli", "web"} and (not destination.get("state_home") or
             source.database.parent.resolve() != Path(destination["state_home"]).resolve()):
         return result
     try:
@@ -91,7 +99,7 @@ def observations(catalog, destination, agent_id):
             if "runs" not in tables:
                 return result
             messages = []
-            if destination["channel"] != "cli" and "channel_messages" in tables:
+            if destination["channel"] not in {"cli", "web"} and "channel_messages" in tables:
                 # Account identity is required before associating channel history.
                 if not destination["account"]:
                     return result
@@ -103,7 +111,7 @@ def observations(catalog, destination, agent_id):
             run_ids = {m.get("run_id") for m in messages if (m.get("agent_id") or "default") == agent_id}
             query = "SELECT payload FROM runs WHERE COALESCE(NULLIF(json_extract(payload,'$.agent_id'),''),'default')=? ORDER BY created_at DESC LIMIT 200"
             runs = [json.loads(r[0]) for r in conn.execute(query, (agent_id,))]
-            if destination["channel"] != "cli":
+            if destination["channel"] not in {"cli", "web"}:
                 runs = [r for r in runs if r["id"] in run_ids]
             replies = {m.get("run_id"): m.get("reply_status", "unknown") for m in reversed(messages)}
             seen = set()
@@ -116,7 +124,7 @@ def observations(catalog, destination, agent_id):
                                          "last_seen": m.get("received_at"),
                                          "last_agent": (m.get("agent_id") or "default") if m.get("run_id") else None})
             for run in runs[:20]:
-                key = destination["channel"] + ":db:" + run["id"]
+                key = (source_name + ":" if source_name else "") + "db:" + run["id"]
                 result["activity"].append({"id": run["id"], "key": key, "created_at": run.get("created_at"),
                                            "execution": run.get("execution_status", "unknown"),
                                            "acceptance": run.get("acceptance_status", "unverified"),
@@ -125,13 +133,29 @@ def observations(catalog, destination, agent_id):
                                            "workspace": run.get("workspace") or run.get("scope")})
                 if "events" not in tables:
                     continue
+                events = [json.loads(raw) for raw, in conn.execute("SELECT payload FROM events WHERE run_id=? ORDER BY seq", (run["id"],))]
+                if result["native_inventory"] is None:
+                    for event in reversed(events):
+                        raw = (event.get("data") or {}).get("raw") or {}
+                        if event.get("phase") != "execute" or event.get("component") not in {"harness.acp", "harness.claude"} or not isinstance(raw, dict):
+                            continue
+                        if not (raw.get("native_initialization") or raw.get("type") == "system" and raw.get("subtype") == "init"):
+                            continue
+                        if raw.get("admitted") is False:
+                            continue
+                        result["native_inventory"] = {"skills": [name[:200] for name in raw.get("skills") or [] if isinstance(name, str)],
+                            "services": [{"name": str(s.get("name", ""))[:200], "status": str(s.get("status", "unknown"))[:40]} for s in raw.get("mcp_servers") or [] if isinstance(s, dict)],
+                            "skills_observed": isinstance(raw.get("skills"), list), "model": event.get("model"),
+                            "transport": "acp" if event["component"] == "harness.acp" else "print / stream-json",
+                            "observed_at": event.get("at") or run.get("created_at"), "run_key": key}
+                        break
                 for raw, in conn.execute("SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type')='workspace.assembled' ORDER BY seq", (run["id"],)):
                     manifest = json.loads(raw).get("data", {}).get("skill_manifest") or {}
                     if manifest.get("agent_id") != agent_id:
                         continue
                     for skill in manifest.get("sources") or []:
                         entry = {"name": skill.get("name"), "revision": skill.get("revision"), "run_key": key,
-                                 "observed_at": run.get("created_at"), "state": "observed_loaded"}
+                                 "observed_at": run.get("created_at"), "state": "observed_assembled"}
                         if not any(s["name"] == entry["name"] for s in result["skills"]):
                             result["skills"].append(entry)
             result["evidence_state"] = "bounded_history"
@@ -140,12 +164,24 @@ def observations(catalog, destination, agent_id):
     return result
 
 
-def profiles(store, catalog=None):
+def profiles(store, catalog=None, web_config=None, web_agent=None):
     if store is None:
         return {"enabled": False, "profiles": []}
     rows = store.index()["files"]
     destinations = configured_destinations(store, rows)
     virtual_files = []
+    web_error = None
+    if web_config:
+        try:
+            web = agent_destination(web_config)
+            destinations.insert(0, {"channel": "web", "enabled": True, "account": "", "tenant": "", **web})
+            if not any(row["category"] == "agents" and row["path"] == web["agents_path"] for row in rows):
+                path = Path(web["agents_path"])
+                virtual_files.append({"id": "web-agents-" + hashlib.sha256(str(path).encode()).hexdigest()[:12],
+                    "category": "agents", "read_only": True, "path": str(path), "title": "Web Chat 智能体",
+                    "revision": None, "value": redact(json.loads(private_bytes(path)), token=lambda _: "[redacted]")})
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            web_error = "无法读取当前 Web Chat 连接配置。"
     for destination in destinations:
         if destination["channel"] == "cli" or destination["agents_path"]:
             continue
@@ -170,7 +206,7 @@ def profiles(store, catalog=None):
             for agent in config.get("agents", []):
                 evidence = observations(catalog, destination, agent["id"])
                 bindings = {b["conversation_id"]: b["agent_id"] for b in config.get("group_bindings", [])}
-                if destination["channel"] == "cli":
+                if destination["channel"] in {"cli", "web"}:
                     bindings = {}
                 groups = [{"conversation_id": cid, "routing": "explicit", "last_seen": None}
                           for cid, aid in bindings.items() if aid == agent["id"]]
@@ -190,6 +226,7 @@ def profiles(store, catalog=None):
                 result.append({"key": row["id"] + ":" + destination["channel"] + ":" + agent["id"],
                                "file_id": row["id"], "id": agent["id"], "name": agent.get("name") or agent["id"],
                                "destination": destination["channel"], "enabled": destination["enabled"],
+                               "chat_selected": destination["channel"] == "web" and agent["id"] == (web_agent or destination.get("selected_agent")),
                                "account": destination.get("account"), "default": default, "origin": row["path"],
                                "revision": row["revision"], "loaded_state": "unknown",
                                "model": agent.get("model") or execution.get("model"),
@@ -200,5 +237,6 @@ def profiles(store, catalog=None):
                                "projects": agent.get("projects"),
                                "instructions": instruction_sources(store, agent),
                                "groups": groups, "connectors": connectors,
-                               **execution_engine(store, agent, execution, destination["channel"] != "unassigned"), **evidence})
-    return {"enabled": True, "profiles": result, "virtual_files": virtual_files}
+                               **execution_engine(store, agent, execution, destination["channel"] != "unassigned", row["path"]), **evidence})
+    result.sort(key=lambda profile: profile["destination"] != "web")
+    return {"enabled": True, "profiles": result, "virtual_files": virtual_files, "web_error": web_error}

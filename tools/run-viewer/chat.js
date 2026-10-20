@@ -7,6 +7,8 @@
   const scroll = el("chat-scroll");
   let follow = true;
   let latestStatus = "";
+  let selectedAgent, agentOptions = "";
+  const drafts = new Map();
   function controls() {
     const busy = pending || Boolean(state.active_id);
     el("send-chat").hidden = Boolean(state.active_id);
@@ -16,6 +18,7 @@
     el("stop-chat").disabled = pending || active?.status === "stopping";
     el("stop-chat").textContent = active?.status === "stopping" ? "正在中止…" : "■ 中止执行";
     el("new-chat").disabled = busy;
+    el("chat-agent").disabled = busy || !state.enabled || (state.agents || []).length < 2;
   }
   function node(tag, className, text) {
     const result = document.createElement(tag);
@@ -32,6 +35,22 @@
     if (current.length !== children.length || current.some((child,index) => child !== children[index])) parent.replaceChildren(...children);
   }
   function render() {
+    if (selectedAgent !== state.selected_agent) {
+      if (selectedAgent !== undefined) {
+        drafts.set(selectedAgent,el("draft").value);
+        el("draft").value = drafts.get(state.selected_agent) || "";
+        el("draft").oninput();
+      }
+      selectedAgent = state.selected_agent;
+      request = null; follow = true;
+    }
+    const signatureOptions=JSON.stringify(state.agents || []);
+    if (agentOptions !== signatureOptions) {
+      el("chat-agent").replaceChildren(...(state.agents || []).map(agent=>{const option=node("option","",agent.name);option.value=agent.id;return option;}));
+      agentOptions=signatureOptions;
+    }
+    el("chat-agent").value = state.selected_agent || "";
+    el("chat-agent-bar").hidden = !(state.agents || []).length;
     el("chat-welcome").hidden = state.turns.length > 0;
     el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";
     const ids = new Set(state.turns.map(t => t.id));
@@ -150,7 +169,7 @@
     }
     // A lost response retains this ID. Explicit retry cannot replay a task that
     // the server already accepted, including when it has since completed.
-    if (!request || request.message !== message) request = {request_id:crypto.randomUUID(),message};
+    if (!request || request.message !== message) request = {request_id:crypto.randomUUID(),message,...(state.selected_agent?{agent_id:state.selected_agent}:{})};
     pending = true; controls(); el("chat-state").textContent = "正在发送…";
     try {
       await action("/api/chat",request);
@@ -161,6 +180,14 @@
     finally { pending = false; controls(); }
   }
   el("send-chat").onclick = send;
+  el("chat-agent").onchange = async () => {
+    if (pending || state.active_id) { el("chat-agent").value=state.selected_agent; return; }
+    const agent_id=el("chat-agent").value;
+    pending=true;controls();
+    try {await action("/api/chat/agent",{agent_id});await refresh();el("chat-state").textContent="已切换智能体，各自的对话与上下文独立保留。";}
+    catch(error){el("chat-agent").value=state.selected_agent;el("chat-state").textContent=error.message;}
+    finally{pending=false;controls();}
+  };
   document.addEventListener("agh:chat-send",send);
   document.addEventListener("agh:draft-change",controls);
   el("stop-chat").onclick = async () => {

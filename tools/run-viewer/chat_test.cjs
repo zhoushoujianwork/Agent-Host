@@ -15,6 +15,7 @@ async function setup() {
         if(!snapshot.turns.length)snapshot={...snapshot,active_id:"turn",turns:[{id:"turn",input:value.message,text:"",output:[],status:"running",record_key:null}]};
         if(failResponse){failResponse=false;throw Error("lost reply");}
       }
+      if(url==="/api/chat/agent")snapshot={...snapshot,selected_agent:value.agent_id,turns:[]};
       return {ok:true,json:async()=>({turn_id:"turn"})};
     }
     return {ok:true,json:async()=>JSON.parse(JSON.stringify(snapshot))};
@@ -78,4 +79,20 @@ test("ACP footer distinguishes observed model from a default configuration alias
   const h=await setup();h.snapshot.turns=[{id:"acp",input:"hello",status:"completed",transport:"acp",model:"default",output:[]}];await h.poll();
   const turn=h.el("chat-messages").children[0];assert.equal(turn.children[3].textContent,"模型未确认 · ACP · 执行完成");
   h.snapshot.turns[0].model="observed-native-model";await h.poll();assert.equal(turn.children[3].textContent,"observed-native-model · ACP · 执行完成");
+});
+
+test("Agent picker keeps drafts separate and cannot switch during execution",async()=>{
+  const h=await setup();h.snapshot.agents=[{id:"a",name:"A"},{id:"b",name:"B"}];h.snapshot.selected_agent="a";await h.poll();
+  assert.equal(h.el("chat-agent").disabled,false);
+  h.el("draft").value="draft A";
+  h.el("chat-agent").value="b";await h.el("chat-agent").onchange();
+  assert.equal(h.el("draft").value,"");h.el("draft").value="draft B";
+  h.el("chat-agent").value="a";await h.el("chat-agent").onchange();
+  assert.equal(h.el("draft").value,"draft A");
+  await h.el("send-chat").onclick();
+  assert.equal(JSON.parse(h.calls.find(c=>c.url==="/api/chat"&&c.method==="POST").body).agent_id,"a");
+  assert.equal(h.el("chat-agent").disabled,true);
+  const count=h.calls.filter(c=>c.url==="/api/chat/agent").length;
+  h.el("chat-agent").value="b";await h.el("chat-agent").onchange();
+  assert.equal(h.calls.filter(c=>c.url==="/api/chat/agent").length,count);
 });

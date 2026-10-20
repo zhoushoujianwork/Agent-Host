@@ -84,7 +84,7 @@ class ProfileTests(unittest.TestCase):
         p = self.result()
         self.assertEqual(p["activity"][0]["key"], "dingtalk:db:r1")
         self.assertEqual(p["activity"][0]["acceptance"], "unverified")
-        self.assertEqual(p["skills"][0]["state"], "observed_loaded")
+        self.assertEqual(p["skills"][0]["state"], "observed_assembled")
         self.assertNotIn("private-body", json.dumps(p))
         self.assertFalse(self.result(destination="feishu")["activity"])
 
@@ -148,6 +148,26 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn("private-command", json.dumps(p))
         engine.unlink()
         self.assertIsNone(self.result()["engine"])
+
+    def test_web_uses_actual_connection_and_latest_native_inventory(self):
+        engine = self.write("execution.json", {"engine":"claude", "transport":"acp", "command":"PRIVATE_COMMAND"})
+        web = self.write("web.json", {"args":["--agent","default","--agents-config",str(self.root/"config/agents.json"),"--home",str(self.home),"--workspace",str(self.root),"--execution-config",str(engine)]})
+        self.catalog.catalogs["cli"] = self.catalog.catalogs["dingtalk"]
+        for run_id, date, skills in [("older","2026-10-19",["removed-skill"]),("newer","2026-10-20",["jms-ssh"] )]:
+            self.db.execute("INSERT INTO runs VALUES(?,?,?)",(run_id,date,json.dumps({"id":run_id,"agent_id":"default","created_at":date})))
+            native = {"type":"native.evidence","phase":"execute","component":"harness.acp","model":"actual-model","at":date,"data":{"raw":{"native_initialization":True,"admitted":True,"skills":skills,"mcp_servers":[{"name":"confluence","status":"connected"}],"PRIVATE_SECRET":"SECRET"}}}
+            self.db.execute("INSERT INTO events VALUES(?,?,?)",(run_id,1,json.dumps(native)))
+        self.db.commit()
+        result=profiles(self.store,self.catalog,web,"ops")
+        p=next(p for p in result["profiles"] if p["destination"]=="web" and p["id"]=="default")
+        self.assertEqual(p["transport"],"acp")
+        self.assertFalse(p["chat_selected"])
+        self.assertTrue(next(p for p in result["profiles"] if p["destination"]=="web" and p["id"]=="ops")["chat_selected"])
+        self.assertEqual(p["native_inventory"]["skills"],["jms-ssh"])
+        self.assertEqual(p["native_inventory"]["services"][0]["status"],"connected")
+        self.assertEqual(p["native_inventory"]["run_key"],"dingtalk:db:newer")
+        self.assertNotIn("PRIVATE_COMMAND",json.dumps(result))
+        self.assertNotIn("PRIVATE_SECRET",json.dumps(result))
 
 
 if __name__ == "__main__":

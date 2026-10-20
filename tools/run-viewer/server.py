@@ -22,7 +22,7 @@ from urllib.parse import parse_qs, urlsplit
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
-from chat_runtime import ChatRuntime, ChatConflict, default_config
+from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
@@ -772,7 +772,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, result)
             elif target.path == "/api/agent-profiles":
                 self.send(200, agent_profiles(getattr(self.server, "settings_store", None),
-                                              getattr(self.server, "catalog", None)))
+                                              getattr(self.server, "catalog", None),
+                                              getattr(getattr(self.server, "chat_runtime", None), "config", None),
+                                              getattr(getattr(self.server, "chat_runtime", None), "selected_agent", None)))
             elif target.path == "/api/backup":
                 root = getattr(self.server, "backup_root", None)
                 result = {"enabled": False}
@@ -809,7 +811,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         token = getattr(self.server, "mutation_token", None)
         route = urlsplit(self.path).path
-        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
+        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -827,9 +829,12 @@ class Handler(BaseHTTPRequestHandler):
                 chat = getattr(self.server, "chat_runtime", None)
                 if chat is None:
                     raise ChatConflict("Chat 执行环境尚不可用。")
-                if route == "/api/chat" and set(value) == {"request_id", "message"}:
-                    turn_id = chat.start(value["request_id"], value["message"])
+                if route == "/api/chat" and set(value) in ({"request_id", "message"}, {"request_id", "message", "agent_id"}):
+                    turn_id = chat.start(value["request_id"], value["message"], value["agent_id"]) if "agent_id" in value else chat.start(value["request_id"], value["message"])
                     self.send(202, {"turn_id": turn_id})
+                elif route == "/api/chat/agent" and set(value) == {"agent_id"} and isinstance(value["agent_id"], str):
+                    chat.select(value["agent_id"])
+                    self.send(200, {"status": "agent_selected"})
                 elif route == "/api/chat/stop" and set(value) == {"turn_id"} and isinstance(value["turn_id"], str):
                     chat.stop(value["turn_id"])
                     self.send(200, {"status": "stop_requested"})
@@ -905,7 +910,7 @@ def main():
     server.settings_store = SettingsStore(args.backup_root, args.host_binary,
                                         Path.home() / ".config/agent-host/task-handoff.json") if args.backup_root else None
     server.mutation_token = secrets.token_urlsafe(32)
-    server.chat_runtime = ChatRuntime(args.chat_config or default_config(args.backup_root))
+    server.chat_runtime = AgentChatRuntime(args.chat_config or default_config(args.backup_root))
     def stop_server(_signal, _frame):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, stop_server)

@@ -60,6 +60,33 @@ this does not probe the remote model or connect a channel.
 
 ## Web capability setup
 
+### Agent selection and settings evidence
+
+The Chat header lists only Agents from its explicit `--agents-config` catalog.
+It does not scan other profiles or attach to running channel workers. One
+configured Agent is shown as a single disabled choice; add further local Agents
+to that catalog to enable selection. Selection is an owner same-origin action
+and is rejected while a turn is active. Requests carry their expected Agent ID
+so a stale browser cannot send to a newly selected Agent accidentally.
+
+Each Agent has a separate runtime projection, native resume ID, failure state,
+idempotency history and draft. Switching A → B → A restores A's conversation;
+New conversation resets only the selected Agent. Browser reload preserves the
+conversations in the running viewer; separate drafts are page-local. A viewer restart retains Host execution records
+and native storage, but these in-memory Web conversation tabs are not a durable
+conversation browser.
+
+Settings adds a Web Chat destination from the actual `--chat-config`, rather
+than treating the ordinary CLI handoff's transport as the Web transport. Only
+explicitly attached state sources matching that destination are inspected.
+The latest admitted native initialization supplies skill names, service names,
+connection outcomes, observation time and source run. Previous task manifests
+remain separately labeled assembly evidence. Historical skills are not unioned
+into an invented currently-loaded inventory; observations do not establish
+that a subsequently edited configuration revision has loaded.
+
+### Destination configuration
+
 Select an explicit owner-private `config/web-chat.json` (or pass `--chat-config`)
 using the validated formal CLI destination. Preserve its `--home`,
 `--agents-config`, `--agent`, `--workspace`, `--native-profile`, `--memory-scope`,

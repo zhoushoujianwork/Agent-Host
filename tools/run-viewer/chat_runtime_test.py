@@ -11,7 +11,7 @@ import unittest
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from chat_runtime import ChatRuntime, ChatConflict, configured_launch, default_config
+from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, configured_launch, default_config
 from server import Handler, Catalog, ThreadingHTTPServer
 
 HOST = r'''
@@ -82,6 +82,58 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.session, "session-test")
         self.assertEqual(self.runtime.start("one", "hello"), turn)
         self.assertEqual(len(self.runtime.snapshot()["turns"]), 1)
+
+    def test_switching_agents_preserves_owned_conversations_and_native_resumes(self):
+        catalog=self.root/"agents.json"
+        catalog.write_text(json.dumps({"agents":[{"id":"a","name":"Agent A"},{"id":"b","name":"Agent B"}]})); catalog.chmod(0o600)
+        config=self.root/"chat.json"
+        config.write_text(json.dumps({"args":["--agent","a","--agents-config",str(catalog),"--home",str(self.root),"--workspace",str(self.root)]})); config.chmod(0o600)
+        launched=[]
+        self.script.write_text(HOST.replace("'session-test'", "('session-'+sys.argv[sys.argv.index('--agent')+1])") + "\nopen(os.path.join(sys.argv[sys.argv.index('--home')+1],'resume-evidence.jsonl'),'a').write(json.dumps({'agent':sys.argv[sys.argv.index('--agent')+1],'resume':sys.argv[sys.argv.index('--resume')+1] if '--resume' in sys.argv else None})+'\\n')\n")
+        def launch(path,agent):
+            command,cwd,env,identity=self.launch(path)
+            launched.append(agent)
+            return [*command,"--agent",agent],cwd,env,agent
+        self.runtime.close()
+        self.runtime=AgentChatRuntime(config,launch)
+        self.assertEqual(self.runtime.snapshot()["selected_agent"],"a")
+        self.runtime.start("a1","hello","a")
+        with self.assertRaises(ChatConflict):self.runtime.select("b")
+        a=self.wait_for(lambda s:s["active_id"] is None)["turns"][0]
+        self.runtime.select("b")
+        self.assertEqual(self.runtime.snapshot()["turns"],[])
+        with self.assertRaises(ChatConflict):self.runtime.start("stale","hello","a")
+        self.runtime.start("b1","hello","b")
+        self.wait_for(lambda s:s["active_id"] is None)
+        b_context=self.runtime.current
+        self.runtime.select("a")
+        self.assertEqual(self.runtime.snapshot()["turns"][0]["id"],a["id"])
+        self.assertEqual(self.runtime.current.session,"session-a")
+        self.runtime.start("a2","hello","a")
+        self.wait_for(lambda s:s["active_id"] is None)
+        self.assertEqual(len(self.runtime.snapshot()["turns"]),2)
+        self.assertEqual(launched,["a","b","a"])
+        observed=[json.loads(line) for line in (self.root/"resume-evidence.jsonl").read_text().splitlines()]
+        self.assertEqual(observed,[{"agent":"a","resume":None},{"agent":"b","resume":None},{"agent":"a","resume":"session-a"}])
+        self.runtime.reset()
+        self.runtime.select("b")
+        self.assertIs(self.runtime.current,b_context)
+        self.assertEqual(len(self.runtime.snapshot()["turns"]),1)
+        with self.assertRaises(ValueError):self.runtime.select("channel-only-agent")
+
+    def test_configured_launcher_selects_only_an_agent_in_the_explicit_catalog(self):
+        catalog=self.root/"agents.json"
+        catalog.write_text(json.dumps({"default_agent":"a","agents":[{"id":"a","name":"A","projects":[]},{"id":"b","name":"B","projects":[]}]}));catalog.chmod(0o600)
+        environment=self.root/"env.json";environment.write_text("{}");environment.chmod(0o600)
+        config=self.root/"destination.json"
+        config.write_text(json.dumps({"binary":sys.executable,"cwd":str(self.root),"environment_file":str(environment),"args":["--home",str(self.root),"--agents-config",str(catalog),"--agent","a","--workspace",str(self.root),"--native-profile",str(self.root)]}));config.chmod(0o600)
+        command_a,_,_,identity_a=configured_launch(config,"a")
+        command_b,_,_,identity_b=configured_launch(config,"b")
+        self.assertEqual(command_a[command_a.index("--agent")+1],"a")
+        self.assertEqual(command_b[command_b.index("--agent")+1],"b")
+        self.assertEqual(command_b[command_b.index("--home")+1],str(self.root))
+        self.assertNotEqual(identity_a,identity_b)
+        with self.assertRaises(ValueError):configured_launch(config,"unconfigured")
 
     def test_native_final_duration_survives_phase_filter(self):
         turn = {"id":"native", "text":"", "output":[]}
@@ -262,6 +314,32 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(turn["record_key"],"db:run-test")
         finally:
             server.shutdown(); server.server_close(); thread.join()
+
+    def test_agent_selection_http_requires_owner_origin_and_fixed_schema(self):
+        selected=[]
+        class Selection:
+            def select(self, identifier):
+                if identifier != "configured":
+                    raise ValueError("unknown Agent")
+                selected.append(identifier)
+        server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
+        server.chat_runtime=Selection();server.mutation_token="owner-token"
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        base=f"http://127.0.0.1:{server.server_port}"
+        try:
+            payload=json.dumps({"agent_id":"configured"}).encode()
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(Request(base+"/api/chat/agent",data=payload,headers={"Content-Type":"application/json"}))
+            self.assertEqual(caught.exception.code,403);self.assertEqual(selected,[])
+            headers={"Content-Type":"application/json","Origin":base,"X-Host-Action":"owner-token"}
+            with urlopen(Request(base+"/api/chat/agent",data=payload,headers=headers)) as response:
+                self.assertEqual(response.status,200)
+            self.assertEqual(selected,["configured"])
+            with self.assertRaises(HTTPError) as caught:
+                urlopen(Request(base+"/api/chat/agent",data=json.dumps({"agent_id":"configured","config":"outside"}).encode(),headers=headers))
+            self.assertEqual(caught.exception.code,400)
+        finally:
+            server.shutdown();server.server_close();thread.join()
 
 
 if __name__ == "__main__":

@@ -34,3 +34,11 @@ test("capability search filters cards without creating markup from source text",
   const search=h.walk().find(n=>n.type==="search");search.value="no-match";search.oninput();
   assert.ok(!h.walk().some(n=>n.tag==="h3"&&n.textContent==="<img onerror=bad>"));assert.ok(!h.walk().some(n=>n.tag==="img"));
 });
+
+test("Web profile distinguishes actual ACP configuration and native historical inventory",()=>{
+  const h=setup();Object.assign(h.profile,{destination:"web",engine:"claude",transport:"acp",native_inventory:{transport:"acp",skills_observed:true,skills:["jms-ssh"],services:[{name:"confluence",status:"connected"}],observed_at:"2026-10-20"}});
+  h.render();assert.ok(h.walk().some(n=>n.textContent.includes("acp · 1 个技能 · 1 个知识与工具服务")));
+  h.click("能力");assert.ok(h.walk().some(n=>n.tag==="h3"&&n.textContent==="jms-ssh"));
+  assert.ok(h.walk().some(n=>n.tag==="h3"&&n.textContent==="confluence"));
+  assert.ok(h.walk().some(n=>n.textContent==="已连接（历史观测）"));
+});

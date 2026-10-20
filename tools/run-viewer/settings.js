@@ -97,7 +97,7 @@ async function load() {
   }catch(error){feedback(error.message);}
 }
 async function loadProfiles() {
-  try{const response=await fetch("/api/agent-profiles",{cache:"no-store"});if(!response.ok)throw Error("智能体档案读取失败；可继续编辑已有设置。");const result=await response.json();agentProfiles=result.profiles||[];catalog.files=catalog.files.filter(f=>!f.read_only).concat(result.virtual_files||[]);profileError="";}
+  try{const response=await fetch("/api/agent-profiles",{cache:"no-store"});if(!response.ok)throw Error("智能体档案读取失败；可继续编辑已有设置。");const result=await response.json();agentProfiles=result.profiles||[];catalog.files=catalog.files.filter(f=>!f.read_only).concat(result.virtual_files||[]);profileError=result.web_error||"";}
   catch(error){agentProfiles=[];profileError=error.message;}
 }
 $("save").onclick=async()=>{

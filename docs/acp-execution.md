@@ -33,6 +33,10 @@ paths and advanced options stay in configuration.
 - The selected Agent's knowledge tools, published memory Skills and explicitly
   installed base-profile skills are available through ACP. Chat records the
   observed native skill/service inventory.
+- Settings lists the actual Web Chat connection separately from CLI/channel
+  configuration, with its latest native inventory. Chat can switch between
+  Agents in that Web connection's explicit local catalog; each retains its own
+  conversation, native session and draft while the viewer is running.
 - Explicit capability, version, authentication and execution failures. No
   automatic transport, provider or engine fallback.
 

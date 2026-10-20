@@ -7,6 +7,7 @@ launches the validated command, projects its public events and requests cancel.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -59,8 +60,47 @@ def default_config(root):
         return None
 
 
-def configured_launch(path):
+def agent_destination(path):
+    """Read only the explicitly configured CLI catalog; never scan other homes."""
+    value = json.loads(private_bytes(Path(path)))
+    args = value.get("args")
+    if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+        raise ValueError("Chat 连接缺少明确的智能体配置。")
+    def option(flag):
+        if args.count(flag) != 1 or args.index(flag) + 1 >= len(args):
+            raise ValueError("Chat 连接缺少明确的智能体配置。")
+        return args[args.index(flag) + 1]
+    catalog_path = Path(option("--agents-config"))
+    if not catalog_path.is_absolute():
+        raise ValueError("Chat 智能体目录必须使用绝对路径。")
+    raw = private_bytes(catalog_path)
+    catalog = json.loads(raw)
+    agents = catalog.get("agents")
+    if not isinstance(agents, list) or not 0 < len(agents) <= 128:
+        raise ValueError("Chat 智能体目录无效。")
+    choices = []
+    for agent in agents:
+        if not isinstance(agent, dict):
+            raise ValueError("Chat 智能体目录无效。")
+        identifier, name = agent.get("id"), agent.get("name")
+        if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", identifier) or not isinstance(name, str) or not name.strip() or len(name) > 200 or any(c in name for c in "\x00\r\n") or any(a["id"] == identifier for a in choices):
+            raise ValueError("Chat 智能体目录无效。")
+        choices.append({"id": identifier, "name": name})
+    selected = option("--agent")
+    if selected not in {a["id"] for a in choices}:
+        raise ValueError("Chat 默认智能体已不在配置中。")
+    optional = lambda flag: args[args.index(flag) + 1] if flag in args and args.index(flag) + 1 < len(args) else None
+    return {"agents": choices, "selected_agent": selected, "agents_path": str(catalog_path),
+            "catalog_digest": hashlib.sha256(raw).hexdigest(), "state_home": option("--home"),
+            "execution": {"model": optional("--model"), "workspace": option("--workspace"),
+                          "execution_config": optional("--execution-config")}}
+
+
+def configured_launch(path, agent_id=None):
     value = json.loads(private_bytes(path))
+    destination = agent_destination(path)
+    if agent_id is not None and agent_id not in {a["id"] for a in destination["agents"]}:
+        raise ValueError("所选智能体不在 Web 连接配置中。")
     script = next((directory / "scripts/chat.py" for directory in
                    (ROOT / "skills/agent-host-tasks",
                     Path.home() / ".agents/skills/agent-host-tasks",
@@ -77,6 +117,8 @@ def configured_launch(path):
     # race the checker and redirect this launch.
     if json.loads(private_bytes(path)) != value:
         raise ValueError("Chat 配置已变化，请检查后重新发送。")
+    if agent_destination(path) != destination:
+        raise ValueError("智能体目录已变化，请重新选择后发送。")
     managed = json.loads(private_bytes(Path(value["environment_file"])))
     if not managed.keys() <= PROVIDER_KEYS or not all(isinstance(v, str) and v and
             v.strip() == v and not any(c in v for c in "\x00\r\n") for v in managed.values()):
@@ -85,12 +127,92 @@ def configured_launch(path):
            not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k not in ("CLAUDE_CONFIG_DIR", "CLAUDECODE")}
     env.update(managed)
     command, cwd = [*result["command"], "--renew-runtime"], result["cwd"]
+    if agent_id is not None:
+        command[command.index("--agent") + 1] = agent_id
     identity = hashlib.sha256(json.dumps([command, cwd, managed], sort_keys=True).encode()).hexdigest()
     return command, cwd, env, identity
 
 
 class ChatConflict(ValueError):
     pass
+
+
+class AgentChatRuntime:
+    """One independent in-memory conversation per configured local Agent.
+
+    Host persists run evidence/native sessions. This owner-local viewer keeps
+    projections while running; switching is never a replay or a channel handoff.
+    """
+    def __init__(self, config, launcher=configured_launch):
+        self.config = Path(config) if config else None
+        self.launcher = launcher
+        self.lock = threading.RLock()
+        self.contexts = {}
+        self.current = None
+        self.selected_agent = None
+        self.closed = False
+
+    @property
+    def state_home(self):
+        return self.current.state_home if self.current else None
+
+    def _select(self, agent_id, destination):
+        if agent_id not in {a["id"] for a in destination["agents"]}:
+            raise ValueError("所选智能体不在 Web 连接配置中。")
+        key = (destination["agents_path"], destination["state_home"], agent_id)
+        if key not in self.contexts:
+            if len(self.contexts) >= 128:
+                raise ChatConflict("此页面已保留 128 个智能体会话，请重新启动页面服务后继续。")
+            self.contexts[key] = ChatRuntime(self.config, lambda path: self.launcher(path, agent_id))
+        self.selected_agent, self.current = agent_id, self.contexts[key]
+
+    def snapshot(self):
+        with self.lock:
+            try:
+                destination = agent_destination(self.config) if self.config else None
+                if destination and self.current is None:
+                    self._select(destination["selected_agent"], destination)
+                available = destination and self.selected_agent in {a["id"] for a in destination["agents"]}
+                result = self.current.snapshot() if self.current else {"turns": [], "active_id": None}
+                result.update(enabled=bool(available) and not self.closed, selected_agent=self.selected_agent,
+                              agents=destination["agents"] if destination else [],
+                              notice="" if available else "请检查此 Web 连接的智能体配置。")
+                return result
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                result = self.current.snapshot() if self.current else {"turns": [], "active_id": None}
+                result.update(enabled=False, agents=[], selected_agent=self.selected_agent,
+                              notice="无法读取 Web 智能体配置，请检查连接设置。")
+                return result
+
+    def select(self, agent_id):
+        with self.lock:
+            if self.closed or any(c.active for c in self.contexts.values()):
+                raise ChatConflict("请等待当前执行结束或中止后，再切换智能体。")
+            self._select(agent_id, agent_destination(self.config))
+
+    def start(self, request_id, message, agent_id=None):
+        with self.lock:
+            snapshot = self.snapshot()
+            if not snapshot["enabled"] or (agent_id is not None and agent_id != self.selected_agent):
+                raise ChatConflict("当前智能体已变化，请刷新后重新发送。")
+            return self.current.start(request_id, message)
+
+    def reset(self):
+        with self.lock:
+            if self.current:
+                self.current.reset()
+
+    def stop(self, turn_id):
+        with self.lock:
+            if self.current:
+                self.current.stop(turn_id)
+
+    def close(self):
+        with self.lock:
+            self.closed = True
+            contexts = list(self.contexts.values())
+        for runtime in contexts:
+            runtime.close()
 
 
 class ChatRuntime:
