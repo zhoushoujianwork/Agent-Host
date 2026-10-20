@@ -14,6 +14,7 @@ import (
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/harness"
+	"agent-host/internal/harness/claude"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 )
@@ -80,7 +81,7 @@ func questionExcerpt(text string) string {
 
 // resultText formats presentation only; the original native output and evidence
 // remain unchanged in the run journal. Actual models and measured execution
-// duration are public metadata for every audience.
+// duration and observed native usage are public metadata for every audience.
 func resultText(run state.Run, runErr error) string {
 	return resultTextWithNotice(run, runErr, "", dingtalk.MaxReplyBytes)
 }
@@ -132,6 +133,32 @@ func runFooter(run state.Run) string {
 		if label := metadataSnippet(model, 200); label != "" {
 			metadata = append(metadata, "🤖 "+label)
 		}
+	}
+	usage := claude.SummarizeUsage(run.Events)
+	if usage.CostUSD != nil {
+		label := fmt.Sprintf("💰 已记录 Claude 估算 $%.6f（不含 Jev）", *usage.CostUSD)
+		if usage.MissingCosts > 0 {
+			label += "（部分调用）"
+		}
+		metadata = append(metadata, label)
+	}
+	var tokens []string
+	partial := false
+	for _, field := range []struct{ key, label string }{
+		{"input_tokens", "入"}, {"output_tokens", "出"},
+		{"cache_creation_input_tokens", "缓存写"}, {"cache_read_input_tokens", "缓存读"},
+	} {
+		if value := usage.Tokens[field.key]; value != nil {
+			tokens = append(tokens, fmt.Sprintf("%s %d", field.label, *value))
+			partial = partial || usage.MissingTokens[field.key] > 0
+		}
+	}
+	if len(tokens) > 0 {
+		label := "🔢 已记录 Token " + strings.Join(tokens, " / ")
+		if partial {
+			label += "（部分调用）"
+		}
+		metadata = append(metadata, label)
 	}
 	if len(metadata) == 0 {
 		return ""

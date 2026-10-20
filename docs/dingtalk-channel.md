@@ -56,8 +56,9 @@ independently, so a slow reaction API does not delay the answer.
 
 The local terminal continues to show live progress and streamed text. DingTalk
 gets one final Markdown reply with the answer's headings/lists/code.
-The footer shows the actual runtime model and measured execution time as public
-information in private chats and groups. Missing measurements are omitted.
+The footer shows the actual runtime model, measured execution time and recorded
+Claude token use and estimated USD cost in private chats and groups. Cost excludes
+Jev and other unreported calls; missing measurements are omitted.
 Group replies @ the current requester and include a short quoted question
 preview, including command, clarification and failure replies. The quote is a
 Markdown excerpt; it does not create native reply navigation. Private replies

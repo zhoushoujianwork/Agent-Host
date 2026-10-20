@@ -151,8 +151,11 @@ using question or model text. The
 maps the idempotency key to API `uuid`, with a 50-character limit.
 
 Outgoing IM text is at most 4,000 UTF-8 bytes including `[AI]`, its line break and any model/time
-footer. Longer native answers retain the full saved run and send an explicit
-excerpt. The formatter does not apply DingTalk @mention or quote syntax to IM.
+and recorded-Claude-usage/cost footer. The shared
+[formatting contract](dingtalk-channel-detail.md#reply-capability-and-delivery)
+labels native estimates and missing measurements. Longer native answers retain
+the full saved run and send an explicit excerpt. The formatter does not apply
+DingTalk @mention or quote syntax to IM.
 This increment sends no attachments or thread-specific reply modes. Progress
 reactions are a separate opt-in delivery path described below.
 

@@ -39,6 +39,9 @@ meeting does not bring private-chat permissions into that shared conversation.
 Answers return to the source conversation and start with `[AI]`.
 Private/group replies use Feishu rich text to render its supported Markdown
 formatting. Meeting replies keep the meeting text format.
+Replies share the [runtime footer](dingtalk-channel-detail.md#reply-capability-and-delivery):
+recorded model/time, Claude token use and estimated cost, excluding Jev and
+unreported calls. Missing metrics are omitted.
 
 One local `lark-cli` event connection handles IM and optional meeting-entry
 events. One Host worker shares the configured concurrency limit across these

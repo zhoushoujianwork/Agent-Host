@@ -302,8 +302,9 @@ subprocess starts. Output includes an `[AI]` prefix. The reply adapter never
 derives a meeting, application identity, profile or recipient from inbound text.
 The final meeting text is bounded to 4,000 UTF-8 bytes; longer replies carry an
 explicit excerpt notice. The shared Host formatter reserves space for its public
-actual-model and measured-execution-time footer before truncation. Missing actual
-models or execution measurements are omitted, following the
+actual-model, measured-execution-time and recorded-Claude-usage/cost footer before
+truncation. Cost is a native estimate excluding Jev and unreported calls. Missing
+models or measurements are omitted, following the
 [DingTalk formatting contract](dingtalk-channel-detail.md#reply-capability-and-delivery).
 The complete native answer remains in the saved run.
 

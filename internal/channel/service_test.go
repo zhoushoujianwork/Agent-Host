@@ -19,9 +19,10 @@ import (
 )
 
 type serviceRunner struct {
-	mu       sync.Mutex
-	requests []harness.Request
-	run      func(context.Context, harness.Request) (harness.Result, error)
+	mu        sync.Mutex
+	requests  []harness.Request
+	run       func(context.Context, harness.Request) (harness.Result, error)
+	resultRaw json.RawMessage
 }
 
 func (r *serviceRunner) Run(ctx context.Context, req harness.Request, emit func(harness.Observation) error) (harness.Result, error) {
@@ -36,7 +37,11 @@ func (r *serviceRunner) Run(ctx context.Context, req harness.Request, emit func(
 	if emitErr := emit(harness.Observation{Type: "init", Model: result.Model, NativeSessionID: req.NativeSessionID, Raw: json.RawMessage(`{"type":"system","subtype":"init"}`)}); emitErr != nil {
 		return harness.Result{Status: "unknown", Error: emitErr.Error()}, emitErr
 	}
-	if emitErr := emit(harness.Observation{Type: "result", Model: result.Model, NativeSessionID: req.NativeSessionID, Message: result.Status, Raw: json.RawMessage(`{"type":"result"}`)}); emitErr != nil {
+	raw := r.resultRaw
+	if raw == nil {
+		raw = json.RawMessage(`{"type":"result"}`)
+	}
+	if emitErr := emit(harness.Observation{Type: "result", Model: result.Model, NativeSessionID: req.NativeSessionID, Message: result.Status, Raw: raw}); emitErr != nil {
 		return harness.Result{Status: "unknown", Error: emitErr.Error()}, emitErr
 	}
 	return result, err

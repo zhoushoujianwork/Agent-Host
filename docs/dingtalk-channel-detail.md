@@ -219,6 +219,16 @@ The duration covers native business execution, not queueing, routing or subseque
 memory processing. Failed turns retain observed metadata alongside their existing
 failure guidance. Group quote/mention bytes and the footer are reserved before
 body truncation, keeping the footer outside code fences and within 4,000 bytes.
+The same footer projects token categories and `total_cost_usd` from terminal
+Claude results in the retained execute/extract events. It labels cost as a native
+estimate for recorded calls, excluding Jev; it is not a provider bill or complete
+Host cost. The Claude adapter owns this protocol-specific projection. Streaming
+snapshots and native `modelUsage` are not added again, and mirrored terminal
+results are deduplicated within their run, phase and component. Missing or invalid
+metrics stay unknown; explicit zero is retained. When some terminal calls lack a
+displayed metric, the footer marks the recorded subtotal as partial. The saved
+run and channel reply retain evidence for local inspection; presentation does
+not rewrite the native answer or publish native identifiers.
 Local paths, memory phases, native identifiers and execution diagnostics retain
 their existing local-inspection rules.
 Commands and legacy confirmation replies follow the same presentation rule. Native body
