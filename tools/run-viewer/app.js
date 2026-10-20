@@ -291,7 +291,7 @@ function renderRecord() {
   $("content").hidden = false;
   const run = record.run;
   const toolList = tools(record);
-  const actual = record.events.find((e) => e.phase === "execute" && e.type === "agent.started")?.model || run.model;
+  const actual = [run.model, ...record.events.filter((e) => e.phase === "execute" && ["agent.result", "text.delta", "agent.started"].includes(e.type)).map(e => e.model).reverse()].find(model => model && model !== "default");
   $("run-title").textContent = runLabels[run.label] || "执行详情";
   $("run-id").textContent = `RUN ${short(run.id)}`;
   $("run-time").textContent = date(run.created_at);

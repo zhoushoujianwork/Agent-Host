@@ -210,6 +210,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(turn["output"][0]["status"],"failed")
         self.assertEqual(turn["output"][1]["content"],"File does not exist")
 
+    def test_acp_reports_observed_capabilities_even_when_empty(self):
+        turn = {"id":"native", "text":"", "output":[]}
+        self.runtime._event(turn,{"type":"native.evidence","phase":"execute","component":"harness.acp","data":{"native_type":"native_configuration","raw":{"native_initialization":True,"skills":["jms-ssh"],"mcp_servers":[{"name":"confluence","status":"connected"}]}}})
+        self.assertEqual(turn["output"][0]["label"],"原生能力")
+        self.assertIn("1 个技能",turn["output"][0]["content"])
+        self.assertIn("jms-ssh",turn["output"][0]["content"])
+        self.assertIn("confluence",turn["output"][0]["content"])
+        self.runtime._event(turn,{"type":"conversation.runtime_renewed","phase":"execute","data":{"previous_session_id":"old"}})
+        self.assertEqual(turn["output"][-1]["label"],"执行上下文已更新")
+        self.assertIn("原生历史未续接",turn["output"][-1]["content"])
+
     def test_full_native_messages_backfill_missing_deltas_once(self):
         turn = {"id":"native", "text":"", "output":[]}
         event = {"type":"native.evidence","phase":"execute","data":{"raw":{"type":"assistant","uuid":"message-1","message":{"content":[{"type":"text","text":"Original answer"}]}}}}

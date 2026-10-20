@@ -115,6 +115,8 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	renewRuntime                                                                       bool
+	renewedFrom                                                                        string
 	executionConfig, executionFingerprint                                              string
 	executionProfile                                                                   *acp.Config
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
@@ -225,6 +227,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", "", "Third-party Jev gateway URL for custom")
 	fs.StringVar(&o.jevModel, "jev-model", "", "Jev model")
 	fs.StringVar(&o.resume, "resume", "", "Host session ID")
+	fs.BoolVar(&o.renewRuntime, "renew-runtime", false, "Allow a fresh session before dispatch when the selected runtime changes")
 	fs.StringVar(&o.message, "m", "", "One-shot input")
 	fs.StringVar(&o.message, "message", "", "One-shot input")
 	fs.BoolVar(&o.noTools, "no-tools", false, "Disable native tools")
@@ -587,12 +590,15 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		return err
 	}
 	var s state.Session
-	if o.resume != "" && !o.oneShot {
+	if o.resume != "" && (!o.oneShot || o.renewRuntime) {
 		// Interactive input is not known yet. Inspect the owned session now;
 		// compare its exact runtime after reading the first task, before dispatch.
 		s, err = store.Session(ctx, o.resume)
 		if err == nil {
 			err = store.SessionCanResume(ctx, s.ID)
+		}
+		if err == nil && o.oneShot && o.renewRuntime {
+			s, err = renewChatRuntime(ctx, h, s, &o)
 		}
 	} else {
 		s, err = h.Session(ctx, o.resume)
@@ -618,6 +624,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 			return err
 		}
 		h = composeHost(store, o, client, renderer.Render)
+		h.Config.PreviousSessionID = o.renewedFrom
 		if previous != o.runtimeFingerprint {
 			var err error
 			s, err = h.Session(ctx, "")

@@ -30,6 +30,7 @@ import (
 )
 
 type Config struct {
+	PreviousSessionID     string
 	PrepareFeedback       func(context.Context, state.Run, *taskfeedback.Plan) (*taskfeedback.Plan, error)
 	BindFeedback          func(context.Context, state.Run) error
 	RestrictedReadOnly    bool
@@ -374,6 +375,11 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		return h.failBeforeExecution(j, err)
 	}
 	var selected []state.Memory
+	if h.Config.PreviousSessionID != "" {
+		if err := j.emit(event.Event{Type: "conversation.runtime_renewed", Phase: "execute", Component: "host", Status: "completed", Message: "selected capabilities changed; started a fresh native conversation before dispatch", Data: map[string]any{"previous_session_id": h.Config.PreviousSessionID, "native_history_restored": false}}); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
 	var notices []string
 	err = j.phase(ctx, "recall", "memory.retrieval", "", func(ctx context.Context) error {
 		var matches, persistent []state.Memory
@@ -582,7 +588,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.NativeSkillContext(skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool

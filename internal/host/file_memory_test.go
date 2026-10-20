@@ -55,6 +55,9 @@ func TestFileHostAutomaticSkillPublicationFreshUseAndBlacklist(t *testing.T) {
 	if strings.Contains(req.Prompt, m.Steps[0]) {
 		t.Fatal("full skill procedure was duplicated in prompt")
 	}
+	if !strings.Contains(req.Prompt, `"native_skill":"agent-host:procedure-`) || !strings.Contains(req.Prompt, "empty statements do not mean no procedure memories") {
+		t.Fatal("mounted procedure memory was invisible to native prompt")
+	}
 	if err := h.Store.InvalidateMemory(t.Context(), m.ID, "Wrong approach"); err != nil {
 		t.Fatal(err)
 	}

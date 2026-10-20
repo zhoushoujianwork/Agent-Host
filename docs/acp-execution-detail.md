@@ -58,6 +58,45 @@ Jev settings are still required for their native/auxiliary responsibilities.
 Check local service configuration before restarting the intended instance;
 this does not probe the remote model or connect a channel.
 
+## Web capability setup
+
+Select an explicit owner-private `config/web-chat.json` (or pass `--chat-config`)
+using the validated formal CLI destination. Preserve its `--home`,
+`--agents-config`, `--agent`, `--workspace`, `--native-profile`, `--memory-scope`,
+knowledge/email configuration arguments and provider environment reference;
+append `--execution-config` to select ACP. Do not replace them with a synthetic
+empty Agent. Start a new Web conversation when changing the destination.
+
+Web launches with `--renew-runtime`: if selected memory Skills or another runtime
+fingerprint changes, CLI first verifies ownership and prior completion, then
+creates a fresh execution session before dispatch. It never retries an executed
+task or reopens an unfinished run. The new run journals the previous session ID;
+Chat reports the renewal and explicitly notes that native history was not
+restored. Visible Web messages remain. Ordinary explicit CLI resume stays strict.
+
+Use the formal CLI state home for its published file memory and source identity.
+Channel state homes remain owned by their running services; Web does not take
+their writer locks or merge private audience memory into CLI. Existing channel
+records can be mounted separately for read-only viewing. A memory count of zero
+for a query is not evidence that another channel has no memories.
+
+Operator-installed native skills belong in the explicitly selected base native
+profile's `skills/` directory. An operator may link that directory to an existing
+installed skill catalog. Agent/audience native profiles inherit that directory
+through a managed link, even when their settings file is unchanged. A real local
+`skills/` directory is an explicit override; conflicting files/links fail rather
+than being overwritten. Removing the base skills removes only the managed link.
+No different home profile is discovered implicitly, and native sessions,
+credentials and automatic memory are not inherited with these skills.
+
+Published procedure memories still use the separately validated task plugin.
+The prompt lists the mounted native Skill names and titles so empty statement
+memory cannot be mistaken for absent procedure memory; full procedures are read
+through Skill rather than duplicated in the prompt. ACP initialization retains
+observed skill/tool names and plugin names/versions, excluding plugin paths and
+account metadata. Web shows this inventory as native activity. Configuration,
+observed loading, actual Skill use and task completion remain separate evidence.
+
 ## Execution boundary and compatibility
 
 `internal/harness/acp` owns bounded newline-delimited JSON-RPC, ACP v1 setup,
@@ -140,3 +179,31 @@ runner with its existing restrictions, not a runtime fallback for business ACP.
 
 These checks do not establish real DingTalk/Feishu platform acceptance, Codex
 support, file-diff completeness or production quality.
+
+### Formal Web capability acceptance, 2026-10-20
+
+The local Web destination was switched from the empty preview Agent to the
+existing configured `daily` CLI Agent, retaining its state, file-memory source,
+scope, instructions and enabled datasource configurations. Its explicit base
+native skill directory references the operator's installed catalog. Channel
+services and their writer state were not switched or restarted.
+
+Run `2c81f29a-b3b9-41f6-a44a-f87f6ef4bbd8` completed through Web and ACP:
+native initialization reported 72 skills (including one selected memory Skill)
+and five connected MCP services; the native agent invoked `jms-ssh`, searched
+Confluence for JMS (five returned entries), and loaded the selected published
+health-check procedure through Skill. It correctly described the three retained
+steps and historical port. Other datasource services were admitted as connected;
+this check did not execute every provider's search/read/write operation.
+
+Run `e7235dad-0afc-4c78-b77a-2b91541921fd` selected no procedure and completed
+after a journaled pre-dispatch session renewal. Run
+`075fc804-19a6-4e10-ab8f-f754a430b11d` then continued that compatible native
+session successfully. No server commands, notifications or business file writes
+were requested by these acceptance probes.
+
+An earlier probe asking specifically for an old service-check procedure was
+excluded by existing applicability checks (`unresolved_memory_object`), while a
+different compatible health-check procedure was loaded. That old annotation
+quality issue was not bypassed or presented as successful retrieval. These
+results establish capability wiring and observed use, not universal recall.

@@ -84,7 +84,7 @@ def configured_launch(path):
     env = {k: v for k, v in os.environ.items() if k not in PROVIDER_KEYS and
            not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k not in ("CLAUDE_CONFIG_DIR", "CLAUDECODE")}
     env.update(managed)
-    command, cwd = result["command"], result["cwd"]
+    command, cwd = [*result["command"], "--renew-runtime"], result["cwd"]
     identity = hashlib.sha256(json.dumps([command, cwd, managed], sort_keys=True).encode()).hexdigest()
     return command, cwd, env, identity
 
@@ -270,6 +270,8 @@ class ChatRuntime:
                 if isinstance(execution, dict):
                     turn["transport"] = str(execution.get("transport", ""))
                     turn["engine"] = str(execution.get("engine", ""))
+            if kind == "conversation.runtime_renewed":
+                self._output(turn, "status", label="执行上下文已更新", content="本轮技能或配置发生变化，已开启新执行会话；之前的聊天记录仍保留，原生历史未续接。")
             # Only the business Claude stream belongs in Chat. Host memory and
             # experience processing retain their evidence in the inspector.
             if event.get("agent") == "memory-extractor" or event.get("phase") not in (None, "", "execute", "knowledge_search", "knowledge_read"):
@@ -309,6 +311,15 @@ class ChatRuntime:
             return
         if event.get("type") == "agent.started":
             self._output(turn, "status", label="init", content=str(event.get("model") or "Claude ACP"))
+        elif raw.get("native_initialization"):
+            skills = raw.get("skills") or []
+            servers = raw.get("mcp_servers") or []
+            details = f"{len(skills)} 个技能 · {len(servers)} 个知识与工具服务"
+            if skills:
+                details += "\nSkills: " + ", ".join(str(name) for name in skills)
+            if servers:
+                details += "\nMCP: " + ", ".join(str(server.get("name", "")) for server in servers if isinstance(server, dict))
+            self._output(turn, "status", label="原生能力", content=details)
         elif raw.get("sessionUpdate") == "plan":
             content = "\n".join(("✓ " if entry.get("status") == "completed" else "→ " if entry.get("status") == "in_progress" else "· ") + str(entry.get("content", "")) for entry in raw.get("entries", []) if isinstance(entry, dict))
             row = next((row for row in turn["output"] if row.get("label") == "原生计划"), None)

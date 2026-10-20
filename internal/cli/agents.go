@@ -283,15 +283,17 @@ func prepareAgentProfile(base, destination string) error {
 		return errors.New("cannot read shared native settings")
 	}
 	path := filepath.Join(destination, "settings.json")
-	if existing, err := os.ReadFile(path); err == nil && string(existing) == string(settings) {
-		return nil
-	}
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
 		return errors.New("agent native settings must be a regular file")
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return os.WriteFile(path, settings, 0600)
+	if existing, err := os.ReadFile(path); err != nil || string(existing) != string(settings) {
+		if err := os.WriteFile(path, settings, 0600); err != nil {
+			return err
+		}
+	}
+	return inheritNativeSkills(base, destination)
 }
 
 func checkAgents(ctx context.Context, agents agentCatalog, o options) error {

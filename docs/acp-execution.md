@@ -30,6 +30,9 @@ paths and advanced options stay in configuration.
 - Host timeout/cancellation propagated through ACP, followed by owned-process
   cleanup. Web's Stop button uses this path.
 - Native plan updates and permission-decision evidence in the Web projection.
+- The selected Agent's knowledge tools, published memory Skills and explicitly
+  installed base-profile skills are available through ACP. Chat records the
+  observed native skill/service inventory.
 - Explicit capability, version, authentication and execution failures. No
   automatic transport, provider or engine fallback.
 
@@ -45,6 +48,11 @@ There is no warm bridge pool yet. Memory extraction stays on the separately
 configured tool-free Claude path. Restricted-member profiles and structured
 business output are rejected by the ACP runner until their constraints are
 implemented. Existing authorization policy is unchanged.
+
+Web must use the actual configured CLI destination, including its Agent catalog,
+state home, memory scope and knowledge configurations. A minimal test Agent does
+not inherit another Agent's capabilities. See
+[Web capability setup](acp-execution-detail.md#web-capability-setup).
 
 Host records the native prompt outcome separately from delivery, acceptance
 and memory results. Missing ACP cost/usage stays unavailable. This feature does

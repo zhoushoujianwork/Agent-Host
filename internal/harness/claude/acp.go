@@ -99,6 +99,16 @@ func ValidateACPInitialization(raw json.RawMessage, servers []harness.MCPServer)
 		_ = json.Unmarshal(value, &server)
 		statuses = append(statuses, map[string]string{"name": server.Name, "status": server.Status})
 	}
-	projected, _ := json.Marshal(map[string]any{"protocol": "acp", "native_initialization": true, "model": native.Model, "mcp_servers": statuses, "admitted": admitted == nil})
+	var inventory struct {
+		Skills  []string `json:"skills"`
+		Plugins []struct {
+			Name    string `json:"name"`
+			Version string `json:"version,omitempty"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(raw, &inventory); err != nil {
+		return native.Model, nil, errors.New("invalid native capability inventory")
+	}
+	projected, _ := json.Marshal(map[string]any{"protocol": "acp", "native_initialization": true, "model": native.Model, "mcp_servers": statuses, "admitted": admitted == nil, "skills": inventory.Skills, "tools": native.Tools, "plugins": inventory.Plugins})
 	return native.Model, projected, admitted
 }
