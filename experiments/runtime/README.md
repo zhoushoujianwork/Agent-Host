@@ -1,5 +1,11 @@
 # Live runtime assembly acceptance
 
+The [2026-10-20 architecture review](../../docs/architecture-review-2026-10-20.md)
+adds `architecture.py`: an isolated real CLI/Web ACP probe for automatic fact
+retention, fresh-conversation recall, MCP search/read, native Skills and Web
+continuation. Its [evidence notes](../../docs/architecture-review-2026-10-20-detail.md)
+include reproduction commands and the separate automatic-procedure experiment.
+
 The CLI fixture below is separate from the owner-authorized dws private-chat
 check. Its successful platform report (private validation evidence) records
 15 isolated source messages, six real Claude runs, independent reply/reaction

@@ -31,11 +31,13 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
 
 ## Next checks
 
-1. **Real member and owner approval flow.** Use a second authenticated account
-   for restricted group requests, approval/rejection, expiry and separate approved
-   execution. Verify that member sessions remain restricted and owner-private
-   data stays private. Current members cannot build, edit or run shell commands
-   directly under the restricted profile.
+1. **Member and owner approval flow — suspended.** Current channel senders use
+   Owner-equivalent native execution, as described in the
+   [authorization guide](dangerous-operations-design.md). Restricted member and
+   one-use owner approval code remains available but is not the active Beta
+   workflow. If that policy is re-enabled, use a second authenticated account
+   to verify restrictions, approval/rejection, expiry and separate approved
+   execution. Private audience boundaries still need live verification.
 2. **Multi-user continuity.** Verify distinct private users, alternating group
    members, profile selection and source grants on real platforms. Feishu group,
    multi-turn and reaction acceptance remain separately tracked.

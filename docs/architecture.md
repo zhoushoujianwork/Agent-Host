@@ -5,6 +5,8 @@ Current technical direction and delivery status, reviewed against source on
 [Implementation notes](architecture-detail.md) map the components and
 contracts; [progress and next steps](release-follow-up.md) own the remaining work.
 Historical acceptance records describe their original revision, not every later change.
+The [2026-10-20 acceptance review](architecture-review-2026-10-20.md) records
+current cross-entry, tool/Skill and automatic-memory checks and remaining limits.
 
 ## Goal and usage
 
