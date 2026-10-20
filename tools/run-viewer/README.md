@@ -182,7 +182,9 @@ managed unified startup already supplies it. The compact OpenFilm-inspired page
 exposes appearance, essential Agent choices, native models/provider connections,
 existing channel setup and shortcut help. Advanced parameters keep their saved
 defaults and are managed in configuration files. Editing a visible field retains
-unlisted values. Cmd+W closes Chat or a conversation detail back to the canvas.
+unlisted values. Chat is only a right-side panel; its open/closed state survives
+module switches. Cmd+W closes that panel in place, or returns a selected
+conversation detail to the canvas when the panel is already closed.
 
 Secret fields load as retained markers, never as their saved values. You can
 replace or explicitly clear them. Saves reject conflicting revisions, keep a

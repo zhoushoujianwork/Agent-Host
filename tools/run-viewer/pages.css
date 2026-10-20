@@ -1,6 +1,9 @@
 /* Page composition: shared materials, different layouts for each responsibility. */
 .agh-brand { padding: 0; overflow: hidden; }.agh-brand img { display: block; width: 100%; height: 100%; }
 .close-chat kbd { font: 10px var(--mono); color: var(--muted); margin-left: 7px; }
+.chat-prompts { display: grid; gap: 9px; margin-top: 24px; }
+.chat-prompts button { background: var(--surface-soft); border: 1px solid var(--line); border-radius: 9px; color: var(--ink); padding: 13px; text-align: left; font-size: 12px; }
+.chat-prompts button:hover { background: var(--accent-soft); }
 body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); border-color: var(--line); color: var(--muted); height: 64px; padding: 0 30px; }
 .page-intro { padding: 30px 32px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .page-intro h1 { font-size: 29px; font-weight: 550; letter-spacing: -1px; margin: 8px 0; }

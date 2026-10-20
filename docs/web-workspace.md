@@ -1,8 +1,9 @@
 # Web workspace
 
 The local workbench now opens a shared workspace inspired by OpenFilm's studio
-and side Chat layout. Use the left navigation to move between conversations,
-Chat drafts, memory and settings. [Implementation notes](web-workspace-detail.md).
+and side Chat layout. Use the left navigation for the canvas, memory, execution
+records and settings. Chat lives only in the right panel, alongside those modules.
+[Implementation notes](web-workspace-detail.md).
 
 ## Available now
 
@@ -10,7 +11,9 @@ Chat drafts, memory and settings. [Implementation notes](web-workspace-detail.md
   it and use arrow keys. Search by request, Agent or project; reset the layout
   with **整理画布**. Positions stay in this browser.
 - Open the latest execution from a conversation, or add its request and run ID
-  to a Chat draft. Drafts save locally and survive page reloads.
+  to a Chat draft. **打开 Chat** and the top-bar Chat toggle open the right panel;
+  switching modules keeps its current open/closed state. Drafts save locally
+  and survive page reloads. Task starters append to the draft without replacing it.
 - Explore the existing memory graph, source evidence and memory library.
 - Set essential Agent, model connection and existing channel choices in the
   compact [settings page](settings-console.md). Advanced options stay in config.
@@ -27,10 +30,11 @@ Switching panels retains settings edits. Saving settings preserves the existing
 validation, conflict detection, secret masking and private backup behavior.
 Service changes still require a deliberate restart.
 
-Press **Cmd+W** in Chat or a conversation detail opened from a card to return to
-the workbench. The top-bar close button does the same. Drafts and execution
-records remain intact; settings, memory and the plain journal keep native close
-behavior. The workspace uses the shared AGH vector mark in navigation and icons.
+Press **Cmd+W** to close the right Chat panel and stay on the current module.
+When Chat is already closed, the shortcut closes a conversation detail back to
+the canvas. The top-bar close button does the same. Drafts and execution records
+remain intact. With neither open, native close behavior is retained. The workspace
+uses the shared AGH vector mark in navigation and icons.
 
 ## This increment
 

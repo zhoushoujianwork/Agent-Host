@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const titles = {workbench:"工作台",chat:"Chat",memory:"记忆图谱",executions:"执行记录",settings:"设置"};
+const titles = {workbench:"工作台",memory:"记忆图谱",executions:"执行记录",settings:"设置"};
 const element = (tag, cls, text) => {const n=document.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const storageKey = "agent-host.workspace.v1";
 let saved = {}, records = [], groups = [], dragging = false;
@@ -14,17 +14,17 @@ function persist(message) {
   try {localStorage.setItem(storageKey,JSON.stringify({positions,draft:draft.value}));if(message)$("draft-status").textContent=message;}
   catch {$("draft-status").textContent="浏览器存储不可用，草稿与布局只保留到此页面关闭。";}
 }
-function showChat(show) {$("chat-panel").hidden=!show;$("chat-toggle").setAttribute("aria-expanded",String(show));}
+function showChat(show) {$("chat-panel").hidden=!show;$("chat-toggle").setAttribute("aria-expanded",String(show));document.dispatchEvent(new Event("agh:chat-visibility"));requestAnimationFrame(sizeCanvas);}
 function navigate() {
   const requested=location.hash.slice(1).split("?")[0];
+  if(requested==="chat"){history.replaceState(null,"","#workbench");showChat(true);}
   const view=Object.hasOwn(titles,requested)?requested:"workbench";
   document.querySelectorAll(".view").forEach(n=>n.hidden=n.id!==view);
   document.querySelectorAll("[data-view]").forEach(n=>{n.classList.toggle("active",n.dataset.view===view);if(n.dataset.view===view)n.setAttribute("aria-current","page");else n.removeAttribute("aria-current");});
   $("view-title").textContent=titles[view];
-  if(view==="chat")showChat(true);
-  if(["settings","memory","executions"].includes(view))showChat(false);
   const frame=$(view).querySelector("iframe");
   if(frame){const key=new URLSearchParams(location.hash.split("?")[1]||"").get("key");const src=frame.dataset.src+(key?`?key=${encodeURIComponent(key)}`:"");if(!frame.getAttribute("src")||view==="executions"&&key&&frame.dataset.key!==key){frame.src=src;frame.dataset.key=key||"";}}
+  requestAnimationFrame(sizeCanvas);
 }
 for(const frame of document.querySelectorAll("iframe"))frame.addEventListener("load",()=>{
   const doc=frame.contentDocument;if(!doc)return;
@@ -41,7 +41,7 @@ function conversationGroups(rows) {
 }
 function defaultPosition(index){const columns=Math.max(1,Math.floor(($("canvas-scroll").clientWidth-48)/300));return {x:24+(index%columns)*300,y:24+Math.floor(index/columns)*265};}
 function positionFor(group,index){const p=positions[group.key];return p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&p.x>=0&&p.y>=0&&p.x<=100000&&p.y<=100000?p:defaultPosition(index);}
-function sizeCanvas(){let width=$("canvas-scroll").clientWidth,height=$("canvas-scroll").clientHeight;for(const card of $("canvas").querySelectorAll(".conversation")){width=Math.max(width,card.offsetLeft+card.offsetWidth+30);height=Math.max(height,card.offsetTop+card.offsetHeight+30);}$("canvas").style.width=`${width}px`;$("canvas").style.height=`${height}px`;}
+function sizeCanvas(){if($("workbench").hidden)return;let width=$("canvas-scroll").clientWidth,height=$("canvas-scroll").clientHeight;for(const card of $("canvas").querySelectorAll(".conversation")){width=Math.max(width,card.offsetLeft+card.offsetWidth+30);height=Math.max(height,card.offsetTop+card.offsetHeight+30);}$("canvas").style.width=`${width}px`;$("canvas").style.height=`${height}px`;}
 function render(){
   const query=$("board-search").value.trim().toLowerCase();
   const shown=groups.filter(g=>g.rows.some(r=>[r.input,r.agent_id,r.project_name,r.project_id,r.source?.name].join(" ").toLowerCase().includes(query)));
@@ -71,10 +71,11 @@ async function refresh(){
 $("refresh").onclick=refresh;$("board-search").oninput=render;
 $("arrange").onclick=()=>{positions={};persist();render();};
 $("chat-toggle").onclick=()=>showChat($("chat-panel").hidden);
+$("open-chat").onclick=()=>{showChat(true);draft.focus();};
 $("save-draft").onclick=()=>persist("草稿已保存在此浏览器，尚未发送。");
 $("clear-draft").onclick=()=>{draft.value="";$("context-title").textContent="新的工作";$("context-subtitle").textContent="选择对话卡片查看关联记录";persist("本地草稿已清空。");};
 draft.oninput=()=>persist("草稿已自动保存，尚未发送。");
-document.querySelectorAll("[data-prompt]").forEach(button=>button.onclick=()=>{draft.value=button.dataset.prompt;persist("草稿已自动保存，尚未发送。");showChat(true);draft.focus();});
+document.querySelectorAll("[data-prompt]").forEach(button=>button.onclick=()=>{draft.value+=`${draft.value?"\n\n":""}${button.dataset.prompt}`;persist("草稿已自动保存，尚未发送。");showChat(true);draft.focus();});
 window.addEventListener("hashchange",navigate);window.addEventListener("resize",sizeCanvas);
 if(matchMedia("(max-width:850px)").matches)showChat(false);
 // Preserve old bookmarked execution links at the new entry point.

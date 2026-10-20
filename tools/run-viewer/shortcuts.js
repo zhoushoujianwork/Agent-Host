@@ -2,12 +2,15 @@
 (() => {
   const button = document.getElementById("close-chat");
   const panel = document.getElementById("chat-panel");
-  const canClose = () => location.hash.split("?")[0] === "#chat" ||
-    location.hash.startsWith("#executions?") && new URLSearchParams(location.hash.split("?")[1]).has("key");
+  const detailOpen = () => location.hash.startsWith("#executions?") && new URLSearchParams(location.hash.split("?")[1]).has("key");
+  const canClose = () => !panel.hidden || detailOpen();
   function close() {
     if (!canClose()) return false;
-    panel.hidden = true;
-    document.getElementById("chat-toggle").setAttribute("aria-expanded", "false");
+    if (!panel.hidden) {
+      window.showChat(false);
+      document.getElementById("chat-toggle").focus();
+      return true;
+    }
     location.hash = "workbench";
     document.querySelector('[data-view="workbench"]').focus();
     return true;
@@ -20,8 +23,14 @@
     close();
   }
   button.addEventListener("click", close);
-  const update = () => { button.hidden = !canClose(); };
+  const update = () => {
+    button.hidden = !canClose();
+    const label = !panel.hidden ? "关闭右侧 Chat" : "关闭当前对话";
+    button.setAttribute("aria-label", label);
+    button.title = `${label} (⌘W)`;
+  };
   window.addEventListener("hashchange", update);
+  document.addEventListener("agh:chat-visibility", update);
   document.addEventListener("keydown", keydown, true);
   document.querySelectorAll("iframe").forEach(frame => frame.addEventListener("load", () => {
     frame.contentDocument?.addEventListener("keydown", keydown, true);

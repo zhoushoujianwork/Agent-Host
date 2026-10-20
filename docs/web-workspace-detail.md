@@ -53,12 +53,20 @@ CLI handoff checker with sibling imports and rollback on unexpected validation
 failures. The checker runs with `--check` in a separate Python process and never
 executes the configured Host task.
 
-`shortcuts.js` handles unmodified Meta+W only on `#chat` or a selected
-`#executions?key=...` route, including focus inside the retained detail frame.
-It prevents the host close action when the event reaches the page, hides the
-Chat panel, returns to the canvas and restores navigation focus. A visible close
-button shares the same action. The handler neither deletes data nor stops a run.
+`shortcuts.js` handles unmodified Meta+W when the right Chat panel or a selected
+`#executions?key=...` route is open, including focus in retained frames. The panel
+takes priority: closing it leaves the route intact and focuses the Chat toggle.
+With the panel already closed, a selected detail returns to the canvas and focuses
+navigation. `showChat` emits `agh:chat-visibility` to synchronize the close button.
+The handler neither deletes data nor stops a run.
 Browser-reserved shortcuts may not be delivered to JavaScript in every host.
+
+The standalone Chat view and rail entry have been removed. Old `#chat` links use
+`replaceState` to open the right panel on the canvas without losing drafts. The
+panel keeps its open/closed state across module navigation; compact screens start
+with it closed. Canvas dimensions are recalculated after navigation and panel
+changes, only while visible. `workspace_test.cjs` covers navigation, compatibility
+and non-destructive draft starters.
 
 `logo.svg` is an original vector AGH monogram, used by the rail, standalone
 headers, settings and favicon. It has no font or external asset dependency.
