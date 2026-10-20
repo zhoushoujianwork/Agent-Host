@@ -16,6 +16,12 @@ clearing a draft preserves dormant layout coordinates and unrelated saved keys.
 Corrupt values and unavailable storage do not block the interface;
 save failures are visible. This is browser-local convenience state, not Host
 memory or an execution receipt. It is not synchronized across devices or ports.
+The composer has a bounded automatic height and independent scroll. Clear keeps
+one in-memory undo value until the next edit or task starter; it is not restored
+after reload. Empty drafts cannot be manually saved. Cmd/Ctrl+Enter saves without
+submitting and ignores IME composition. Escape inside the panel and its own close
+button collapse Chat and return focus to the top-bar toggle. Explicit reopening
+focuses the draft. Save failures remain visible after undo or manual retries.
 
 Memory, execution and settings panels load lazily into retained same-origin
 frames. `embedded.css` removes duplicate navigation without changing those

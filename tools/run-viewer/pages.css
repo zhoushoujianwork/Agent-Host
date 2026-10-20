@@ -240,21 +240,46 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 [data-page="workspace"] .card-status[data-status="failed"] { color: var(--danger); }
 [data-page="workspace"] .card-content p { color: var(--muted); }
 [data-page="workspace"] .board-view footer { border-color: var(--line); color: var(--subtle); }
-[data-page="workspace"] .chat-panel { background: var(--surface); border-color: var(--line); width: 350px; }
-[data-page="workspace"] .chat-heading { padding: 24px; border-bottom: 1px solid var(--line); }
-[data-page="workspace"] .chat-heading strong { font-size: 16px; }
+[data-page="workspace"] .chat-panel { background: var(--surface); border-color: var(--line); width: 360px; min-height: 0; }
+[data-page="workspace"] .chat-heading { padding: 20px; border-bottom: 1px solid var(--line); gap: 12px; flex-shrink: 0; }
+[data-page="workspace"] .chat-heading strong { display: flex; align-items: center; gap: 9px; font-size: 14px; }
 [data-page="workspace"] .chat-heading small { color: var(--muted); font-size: 11px; }
+.chat-identity { display: flex; align-items: center; gap: 11px; }
+.chat-identity img { border-radius: 9px; }
+[data-page="workspace"] .draft-badge { font-size: 9px; font-weight: 400; padding: 2px 6px; border-radius: 5px; }
+[data-page="workspace"] .chat-icon-button { width: 30px; height: 30px; padding: 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 22px; display: grid; place-items: center; line-height: 1; }
+[data-page="workspace"] .chat-icon-button:hover { background: var(--surface-soft); color: var(--ink); border-color: var(--line); }
 [data-page="workspace"] .chat-context { margin: 18px 20px 0; background: var(--accent-soft); border-color: var(--line); padding: 15px; border-radius: 10px; }
 [data-page="workspace"] .chat-context>span,[data-page="workspace"] .assistant-mark,[data-page="workspace"] .welcome-mark { color: var(--accent); }
 [data-page="workspace"] .chat-context strong { font-size: 12px; } [data-page="workspace"] .chat-context small { font-size: 10px; color: var(--muted); }
-[data-page="workspace"] .chat-body { padding: 30px 26px; } [data-page="workspace"] .chat-body h2 { font-size: 20px; }
-[data-page="workspace"] .chat-body p { color: var(--muted); font-size: 12px; }
+[data-page="workspace"] .chat-body { padding: clamp(24px,6vh,64px) 24px 24px; min-height: 0; overscroll-behavior: contain; }
+[data-page="workspace"] .assistant-mark { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--line); background: var(--surface-soft); border-radius: 14px; font-size: 28px; margin-bottom: 22px; }
+[data-page="workspace"] .chat-body h2 { font-size: 20px; font-weight: 550; line-height: 1.5; margin: 0 0 10px; color: var(--ink); }
+[data-page="workspace"] .chat-body p { color: var(--muted); font-size: 12px; margin: 0; }
+[data-page="workspace"] .chat-prompts { gap: 8px; margin-top: 26px; }
+[data-page="workspace"] .chat-prompts button { display: flex; align-items: center; gap: 11px; padding: 12px; font-size: 12px; background: var(--surface); }
+[data-page="workspace"] .chat-prompts button:hover { background: var(--accent-soft); }
+.chat-prompts button>span:first-child { color: var(--accent); font-size: 17px; width: 20px; text-align: center; }
+.prompt-add { margin-left: auto; color: var(--subtle); }
+[data-page="workspace"] .chat-body .chat-boundary { font-size: 10px; color: var(--subtle); margin-top: 18px; }
 [data-page="workspace"] .capability { padding: 14px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; color: var(--accent); }
 [data-page="workspace"] .capability strong { color: var(--ink); font-size: 12px; } [data-page="workspace"] .capability small { color: var(--muted); font-size: 11px; }
-[data-page="workspace"] .composer { background: var(--surface-raised); border-color: var(--line); box-shadow: var(--shadow); margin: 18px; padding: 16px; border-radius: 14px; }
+[data-page="workspace"] .chat-compose-area { flex-shrink: 0; padding: 16px; background: var(--surface); }
+[data-page="workspace"] .composer { background: var(--surface-raised); border-color: var(--line); box-shadow: 0 2px 8px #00000005; margin: 0; padding: 14px; border-radius: 14px; transition: border-color .15s,box-shadow .15s; }
+[data-page="workspace"] .composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.composer-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--subtle); font-size: 10px; }
 [data-page="workspace"] .composer label,[data-page="workspace"] .composer p { color: var(--muted); font-size: 10px; }
-[data-page="workspace"] .composer textarea { color: var(--ink); font-size: 13px; }
-[data-page="workspace"] #clear-draft { background: var(--surface); border-color: var(--line); color: var(--muted); }
+[data-page="workspace"] .composer textarea { display: block; color: var(--ink); font-size: 13px; min-height: 96px; max-height: min(30dvh,240px); resize: none; outline: none; overflow-y: auto; scrollbar-width: thin; }
+[data-page="workspace"] .composer-actions { align-items: center; gap: 6px; }
+.composer-actions>div { display: flex; flex-wrap: wrap; }
+[data-page="workspace"] .composer-actions button { font-size: 11px; padding: 7px 10px; }
+[data-page="workspace"] .composer-actions .draft-clear { background: transparent; border-color: transparent; color: var(--muted); padding: 7px 5px; }
+[data-page="workspace"] .composer-actions .draft-clear:hover:not(:disabled) { color: var(--ink); background: var(--surface-soft); }
+[data-page="workspace"] .composer-actions .primary { border-radius: 8px; }
+.draft-feedback { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin: 11px 3px 0; font-size: 9px; color: var(--subtle); line-height: 1.7; }
+#draft-status[data-state="saved"] { color: var(--accent); }
+#draft-status[data-state="error"] { color: var(--danger); }
+@media(max-height:620px) { [data-page="workspace"] .chat-body { padding-top: 20px; } [data-page="workspace"] .assistant-mark { display: none; } [data-page="workspace"] .composer textarea { min-height: 64px; } }
 [data-page="workspace"] .chat-home { background: var(--bg); padding-top: 13vh; }
 [data-page="workspace"] .chat-home h1 { font-size: 38px; letter-spacing: -1.5px; margin-top: 18px; }
 [data-page="workspace"] .chat-home .welcome-mark { width: 78px; height: 78px; margin: 0 auto 28px; display: grid; place-items: center; background: var(--accent-soft); border-radius: 24px; font-size: 43px; }

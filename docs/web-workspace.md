@@ -14,6 +14,9 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Open or close the right Chat panel from the top bar. Switching modules keeps
   its current state. Drafts save locally; task starters append without replacing
   existing text. Web task submission is not yet connected.
+- The Chat composer grows with the draft and shows its character count and save
+  status. Clear can be undone until the next edit; Cmd/Ctrl+Enter saves locally.
+  Escape inside Chat collapses it and returns focus to its toggle.
 - Choose light, dark or system appearance across all pages.
 
 Press **Cmd+W** to close the right Chat panel and stay on the current page.
