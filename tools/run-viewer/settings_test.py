@@ -176,7 +176,11 @@ class SettingsTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as error:
             urlopen(Request(base + "/api/settings", payload, headers))
         self.assertEqual(error.exception.code, 409)
-        for asset in ("settings.html", "settings.js", "settings.css"):
+        with urlopen(base + "/api/agent-profiles") as response:
+            profile = json.load(response)["profiles"][0]
+            self.assertEqual(profile["id"], "daily")
+            self.assertEqual(profile["loaded_state"], "unknown")
+        for asset in ("settings.html", "settings.js", "settings.css", "agent-profiles.js", "agent-profiles.css"):
             with urlopen(base + "/" + asset) as response:
                 self.assertEqual(response.status, 200)
 

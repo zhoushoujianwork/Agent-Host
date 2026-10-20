@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
+from agent_profiles import profiles as agent_profiles
 from chat_runtime import ChatRuntime, ChatConflict, default_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -769,6 +770,9 @@ class Handler(BaseHTTPRequestHandler):
                 result = store.index() if store else {"enabled": False, "files": []}
                 result["mutation_token"] = getattr(self.server, "mutation_token", None) if store else None
                 self.send(200, result)
+            elif target.path == "/api/agent-profiles":
+                self.send(200, agent_profiles(getattr(self.server, "settings_store", None),
+                                              getattr(self.server, "catalog", None)))
             elif target.path == "/api/backup":
                 root = getattr(self.server, "backup_root", None)
                 result = {"enabled": False}
@@ -791,7 +795,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(400, {"error": "provide exactly one record key"})
                 else:
                     self.send(200, self.server.catalog.record(keys[0]))
-            elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
+            elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")

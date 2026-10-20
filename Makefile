@@ -91,6 +91,8 @@ check:
 	python3 -B tools/run-viewer/server_test.py
 	python3 -B tools/run-viewer/memory_view_test.py
 	python3 -B tools/run-viewer/settings_test.py
+	python3 -B tools/run-viewer/agent_profiles_test.py
+	node --test tools/run-viewer/agent-profiles_test.cjs
 	python3 -B tools/run-viewer/chat_runtime_test.py
 	python3 -B experiments/history/dws_platform_test.py
 	python3 -B experiments/experience/observe_test.py

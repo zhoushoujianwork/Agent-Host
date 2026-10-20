@@ -1,7 +1,9 @@
 # Agent profile and loaded configuration
 
-Status: proposed product design; no profile UI or new configuration behavior is
-implemented by this document. [Implementation notes](agent-profile-design-detail.md).
+Status: the first read-only profile is implemented in Settings → Agents.
+Role, project and group-binding editing remain planned. Existing name, working
+folder and default-Agent edits remain available.
+[Implementation notes](agent-profile-design-detail.md).
 
 ## Goal
 
@@ -16,7 +18,7 @@ features are illustrative, not features to install into Agent-Host.
 
 ## Entry and layout
 
-Settings → Agents shows an Agent list. Selecting one opens its profile. A
+Settings → Agents shows configured Agent catalogs and their profiles. Selecting one opens its profile. A
 default badge explains routing: it handles requests without an explicit Agent
 selection or group binding in that configuration. It does not imply that the
 Agent sees every group or has additional permissions.

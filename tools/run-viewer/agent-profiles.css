@@ -1,0 +1,20 @@
+.agent-picker {display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px}
+.agent-choice {border:1px solid var(--line);border-radius:8px;background:var(--surface-soft);color:var(--muted);padding:9px 12px}
+.agent-choice.active {color:var(--accent);border-color:var(--accent);background:var(--surface)}
+.agent-heading {display:flex;align-items:center;gap:16px;margin:12px 0 28px;flex-wrap:wrap}
+.agent-avatar {display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:var(--surface-soft);border:1px solid var(--line);color:var(--accent);font-size:24px;flex-shrink:0}
+.agent-heading h2 {margin:0;font-size:21px;font-weight:600}.agent-heading p {margin:8px 0 0;color:var(--muted);font-size:12px}
+.agent-badge {font-size:10px;color:var(--muted);padding:6px 9px;border:1px solid var(--line);border-radius:20px;margin-left:auto}
+.agent-tabs {display:flex;gap:20px;border-bottom:1px solid var(--line);overflow-x:auto;margin-bottom:24px}
+.agent-tabs button {padding:12px 0;border:0;border-bottom:2px solid transparent;white-space:nowrap;background:transparent;color:var(--muted)}
+.agent-tabs button.active {color:var(--accent);border-bottom-color:var(--accent)}
+.agent-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.agent-card {min-width:0;padding:18px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:12px;overflow-wrap:anywhere}
+.agent-grid .agent-card {margin-bottom:0}.agent-card h3 {margin:0 0 10px;font-size:13px;font-weight:600}
+.agent-card p {margin:0;line-height:1.7;font-size:12px}.agent-card small {display:block;font-size:11px;color:var(--muted);line-height:1.8;margin-top:8px}
+.agent-card a {display:inline-block;font-size:11px;margin-top:12px;color:var(--accent)}
+.agent-note {font-size:11px;line-height:1.9;color:var(--muted);margin:18px 0;overflow-wrap:anywhere}
+.agent-section-label {font-size:12px;margin:24px 0 14px;font-weight:550;color:var(--muted)}
+.agent-search {border:1px solid var(--line);border-radius:8px;padding:11px 13px;background:var(--bg);color:var(--ink);width:100%}
+.agent-instruction {white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.8 var(--mono);max-height:320px;overflow:auto;border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+@media(max-width:650px){.agent-grid{grid-template-columns:1fr}.agent-tabs{gap:17px}.agent-badge{margin-left:0}.agent-heading{gap:12px}}

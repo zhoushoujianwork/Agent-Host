@@ -31,6 +31,7 @@ REQUIRED_FILES = (
     "tools/run-viewer/memory.html", "tools/run-viewer/memory.js", "tools/run-viewer/memory.css",
     "tools/run-viewer/settings_store.py", "tools/run-viewer/settings.html",
     "tools/run-viewer/settings.js", "tools/run-viewer/settings.css",
+    "tools/run-viewer/agent_profiles.py", "tools/run-viewer/agent-profiles.js", "tools/run-viewer/agent-profiles.css",
     "internal/knowledge/ATTRIBUTION.md", "internal/knowledge/memgov-LICENSE",
 )
 PUBLIC_DOCS = {

@@ -4,12 +4,13 @@ const $ = id => document.getElementById(id);
 const KEEP = "__AGENT_HOST_KEEP_SECRET__";
 const SECTIONS = {
   general: ["◐", "通用", "选择你喜欢的外观，其他选项已准备好默认值。"],
-  agents: ["◈", "智能体", "选择默认智能体，告诉它在哪里工作。"],
+  agents: ["◈", "智能体", "查看完整配置、已装载能力和服务群聊。"],
   models: ["⌁", "模型与连接", "选择模型。使用自定义服务时，再填写地址和密钥。"],
   channels: ["▤", "消息渠道", "连接你使用的消息工具。不需要的渠道保持关闭即可。"],
   shortcuts: ["⌘", "快捷键", "少一点点击，更快回到工作。"],
 };
 let catalog = {files:[]}, selected = null, category = "general", draft, dirty = false, busy = false;
+let agentProfiles = [], profileError = "";
 const clone = value => JSON.parse(JSON.stringify(value));
 const node = (tag, cls, text) => {const n=document.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const fileSection = file => window.AGHSettings.section(file);
@@ -17,7 +18,7 @@ const fileTitle = file => ({"agents.cli.json":"本地对话","agents.feishu.json
 function feedback(text, success=false) {$("feedback").textContent=text;$("feedback").className=success?"success":"";$("feedback").hidden=!text;}
 function changed() {
   dirty=!!selected&&!selected.error&&JSON.stringify(draft)!==JSON.stringify(selected.value);
-  $("save-bar").hidden=!selected;
+  $("save-bar").hidden=!selected||selected.read_only;
   $("save").disabled=!dirty||busy;$("reset").disabled=!dirty||busy;
   $("editor").inert=busy;$("categories").inert=busy;$("files").inert=busy;$("search").disabled=busy||dirty;$("refresh").disabled=busy;
   $("change-status").textContent=busy?"正在检查并保存…":dirty?"有尚未保存的修改":"设置已保存";
@@ -58,7 +59,8 @@ function render() {
 function renderEditor() {
   $("editor").replaceChildren();if(!selected)return;
   if(selected.error){$("editor").append(node("p","notice",selected.error));return;}
-  const fields=window.AGHSettings.fields(draft,selected.category,selected.secret);
+  const fields=selected.read_only?[]:window.AGHSettings.fields(draft,selected.category,selected.secret);
+  if(selected.category==="agents"&&window.AGHAgentProfiles.render($("editor"),agentProfiles,selected,draft,fields,renderField,profileError))return;
   if(!fields.length){$("editor").append(node("p","notice","当前连接使用已有默认配置，无需在这里调整。"));return;}
   const card=node("section","simple-group");
   let group=null;
@@ -91,8 +93,12 @@ async function load() {
   try {
     const response=await fetch("/api/settings",{cache:"no-store"}),result=await response.json();if(!response.ok)throw Error(result.error||"无法读取设置。");catalog=result;
     $("notice").hidden=!!result.enabled;$("notice").textContent="当前是独立预览；连接已配置的 Host 后可管理智能体和模型。";
-    selected=null;dirty=false;render();
+    await loadProfiles();selected=null;dirty=false;render();
   }catch(error){feedback(error.message);}
+}
+async function loadProfiles() {
+  try{const response=await fetch("/api/agent-profiles",{cache:"no-store"});if(!response.ok)throw Error("智能体档案读取失败；可继续编辑已有设置。");const result=await response.json();agentProfiles=result.profiles||[];catalog.files=catalog.files.filter(f=>!f.read_only).concat(result.virtual_files||[]);profileError="";}
+  catch(error){agentProfiles=[];profileError=error.message;}
 }
 $("save").onclick=async()=>{
   if(!selected||!dirty||busy)return;const invalid=$("editor").querySelector(":invalid");if(invalid){invalid.reportValidity();return;}
@@ -100,7 +106,7 @@ $("save").onclick=async()=>{
   try {
     const response=await fetch("/api/settings",{method:"POST",headers:{"Content-Type":"application/json","X-Host-Action":catalog.mutation_token},body:JSON.stringify({file:selected.id,revision:selected.revision,value:draft})});
     const result=await response.json();if(!response.ok)throw Error(result.error||"保存失败，请刷新查看当前设置后再试。");
-    catalog.files=catalog.files.map(file=>file.id===result.file.id?result.file:file);selected=result.file;draft=clone(selected.value);dirty=false;render();feedback("已检查并保存。"+(result.file.application==="cli"?"下次任务时生效。":"重启 Host 后生效。"),true);
+    catalog.files=catalog.files.map(file=>file.id===result.file.id?result.file:file);selected=result.file;draft=clone(selected.value);dirty=false;await loadProfiles();render();feedback("已检查并保存。"+(result.file.application==="cli"?"下次任务时生效。":"重启 Host 后生效。"),true);
   }catch(error){feedback(error.message);}finally{busy=false;changed();}
 };
 $("reset").onclick=()=>{if(selected){draft=clone(selected.value);renderEditor();changed();feedback("");}};

@@ -13,6 +13,7 @@ import tempfile
 VIEWER_FILES = ("server.py", "memory_view.py", "index.html", "app.js", "style.css",
                 "memory.html", "memory.js", "memory.css", "settings_store.py",
                 "settings.html", "settings.js", "settings.css",
+                "agent_profiles.py", "agent-profiles.js", "agent-profiles.css",
                 "chat_runtime.py", "chat.js", "workspace.js", "workspace.css", "theme.js", "theme.css", "pages.css", "embedded.css", "logo.svg", "shortcuts.js", "settings-fields.js", "settings-simple.css")
 
 

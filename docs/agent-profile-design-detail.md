@@ -1,6 +1,37 @@
 # Agent profile implementation notes
 
-Status: proposed; [main design and scope](agent-profile-design.md) are authoritative.
+Status: first read-only view implemented; [main design and scope](agent-profile-design.md) are authoritative.
+
+## First implementation
+
+`agent_profiles.py` projects saved Agent catalogs through explicit channel
+execution-profile references and the configured CLI handoff arguments.
+`GET /api/agent-profiles` serves this projection to the six-tab profile in
+`agent-profiles.js`; existing checked saves remain in `settings.js`.
+
+Attached channel state sources supply bounded history: up to 2,000 receipts,
+200 matching Agent runs and 20 displayed executions. Channel activity requires
+the configured account identity and, when present, tenant identity. Current
+bindings determine group placement; each row retains the last observed Agent.
+The group name is unavailable in current receipts, so the conversation ID is
+shown. Skill cards use `workspace.assembled` manifests and only claim historical
+assembly. Connector cards expose shared configuration, not credentials or health.
+
+Role previews read only explicitly configured private instruction files, capped
+at 16,000 characters per preview. Private user profiles show a reference only.
+Unassigned catalogs remain inspectable without associating unrelated history.
+Implicit default Agents without a catalog file receive a read-only profile.
+Runtime-loaded configuration versions,
+complete native Skill discovery and concrete inherited service workspace paths
+are not inspected by this first version. Loaded status remains unknown. There
+is no Chat shortcut because the selected channel profile is not necessarily
+the Web CLI destination. No production deployment is performed by this change.
+
+Validation on 2026-10-20: `make check` passed, including installed-workbench
+startup and profile HTTP asset checks. Nine focused profile backend tests and
+six profile/settings-field JavaScript tests passed. An isolated browser preview
+verified group routing display and preservation of unsaved edits across profile
+tabs. Its screenshot uses explicitly illustrative configuration, not live groups.
 
 ## Existing foundations verified in source
 
@@ -73,5 +104,5 @@ shared datasource cards; task-dependent Skill inventory; and Web Chat pointing
 to a different CLI destination. Preview fixtures must be clearly illustrative.
 
 Run appropriate UI/backend tests and `make check` for implementation. Verify live
-service state separately only when a deployment is requested. This design adds
-no runtime changes and provides no live acceptance evidence.
+service state separately only when a deployment is requested. Automated and
+isolated browser checks do not establish production acceptance.

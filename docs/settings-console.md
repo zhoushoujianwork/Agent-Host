@@ -8,7 +8,9 @@ to keep the defaults. [Implementation details](settings-console-detail.md).
 
 - **General / 通用:** light, dark or system appearance. Changes apply immediately
   to the workspace and stay in this browser.
-- **Agents / 智能体:** choose a default Agent, its display name and working folder.
+- **Agents / 智能体:** inspect each configured Agent's overview, instructions,
+  capabilities, work context, channels/groups and activity; keep the existing
+  default-Agent, display-name and working-folder edits.
 - **Models and connections / 模型与连接:** choose a native model and, when using
   a custom service, its address and API key. Existing keys remain hidden.
 - **Channels / 消息渠道:** enable an already configured channel and fill in its
@@ -22,15 +24,17 @@ edits. A failed check restores the previous file. Saving does not execute tasks.
 
 ## Defaults and scope
 
-Internal IDs, execution profiles, timeouts, permissions, instruction paths,
-memory internals, datasource details, backups and CLI handoff parameters stay in
-configuration files. The simple page does not expose a generic JSON editor or
+Advanced edits to execution profiles, timeouts, permissions, instruction sources,
+memory policy, datasources, backups and CLI handoff parameters stay in
+configuration files. Agent profiles show applicable sources read-only.
+The simple page does not expose a generic JSON editor or
 arbitrary field additions and removals. Saving a visible field preserves the
 other saved values.
 
-The proposed [Agent profile](agent-profile-design.md) expands Agent visibility
-into capabilities, work context and served groups. It is a future design, not
-part of the delivered settings page described here.
+The [Agent profile](agent-profile-design.md) shows saved configuration and
+bounded historical evidence. Explicit group bindings and observed default-routed
+groups are distinguished; unknown loading state is visible. Capability and
+group-binding editing remain planned. CLI and channel destinations stay separate.
 
 The page edits existing owner-local Host configuration. Initial installation and
 native account sign-in remain in their existing tools. Standalone previews can
