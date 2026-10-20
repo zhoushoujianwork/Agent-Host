@@ -12,8 +12,8 @@ Chat drafts, memory and settings. [Implementation notes](web-workspace-detail.md
 - Open the latest execution from a conversation, or add its request and run ID
   to a Chat draft. Drafts save locally and survive page reloads.
 - Explore the existing memory graph, source evidence and memory library.
-- Edit Agents, models, providers, channels, instructions, data sources, people,
-  backups and CLI handoff through the existing checked settings console.
+- Set essential Agent, model connection and existing channel choices in the
+  compact [settings page](settings-console.md). Advanced options stay in config.
 - Choose light, dark or system appearance in the top bar or Settings. All pages,
   including the graph, forms and detail dialogs, share the same theme. The
   preference stays in this browser and follows system changes in system mode.
@@ -26,6 +26,11 @@ preferences from checked Host configuration saves.
 Switching panels retains settings edits. Saving settings preserves the existing
 validation, conflict detection, secret masking and private backup behavior.
 Service changes still require a deliberate restart.
+
+Press **Cmd+W** in Chat or a conversation detail opened from a card to return to
+the workbench. The top-bar close button does the same. Drafts and execution
+records remain intact; settings, memory and the plain journal keep native close
+behavior. The workspace uses the shared AGH vector mark in navigation and icons.
 
 ## This increment
 

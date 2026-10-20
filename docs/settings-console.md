@@ -1,43 +1,34 @@
-# Settings console
+# Simple settings
 
-Manage the local Host configuration from the workbench instead of locating and
-editing several private files. OpenFilm's settings console informs the layout:
-searchable categories on the left, grouped controls and status on the right.
-See [implementation details](settings-console-detail.md).
+AGH settings follow OpenFilm's compact layout: a short navigation on the left,
+only the choices needed to get started on the right. Most users should be able
+to keep the defaults. [Implementation details](settings-console-detail.md).
 
-## Usage and scope
+## What to set
 
-Open **Settings** from the execution workbench. Select Agents, models/providers,
-channels, data sources, backups, people or CLI handoffs. Edit the relevant fields,
-review the changed configuration and save. Agent instruction files are editable
-beside their configuration. Nested controls support the existing configuration
-fields without inventing a second configuration format.
+- **General / 通用:** light, dark or system appearance. Changes apply immediately
+  to the workspace and stay in this browser.
+- **Agents / 智能体:** choose a default Agent, its display name and working folder.
+- **Models and connections / 模型与连接:** choose a native model and, when using
+  a custom service, its address and API key. Existing keys remain hidden.
+- **Channels / 消息渠道:** enable an already configured channel and fill in its
+  required account or application identities.
+- **Shortcuts / 快捷键:** find the keys for closing a chat and moving cards.
 
-The redesigned page also provides light, dark and system appearance under
-**外观与主题**. The selection applies immediately across the
-[Web workspace](web-workspace.md) and stays in the browser; it is separate from
-Host configuration and the Save changes action.
+Save Agent, model and channel changes explicitly. Local task settings apply to
+the next task; service settings apply after restarting Host. Saving checks the
+configuration, preserves a private previous version and rejects conflicting
+edits. A failed check restores the previous file. Saving does not execute tasks.
 
-The console edits saved local configuration. Provider passwords/tokens stay hidden
-on load; leaving a secret unchanged retains its existing value. Replacing or
-clearing it is explicit. Native account sign-in remains in the native tool.
+## Defaults and scope
 
-Saves preserve a private previous version, reject conflicting edits and run the
-existing Host service configuration check. A failed check restores the prior
-file. Saving never restarts channels or executes a business task. The page tells
-the user which changes require a service restart; CLI handoffs read their saved
-settings on the next invocation.
-These are local configuration checks; provider sign-in and connectivity are
-separate from saving settings.
+Internal IDs, execution profiles, timeouts, permissions, instruction paths,
+memory internals, datasource details, backups and CLI handoff parameters stay in
+configuration files. The simple page does not expose a generic JSON editor or
+arbitrary field additions and removals. Saving a visible field preserves the
+other saved values.
 
-## Delivery and validation
-
-The local API and grouped editor are implemented. Automated checks cover secret
-preservation, conflicting writes, invalid-save rollback and HTTP boundaries.
-Browser verification saved an Agent name and provider endpoint in an isolated
-fixture, retained its credentials and checked the mobile layout. The real Host
-was checked locally and its configuration was displayed without browser edits.
-
-The existing execution and memory workspaces remain available. Remote
-administration, a replacement authentication system and new execution adapters
-are outside this change.
+The page edits existing owner-local Host configuration. Initial installation and
+native account sign-in remain in their existing tools. Standalone previews can
+change appearance without a configured Host. Web Chat remains a local draft
+entry until task submission is connected.

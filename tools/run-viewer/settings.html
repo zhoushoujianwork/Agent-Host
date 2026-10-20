@@ -1,37 +1,43 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Settings · Agent-Host</title>
-  <link rel="stylesheet" href="/settings.css">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>设置 · AGH</title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/theme.css">
-  <link rel="stylesheet" href="/pages.css">
+  <link rel="stylesheet" href="/settings-simple.css">
   <script src="/theme.js"></script>
+  <script src="/settings-fields.js" defer></script>
   <script src="/settings.js" defer></script>
 </head>
-<body data-page="settings">
-  <div class="shell">
-    <aside class="navigation">
-      <a class="brand" href="/"><span class="brand-icon">ah</span><span>Agent-Host<small>YOUR LOCAL WORKSPACE</small></span></a>
-      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search settings" aria-label="Search settings"></label>
-      <div class="nav-heading">CONFIGURATION / 配置</div>
-      <nav id="categories" aria-label="Settings categories"></nav>
-      <div class="nav-bottom"><a href="/#workbench">← Workspace</a><a href="/#memory">Memory workspace ↗</a><span><i></i> Local configuration</span></div>
+<body data-page="settings" class="simple-settings">
+  <div class="preferences">
+    <aside class="preferences-nav">
+      <a class="preferences-brand" href="/#workbench"><img src="/logo.svg" width="34" height="34" alt="AGH"><span>AGH<small>你的 AI 工作空间</small></span></a>
+      <label class="preferences-search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索设置" aria-label="搜索设置"></label>
+      <nav id="categories" aria-label="设置分类"></nav>
+      <div class="preferences-foot"><span>Agent-Host</span><a href="/#workbench">← 返回工作台</a></div>
     </aside>
-    <main>
-      <header class="page-top"><span>Workspace <span class="separator">/</span> Settings</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label></header>
-      <section class="page-intro"><div class="page-kicker">WORKSPACE PREFERENCES</div><h1>让工作空间，适合你。</h1><p>管理外观、智能体和连接。外观即时生效，Host 配置经过检查后保存。</p></section>
-      <div class="page-body">
-        <details class="appearance-card" open><summary><span>◐ 外观与主题</span></summary><p>选择适合你的明暗风格，工作台、Chat、记忆和执行页面会一起切换。</p><div class="theme-options"><button class="theme-option" data-theme-choice="light" type="button" aria-pressed="false"><span class="theme-preview"></span><strong>浅色 · 晨间苔绿</strong></button><button class="theme-option" data-theme-choice="dark" type="button" aria-pressed="false"><span class="theme-preview dark"></span><strong>深色 · 静夜森林</strong></button><button class="theme-option" data-theme-choice="system" type="button" aria-pressed="false"><span class="theme-preview system"></span><strong>跟随系统</strong></button></div><p data-theme-status role="status">外观仅保存在当前浏览器，不修改服务配置。</p></details>
-        <div class="heading"><div><div class="eyebrow">HOST CONFIGURATION</div><h2 id="section-title">Agents</h2><p id="section-description">Choose who handles your tasks and the context they use.</p></div><button id="refresh" class="quiet" type="button">↻ Refresh configuration</button></div>
-        <div id="notice" class="notice" role="status">Loading your configuration…</div>
+    <main class="preferences-main">
+      <header class="preferences-heading"><div><h1 id="section-title">通用</h1><p id="section-description">少一点设置，多一点开始。</p></div><button id="refresh" class="quiet" aria-label="刷新配置" title="刷新配置" type="button">↻</button></header>
+      <div class="preferences-content">
+        <div id="notice" class="notice" role="status" hidden></div>
         <div id="feedback" role="status" hidden></div>
-        <div id="files" class="file-tabs" aria-label="Configuration files"></div>
-        <div id="empty" class="empty" hidden>No settings match this search.</div>
-        <section id="editor" aria-label="Settings editor"></section>
-        <footer class="save-bar"><div><strong id="change-status">Everything is up to date</strong><small id="save-hint">Changes apply after you save.</small></div><div class="save-actions"><button id="reset" class="quiet" type="button" disabled>Discard changes</button><button id="save" class="primary" type="button" disabled>Save changes</button></div></footer>
+        <section id="general">
+          <h2 class="group-title">外观</h2>
+          <div class="simple-group">
+            <div class="simple-row appearance-row"><div class="simple-label"><strong>主题</strong><small>选择明暗风格，所有页面一起切换。</small></div><div class="theme-options"><button class="theme-option" data-theme-choice="light" type="button" aria-pressed="false"><span class="theme-preview"></span><strong>浅色</strong></button><button class="theme-option" data-theme-choice="dark" type="button" aria-pressed="false"><span class="theme-preview dark"></span><strong>深色</strong></button><button class="theme-option" data-theme-choice="system" type="button" aria-pressed="false"><span class="theme-preview system"></span><strong>跟随系统</strong></button></div></div>
+          </div>
+          <p class="help-note" data-theme-status role="status">立即生效，自动保存在当前浏览器。</p>
+          <h2 class="group-title">开始使用</h2><div class="start-note"><img src="/logo.svg" width="44" height="44" alt=""><div><strong>把下一件事交给 AGH。</strong><p>选好智能体和工作目录，即可通过现有 CLI 或已连接的消息渠道开始工作。</p><small>Web Chat 当前用于准备草稿，尚未接入任务发送。</small></div></div>
+        </section>
+        <section id="shortcuts" hidden><h2 class="group-title">聊天与工作台</h2><div class="simple-group"><div class="simple-row"><div class="simple-label"><strong>关闭当前聊天页面</strong><small>返回工作台，保留草稿和执行记录。</small></div><kbd>⌘ W</kbd></div><div class="simple-row"><div class="simple-label"><strong>移动对话卡片</strong><small>先聚焦卡片标题，再按方向键。</small></div><kbd>← ↑ ↓ →</kbd></div></div><p class="help-note">关闭页面不会中断后台任务，也不会删除记录。</p></section>
+        <div id="files" class="file-tabs" aria-label="选择配置"></div>
+        <p id="empty" class="empty" hidden></p>
+        <section id="editor" aria-label="常用设置"></section>
       </div>
+      <footer id="save-bar" class="preferences-save" hidden><div><strong id="change-status">设置已保存</strong><small id="save-hint"></small></div><div class="save-actions"><button id="reset" class="quiet" type="button" disabled>放弃修改</button><button id="save" class="primary" type="button" disabled>保存</button></div></footer>
     </main>
   </div>
 </body>

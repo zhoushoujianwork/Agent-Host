@@ -33,8 +33,9 @@ configuration migration is part of this change.
 ## Shared page design and appearance
 
 `theme.css` owns semantic light/dark colors and shared controls. `pages.css`
-composes memory, journal, settings and Chat layouts over their existing content
-renderers. Each standalone page loads these same assets; embedded panels hide
+composes memory, journal and Chat layouts over their existing content renderers;
+the simplified settings page uses `settings-simple.css` and curated controls.
+Each standalone page shares the theme; embedded panels hide
 duplicate navigation while retaining filters and editing state. The memory
 review queue follows the graph and library in both document and visual order.
 
@@ -51,3 +52,13 @@ HTTP checks cover the added assets. Existing settings tests also cover a real
 CLI handoff checker with sibling imports and rollback on unexpected validation
 failures. The checker runs with `--check` in a separate Python process and never
 executes the configured Host task.
+
+`shortcuts.js` handles unmodified Meta+W only on `#chat` or a selected
+`#executions?key=...` route, including focus inside the retained detail frame.
+It prevents the host close action when the event reaches the page, hides the
+Chat panel, returns to the canvas and restores navigation focus. A visible close
+button shares the same action. The handler neither deletes data nor stops a run.
+Browser-reserved shortcuts may not be delivered to JavaScript in every host.
+
+`logo.svg` is an original vector AGH monogram, used by the rail, standalone
+headers, settings and favicon. It has no font or external asset dependency.

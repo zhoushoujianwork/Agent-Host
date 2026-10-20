@@ -98,7 +98,8 @@ bot accounts and retain delivery evidence independently from execution.
 The local workbench opens a [Web workspace](web-workspace.md) with draggable
 conversation cards, local Chat drafts and the existing memory graph. Browser
 task execution is not yet connected. It also provides a [settings console](settings-console.md) for
-saved Agent, execution, provider, channel and datasource configuration. Checked
+essential Agent, native model, provider and existing channel choices. Other
+options retain their configuration-file defaults. Checked
 saves retain private previous versions; applying service changes still requires
 a restart. The console does not turn CLI chat into a client of a running channel
 Host.

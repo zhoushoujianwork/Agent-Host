@@ -6,19 +6,10 @@
 .embedded [data-page="memory"] .rail { width: 180px; padding: 24px 12px; }
 .embedded [data-page="memory"] main { margin-left: 180px; }
 .embedded [data-page="memory"] .rail-separator { margin-top: 0; }
-.embedded [data-page="settings"] .brand,.embedded [data-page="settings"] .nav-bottom { display: none; }
-.embedded [data-page="settings"] .navigation { width: 224px; padding: 24px 16px; }
-.embedded [data-page="settings"] main { margin-left: 224px; width: calc(100% - 224px); }
 .embedded [data-page="executions"] .brand,.embedded [data-page="executions"] .standalone-link,
 .embedded [data-page="executions"] .sidebar-foot { display: none; }
 .embedded [data-page="executions"] .nav-label { padding-top: 24px; }
 @media(max-width:800px) {
   .embedded [data-page="memory"] .rail { display: none; }
   .embedded [data-page="memory"] main { margin-left: 0; }
-  .embedded [data-page="settings"] .navigation { position: static; width: 100%; }
-  .embedded [data-page="settings"] main { margin: 0; width: 100%; }
-  .embedded [data-page="settings"] .shell { display: block; }
-  .embedded [data-page="settings"] .nav-heading { display: none; }
-  .embedded [data-page="settings"] #categories { display: flex; flex-direction: row; overflow: auto; gap: 6px; margin-top: 12px; }
-  .embedded [data-page="settings"] .category { white-space: nowrap; width: auto; }
 }

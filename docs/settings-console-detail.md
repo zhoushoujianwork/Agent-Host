@@ -24,3 +24,25 @@ Tests cover secret retention/replacement, stale revisions, invalid configuration
 rollback, path/symlink boundaries, HTTP origin/token checks and the grouped form
 workflow. Browser verification uses an isolated fixture for writes; real local
 configuration is used only for read-only presentation checks.
+
+## Essential fields only
+
+`settings-fields.js` explicitly describes the first-use controls for Agents,
+native models, referenced provider credentials and existing channel identities.
+`settings.js` renders those controls into the compact `settings-simple.css`
+layout. Provider files appear with models; internal categories are not listed.
+There is no recursive object editor, instruction editor, arbitrary field input,
+or generic item deletion in the browser.
+
+The edit draft remains a full clone of the redacted file. Changing a visible
+leaf preserves unlisted properties and retained secret markers; optional missing
+values are not injected merely by opening the page. Appearance and shortcut
+help work without any Host configuration. Agent catalog choices use saved IDs
+behind display names. Initial file creation and advanced configuration remain
+outside this page.
+
+Run `node --test tools/run-viewer/settings-fields_test.cjs` for the curated field
+boundary and `node --test tools/run-viewer/shortcuts_test.cjs` for close handling,
+iframe keyboard events and modifier guards. Browser acceptance saved an Agent
+name in an isolated fixture and exercised Cmd+W in both Chat and an opened
+conversation detail without closing the containing workbench tab.

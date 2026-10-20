@@ -1,4 +1,6 @@
 /* Page composition: shared materials, different layouts for each responsibility. */
+.agh-brand { padding: 0; overflow: hidden; }.agh-brand img { display: block; width: 100%; height: 100%; }
+.close-chat kbd { font: 10px var(--mono); color: var(--muted); margin-left: 7px; }
 body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); border-color: var(--line); color: var(--muted); height: 64px; padding: 0 30px; }
 .page-intro { padding: 30px 32px 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .page-intro h1 { font-size: 29px; font-weight: 550; letter-spacing: -1px; margin: 8px 0; }

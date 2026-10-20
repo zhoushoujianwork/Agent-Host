@@ -4,15 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Agent-Host · Workspace</title>
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/workspace.css">
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/pages.css">
   <script src="/theme.js"></script>
   <script src="/workspace.js" defer></script>
+  <script src="/shortcuts.js" defer></script>
 </head>
 <body data-page="workspace">
   <aside class="rail">
-    <a class="brand" href="#workbench" aria-label="Agent-Host 工作台">ah</a>
+    <a class="brand agh-brand" href="#workbench" aria-label="AGH 工作台"><img src="/logo.svg" width="40" height="40" alt="AGH"></a>
     <nav aria-label="主导航">
       <a href="#workbench" data-view="workbench"><span>▦</span>工作台</a>
       <a href="#chat" data-view="chat"><span>＋</span>Chat</a>
@@ -23,7 +25,7 @@
     <span class="local-indicator" title="本地工作台">●</span>
   </aside>
   <main>
-    <header class="topbar"><div><strong>Agent-Host</strong><span class="divider">/</span><span id="view-title">工作台</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection" role="status">正在连接…</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
+    <header class="topbar"><div><strong>AGH</strong><span class="divider">/</span><span id="view-title">工作台</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection" role="status">正在连接…</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><button id="close-chat" class="close-chat" type="button" aria-label="关闭当前聊天" aria-keyshortcuts="Meta+W" title="关闭当前聊天 (⌘W)" hidden>关闭聊天 <kbd>⌘W</kbd></button><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
     <div class="studio">
       <section id="workbench" class="view board-view" aria-label="对话工作台">
         <div class="board-heading"><div><div class="eyebrow">YOUR CONTINUOUS WORKSPACE</div><h1>让每次对话，都有位置。</h1><p>在画布上整理对话，回到上下文，连接长期记忆。</p></div><a class="primary" href="#chat">＋ 新对话草稿</a></div>

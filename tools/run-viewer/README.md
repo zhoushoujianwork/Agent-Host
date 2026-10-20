@@ -178,9 +178,11 @@ steps and **避免事项** in the memory detail. This operation does not rerun t
 
 Open `/settings.html` from **Settings** in the execution workspace. An explicit
 `--backup-root /absolute/host/root` enables the local configuration editor;
-managed unified startup already supplies it. The searchable categories cover
-Agents, execution profiles/models, provider credentials, channels, data sources,
-Agent instructions, users, backups and an existing CLI handoff connection.
+managed unified startup already supplies it. The compact OpenFilm-inspired page
+exposes appearance, essential Agent choices, native models/provider connections,
+existing channel setup and shortcut help. Advanced parameters keep their saved
+defaults and are managed in configuration files. Editing a visible field retains
+unlisted values. Cmd+W closes Chat or a conversation detail back to the canvas.
 
 Secret fields load as retained markers, never as their saved values. You can
 replace or explicitly clear them. Saves reject conflicting revisions, keep a
