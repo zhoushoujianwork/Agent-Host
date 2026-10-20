@@ -29,7 +29,9 @@ run: build
 ifeq ($(SINGLE_RUNTIME),1)
 	./bin/agent-host service run --restart --root "$(RUNTIME_ROOT)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 else
-	./bin/agent-host service run --restart --config-dir "$(CONFIG_DIR)" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
+	@run_config_dir="$$(cd "$(CONFIG_DIR)" && pwd -P)" && \
+		printf 'Configuration: %s\n' "$$run_config_dir" && \
+		./bin/agent-host service run --restart --config-dir "$$run_config_dir" --viewer-source "$(CURDIR)/tools/run-viewer" $(RUN_ARGS)
 endif
 
 help:
@@ -40,7 +42,7 @@ help:
 		'  build   Build bin/agent-host' \
 		'  install Build/link CLI and skills; start configured channels automatically at login' \
 		'  uninstall-service Stop and remove automatic startup; retain configuration and state' \
-		'  run     Start or restart enabled channels in the foreground' \
+		'  run     Start or restart enabled channels and open the workbench in a browser' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.10+)' \
 		'  help    Print this usage guide (default target)' \
@@ -52,7 +54,9 @@ help:
 		'  --workspace PATH  Filter database runs by registered or legacy workspace' \
 		'  --project ID      Filter database runs and memory by stable project ID' \
 		'' \
-		'Run options: CONFIG_DIR=/absolute/ROOT/config RUN_ARGS=--no-browser' \
+		'Run options (optional; make run opens a browser by default):' \
+		'  CONFIG_DIR=/absolute/ROOT/config Select another configuration directory; symlinks are resolved' \
+		'  RUN_ARGS=--no-browser Disable automatic browser opening' \
 		'  RUNTIME_ROOT=/absolute/runtime selects an explicit legacy runtime' \
 		'  --viewer-port PORT Shared workbench port (default: 8765)'  \
 		'Install options: INSTALL_ARGS="--agents codex,claude --bin-dir /absolute/bin"' \

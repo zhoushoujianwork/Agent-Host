@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import importlib.util
+import json
 import os
 from pathlib import Path
 import signal
@@ -12,6 +13,67 @@ import unittest
 SPEC = importlib.util.spec_from_file_location("local_run", Path(__file__).with_name("run.py"))
 RUN = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUN)
+
+
+class MakeRunTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="make run with spaces ")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.checkout = self.root / "checkout"
+        (self.checkout / "bin").mkdir(parents=True)
+        binary = self.checkout / "bin/agent-host"
+        binary.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\n"
+                          "Path('captured.json').write_text(json.dumps(sys.argv[1:]))\n")
+        binary.chmod(0o700)
+        self.makefile = Path(__file__).resolve().parents[2] / "Makefile"
+        self.env = dict(os.environ)
+        for key in ("CONFIG_DIR", "RUNTIME_ROOT", "RUN_ARGS", "MAKEFLAGS", "MFLAGS"):
+            self.env.pop(key, None)
+
+    def run_make(self, *options):
+        return subprocess.run(["make", "-f", str(self.makefile), "-o", "build", "run", *options],
+                              cwd=self.checkout, env=self.env, capture_output=True, text=True, timeout=10)
+
+    def captured(self):
+        return json.loads((self.checkout / "captured.json").read_text())
+
+    def test_plain_run_follows_linked_home_and_keeps_browser_enabled(self):
+        runtime = self.root / "live runtime"
+        (runtime / "config").mkdir(parents=True)
+        (self.checkout / ".agent-host").symlink_to(runtime, target_is_directory=True)
+        result = self.run_make()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.captured()
+        self.assertEqual(args[args.index("--config-dir") + 1], str(runtime / "config"))
+        self.assertNotIn("--no-browser", args)
+        self.assertIn("--restart", args)
+
+    def test_explicit_config_link_and_browser_opt_out_are_preserved(self):
+        config = self.root / "selected runtime/config"
+        config.mkdir(parents=True)
+        alias = self.root / "selected alias"
+        alias.symlink_to(config.parent, target_is_directory=True)
+        result = self.run_make("CONFIG_DIR=" + str(alias / "config"), "RUN_ARGS=--no-browser")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.captured()
+        self.assertEqual(args[args.index("--config-dir") + 1], str(config))
+        self.assertIn("--no-browser", args)
+
+    def test_missing_config_does_not_invoke_host_or_create_a_runtime(self):
+        result = self.run_make()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((self.checkout / "captured.json").exists())
+        self.assertFalse((self.checkout / ".agent-host").exists())
+
+    def test_explicit_legacy_runtime_keeps_its_existing_selection(self):
+        runtime = self.root / "legacy runtime"
+        result = self.run_make("RUNTIME_ROOT=" + str(runtime))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = self.captured()
+        self.assertEqual(args[args.index("--root") + 1], str(runtime))
+        self.assertNotIn("--config-dir", args)
+        self.assertNotIn("--no-browser", args)
 
 
 class ProjectRunTests(unittest.TestCase):

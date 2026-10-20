@@ -103,6 +103,19 @@ reboot and forced-crash recovery were not exercised.
 
 ## Foreground restart through make run
 
+The unified Make entry resolves `CONFIG_DIR` with quoted `cd` and `pwd -P`
+before invoking Host. This supports a linked checkout `.agent-host` and paths
+containing spaces while keeping the native checks on the resolved configuration
+and credential files. If the directory cannot be resolved, Host is not invoked
+and an existing runtime is not stopped. Explicit legacy `RUNTIME_ROOT` selection
+retains its existing behavior. Browser opening remains enabled unless the caller
+passes `RUN_ARGS=--no-browser`.
+
+The Go runner copies the settings backend and page assets together with the
+execution and memory workspaces. Workbench lifecycle tests install assets through
+that same preparation function before checking readiness, browser opening and
+the served settings routes, so a missing imported module is caught at startup.
+
 `make run` supplies `service run --restart` for both `CONFIG_DIR` and explicit
 `RUNTIME_ROOT`. Direct service starts remain fail-on-duplicate unless they also
 request `--restart`. Internal worker mode cannot request a managed restart.

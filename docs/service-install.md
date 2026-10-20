@@ -26,8 +26,8 @@ The development checkout's former production configuration is archived outside
 the repository under `~/.local/share/agent-host-checkout-archive/`;
 `.agent-host/production-migration.json` records its location. During the temporary
 observation setup below, `.agent-host` links to the live data root. Plain
-`make run` cannot use its symlinked configuration path; explicitly select the
-real configuration directory. Prepare separate configuration and channel
+`make run` resolves that link before configuration validation and opens the
+workbench in the default browser. Prepare separate configuration and channel
 identities for independent development tests. Automated tests continue using
 their isolated fixtures.
 
@@ -50,13 +50,15 @@ On 2026-10-19, local automatic startup was removed to observe the current source
 build against the existing data. Start it from this checkout with:
 
 ```sh
-make run CONFIG_DIR="$HOME/.local/share/agent-host/config" RUN_ARGS=--no-browser
+make run
 ```
 
 The executable and viewer come from the checkout; configuration and live data
-remain in `~/.local/share/agent-host/`. Explicitly pass the real configuration
-path: configuration discovery rejects symlink paths. Plain `make run` still
-expects separate checkout-local configuration.
+remain in `~/.local/share/agent-host/`. `make run` resolves the existing
+`.agent-host` link automatically and opens the browser. `CONFIG_DIR` is optional
+when selecting another configuration; `RUN_ARGS=--no-browser` is an explicit
+opt-out. Native configuration validation still checks the resolved directory and
+its files.
 
 The Git-ignored `.agent-host` directory itself is a single symlink to
 `~/.local/share/agent-host/`. Its entire structure is the live runtime structure,

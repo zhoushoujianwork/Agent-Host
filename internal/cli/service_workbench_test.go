@@ -21,19 +21,12 @@ import (
 func workbenchFixture(t *testing.T) serviceLayout {
 	t.Helper()
 	layout, _ := newServiceFixture(t)
-	for _, name := range []string{"logs", "viewer"} {
-		if err := os.Mkdir(filepath.Join(layout.Root, name), 0700); err != nil {
-			t.Fatal(err)
-		}
+	source, err := filepath.Abs(filepath.Join("..", "..", "tools", "run-viewer"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, name := range []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css", "settings_store.py", "settings.html", "settings.js", "settings.css"} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "tools", "run-viewer", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err = os.WriteFile(filepath.Join(layout.Root, "viewer", name), raw, 0600); err != nil {
-			t.Fatal(err)
-		}
+	if err := prepareChannelViewer(layout.Root, source); err != nil {
+		t.Fatal(err)
 	}
 	store, err := state.Open(layout.State, false)
 	if err != nil {
@@ -75,7 +68,7 @@ func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
 				t.Fatal("browser failure was hidden")
 			}
 			client := &http.Client{Timeout: 2 * time.Second}
-			for _, path := range []string{"", "memory.html", "api/memories"} {
+			for _, path := range []string{"", "memory.html", "api/memories", "settings.html", "settings.js", "settings.css", "api/settings"} {
 				response, err := client.Get(address + path)
 				if err != nil {
 					t.Fatal(err)
