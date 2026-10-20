@@ -194,7 +194,7 @@ implementation. A passing automated check does not establish production quality.
 - **Profiles remain private; Beta tools are shared.** Optional `config/users.json`
   resolves private users and initializes runtime `users/<id>/USER.md`; configured
   private overrides take precedence. Private profiles do not enter shared tasks.
-  All enabled sources are shared across users and Agents during Beta. See
+  Enabled sources are shared by default during Beta; explicit Agent knowledge selections narrow the mounted sources. See
   [workspace details](workspace-layout-detail.md#multi-user-recording-and-retrieval).
 - **Runtime and development are separated.** Editable config, channel state,
   datasource snapshots, memory and cache have distinct ownership. Production can

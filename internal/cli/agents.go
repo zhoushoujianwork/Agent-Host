@@ -36,6 +36,7 @@ type agentDefinition struct {
 	Projects         []string `json:"projects"`
 	Plugins          []string `json:"plugins,omitempty"`
 	KnowledgeSources []string `json:"knowledge_sources"`
+	NativeSkills     []string `json:"native_skills"`
 	Model            string   `json:"model,omitempty"`
 	role             string
 	contextFiles     []assembly.ContextFile
@@ -94,7 +95,7 @@ func loadAgents(path string) (agentCatalog, error) {
 				return c, errors.New("agent references unknown plugin")
 			}
 		}
-		for _, values := range [][]string{a.Projects, a.KnowledgeSources} {
+		for _, values := range [][]string{a.Projects, a.KnowledgeSources, a.NativeSkills} {
 			unique := map[string]bool{}
 			for _, value := range values {
 				if value == "" || value != strings.TrimSpace(value) || unique[value] || strings.ContainsAny(value, "\x00\r\n") {
@@ -187,7 +188,7 @@ func (c agentCatalog) validateReferences(ctx context.Context, store *state.Store
 				return fmt.Errorf("agent %s project directory is unavailable or changed", a.ID)
 			}
 		}
-		if a.KnowledgeSources != nil && !globalKnowledgePlugins(base) && !base.knowledgePluginDisabled && knowledgePluginsEnabled(a.Plugins) {
+		if a.KnowledgeSources != nil && !base.knowledgePluginDisabled && (globalKnowledgePlugins(base) || knowledgePluginsEnabled(a.Plugins)) {
 			sources, err := knowledge.Catalog(knowledgePaths(base), base.knowledgeChannel)
 			if err != nil {
 				return err
@@ -257,10 +258,16 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 		profile = filepath.Join(home, ".claude")
 	}
 	o.nativeProfile = profile
-	if a.ID != "default" || audience != "owner" {
+	if err := validateNativeSkillSelection(profile, a.NativeSkills); err != nil {
+		return o, err
+	}
+	if a.ID != "default" || audience != "owner" || a.NativeSkills != nil {
 		o.nativeProfile = filepath.Join(profile, "instances", a.ID, "audiences", channel.Key(audience))
+		if a.NativeSkills != nil {
+			o.nativeProfile = filepath.Join(o.nativeProfile, "skill-sets", nativeSkillSelectionID(a.NativeSkills))
+		}
 		if prepare {
-			if err := prepareAgentProfile(profile, o.nativeProfile); err != nil {
+			if err := prepareSelectedAgentProfile(profile, o.nativeProfile, a.NativeSkills); err != nil {
 				return o, err
 			}
 		}
@@ -270,6 +277,10 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 
 // Only managed settings are shared, never conversation state or instruction files.
 func prepareAgentProfile(base, destination string) error {
+	return prepareSelectedAgentProfile(base, destination, nil)
+}
+
+func prepareSelectedAgentProfile(base, destination string, skills []string) error {
 	if err := os.MkdirAll(destination, 0700); err != nil {
 		return err
 	}
@@ -293,7 +304,10 @@ func prepareAgentProfile(base, destination string) error {
 			return err
 		}
 	}
-	return inheritNativeSkills(base, destination)
+	if skills == nil {
+		return inheritNativeSkills(base, destination)
+	}
+	return mountSelectedNativeSkills(base, destination, skills)
 }
 
 func checkAgents(ctx context.Context, agents agentCatalog, o options) error {

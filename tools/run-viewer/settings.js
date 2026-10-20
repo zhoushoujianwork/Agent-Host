@@ -4,7 +4,7 @@ const $ = id => document.getElementById(id);
 const KEEP = "__AGENT_HOST_KEEP_SECRET__";
 const SECTIONS = {
   general: ["◐", "通用", "选择你喜欢的外观，其他选项已准备好默认值。"],
-  agents: ["◈", "智能体", "查看完整配置、已装载能力和服务群聊。"],
+  agents: ["◈", "智能体", "管理智能体的工作目录、技能和知识源。保存后可在 Chat 中切换。"],
   models: ["⌁", "模型与连接", "选择模型。使用自定义服务时，再填写地址和密钥。"],
   channels: ["▤", "消息渠道", "连接你使用的消息工具。不需要的渠道保持关闭即可。"],
   shortcuts: ["⌘", "快捷键", "少一点点击，更快回到工作。"],
@@ -60,7 +60,11 @@ function renderEditor() {
   $("editor").replaceChildren();if(!selected)return;
   if(selected.error){$("editor").append(node("p","notice",selected.error));return;}
   const fields=selected.read_only?[]:window.AGHSettings.fields(draft,selected.category,selected.secret);
-  if(selected.category==="agents"&&window.AGHAgentProfiles.render($("editor"),agentProfiles,selected,draft,fields,renderField,profileError))return;
+  const agentEditor=selected.id===catalog.agent_options?.file_id?{
+    add(){const id="agent-"+crypto.randomUUID().slice(0,8);draft.agents.push({id,name:"新智能体",projects:[],native_skills:null,knowledge_sources:null});changed();return id;},
+    capabilities:renderAgentCapabilities,
+  }:null;
+  if(selected.category==="agents"&&window.AGHAgentProfiles.render($("editor"),agentProfiles,selected,draft,fields,renderField,profileError||catalog.agent_options_error,agentEditor))return;
   if(!fields.length){$("editor").append(node("p","notice","当前连接使用已有默认配置，无需在这里调整。"));return;}
   const card=node("section","simple-group");
   let group=null;
@@ -70,6 +74,36 @@ function renderEditor() {
     card.append(renderField(field));
   }
   $("editor").append(card);
+}
+function renderAgentCapabilities(parent,index) {
+  for(const [field,choices,title,hint]of [
+    ["native_skills","skills","技能","选择当前原生配置中已安装的用户技能；原生命令与插件、项目技能和 Host 记忆仍由各自机制提供。"],
+    ["knowledge_sources","knowledge_sources","知识源","选择此智能体实际挂载的检索来源；不会更改其他智能体的配置。"]]){
+    const section=node("section","agent-capability-editor");section.append(node("h3","group-title",title),node("p","help-note",hint));
+    const mode=node("select","");mode.setAttribute("aria-label",title+"配置方式");mode.add(new Option("使用默认能力","inherit"));mode.add(new Option("自定义选择","custom"));
+    mode.value=draft.agents[index][field]==null?"inherit":"custom";section.append(mode);
+    const list=node("div","agent-capability-list");section.append(list);
+    function renderList(){
+      list.replaceChildren();if(mode.value!=="custom")return;
+      const selected=draft.agents[index][field];
+      const actions=node("div","agent-capability-actions");
+      for(const [label,values]of [["全选",()=>catalog.agent_options[choices].map(item=>item.id)],["清空选择",()=>[]]]){const button=node("button","quiet",label);button.type="button";button.onclick=()=>{setAt(["agents",index,field],values());renderList();};actions.append(button);}list.append(actions);
+      const search=node("input","agent-search");search.type="search";search.placeholder="搜索"+title;search.setAttribute("aria-label",search.placeholder);list.append(search);
+      const options=node("div","agent-capability-options");list.append(options);
+      const available=catalog.agent_options[choices];
+      function filter(){options.replaceChildren();const query=search.value.trim().toLowerCase();
+        for(const item of available.filter(item=>item.name.toLowerCase().includes(query))){
+          const label=node("label","agent-capability-option"),input=node("input","");input.type="checkbox";input.checked=draft.agents[index][field].includes(item.id);
+          input.onchange=()=>{const next=new Set(draft.agents[index][field]);if(input.checked)next.add(item.id);else next.delete(item.id);setAt(["agents",index,field],[...next]);};
+          label.append(input,node("span","",item.name));options.append(label);
+        }
+        if(!options.children.length)options.append(node("p","help-note","没有匹配的已安装能力。"));
+      }
+      search.oninput=filter;filter();list.append(node("p","help-note","未勾选任何项时，不挂载本组能力。"));
+      for(const id of selected.filter(id=>!available.some(item=>item.id===id))){const remove=node("button","quiet",`移除已不可用项：${id}`);remove.type="button";remove.onclick=()=>{setAt(["agents",index,field],draft.agents[index][field].filter(value=>value!==id));renderList();};list.append(remove);}
+    }
+    mode.onchange=()=>{setAt(["agents",index,field],mode.value==="inherit"?null:catalog.agent_options[choices].map(item=>item.id));renderList();};renderList();parent.append(section);
+  }
 }
 function renderField(field) {
   const {path,value,label,hint,options}=field;

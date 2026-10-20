@@ -96,3 +96,10 @@ test("Agent picker keeps drafts separate and cannot switch during execution",asy
   h.el("chat-agent").value="b";await h.el("chat-agent").onchange();
   assert.equal(h.calls.filter(c=>c.url==="/api/chat/agent").length,count);
 });
+
+test("unchanged polls preserve an open native Agent selector",async()=>{
+  const h=await setup();h.snapshot={...h.snapshot,selected_agent:"a",agents:[{id:"a",name:"A"},{id:"b",name:"B"}]};await h.poll();
+  const picker=h.el("chat-agent");let writes=0,current=picker.value;
+  Object.defineProperty(picker,"value",{get(){return current;},set(value){writes++;current=value;}});
+  await h.poll();assert.equal(writes,0);assert.equal(current,"a");
+});

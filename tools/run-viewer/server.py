@@ -768,6 +768,11 @@ class Handler(BaseHTTPRequestHandler):
             elif target.path == "/api/settings":
                 store = getattr(self.server, "settings_store", None)
                 result = store.index() if store else {"enabled": False, "files": []}
+                if store:
+                    try:
+                        result["agent_options"] = store.agent_options()
+                    except (OSError, ValueError, KeyError, TypeError):
+                        result["agent_options_error"] = "无法读取 Web 技能和知识源目录，请检查当前连接。"
                 result["mutation_token"] = getattr(self.server, "mutation_token", None) if store else None
                 self.send(200, result)
             elif target.path == "/api/agent-profiles":
@@ -908,7 +913,8 @@ def main():
     server.catalog = catalog
     server.backup_root = args.backup_root
     server.settings_store = SettingsStore(args.backup_root, args.host_binary,
-                                        Path.home() / ".config/agent-host/task-handoff.json") if args.backup_root else None
+                                        Path.home() / ".config/agent-host/task-handoff.json",
+                                        web_config=args.chat_config or default_config(args.backup_root)) if args.backup_root else None
     server.mutation_token = secrets.token_urlsafe(32)
     server.chat_runtime = AgentChatRuntime(args.chat_config or default_config(args.backup_root))
     def stop_server(_signal, _frame):

@@ -2,7 +2,7 @@
 
 window.AGHAgentProfiles = (() => {
   let selectedKey = null, activeTab = "overview";
-  const tabs = {overview:"概览",instructions:"指令",capabilities:"能力",context:"工作上下文",groups:"渠道与群聊",activity:"活动"};
+  const tabs = {overview:"概览",configure:"配置",instructions:"指令",capabilities:"能力",context:"工作上下文",groups:"渠道与群聊",activity:"活动"};
   const el = (tag, cls, text) => {const n=document.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const destination = name => ({web:"Web Chat",cli:"本地 CLI",dingtalk:"钉钉",feishu:"飞书",unassigned:"未关联运行入口"})[name] || name;
   const state = value => ({configured:"已配置",disabled:"未启用",unknown:"未知",connected:"已连接（历史观测）",observed_loaded:"历史执行已装载",observed_assembled:"历史任务已装配"})[value] || value;
@@ -11,18 +11,23 @@ window.AGHAgentProfiles = (() => {
     if(detail)c.append(el("small","",detail));return c;
   }
   function note(parent, text) {parent.append(el("p","agent-note",text));}
-  function render(container, profiles, file, draft, fields, renderField, error) {
+  function render(container, profiles, file, draft, fields, renderField, error, editor) {
     const available=profiles.filter(p=>p.file_id===file.id);
+    const web=available.find(p=>p.destination==="web");
+    if(web&&editor)for(const agent of draft.agents||[]){
+      if(!available.some(p=>p.id===agent.id))available.push({...web,id:agent.id,key:`${file.id}:web:${agent.id}`,name:agent.name||agent.id,default:false,chat_selected:false,native_inventory:null,skills:[],activity:[],instructions:[],groups:[],unsaved:true});
+    }
     if(!available.length){note(container,error||"尚未取得智能体档案。可继续编辑下方已有配置。");return false;}
     if(error)note(container,error);
     const p=available.find(p=>p.key===selectedKey)||available[0];selectedKey=p.key;
-    const rerender=()=>{container.replaceChildren();render(container,profiles,file,draft,file.read_only?[]:window.AGHSettings.fields(draft,file.category,file.secret),renderField,error);};
+    const rerender=()=>{container.replaceChildren();render(container,profiles,file,draft,file.read_only?[]:window.AGHSettings.fields(draft,file.category,file.secret),renderField,error,editor);};
     const picker=el("div","agent-picker");
     for(const item of available){const b=el("button","agent-choice"+(p.key===item.key?" active":""),`${item.name} · ${destination(item.destination)}`);b.type="button";b.setAttribute("aria-pressed",String(p.key===item.key));b.onclick=()=>{selectedKey=item.key;activeTab="overview";rerender();};picker.append(b);}
+    if(web&&editor&&!file.read_only){const add=el("button","quiet","＋ 新增智能体");add.type="button";add.onclick=()=>{const id=editor.add();selectedKey=`${file.id}:web:${id}`;activeTab="configure";rerender();};picker.append(add);}
     container.append(picker);
     const header=el("header","agent-heading"),avatar=el("div","agent-avatar",p.name.slice(0,1)),identity=el("div","");
-    identity.append(el("h2","",p.name),el("p","",`${destination(p.destination)} · ${p.chat_selected?"当前 Chat 选中 · ":""}${p.default?"默认接手未指定 Agent 的请求":"按明确绑定接手请求"}`));
-    const status=el("span","agent-badge",p.native_inventory?"已保存 · 有原生加载记录":"已保存 · 装载状态未知");header.append(avatar,identity,status);container.append(header);
+    identity.append(el("h2","",p.name),el("p","",`${destination(p.destination)} · ${p.chat_selected?"当前 Chat 选中 · ":""}${p.default?"默认接手未指定 Agent 的请求":["web","cli"].includes(p.destination)?"可在 Chat 中选择":"按明确绑定接手请求"}`));
+    const status=el("span","agent-badge",p.unsaved?"新智能体 · 尚未保存":p.native_inventory?"已保存 · 有原生加载记录":"已保存 · 装载状态未知");header.append(avatar,identity,status);container.append(header);
     const nav=el("nav","agent-tabs");nav.setAttribute("aria-label","智能体档案");
     for(const [key,title]of Object.entries(tabs)){const b=el("button",activeTab===key?"active":"",title);b.type="button";b.setAttribute("aria-current",activeTab===key?"page":"false");b.onclick=()=>{activeTab=key;rerender();};nav.append(b);}
     container.append(nav);const content=el("div","agent-content");container.append(content);
@@ -37,6 +42,13 @@ window.AGHAgentProfiles = (() => {
       note(content,file.read_only?"此档案为只读；配置来源见工作上下文。":"本页展示已保存的配置和有限历史证据。下方保留已有编辑项；更改尚未保存时，档案仍展示已保存版本。");
       const edits=el("section","simple-group");const index=draft.agents.findIndex(a=>a.id===p.id);
       for(const field of fields.filter(f=>f.path[0]!=="agents"||f.path[1]===index))edits.append(renderField(field));content.append(edits);
+    }else if(activeTab==="configure"){
+      const index=draft.agents.findIndex(a=>a.id===p.id);
+      if(file.read_only||!editor||p.destination!=="web"){note(content,"当前入口保留已有配置编辑；Web Chat 智能体可在此管理专属能力。");return true;}
+      note(content,"保存后即可在 Chat 顶部切换；下次发送时使用新配置。已有聊天保留，执行环境变化时开启新的原生会话。");
+      const edits=el("section","simple-group");
+      for(const field of fields.filter(f=>f.path[0]!=="agents"||f.path[1]===index))edits.append(renderField(field));content.append(edits);
+      editor.capabilities(content,index);
     }else if(activeTab==="instructions"){
       content.append(card("Host 工作规则","由 Host 按渠道、身份和当前任务装配。","角色指令补充原生执行引擎规则；来源材料不能授予权限。"));
       for(const item of p.instructions){const c=card(({instructions_file:"角色指令文件",instructions_dir:"指令目录",user_file:"用户上下文文件"})[item.kind],item.path,item.state==="unavailable"?"来源不可读取；请检查文件或权限。":"已保存来源；不证明运行时已经装载。用户上下文只展示来源。");if(item.text){c.append(el("pre","agent-instruction",item.text));if(item.truncated)note(c,"预览截取前 16000 个字符。");}content.append(c);}
@@ -50,7 +62,7 @@ window.AGHAgentProfiles = (() => {
       const entries=[...(native?.skills||[]).map(name=>({type:"技能",title:name,text:"原生实际已加载（历史观测）",detail:native.observed_at})),
         ...p.skills.filter(s=>!(native?.skills||[]).includes("agent-host:"+s.name)).map(s=>({type:"技能",title:s.name,text:`记忆技能 · 版本 ${s.revision} · ${state(s.state)}`,detail:`${s.observed_at}；装配不等于原生加载或执行成功。`})),
         ...(native?.services||[]).map(s=>({type:"知识与工具服务",title:s.name,text:state(s.status),detail:`${native.observed_at}；原生初始化观测，未验证所有检索与写入操作。`})),
-        ...p.connectors.map(c=>({type:"连接器与数据源",title:c.name,text:state(c.state),detail:`Beta 期间共享；${c.origin}。配置不证明账号连通。`})),
+        ...p.connectors.map(c=>({type:"连接器与数据源",title:c.name,text:state(c.state),detail:`${c.scope==="agent_selection"?"此智能体已选择":"默认共享"}；${c.origin}。配置不证明账号连通。`})),
         {type:"Host 能力",title:"任务路由与上下文装配",text:"由 Host 提供",detail:"结合入口、Agent 和项目配置组织执行。"},
         {type:"Host 能力",title:"执行证据与长期记忆",text:"由 Host 提供",detail:"执行结束、业务验收、回复交付与记忆保存分别记录。"}];
       function filter(){inventory.replaceChildren();const q=search.value.trim().toLowerCase();for(const type of ["技能","知识与工具服务","连接器与数据源","Host 能力"]){inventory.append(el("h3","agent-section-label",type));const matches=entries.filter(e=>e.type===type&&[e.title,e.text,e.detail].join(" ").toLowerCase().includes(q));const grid=el("div","agent-grid");for(const e of matches)grid.append(card(e.title,e.text,e.detail));inventory.append(grid);if(!matches.length)note(inventory,q?"没有匹配项。":type==="技能"?"暂无技能加载证据；这不证明没有其他原生技能。":"尚无配置或原生观测记录。");}}

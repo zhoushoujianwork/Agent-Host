@@ -11,9 +11,13 @@ to keep the defaults. [Implementation details](settings-console-detail.md).
 
 - **General / 通用:** light, dark or system appearance. Changes apply immediately
   to the workspace and stay in this browser.
-- **Agents / 智能体:** inspect each configured Agent's overview, instructions,
-  capabilities, work context, channels/groups and activity; keep the existing
-  default-Agent, display-name and working-folder edits.
+- **Agents / 智能体:** add a Web Chat Agent, then use its Configuration tab to
+  edit its name, working folder, installed user skills and knowledge sources.
+  Keep default capabilities or select a custom set; an empty custom set mounts
+  none from that group. Save, close settings and select the Agent at the top of
+  Chat. Each Agent keeps its own conversation while the viewer is running.
+  Overview, instructions, observed capabilities, work context and activity remain
+  available for inspecting configured Agents.
 - **Models and connections / 模型与连接:** choose a native model and, when using
   a custom service, its address and API key. Existing keys remain hidden.
 - **Channels / 消息渠道:** enable an already configured channel and fill in its
@@ -28,7 +32,7 @@ edits. A failed check restores the previous file. Saving does not execute tasks.
 ## Defaults and scope
 
 Advanced edits to execution profiles, timeouts, permissions, instruction sources,
-memory policy, datasources, backups and CLI handoff parameters stay in
+memory policy, source connection setup, backups and CLI handoff parameters stay in
 configuration files. Agent profiles show applicable sources read-only.
 The simple page does not expose a generic JSON editor or
 arbitrary field additions and removals. Saving a visible field preserves the
@@ -36,8 +40,8 @@ other saved values.
 
 The [Agent profile](agent-profile-design.md) shows saved configuration and
 bounded historical evidence. Explicit group bindings and observed default-routed
-groups are distinguished; unknown loading state is visible. Capability and
-group-binding editing remain planned. CLI and channel destinations stay separate.
+groups are distinguished; unknown loading state is visible. Web Agent capability
+selection is supported; channel group-binding editing remains planned. CLI and channel destinations stay separate.
 
 The page edits existing owner-local Host configuration. Initial installation and
 native account sign-in remain in their existing tools. Standalone previews can

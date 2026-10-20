@@ -18,3 +18,12 @@
 .agent-search {border:1px solid var(--line);border-radius:8px;padding:11px 13px;background:var(--bg);color:var(--ink);width:100%}
 .agent-instruction {white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.8 var(--mono);max-height:320px;overflow:auto;border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
 @media(max-width:650px){.agent-grid{grid-template-columns:1fr}.agent-tabs{gap:17px}.agent-badge{margin-left:0}.agent-heading{gap:12px}}
+
+.agent-capability-editor { margin-top: 24px; padding: 20px; border: 1px solid var(--line); border-radius: 11px; }
+.agent-capability-editor>select { margin: 14px 0 0; width: 100%; padding: 9px 11px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; font: inherit; }
+.agent-capability-list:empty { display: none; }.agent-capability-list { margin-top: 14px; }
+.agent-capability-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; max-height: 220px; overflow: auto; scrollbar-width: none; }
+.agent-capability-options::-webkit-scrollbar { display: none; }.agent-capability-option { display: flex; align-items: center; gap: 9px; padding: 9px; font-size: 12px; border-radius: 6px; overflow-wrap: anywhere; }.agent-capability-option:hover { background: var(--surface-soft); }.agent-capability-option input { accent-color: var(--accent); flex-shrink: 0; }
+@media(max-width:580px){.agent-capability-options{grid-template-columns:1fr;}}
+
+.agent-capability-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }

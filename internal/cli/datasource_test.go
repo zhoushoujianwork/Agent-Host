@@ -45,7 +45,7 @@ func TestDatasourceGlobalMounts(t *testing.T) {
 	for _, channel := range []string{"dingtalk", "feishu", ""} {
 		for _, audience := range []string{"owner", "group-fixture"} {
 			o := options{knowledgeConfigs: []string{local, remote}, knowledgeChannel: channel,
-				audienceID: audience, projectID: "unrelated", knowledgeNames: []string{}, pluginNames: []string{}}
+				audienceID: audience, projectID: "unrelated", knowledgeNames: nil, pluginNames: []string{}}
 			if err := resolveKnowledge(&o); err != nil {
 				t.Fatal(err)
 			}
@@ -133,5 +133,33 @@ func TestDatasourceLegacyFilesRequireExplicitMigration(t *testing.T) {
 	writeBotJSON(t, filepath.Join(dir, "plugins.email.json"), map[string]any{"version": 1, "enabled": false})
 	if _, err := discoverUnifiedChannels(dir); err == nil || !strings.Contains(err.Error(), "migration") {
 		t.Fatal("legacy silently loaded", err)
+	}
+}
+
+func TestExplicitAgentKnowledgeSelectionNarrowsGlobalSources(t *testing.T) {
+	_, dir := unifiedFixture(t)
+	local := datasourceDocumentFixture(t, dir, "local-documents", "notes")
+	remote := datasourceDocumentFixture(t, dir, "confluence", "notes")
+	base := options{knowledgeConfigs: []string{local, remote}}
+	for _, names := range [][]string{nil, {}, {"local-documents:notes"}} {
+		o := base
+		o.knowledgeNames = names
+		if err := resolveKnowledge(&o); err != nil {
+			t.Fatal(err)
+		}
+		expected := len(names)
+		if names == nil {
+			expected = 2
+		}
+		if len(o.knowledgeSources) != expected {
+			t.Fatal("selection ignored", names, o.knowledgeSources)
+		}
+		if len(names) == 1 && o.mcpServers[0].Name != "knowledge_local-documents_notes" {
+			t.Fatal(o.mcpServers)
+		}
+	}
+	base.knowledgeNames = []string{"missing"}
+	if err := resolveKnowledge(&base); err == nil {
+		t.Fatal("unknown source silently ignored")
 	}
 }

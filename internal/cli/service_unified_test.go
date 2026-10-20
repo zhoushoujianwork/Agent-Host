@@ -180,3 +180,23 @@ func TestUnifiedRejectUnknownAndEmptyFeatures(t *testing.T) {
 		t.Fatal("unknown plugin accepted")
 	}
 }
+
+func TestUnifiedConfigAcceptsPrivateSettingsHistoryAndLock(t *testing.T) {
+	_, dir := unifiedFixture(t)
+	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"dws": map[string]any{"enabled": true, "profile": "fixture:owner", "services": []string{"contact"}}}})
+	if err := os.Mkdir(filepath.Join(dir, ".settings-history"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".settings.lock"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discoverUnifiedChannels(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(dir, ".settings-history"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discoverUnifiedChannels(dir); err == nil {
+		t.Fatal("nonprivate settings history accepted")
+	}
+}

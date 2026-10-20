@@ -22,9 +22,10 @@ const knowledgeUsage = `Runtime sources: local Markdown/Dokki retrieval and Conf
 
 Configuration and provider token files must be owner-private (0600 or 0400).
 check validates local files only; no remote search or authentication is performed.
-Enabled datasource.plugins.* configurations are global across channels, Agents,
-projects and audiences. Legacy direct configurations retain their selectors.
-During Beta, configured enabled sources are shared across users and Agents.
+Enabled datasource.plugins.* configurations are shared by default across channels,
+projects and audiences; explicit Agent knowledge selections narrow their mounts.
+Legacy direct configurations retain their selectors. During Beta, user identity
+alone does not narrow configured enabled sources.
 Legacy default means unregistered cwd. Local sources require explicit relative paths.
 Native permissions apply. The internal serve command runs only pinned MCP instances.
 `

@@ -49,7 +49,7 @@
       el("chat-agent").replaceChildren(...(state.agents || []).map(agent=>{const option=node("option","",agent.name);option.value=agent.id;return option;}));
       agentOptions=signatureOptions;
     }
-    el("chat-agent").value = state.selected_agent || "";
+    if (el("chat-agent").value !== (state.selected_agent || "")) el("chat-agent").value = state.selected_agent || "";
     el("chat-agent-bar").hidden = !(state.agents || []).length;
     el("chat-welcome").hidden = state.turns.length > 0;
     el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";

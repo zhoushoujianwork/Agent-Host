@@ -395,7 +395,7 @@ func TestBetaSharesEnabledSourcesAcrossUsersGroupsAndAgents(t *testing.T) {
 	for _, agentID := range []string{"default", "other"} {
 		for _, audience := range []string{"owner", "user:alice", "user:unknown", "group-audience"} {
 			t.Run(agentID+"/"+audience, func(t *testing.T) {
-				o := options{agentID: agentID, audienceID: audience, permissionMode: "bypassPermissions", knowledgeConfigs: paths, pluginNames: []string{}, knowledgeNames: []string{}}
+				o := options{agentID: agentID, audienceID: audience, permissionMode: "bypassPermissions", knowledgeConfigs: paths, pluginNames: []string{}, knowledgeNames: nil}
 				if err := catalog.userOptions(&o, audience, audience == "group-audience"); err != nil {
 					t.Fatal(err)
 				}

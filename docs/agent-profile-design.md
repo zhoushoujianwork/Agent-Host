@@ -1,8 +1,11 @@
 # Agent profile and loaded configuration
 
 Status: the first read-only profile is implemented in Settings → Agents.
-Role, project and group-binding editing remain planned. Existing name, working
-folder and default-Agent edits remain available.
+Web Chat Agent creation and editing are implemented: name, working folder,
+installed user-skill selection and knowledge-source selection can be saved from
+the Configuration tab. Saved Agents appear in the Chat selector. Role, project
+and group-binding editing remain planned. Existing default-Agent edits remain
+available. See [settings](settings-console.md).
 [Implementation notes](agent-profile-design-detail.md).
 
 ## Goal

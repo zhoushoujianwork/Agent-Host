@@ -58,3 +58,29 @@ return to the underlying route. Cmd+W dismisses settings before closing Chat.
 Header/navigation and the save bar remain visible while the form content scrolls
 without a visible scrollbar. Direct `#settings` links open over the memory page;
 the standalone settings document remains available.
+
+## Web Agent editing and capability selection
+
+The settings API supplies selectable installed user-skill directory names and
+knowledge `plugin:source` identifiers from the actual Web launch configuration.
+It does not expose source credentials or infer a second native home. Creation
+adds a stable generated ID to that launcher's existing editable Agent catalog;
+the existing revision check, private backup and checked-save path is reused.
+External catalogs outside the settings root remain read-only. Channel catalogs
+retain their existing editor and restart lifecycle.
+
+`native_skills: null` inherits the explicit base native profile's user skills;
+a list selects only those installed directories, and `[]` mounts none. Selected
+skills use an immutable selection-specific Agent/audience profile with symlinks
+to installed skills. The profile identity changes when the selection changes.
+Built-in native commands, native plugin skills, project-local skills and Host-selected procedure memory
+are independent of this user-skill selector. Unknown skills and traversal names
+fail before mounting. Native skill selection works for print and ACP because it
+is prepared before either adapter runs.
+
+`knowledge_sources: null` retains default enabled-source sharing; explicit lists
+(including `[]`) narrow the Agent's actual knowledge MCP mounts before provider
+credentials are opened. User grants, where active, still intersect the selection.
+The normal configuration fingerprint causes a new native execution session when
+capabilities or workspace change. Web Chat history remains visible across that
+renewal. Saving does not execute a task or restart a channel service.

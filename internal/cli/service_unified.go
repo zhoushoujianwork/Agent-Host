@@ -77,6 +77,12 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 	var channels []configuredChannel
 	for _, entry := range entries {
 		name := entry.Name()
+		if name == ".settings-history" || name == ".settings.lock" {
+			if _, err := privateServicePath(filepath.Join(directory, name), name == ".settings-history"); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if entry.IsDir() {
 			if name != "credentials" && name != "agents" && name != "users" && name != "skills" {
 				return nil, fmt.Errorf("unknown configuration directory %s", name)

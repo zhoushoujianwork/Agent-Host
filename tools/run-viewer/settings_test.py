@@ -151,6 +151,33 @@ class SettingsTests(unittest.TestCase):
         self.save(row, row["value"])
         self.assertEqual(path.read_bytes(), before)
 
+    def test_web_agent_create_edit_and_invalid_capability_rollback(self):
+        profile = self.root / "native"
+        skill = profile / "skills" / "example"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("installed fixture")
+        sources = self.write("datasource.plugins.local-documents.json", {"enabled": True, "settings": {"sources": [{"name": "notes", "token": "never-expose"}]}})
+        web = self.write("web-chat.json", {"args": ["--agents-config", str(self.config / "agents.cli.json"), "--agent", "daily", "--home", str(self.root / "cli-state"), "--workspace", str(self.root), "--native-profile", str(profile), "--knowledge-config", str(sources)]})
+        self.store.web_config = web
+        options = self.store.agent_options()
+        self.assertEqual(options["skills"], [{"id": "example", "name": "example"}])
+        self.assertEqual(options["knowledge_sources"][0]["id"], "local-documents:notes")
+        self.assertNotIn("never-expose", json.dumps(options))
+        row = self.row("agents.cli.json")
+        row["value"]["agents"].append({"id": "new", "name": "New", "workspace": str(self.root), "native_skills": ["example"], "knowledge_sources": ["local-documents:notes"]})
+        result = self.save(row, row["value"])
+        self.assertEqual(result["file"]["value"]["agents"][1]["native_skills"], ["example"])
+        before = (self.config / "agents.cli.json").read_bytes()
+        for key, values in (("native_skills", ["../escape"]), ("knowledge_sources", ["missing"]), ("native_skills", ["example", "example"])):
+            changed = json.loads(before)
+            changed["agents"][1][key] = values
+            with self.assertRaises(ValueError):
+                self.save(result["file"], changed)
+            self.assertEqual((self.config / "agents.cli.json").read_bytes(), before)
+        result["file"]["value"]["agents"][1]["native_skills"] = []
+        result["file"]["value"]["agents"][1]["knowledge_sources"] = []
+        self.assertEqual(self.save(result["file"], result["file"]["value"])["status"], "saved")
+
     def test_owner_http_checks_conflicts_and_settings_assets(self):
         http = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         http.settings_store = self.store

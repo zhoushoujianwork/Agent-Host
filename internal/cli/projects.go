@@ -143,6 +143,20 @@ func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
 		return nil, nil
 	}
 	if globalKnowledgePlugins(o) {
+		sources, err := knowledge.Catalog(knowledgePaths(o), o.knowledgeChannel)
+		if err != nil {
+			return nil, err
+		}
+		names, err := knowledge.ResolveNames(sources, o.knowledgeNames)
+		if err != nil {
+			return nil, err
+		}
+		if names != nil {
+			if o.userKnowledgeRestricted {
+				names = slices.DeleteFunc(names, func(name string) bool { return !slices.Contains(o.userKnowledgeSources, name) })
+			}
+			return knowledge.SelectManyGranted(knowledgePaths(o), nil, nil, "", "", names)
+		}
 		if o.userKnowledgeRestricted {
 			return knowledge.SelectManyGranted(knowledgePaths(o), nil, nil, "", "", o.userKnowledgeSources)
 		}
@@ -191,6 +205,9 @@ func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {
 	}
 	if o.userKnowledgeRestricted {
 		return knowledge.SelectManyGranted(paths, ids, names, audience, o.knowledgeChannel, o.userKnowledgeSources)
+	}
+	if names != nil {
+		return knowledge.SelectManyGranted(paths, ids, names, audience, o.knowledgeChannel, names)
 	}
 	return knowledge.SelectMany(paths, ids, names, audience, o.knowledgeChannel)
 }

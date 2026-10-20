@@ -170,10 +170,12 @@ def profiles(store, catalog=None, web_config=None, web_agent=None):
     rows = store.index()["files"]
     destinations = configured_destinations(store, rows)
     virtual_files = []
+    web_options = None
     web_error = None
     if web_config:
         try:
             web = agent_destination(web_config)
+            web_options = store.agent_options() if hasattr(store, "agent_options") else None
             destinations.insert(0, {"channel": "web", "enabled": True, "account": "", "tenant": "", **web})
             if not any(row["category"] == "agents" and row["path"] == web["agents_path"] for row in rows):
                 path = Path(web["agents_path"])
@@ -236,7 +238,11 @@ def profiles(store, catalog=None, web_config=None, web_agent=None):
                                "workspace_origin": "agent" if agent.get("workspace") else "service",
                                "projects": agent.get("projects"),
                                "instructions": instruction_sources(store, agent),
-                               "groups": groups, "connectors": connectors,
+                               "configured_skills": agent.get("native_skills"),
+                               "configured_knowledge": agent.get("knowledge_sources"),
+                               "groups": groups, "connectors": ([{"name": source["name"], "origin": "当前 Web 连接", "state": "configured", "scope": "agent_selection"}
+                                   for source in web_options["knowledge_sources"] if agent.get("knowledge_sources") is None or source["id"] in agent["knowledge_sources"]]
+                                   if destination["channel"] == "web" and web_options else connectors),
                                **execution_engine(store, agent, execution, destination["channel"] != "unassigned", row["path"]), **evidence})
     result.sort(key=lambda profile: profile["destination"] != "web")
     return {"enabled": True, "profiles": result, "virtual_files": virtual_files, "web_error": web_error}

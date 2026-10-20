@@ -13,9 +13,9 @@ function setup(){
   const profile={key:"a:dingtalk:default",file_id:"file-a",id:"default",name:"Saved name",destination:"dingtalk",default:true,groups:[],skills:[],connectors:[],instructions:[],activity:[],evidence_state:"unknown",projects:null};
   const walk=(n=root)=>[n,...n.children.flatMap(walk)];
   const click=text=>{const n=walk().find(n=>n.tag==="button"&&n.textContent===text);assert.ok(n,text);n.onclick();};
-  const render=(items=[profile])=>window.AGHAgentProfiles.render(root,items,file,draft,window.AGHSettings.fields(draft,"agents"),field=>{
+  const render=(items=[profile],editor)=>window.AGHAgentProfiles.render(root,items,file,draft,window.AGHSettings.fields(draft,"agents"),field=>{
     const input=new Element("input");input.value=field.value;input.path=field.path;input.oninput=()=>{draft.agents[0].name=input.value;};return input;
-  });
+  },null,editor);
   return {root,draft,profile,walk,click,render};
 }
 test("unsaved edits survive profile tabs while the heading remains saved configuration",()=>{
@@ -41,4 +41,11 @@ test("Web profile distinguishes actual ACP configuration and native historical i
   h.click("能力");assert.ok(h.walk().some(n=>n.tag==="h3"&&n.textContent==="jms-ssh"));
   assert.ok(h.walk().some(n=>n.tag==="h3"&&n.textContent==="confluence"));
   assert.ok(h.walk().some(n=>n.textContent==="已连接（历史观测）"));
+});
+
+test("new Web Agent opens its editable configuration without borrowing previous run evidence",()=>{
+  const h=setup();h.profile.destination="web";let editedIndex=null;
+  h.render([h.profile],{add(){h.draft.agents.push({id:"new",name:"New"});return "new";},capabilities(parent,index){editedIndex=index;}});
+  h.click("＋ 新增智能体");assert.equal(h.walk().find(n=>n.tag==="h2").textContent,"New");
+  assert.equal(editedIndex,1);assert.ok(h.walk().some(n=>n.textContent==="新智能体 · 尚未保存"));
 });

@@ -84,12 +84,13 @@ def atomic_write(path, data):
 
 
 class SettingsStore:
-    def __init__(self, root, binary, handoff=None, validator=None):
+    def __init__(self, root, binary, handoff=None, validator=None, web_config=None):
         self.root = Path(root).resolve()
         self.config = self.root / "config"
         self.binary = Path(binary)
         self.handoff = Path(handoff) if handoff else None
         self.validator = validator or self.check_service
+        self.web_config = Path(web_config) if web_config else None
         self.lock = threading.Lock()
         self.secret_key = secrets.token_bytes(32)
 
@@ -168,6 +169,47 @@ class SettingsStore:
         return {"enabled": True, "root": str(self.root), "files": rows,
                 "notice": "Saved configuration. Service changes require a restart; CLI changes apply on the next task. Provider sign-in and connectivity are not tested."}
 
+    def agent_options(self):
+        """Only expose capability names from the actual Web launch destination."""
+        if not self.web_config:
+            return None
+        from chat_runtime import agent_destination
+        destination = agent_destination(self.web_config)
+        config = json.loads(private_bytes(self.web_config))
+        args = config["args"]
+        def option(flag):
+            if args.count(flag) != 1 or args.index(flag) + 1 >= len(args):
+                raise ValueError("Web capability configuration is unavailable.")
+            return args[args.index(flag) + 1]
+        profile = Path(option("--native-profile"))
+        if not profile.is_absolute():
+            raise ValueError("Web native profile must be absolute.")
+        skills = []
+        directory = profile / "skills"
+        if directory.exists():
+            for path in sorted(directory.iterdir()):
+                if path.is_dir() and (path / "SKILL.md").is_file():
+                    skills.append({"id": path.name, "name": path.name})
+        sources = []
+        for i, arg in enumerate(args):
+            if arg != "--knowledge-config":
+                continue
+            if i + 1 >= len(args):
+                raise ValueError("Web knowledge configuration is incomplete.")
+            path = Path(args[i + 1])
+            value = json.loads(private_bytes(path))
+            plugin = re.fullmatch(r"datasource\.plugins\.([a-z0-9-]+)\.json", path.name)
+            if plugin and not value.get("enabled", False):
+                continue
+            for source in value.get("settings", value).get("sources", []):
+                name = source["name"]
+                identity = plugin[1] + ":" + name if plugin else name
+                if any(s["id"] == identity for s in sources):
+                    raise ValueError("Duplicate Web knowledge source identity.")
+                sources.append({"id": identity, "name": identity})
+        key = next((key for key, entry in self.files().items() if str(entry[0]) == destination["agents_path"]), None)
+        return {"file_id": key, "skills": skills, "knowledge_sources": sources}
+
     def check_service(self):
         if list(self.config.glob("channels.*.json")):
             result = subprocess.run([str(self.binary), "service", "check", "--config-dir", str(self.config)],
@@ -186,16 +228,27 @@ class SettingsStore:
             raise ValueError("Configuration must be a JSON object.")
         if path.name.startswith("agents"):
             agents = value.get("agents")
-            if not isinstance(agents, list) or not agents or not all(isinstance(a, dict) for a in agents):
+            if not isinstance(agents, list) or not 0 < len(agents) <= 128 or not all(isinstance(a, dict) for a in agents):
                 raise ValueError("Configure at least one Agent.")
             ids = [a.get("id", "") for a in agents]
             if not all(isinstance(i, str) and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}", i) for i in ids) or len(set(ids)) != len(ids) or value.get("default_agent") not in ids:
                 raise ValueError("Agent IDs must be unique; the default Agent must exist.")
+            capability_options = self.agent_options() if self.web_config else None
+            web_key = capability_options.get("file_id") if capability_options else None
+            is_web = web_key and self.files()[web_key][0] == path
             for agent in agents:
-                if not isinstance(agent.get("name"), str) or not agent["name"].strip():
+                if not isinstance(agent.get("name"), str) or not agent["name"].strip() or len(agent["name"]) > 200 or any(c in agent["name"] for c in "\x00\r\n"):
                     raise ValueError("Every Agent needs a name.")
-                if agent.get("workspace") and (not Path(agent["workspace"]).is_absolute() or not Path(agent["workspace"]).is_dir()):
+                if agent.get("workspace") and (not isinstance(agent["workspace"], str) or not Path(agent["workspace"]).is_absolute() or not Path(agent["workspace"]).is_dir()):
                     raise ValueError("The Agent workspace must be an existing absolute directory.")
+                for field, choices in (("native_skills", "skills"), ("knowledge_sources", "knowledge_sources")):
+                    selected = agent.get(field)
+                    if selected is None:
+                        continue
+                    if not isinstance(selected, list) or not all(isinstance(s, str) and s and s.strip() == s and not any(c in s for c in "\x00\r\n") for s in selected) or len(set(selected)) != len(selected):
+                        raise ValueError("Agent capabilities must contain distinct installed identifiers.")
+                    if is_web and not set(selected) <= {c["id"] for c in capability_options[choices]}:
+                        raise ValueError("Selected Agent capability is unavailable in this Web connection.")
         if path == self.handoff:
             # Reuse the launcher's validation without starting a native task.
             script = next((directory / "scripts/chat.py" for directory in
