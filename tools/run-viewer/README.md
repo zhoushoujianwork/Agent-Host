@@ -14,11 +14,20 @@ results remain separate.
 `make run` starts one shared workbench at `http://127.0.0.1:8765/` and opens it
 in the default browser. It displays private and group chats from every Agent
 in all enabled channels, with channel and chat labels and separate execution/memory identities.
+With `--config-dir`, it also mounts `ROOT/cli-state` before the first CLI run;
+refresh picks up new Chat records automatically. The source status above the
+trace explains missing state, no runs, scope filters and read failures, and shows
+the exact state home. An ad hoc `chat --home` elsewhere remains independent.
 Run details retain their own chat memory partition. Group and other-Agent
 memories are viewable; existing owner memory controls keep their original scope.
 `RUN_ARGS='--viewer-port 9000'` overrides
 the fixed default. The workbench stops with the supervisor. See
 [project-local startup](../../docs/service-install.md) for headless startup.
+For CLI-only use without channel credentials, use
+`agent-host service workbench --config-dir /absolute/ROOT/config --viewer-source /absolute/checkout/tools/run-viewer`.
+The config directory may be empty. Run Chat against `/absolute/ROOT/cli-state`;
+see the [CLI-only startup steps](../../docs/service-install.md) and
+[source diagnostics contract](README-detail.md#cli-sources-and-empty-views).
 When a [workspace backup policy](../../docs/workspace-backup-design.md) is configured,
 the execution page shows its last success, archive size, verification time and
 failure status. It reads backup health without exposing the recovery key or

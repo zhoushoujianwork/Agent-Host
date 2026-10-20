@@ -26,7 +26,7 @@ SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
 request. Legacy reads invoke no Host process. A file-memory backend uses the
 explicit local Host verifier to validate publication and rebuild derived cache;
 it starts no business task, native harness, or model call. Memory actions delegate to the existing running Host and may
-invoke Jev relationship comparison before publication. Schema versions 1–14
+invoke Jev relationship comparison before publication. Schema versions 1–15
 are supported; v1 has no candidate table.
 The additive v3 retrieval indexes, v4 channel tables and v5/v6 reaction outbox do not change the
 queried run/candidate payloads. Run provenance is retained in raw data; the
@@ -34,6 +34,30 @@ viewer never reads channel reply capabilities or the channel inbox.
 An unsupported version or malformed existing source returns an explicit error.
 A missing database is an empty source, and its directory is not created.
 Concurrent Go-host updates appear on a subsequent refresh.
+
+## CLI sources and empty views
+
+Managed `--config-dir` startup mounts the fixed `ROOT/cli-state` even before it
+exists. `service workbench` provides the same projection without enabled
+channels. Each source keeps its database, identity filters and record links;
+qualified CLI keys are `cli:db:RUN_ID`. No external JSON reports or native
+desktop conversations are imported. A CLI source must stay private, owned by
+the current user and free of symlinks, including when created after startup.
+
+The records index adds `sources`, with database source ID/kind/name, `home`,
+`record_count` and `status`. Status is `missing_database`, `no_runs`,
+`scope_filtered` or `ready`; a multi-source read failure is `read_failed` with
+an explicit `error` and unknown (`null`) count. Healthy records remain available;
+failure is not interpreted as a successfully read empty source. The ordinary
+single-source endpoint retains its HTTP read error. Scope filtering happens
+before limits and applies to direct record URLs too.
+
+The trace page renders source diagnostics as text, identifies an unmounted CLI
+source in legacy multi-source mode, and distinguishes local search/source
+filters from an empty catalog. Refresh repeats discovery at the registered path;
+it neither creates state nor guesses another home. Compare this path with the
+explicit Chat home to diagnose a runtime mismatch. Errors before Host creates
+a run remain terminal diagnostics rather than fabricated run records.
 
 ## File-memory projections
 

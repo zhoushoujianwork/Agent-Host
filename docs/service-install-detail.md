@@ -211,12 +211,10 @@ The supervisor starts one workbench for all enabled channels at fixed loopback
 port 8765 (`--viewer-port` overrides it). Workers use `--no-workbench` and do not
 start separate Web processes. The workbench reads each channel's state separately
 and qualifies displayed record/memory links with its registration name.
-With `--config-dir`, `discoverCLIState` also checks the documented fixed
-`ROOT/cli-state` path beside `ROOT/config`; when its `state.db` already exists,
-it is forwarded to the viewer as one more `--channel-home cli=...` source,
-alongside the per-channel ones, with the same read-only qualification. A missing
-`cli-state` directory is not an error, only an absent source — ordinary CLI chat
-is optional and its database is created lazily by the first invocation. Only this
+With `--config-dir`, `discoverCLIState` forwards the documented fixed
+`ROOT/cli-state` path beside `ROOT/config` as `--channel-home cli=...`, even when
+its database does not exist yet. CLI chat is optional and its database is
+created lazily by the first invocation. Only this
 fixed default path is auto-discovered; an ad hoc `chat --home` elsewhere is an
 independent, unregistered runtime.
 Workers relay stdout/stderr to the
@@ -231,6 +229,41 @@ The Host owns graceful channel, native execution and viewer shutdown. No launchd
 registration, startup-at-login, automatic crash restart or shell daemon is added.
 The legacy installer remains available for historical release tooling, but is
 not part of the checkout's `make run` workflow.
+
+### CLI workbench observation
+
+`service workbench --config-dir ROOT/config --viewer-source ABSOLUTE_PATH`
+starts an observer for `ROOT/cli-state` without reading channel registrations,
+provider credentials or model configuration. The config directory must be a
+private canonical absolute path; it can be empty. Viewer assets and logs live
+under `ROOT/viewer` and `ROOT/logs`. The observer takes no chat writer lock and
+does not initialize state. Both observer and Chat explicitly select the same
+state home; ordinary Chat still defaults to the invocation directory's
+`.agent-host/cli-state`. The command accepts browser/port options, but rejects
+`--root`, `--channels-dir`, `--restart` and `--no-workbench`.
+
+The shared observer registers only the fixed CLI home, never searches other
+directories or merges native channel sessions. Initial discovery checks existing
+state ownership, private permissions and symlinks. The Python projection repeats
+these checks on CLI refresh/read, including a state home created after startup.
+
+`GET /api/records` returns per-source diagnostics: `missing_database`, `no_runs`,
+`scope_filtered`, `ready` or `read_failed`, with the exact state home and source
+label. A damaged mounted source has an explicit failure while healthy sources
+remain visible. The UI also identifies an unmounted CLI source in legacy
+multi-channel mode and local search/source filters that hide loaded records.
+Setup failures before run creation stay in the terminal; no synthetic run is
+created. Existing run journals preserve actual model/provider events, tools,
+failure/cancellation and independent memory/acceptance outcomes.
+
+Automated coverage on 2026-10-20 starts this public service entry with an empty
+config and no model credentials, then calls the official Chat entry using its
+default home. Deterministic native/Jev fixtures verify first-run discovery,
+successful continuation, native failure and cancellation through the running
+HTTP viewer.
+Python fixtures cover scope filtering, missing/empty state, damaged sources and
+read-only isolation. These checks establish the application path, not a new live
+native-model or platform acceptance result.
 
 | Project-local path | Purpose |
 | --- | --- |

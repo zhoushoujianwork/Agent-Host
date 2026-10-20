@@ -204,10 +204,11 @@ def report_records(report, source):
 
 
 class Catalog:
-    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner", host_binary=None, all_chats=False):
+    def __init__(self, home, reports, workspace=None, project=None, agent="default", audience="owner", host_binary=None, all_chats=False, private_home=False):
         if workspace and project:
             raise ValueError("--project and --workspace are mutually exclusive")
         self.database = Path(home).expanduser().resolve() / "state.db"
+        self.private_home = Path(home).expanduser().absolute() if private_home else None
         self.reports = Path(reports).expanduser().resolve() if reports is not None else None
         self.workspace = str(Path(workspace).expanduser().resolve()) if workspace else None
         self.project = project
@@ -221,10 +222,25 @@ class Catalog:
             raise ValueError("agent and audience must be nonempty identifiers")
 
     def connection(self):
+        self.validate_private_home()
         conn = sqlite3.connect(self.database.as_uri() + "?mode=ro", uri=True, timeout=2, factory=MemoryConnection)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("BEGIN")
         return conn
+
+    def validate_private_home(self):
+        if self.private_home is None:
+            return
+        if self.private_home.resolve() != self.private_home:
+            raise ValueError("CLI state home must not contain symlinks")
+        for path, directory in ((self.private_home, True), (self.private_home / "state.db", False)):
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                continue
+            valid_type = stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)
+            if not valid_type or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise ValueError("CLI state requires private current-user directories and regular files")
 
     def file_memory_marker(self):
         path = self.database.parent / "file-memory.json"
@@ -570,8 +586,10 @@ class Catalog:
         return " WHERE " + condition, args
 
     def index(self):
+        self.validate_private_home()
         rows = []
         total = 0
+        source_status = "missing_database"
         if self.database.exists():
             conn = self.connection()
             try:
@@ -579,6 +597,7 @@ class Catalog:
                 scope = context["scope"]
                 condition, arguments = self.run_filter(context)
                 total = conn.execute("SELECT count(*) FROM runs" + condition, arguments).fetchone()[0]
+                source_status = "ready" if total else ("scope_filtered" if conn.execute("SELECT EXISTS(SELECT 1 FROM runs)").fetchone()[0] else "no_runs")
                 for (payload,) in conn.execute("SELECT payload FROM runs" + condition + " ORDER BY created_at DESC,rowid DESC LIMIT ?", arguments + (RUN_LIMIT,)):
                     run = decode(payload)
                     rows.append(summary("db:" + run["id"], run, {"id": "db", "kind": "database", "name": "本机 state.db"}))
@@ -591,6 +610,9 @@ class Catalog:
             rows.append(summary(record["key"], record["run"], record["source"], len(record["events"]), review_count))
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return {"records": rows, "database_present": self.database.exists(), "database_count": total,
+                "sources": [{"id": "db", "kind": "database", "name": "本机 state.db",
+                             "home": str(self.database.parent), "status": source_status,
+                             "record_count": total}],
                 "database_limit": RUN_LIMIT, **context,
                 "default_key": next((r["key"] for r in rows if r["execution_status"] == "running"),
                                     next((r["key"] for r in rows if r["review_events"]), rows[0]["key"] if rows else None))}
@@ -639,7 +661,7 @@ class MultiCatalog:
             name, separator, home = source.partition("=")
             if not separator or not name or not home or name in self.catalogs:
                 raise ValueError("--channel-home requires a unique NAME=PATH")
-            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience, host_binary=host_binary, all_chats=all_chats)
+            self.catalogs[name] = Catalog(home, None, agent=agent, audience=audience, host_binary=host_binary, all_chats=all_chats, private_home=name == "cli")
 
     @staticmethod
     def qualify(value, channel):
@@ -662,10 +684,22 @@ class MultiCatalog:
         return result
 
     def index(self):
-        indexes = [self.qualify(catalog.index(), name) for name, catalog in self.catalogs.items()]
+        indexes = []
+        for name, catalog in self.catalogs.items():
+            try:
+                index = catalog.index()
+            except (OSError, ValueError, sqlite3.Error) as error:
+                # A failed source remains visible as a failure alongside healthy
+                # sources. It must never look like an empty successful read.
+                index = {"records": [], "database_present": catalog.database.exists(), "database_count": 0,
+                         "sources": [{"id": "db", "kind": "database", "name": "本机 state.db",
+                                      "home": str(catalog.database.parent), "status": "read_failed",
+                                      "error": str(error), "record_count": None}]}
+            indexes.append(self.qualify(index, name))
         rows = [row for index in indexes for row in index["records"]]
         rows.sort(key=lambda row: row["created_at"], reverse=True)
         return {"records": rows, "database_present": any(index["database_present"] for index in indexes),
+                "sources": [source for index in indexes for source in index["sources"]],
                 "database_count": sum(index["database_count"] for index in indexes),
                 "database_limit": RUN_LIMIT * len(indexes), "channels": list(self.catalogs),
                 "agent_id": self.agent, "audience_id": self.audience, "all_chats": self.all_chats,

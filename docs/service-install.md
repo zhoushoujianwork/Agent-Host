@@ -198,8 +198,8 @@ supervisor after failures. Supervisor output goes to
 their existing runtime directories.
 
 Ordinary CLI chat keeps `.agent-host/cli-state`. With `--config-dir`, the shared
-workbench automatically adds it as a read-only `cli` source once that directory
-holds a `state.db` — no separate viewer or `--home` setup is required. An ad hoc
+workbench mounts that fixed path as a read-only `cli` source, even before the
+first chat. New runs appear on refresh without restarting the workbench. An ad hoc
 `chat --home` outside the default path stays independent and does not appear in
 the shared workbench. To inspect channel records directly, select the relevant
 `--home`; migrated default memories retain the original scope:
@@ -207,6 +207,34 @@ the shared workbench. To inspect channel records directly, select the relevant
 ```sh
 ./bin/agent-host feishu status --home "$PWD/.agent-host/channels/feishu/state"
 ```
+
+For CLI-only use, start the observer without channel or model credentials:
+
+```sh
+make build
+mkdir -p /absolute/ROOT/config
+chmod 700 /absolute/ROOT/config
+./bin/agent-host service workbench --config-dir /absolute/ROOT/config --viewer-source "$PWD/tools/run-viewer"
+```
+
+In another terminal, run Chat with your normal model credentials:
+
+```sh
+./bin/agent-host chat --home /absolute/ROOT/cli-state -m 'Reply with OK.'
+```
+
+Use the same physical
+ROOT in both commands; resolve directory symlinks first. The observer needs
+Python 3.10+, opens the browser by default, and stops with Ctrl-C.
+`--no-browser` and `--viewer-port 9000` are supported. It creates no chat database
+and does not start or restart a channel service. Stop another workbench or use
+a different port if the default port is occupied.
+
+The execution page lists mounted sources and distinguishes uninitialized state,
+no runs, scope-filtered records and source read failures. Compare the displayed
+state home with Chat's `--home` when a view is empty. Pre-run setup errors remain
+terminal diagnostics, rather than successful execution records. See the
+[implementation and validation notes](service-install-detail.md#cli-workbench-observation).
 
 Direct `service run` retains duplicate detection. Use `--restart` with managed
 startup (`--config-dir`, `--channels-dir`, or `--root` plus `--viewer-source`)

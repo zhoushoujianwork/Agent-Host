@@ -18,8 +18,8 @@ func TestDiscoverCLIStateFixedPathOnly(t *testing.T) {
 	if err := os.Mkdir(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if cliState, err := discoverCLIState(directory); err != nil || cliState != "" {
-		t.Fatal("absent CLI state must be silently empty, not an error", cliState, err)
+	if cliState, err := discoverCLIState(directory); err != nil || cliState != filepath.Join(root, "cli-state") {
+		t.Fatal("absent CLI state must remain mounted for the first chat", cliState, err)
 	}
 	cliState := filepath.Join(root, "cli-state")
 	if err := os.Mkdir(cliState, 0700); err != nil {
@@ -42,6 +42,19 @@ func TestDiscoverCLIStateFixedPathOnly(t *testing.T) {
 	}
 	if _, err := discoverCLIState(directory); err == nil {
 		t.Fatal("group/other accessible CLI state must be rejected")
+	}
+	if err := os.Chmod(cliState, 0700); err != nil {
+		t.Fatal(err)
+	}
+	database := filepath.Join(cliState, "state.db")
+	if err := os.Rename(database, database+".other"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(database+".other", database); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discoverCLIState(directory); err == nil {
+		t.Fatal("CLI discovery followed a database symlink")
 	}
 }
 

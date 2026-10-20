@@ -106,6 +106,25 @@ func TestServiceWorkbenchMissingInstallation(t *testing.T) {
 	}
 }
 
+func TestCLIWorkbenchFailsWhenObserverExits(t *testing.T) {
+	layout := workbenchFixture(t)
+	source := filepath.Join(layout.Root, "viewer")
+	if err := os.WriteFile(filepath.Join(source, "server.py"), []byte("print('Execution viewer: http://127.0.0.1:8765', flush=True)\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := channelDirectoryFixture(t)
+	directory := filepath.Join(root, "config")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	err := runService(ctx, []string{"workbench", "--config-dir", directory, "--viewer-source", source, "--no-browser"}, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "exited unexpectedly") {
+		t.Fatal("observer failure did not fail the CLI-only command", err)
+	}
+}
+
 func TestServiceWorkbenchRejectsNonlocalURL(t *testing.T) {
 	layout := workbenchFixture(t)
 	script := "import os, time\nassert 'ANTHROPIC_AUTH_TOKEN' not in os.environ\nprint('Execution viewer: https://example.com', flush=True)\ntime.sleep(30)\n"

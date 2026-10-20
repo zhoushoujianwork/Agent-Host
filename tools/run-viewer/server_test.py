@@ -88,8 +88,35 @@ class CatalogTests(unittest.TestCase):
         conn = sqlite3.connect(other / "state.db")
         conn.execute("PRAGMA user_version=999")
         conn.close()
+        index = broken.index()
+        self.assertEqual(len(index["records"]), 1)
+        self.assertEqual(index["sources"][1]["status"], "read_failed")
+        self.assertIn("unsupported state schema", index["sources"][1]["error"])
+
+    def test_source_diagnostics_distinguish_missing_empty_and_filtered(self):
+        self.assertEqual(self.catalog.index()["sources"][0]["status"], "missing_database")
+        conn = self.database()
+        self.assertEqual(self.catalog.index()["sources"][0]["status"], "ready")
+        filtered = viewer.Catalog(self.home, None, agent="another-agent")
+        self.assertEqual(filtered.index()["sources"][0]["status"], "scope_filtered")
+        conn.execute("DELETE FROM runs")
+        conn.commit()
+        conn.close()
+        self.assertEqual(self.catalog.index()["sources"][0]["status"], "no_runs")
+
+    def test_cli_home_created_after_startup_cannot_redirect_to_another_source(self):
+        cli = self.root.resolve() / "cli-state"
+        unified = viewer.MultiCatalog([f"cli={cli}", f"dingtalk={self.home}"])
+        self.assertEqual(unified.index()["sources"][0]["status"], "missing_database")
+        conn = self.database()
+        conn.close()
+        cli.symlink_to(self.home, target_is_directory=True)
+        index = unified.index()
+        self.assertEqual(index["sources"][0]["status"], "read_failed")
+        self.assertIn("symlinks", index["sources"][0]["error"])
+        self.assertEqual([row["key"] for row in index["records"]], ["dingtalk:db:first"])
         with self.assertRaises(ValueError):
-            broken.index()
+            unified.record("cli:db:first")
 
     def test_read_only_snapshot_and_new_records(self):
         conn = self.database()

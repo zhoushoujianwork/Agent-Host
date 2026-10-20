@@ -26,6 +26,7 @@ const serviceUsage = `Managed channel runtime (DingTalk by default).
   agent-host service check --channels-dir ABSOLUTE_PATH
   agent-host service run --root ABSOLUTE_PATH [--no-browser]
   agent-host service run --channels-dir ABSOLUTE_PATH --viewer-source ABSOLUTE_PATH [--no-browser]
+  agent-host service workbench --config-dir ABSOLUTE_ROOT/config --viewer-source ABSOLUTE_PATH [--no-browser]
 
 make run checks host.json, channels.NAME.json and datasource.plugins.NAME.json
 from ROOT/config, gracefully restarts the same instance, then runs in the foreground.
@@ -48,6 +49,8 @@ Claude, or creating host state. It does not verify platform or model credentials
 run starts the installed read-only workbench and opens the default browser.
 Use --viewer-port to change the fixed default port 8765.
 Use --no-browser to keep the workbench available without opening a browser.
+workbench starts only the CLI observer, without channel or model credentials.
+It observes ROOT/cli-state; use chat --home ABSOLUTE_ROOT/cli-state for the same runtime.
 `
 
 type serviceConfig struct {
@@ -103,8 +106,8 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 		return err
 	}
 	command := args[0]
-	if command != "check" && command != "run" {
-		return errors.New("service requires check or run")
+	if command != "check" && command != "run" && command != "workbench" {
+		return errors.New("service requires check, run or workbench")
 	}
 	fs := flag.NewFlagSet("service "+command, flag.ContinueOnError)
 	fs.SetOutput(errout)
@@ -120,7 +123,7 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	var viewerPort int
 	var noWorkbench bool
 	var restart bool
-	if command == "run" {
+	if command == "run" || command == "workbench" {
 		fs.BoolVar(&restart, "restart", false, "Gracefully restart the same managed runtime if already running")
 		fs.IntVar(&viewerPort, "viewer-port", 8765, "Fixed loopback port for the unified workbench")
 		fs.BoolVar(&noWorkbench, "no-workbench", false, "Internal worker mode: use the supervisor workbench")
@@ -137,11 +140,17 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 	if len(fs.Args()) != 0 {
 		return errors.New("service commands do not accept positional arguments")
 	}
-	if command == "run" && (viewerPort < 1 || viewerPort > 65535) {
+	if command != "check" && (viewerPort < 1 || viewerPort > 65535) {
 		return errors.New("viewer-port must be between 1 and 65535")
 	}
 	if restart && (noWorkbench || configDirectory == "" && channelsDirectory == "" && viewerSource == "") {
 		return errors.New("restart requires managed startup with config-dir, channels-dir or viewer-source")
+	}
+	if command == "workbench" {
+		if configDirectory == "" || root != "" || channelsDirectory != "" || restart || noWorkbench {
+			return errors.New("service workbench requires config-dir and does not accept root, channels-dir, restart or no-workbench")
+		}
+		return runCLIWorkbench(ctx, configDirectory, viewerSource, viewerPython, viewerPort, noBrowser, errout)
 	}
 	if configDirectory != "" {
 		if channelsDirectory != "" || root != "" {

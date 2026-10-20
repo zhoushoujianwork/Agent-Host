@@ -167,22 +167,29 @@ func (w synchronizedChannelOutput) Write(p []byte) (int, error) {
 
 // discoverCLIState finds the ordinary CLI chat state home for the fixed,
 // documented ROOT/cli-state path beside a unified ROOT/config directory. It
-// is read-only discovery: an absent or not-yet-initialized directory is not
-// an error, only an empty result, matching the viewer's own tolerance for a
-// missing database. A custom --home used by an ad hoc "agent-host chat"
-// invocation is never auto-discovered; only the documented default path is.
+// is read-only discovery: an absent directory is still mounted so the viewer
+// can observe the first chat without a restart. A custom --home used by an ad
+// hoc "agent-host chat" is never auto-discovered; only the default path is.
 func discoverCLIState(directory string) (string, error) {
 	if filepath.Base(directory) != "config" {
 		return "", nil
 	}
 	cliState := filepath.Join(filepath.Dir(directory), "cli-state")
-	if _, err := os.Lstat(filepath.Join(cliState, "state.db")); errors.Is(err, os.ErrNotExist) {
-		return "", nil
+	if _, err := os.Lstat(cliState); errors.Is(err, os.ErrNotExist) {
+		return cliState, nil
 	} else if err != nil {
 		return "", fmt.Errorf("inspect CLI chat state: %w", err)
 	}
 	if _, err := privateServicePath(cliState, true); err != nil {
 		return "", fmt.Errorf("CLI chat state directory: %w", err)
+	}
+	if actual, err := filepath.EvalSymlinks(cliState); err != nil || actual != cliState {
+		return "", errors.New("CLI chat state must not contain symlinks")
+	}
+	if _, err := os.Lstat(filepath.Join(cliState, "state.db")); !errors.Is(err, os.ErrNotExist) {
+		if _, err := privateServicePath(filepath.Join(cliState, "state.db"), false); err != nil {
+			return "", fmt.Errorf("CLI chat database: %w", err)
+		}
 	}
 	return cliState, nil
 }

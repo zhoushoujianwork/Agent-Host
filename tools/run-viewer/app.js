@@ -208,6 +208,7 @@ async function refresh() {
   try {
     const index = await api("/api/records");
     state.index = index;
+    renderSources();
     renderList();
     $("empty").hidden = index.records.length !== 0;
     if (!index.records.length) {
@@ -233,6 +234,23 @@ async function refresh() {
   } catch (error) { showError(error); }
   finally { state.busy = false; $("refresh").disabled = false; }
 }
+function renderSources() {
+  const node = $("source-status");
+  node.replaceChildren();
+  const statuses = {
+    ready: "Records available",
+    missing_database: "State is not initialized. Run chat with the state home shown below; also check that this is the intended runtime.",
+    no_runs: "No runs yet. Setup errors before a run is created remain terminal diagnostics.",
+    scope_filtered: "Runs exist outside the selected Agent, audience or project scope.",
+    read_failed: "Source read failed. Check this runtime's state database.",
+  };
+  for (const source of array(state.index.sources)) {
+    node.append(dom("p", "note", `${source.channel || "local"}: ${statuses[source.status] || source.status} · ${source.home}${source.error ? " · " + source.error : ""}`));
+  }
+  if (state.index.channels && !state.index.channels.includes("cli")) {
+    node.append(dom("p", "note", "CLI source is not mounted. Use service run --config-dir ROOT/config, or service workbench for CLI-only use."));
+  }
+}
 function renderList() {
   if (!state.index) return;
   const query = $("search").value.toLowerCase().trim();
@@ -245,7 +263,7 @@ function renderList() {
   const list = $("record-list");
   const scroll = list.scrollTop;
   list.replaceChildren();
-  if (!rows.length) placeholder(list, "没有符合条件的记录");
+  if (!rows.length) placeholder(list, state.index.records.length ? "No records match the current search or source filter. Clear the filters to see loaded runs." : "没有执行记录；请查看数据源状态。");
   for (const row of rows) {
     const button = dom("button", `record ${row.key === state.key ? "selected" : ""}`);
     button.setAttribute("aria-pressed", String(row.key === state.key));
