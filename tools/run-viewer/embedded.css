@@ -1,7 +1,24 @@
-/* Same-origin workspace panels retain their existing editors and state. */
-.rail .brand,.rail .rail-nav,.rail .rail-label:first-of-type,.rail .rail-note,.rail .rail-foot{display:none}
-.rail{width:185px;padding-top:18px}body:has(.rail) main{margin-left:185px}
-.navigation .brand,.navigation .nav-bottom{display:none}
-.navigation{width:205px;padding-top:20px}body:has(.navigation) main{margin-left:205px;width:calc(100% - 205px)}
-.sidebar .brand,.sidebar>a,.sidebar .sidebar-foot{display:none}
-@media(max-width:750px){.rail{display:none}body:has(.rail) main{margin-left:0}.navigation{position:static;width:100%}body:has(.navigation) main{margin:0;width:100%}}
+/* Panels share the outer navigation; domain filters remain inside each panel. */
+.embedded body[data-page] .topbar,.embedded body[data-page] .page-top { display: none; }
+.embedded [data-page="memory"] .rail .brand,.embedded [data-page="memory"] .rail-nav,
+.embedded [data-page="memory"] .rail-label:first-of-type,.embedded [data-page="memory"] .rail-note,
+.embedded [data-page="memory"] .rail-foot { display: none; }
+.embedded [data-page="memory"] .rail { width: 180px; padding: 24px 12px; }
+.embedded [data-page="memory"] main { margin-left: 180px; }
+.embedded [data-page="memory"] .rail-separator { margin-top: 0; }
+.embedded [data-page="settings"] .brand,.embedded [data-page="settings"] .nav-bottom { display: none; }
+.embedded [data-page="settings"] .navigation { width: 224px; padding: 24px 16px; }
+.embedded [data-page="settings"] main { margin-left: 224px; width: calc(100% - 224px); }
+.embedded [data-page="executions"] .brand,.embedded [data-page="executions"] .standalone-link,
+.embedded [data-page="executions"] .sidebar-foot { display: none; }
+.embedded [data-page="executions"] .nav-label { padding-top: 24px; }
+@media(max-width:800px) {
+  .embedded [data-page="memory"] .rail { display: none; }
+  .embedded [data-page="memory"] main { margin-left: 0; }
+  .embedded [data-page="settings"] .navigation { position: static; width: 100%; }
+  .embedded [data-page="settings"] main { margin: 0; width: 100%; }
+  .embedded [data-page="settings"] .shell { display: block; }
+  .embedded [data-page="settings"] .nav-heading { display: none; }
+  .embedded [data-page="settings"] #categories { display: flex; flex-direction: row; overflow: auto; gap: 6px; margin-top: 12px; }
+  .embedded [data-page="settings"] .category { white-space: nowrap; width: auto; }
+}

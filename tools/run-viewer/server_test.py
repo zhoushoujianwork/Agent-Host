@@ -438,7 +438,7 @@ class HTTPTests(unittest.TestCase):
         error.exception.close()
 
     def test_assets_api_headers_and_write_boundary(self):
-        for asset in ("/", "/app.js", "/style.css", "/workspace.js", "/workspace.css", "/embedded.css", "/executions.html"):
+        for asset in ("/", "/app.js", "/style.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html"):
             with urlopen(self.base + asset) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")

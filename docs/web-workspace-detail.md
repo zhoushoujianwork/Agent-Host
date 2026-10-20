@@ -29,3 +29,25 @@ unsaved changes and their existing unload guard.
 Validation includes the server HTTP boundary suite, JavaScript syntax checks,
 `make check` and isolated-fixture browser inspection. No production restart or
 configuration migration is part of this change.
+
+## Shared page design and appearance
+
+`theme.css` owns semantic light/dark colors and shared controls. `pages.css`
+composes memory, journal, settings and Chat layouts over their existing content
+renderers. Each standalone page loads these same assets; embedded panels hide
+duplicate navigation while retaining filters and editing state. The memory
+review queue follows the graph and library in both document and visual order.
+
+`theme.js` applies the validated `agent-host.appearance.v1` localStorage value
+before content renders. System mode listens for OS appearance changes. Storage
+events synchronize retained frames and other same-origin tabs. Storage failure
+keeps the page usable and reports that the selection is temporary. Appearance
+does not use the Host mutation API or require a service restart.
+
+Run `node --test tools/run-viewer/theme_test.cjs` to verify restoration, system
+changes, cross-document synchronization and blocked storage. Node is needed for
+this developer check only; the workbench still runs with Python and a browser.
+HTTP checks cover the added assets. Existing settings tests also cover a real
+CLI handoff checker with sibling imports and rollback on unexpected validation
+failures. The checker runs with `--check` in a separate Python process and never
+executes the configured Host task.

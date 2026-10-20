@@ -13,6 +13,11 @@ review the changed configuration and save. Agent instruction files are editable
 beside their configuration. Nested controls support the existing configuration
 fields without inventing a second configuration format.
 
+The redesigned page also provides light, dark and system appearance under
+**外观与主题**. The selection applies immediately across the
+[Web workspace](web-workspace.md) and stays in the browser; it is separate from
+Host configuration and the Save changes action.
+
 The console edits saved local configuration. Provider passwords/tokens stay hidden
 on load; leaving a secret unchanged retains its existing value. Replacing or
 clearing it is explicit. Native account sign-in remains in the native tool.

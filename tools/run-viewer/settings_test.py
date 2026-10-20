@@ -87,6 +87,35 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn("private-token", str(raised.exception))
         self.assertEqual(path.read_bytes(), before)
 
+    def test_unexpected_checker_failure_restores_exact_bytes(self):
+        path = self.config / "agents.cli.json"
+        before = path.read_bytes()
+        row = self.row("agents.cli.json")
+        row["value"]["agents"][0]["name"] = "Changed name"
+        def reject():
+            raise ImportError("private-checker-detail")
+        self.store.validator = reject
+        with self.assertRaisesRegex(ValueError, "previous file was restored") as raised:
+            self.save(row, row["value"])
+        self.assertNotIn("private-checker-detail", str(raised.exception))
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_real_handoff_checker_resolves_sibling_imports_without_execution(self):
+        # /usr/bin/false is deliberately non-runnable as a task: --check must
+        # validate the catalog without invoking the configured Host executable.
+        handoff = self.root / "handoff.json"
+        handoff.write_text(json.dumps({"binary": "/usr/bin/false", "cwd": str(self.root),
+            "environment_file": str(self.config / "credentials/provider.json"),
+            "args": ["--home", str(self.root / "cli-state"), "--agents-config", str(self.config / "agents.cli.json"),
+                     "--agent", "daily", "--workspace", str(self.root), "--native-profile", str(self.root / "native")]}))
+        handoff.chmod(0o600)
+        self.store.handoff = handoff
+        self.store.validator = self.store.check_service
+        row = self.row("agents.cli.json")
+        row["value"]["agents"][0]["name"] = "Checked name"
+        self.assertEqual(self.save(row, row["value"])["status"], "saved")
+        self.assertFalse((self.root / "cli-state").exists())
+
     def test_symlinks_unknown_files_and_unrecognized_secret_markers_are_rejected(self):
         target = self.config / "agents.link.json"
         target.symlink_to(self.config / "agents.cli.json")

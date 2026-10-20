@@ -5,21 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Settings · Agent-Host</title>
   <link rel="stylesheet" href="/settings.css">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/pages.css">
+  <script src="/theme.js"></script>
   <script src="/settings.js" defer></script>
 </head>
-<body>
+<body data-page="settings">
   <div class="shell">
     <aside class="navigation">
       <a class="brand" href="/"><span class="brand-icon">ah</span><span>Agent-Host<small>YOUR LOCAL WORKSPACE</small></span></a>
       <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search settings" aria-label="Search settings"></label>
-      <div class="nav-heading">WORKSPACE SETTINGS</div>
+      <div class="nav-heading">CONFIGURATION / 配置</div>
       <nav id="categories" aria-label="Settings categories"></nav>
-      <div class="nav-bottom"><a href="/">← Execution history</a><a href="/memory.html">Memory workspace ↗</a><span><i></i> Local configuration</span></div>
+      <div class="nav-bottom"><a href="/#workbench">← Workspace</a><a href="/#memory">Memory workspace ↗</a><span><i></i> Local configuration</span></div>
     </aside>
     <main>
-      <header class="page-top"><span>Workspace <span class="separator">/</span> Settings</span><button id="refresh" class="quiet" type="button">↻ Refresh</button></header>
+      <header class="page-top"><span>Workspace <span class="separator">/</span> Settings</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label></header>
+      <section class="page-intro"><div class="page-kicker">WORKSPACE PREFERENCES</div><h1>让工作空间，适合你。</h1><p>管理外观、智能体和连接。外观即时生效，Host 配置经过检查后保存。</p></section>
       <div class="page-body">
-        <div class="heading"><div><div class="eyebrow">MAKE IT YOURS</div><h1 id="section-title">Agents</h1><p id="section-description">Choose who handles your tasks and the context they use.</p></div><span class="local-badge">On this computer</span></div>
+        <details class="appearance-card" open><summary><span>◐ 外观与主题</span></summary><p>选择适合你的明暗风格，工作台、Chat、记忆和执行页面会一起切换。</p><div class="theme-options"><button class="theme-option" data-theme-choice="light" type="button" aria-pressed="false"><span class="theme-preview"></span><strong>浅色 · 晨间苔绿</strong></button><button class="theme-option" data-theme-choice="dark" type="button" aria-pressed="false"><span class="theme-preview dark"></span><strong>深色 · 静夜森林</strong></button><button class="theme-option" data-theme-choice="system" type="button" aria-pressed="false"><span class="theme-preview system"></span><strong>跟随系统</strong></button></div><p data-theme-status role="status">外观仅保存在当前浏览器，不修改服务配置。</p></details>
+        <div class="heading"><div><div class="eyebrow">HOST CONFIGURATION</div><h2 id="section-title">Agents</h2><p id="section-description">Choose who handles your tasks and the context they use.</p></div><button id="refresh" class="quiet" type="button">↻ Refresh configuration</button></div>
         <div id="notice" class="notice" role="status">Loading your configuration…</div>
         <div id="feedback" role="status" hidden></div>
         <div id="files" class="file-tabs" aria-label="Configuration files"></div>

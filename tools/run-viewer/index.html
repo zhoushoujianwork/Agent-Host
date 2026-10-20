@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Agent-Host · Workspace</title>
   <link rel="stylesheet" href="/workspace.css">
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/pages.css">
+  <script src="/theme.js"></script>
   <script src="/workspace.js" defer></script>
 </head>
-<body>
+<body data-page="workspace">
   <aside class="rail">
     <a class="brand" href="#workbench" aria-label="Agent-Host 工作台">ah</a>
     <nav aria-label="主导航">
@@ -20,7 +23,7 @@
     <span class="local-indicator" title="本地工作台">●</span>
   </aside>
   <main>
-    <header class="topbar"><div><strong>Agent-Host</strong><span class="divider">/</span><span id="view-title">工作台</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection" role="status">正在连接…</span><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
+    <header class="topbar"><div><strong>Agent-Host</strong><span class="divider">/</span><span id="view-title">工作台</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection" role="status">正在连接…</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
     <div class="studio">
       <section id="workbench" class="view board-view" aria-label="对话工作台">
         <div class="board-heading"><div><div class="eyebrow">YOUR CONTINUOUS WORKSPACE</div><h1>让每次对话，都有位置。</h1><p>在画布上整理对话，回到上下文，连接长期记忆。</p></div><a class="primary" href="#chat">＋ 新对话草稿</a></div>
@@ -29,7 +32,7 @@
         <div id="canvas-scroll" class="canvas-scroll"><div id="canvas" class="canvas"><div id="board-empty" class="board-empty">正在读取真实对话记录…</div></div></div>
         <footer><span>CONVERSATIONS → CONTEXT → MEMORY</span><span>本地布局 · 原始执行记录保持独立</span></footer>
       </section>
-      <section id="chat" class="view chat-home" hidden><div class="welcome-mark">✳</div><div class="eyebrow">A PLACE TO BEGIN</div><h1>从一个想法开始。</h1><p>在右侧写下任务，准备下一次对话。</p><div class="suggestions"><button data-prompt="帮我整理这个项目的当前进展和下一步。">↗ 整理项目进展</button><button data-prompt="查找与当前任务有关的记忆，并列出来源。">◇ 找回相关记忆</button><button data-prompt="帮我检查 Agent、模型和渠道配置。">⚙ 检查工作配置</button></div><p class="boundary">本期提供工作台框架。Web 对话执行接口尚未接入，草稿不会发送给 Agent。</p></section>
+      <section id="chat" class="view chat-home" hidden><div class="welcome-mark">✳</div><div class="eyebrow">A PLACE TO BEGIN</div><h1>下一件事，一起开始。</h1><p>整理一个想法，找回一段上下文，或准备新的任务。</p><div class="suggestions"><button data-prompt="帮我整理这个项目的当前进展和下一步。"><span aria-hidden="true">↗</span>整理项目进展</button><button data-prompt="查找与当前任务有关的记忆，并列出来源。"><span aria-hidden="true">◇</span>找回相关记忆</button><button data-prompt="帮我检查 Agent、模型和渠道配置。"><span aria-hidden="true">⚙</span>检查工作配置</button></div><p class="boundary">Chat 草稿会自动保存在当前浏览器。Web 执行尚未接入，内容不会发送给 Agent。</p></section>
       <section id="memory" class="view frame-view" hidden><iframe title="记忆图谱与记忆库" data-src="/memory.html"></iframe></section>
       <section id="executions" class="view frame-view" hidden><iframe title="执行记录与证据" data-src="/executions.html"></iframe></section>
       <section id="settings" class="view frame-view" hidden><iframe title="Agent-Host 设置" data-src="/settings.html"></iframe></section>

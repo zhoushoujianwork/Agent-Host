@@ -14,6 +14,14 @@ Chat drafts, memory and settings. [Implementation notes](web-workspace-detail.md
 - Explore the existing memory graph, source evidence and memory library.
 - Edit Agents, models, providers, channels, instructions, data sources, people,
   backups and CLI handoff through the existing checked settings console.
+- Choose light, dark or system appearance in the top bar or Settings. All pages,
+  including the graph, forms and detail dialogs, share the same theme. The
+  preference stays in this browser and follows system changes in system mode.
+
+Memory puts the relationship graph and recent recall first, followed by the
+library and experience review queue. Execution records use a journal rail,
+status summary and segmented detail tabs. Settings separates instant appearance
+preferences from checked Host configuration saves.
 
 Switching panels retains settings edits. Saving settings preserves the existing
 validation, conflict detection, secret masking and private backup behavior.

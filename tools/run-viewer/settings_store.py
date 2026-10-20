@@ -8,9 +8,9 @@ import os
 from pathlib import Path
 import re
 import secrets
-import sqlite3
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 
@@ -198,7 +198,6 @@ class SettingsStore:
                     raise ValueError("The Agent workspace must be an existing absolute directory.")
         if path == self.handoff:
             # Reuse the launcher's validation without starting a native task.
-            from importlib.util import spec_from_file_location, module_from_spec
             script = next((directory / "scripts/chat.py" for directory in
                            (self.root / "skills/agent-host-tasks", ROOT_SKILL,
                             Path.home() / ".agents/skills/agent-host-tasks",
@@ -206,10 +205,12 @@ class SettingsStore:
                            if (directory / "scripts/chat.py").is_file()), None)
             if script is None:
                 raise ValueError("CLI handoff validator is unavailable in this installation.")
-            spec = spec_from_file_location("settings_handoff", script)
-            module = module_from_spec(spec)
-            spec.loader.exec_module(module)
-            module.configured_command(path)
+            # Run in a separate interpreter so sibling imports resolve without
+            # mutating the threaded server's process-wide import path.
+            result = subprocess.run([sys.executable, "-B", str(script), "--config", str(path), "--check"],
+                                    capture_output=True, timeout=45, check=False)
+            if result.returncode:
+                raise ValueError("CLI handoff validation failed. Check the private configuration and referenced files.")
 
     def save(self, key, revision, value):
         with self.lock:
@@ -243,7 +244,8 @@ class SettingsStore:
                 try:
                     self.validate(path, merged, secret)
                     self.validator()
-                except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError, sqlite3.Error):
+                except Exception:
+                    # A checker crash must roll back just like an invalid value.
                     if private_bytes(path) == after:
                         atomic_write(path, before)
                     else:
