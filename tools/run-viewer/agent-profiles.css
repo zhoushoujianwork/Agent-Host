@@ -27,3 +27,5 @@
 @media(max-width:580px){.agent-capability-options{grid-template-columns:1fr;}}
 
 .agent-capability-actions { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 10px; }
+
+.agent-more { color: var(--muted); font-size: 11px; }.agent-more summary { cursor: pointer; padding: 6px 0; }.agent-more>button { margin-top: 8px; }

@@ -11,7 +11,10 @@ to keep the defaults. [Implementation details](settings-console-detail.md).
 
 - **General / 通用:** light, dark or system appearance. Changes apply immediately
   to the workspace and stay in this browser.
-- **Agents / 智能体:** add a Web Chat Agent, then use its Configuration tab to
+- **Agents / 智能体:** start with one default Agent; keep explicit project
+  assistants, such as GTM, separate. Web/CLI aliases and channel defaults do not
+  create extra Agent choices in the simple view. Additional Web Agents are
+  optional under More Agent options. Use the Configuration tab to
   edit its name, working folder, installed user skills and knowledge sources.
   Keep default capabilities or select a custom set; an empty custom set mounts
   none from that group. Save, close settings and select the Agent at the top of

@@ -84,3 +84,16 @@ credentials are opened. User grants, where active, still intersect the selection
 The normal configuration fingerprint causes a new native execution session when
 capabilities or workspace change. Web Chat history remains visible across that
 renewal. Saving does not execute a task or restart a channel service.
+
+## Simple Agent choices
+
+The primary choice is the actual Web default Agent when available, followed by
+explicit non-default project Agents. Entries are deduplicated by catalog and
+Agent ID. Web/CLI aliases of the same configuration appear once; channel default
+profiles stay in their existing configuration but do not become separate choices
+in the simple settings view. Selection still opens the chosen destination's own
+profile and edits its original catalog. This presentation does not merge channel
+identities, native sessions, knowledge policies or group bindings. Additional Web
+Agent creation remains an optional disclosure. Demo Agents are not required.
+Chat hides its Agent selector when its own local catalog has only one Agent;
+independent channel project Agents are not silently imported into that catalog.

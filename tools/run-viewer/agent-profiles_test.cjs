@@ -16,7 +16,7 @@ function setup(){
   const render=(items=[profile],editor)=>window.AGHAgentProfiles.render(root,items,file,draft,window.AGHSettings.fields(draft,"agents"),field=>{
     const input=new Element("input");input.value=field.value;input.path=field.path;input.oninput=()=>{draft.agents[0].name=input.value;};return input;
   },null,editor);
-  return {root,draft,profile,walk,click,render};
+  return {root,draft,profile,walk,click,render,profiles:window.AGHAgentProfiles};
 }
 test("unsaved edits survive profile tabs while the heading remains saved configuration",()=>{
   const h=setup();h.render();let input=h.walk().find(n=>n.path?.at(-1)==="name");input.value="Unsaved name";input.oninput();
@@ -48,4 +48,14 @@ test("new Web Agent opens its editable configuration without borrowing previous 
   h.render([h.profile],{add(){h.draft.agents.push({id:"new",name:"New"});return "new";},capabilities(parent,index){editedIndex=index;}});
   h.click("＋ 新增智能体");assert.equal(h.walk().find(n=>n.tag==="h2").textContent,"New");
   assert.equal(editedIndex,1);assert.ok(h.walk().some(n=>n.textContent==="新智能体 · 尚未保存"));
+});
+
+test("simple choices show one default and separate project Agents without channel duplicates",()=>{
+  const h=setup(),base={...h.profile};
+  const profiles=[{...base,key:"web:daily",id:"daily",file_id:"cli",destination:"web"},{...base,key:"cli:daily",id:"daily",file_id:"cli",destination:"cli"},{...base,key:"feishu:default",destination:"feishu",file_id:"feishu"},{...base,key:"ding:default",destination:"dingtalk"},{...base,key:"ding:gtm",id:"gtm-skilllab",name:"GTM",default:false,destination:"dingtalk"}];
+  assert.deepEqual(Array.from(h.profiles.choices(profiles),p=>p.key),["web:daily","ding:gtm"]);
+});
+test("the same Web and CLI configuration is shown only once in a profile picker",()=>{
+  const h=setup();h.profile.destination="web";h.render([h.profile,{...h.profile,key:"a:cli:default",destination:"cli"}]);
+  assert.ok(!h.walk().some(n=>n.tag==="button"&&n.textContent.endsWith("· 本地 CLI")));
 });

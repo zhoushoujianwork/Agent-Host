@@ -103,3 +103,8 @@ test("unchanged polls preserve an open native Agent selector",async()=>{
   Object.defineProperty(picker,"value",{get(){return current;},set(value){writes++;current=value;}});
   await h.poll();assert.equal(writes,0);assert.equal(current,"a");
 });
+
+test("a single default Agent does not show a redundant Chat selector",async()=>{
+  const h=await setup();h.snapshot={...h.snapshot,selected_agent:"daily",agents:[{id:"daily",name:"Default"}]};await h.poll();assert.equal(h.el("chat-agent-bar").hidden,true);
+  h.snapshot.agents.push({id:"project",name:"Project"});await h.poll();assert.equal(h.el("chat-agent-bar").hidden,false);
+});

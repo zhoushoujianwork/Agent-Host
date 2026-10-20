@@ -50,7 +50,7 @@
       agentOptions=signatureOptions;
     }
     if (el("chat-agent").value !== (state.selected_agent || "")) el("chat-agent").value = state.selected_agent || "";
-    el("chat-agent-bar").hidden = !(state.agents || []).length;
+    el("chat-agent-bar").hidden = (state.agents || []).length < 2;
     el("chat-welcome").hidden = state.turns.length > 0;
     el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";
     const ids = new Set(state.turns.map(t => t.id));

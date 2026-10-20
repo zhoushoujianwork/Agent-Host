@@ -11,8 +11,17 @@ window.AGHAgentProfiles = (() => {
     if(detail)c.append(el("small","",detail));return c;
   }
   function note(parent, text) {parent.append(el("p","agent-note",text));}
-  function render(container, profiles, file, draft, fields, renderField, error, editor) {
-    const available=profiles.filter(p=>p.file_id===file.id);
+  function choices(profiles) {
+    const primary=profiles.find(p=>p.destination==="web"&&p.default)||profiles.find(p=>p.default);
+    const result=primary?[primary]:[];
+    for(const p of profiles){
+      if(p.default||result.some(item=>item.file_id===p.file_id&&item.id===p.id))continue;
+      result.push(p);
+    }
+    return result;
+  }
+  function render(container, profiles, file, draft, fields, renderField, error, editor, compact=false) {
+    const available=profiles.filter(p=>p.file_id===file.id && !(p.destination==="cli"&&profiles.some(other=>other.file_id===p.file_id&&other.id===p.id&&other.destination==="web")));
     const web=available.find(p=>p.destination==="web");
     if(web&&editor)for(const agent of draft.agents||[]){
       if(!available.some(p=>p.id===agent.id))available.push({...web,id:agent.id,key:`${file.id}:web:${agent.id}`,name:agent.name||agent.id,default:false,chat_selected:false,native_inventory:null,skills:[],activity:[],instructions:[],groups:[],unsaved:true});
@@ -20,10 +29,12 @@ window.AGHAgentProfiles = (() => {
     if(!available.length){note(container,error||"尚未取得智能体档案。可继续编辑下方已有配置。");return false;}
     if(error)note(container,error);
     const p=available.find(p=>p.key===selectedKey)||available[0];selectedKey=p.key;
-    const rerender=()=>{container.replaceChildren();render(container,profiles,file,draft,file.read_only?[]:window.AGHSettings.fields(draft,file.category,file.secret),renderField,error,editor);};
+    const rerender=()=>{container.replaceChildren();render(container,profiles,file,draft,file.read_only?[]:window.AGHSettings.fields(draft,file.category,file.secret),renderField,error,editor,compact);};
     const picker=el("div","agent-picker");
-    for(const item of available){const b=el("button","agent-choice"+(p.key===item.key?" active":""),`${item.name} · ${destination(item.destination)}`);b.type="button";b.setAttribute("aria-pressed",String(p.key===item.key));b.onclick=()=>{selectedKey=item.key;activeTab="overview";rerender();};picker.append(b);}
-    if(web&&editor&&!file.read_only){const add=el("button","quiet","＋ 新增智能体");add.type="button";add.onclick=()=>{const id=editor.add();selectedKey=`${file.id}:web:${id}`;activeTab="configure";rerender();};picker.append(add);}
+    for(const item of compact?[]:available){const b=el("button","agent-choice"+(p.key===item.key?" active":""),`${item.name} · ${destination(item.destination)}`);b.type="button";b.setAttribute("aria-pressed",String(p.key===item.key));b.onclick=()=>{selectedKey=item.key;activeTab="overview";rerender();};picker.append(b);}
+    if(web&&editor&&!file.read_only){const add=el("button","quiet","＋ 新增智能体");add.type="button";add.onclick=()=>{const id=editor.add();selectedKey=`${file.id}:web:${id}`;activeTab="configure";rerender();};
+      if(compact){const more=el("details","agent-more"),summary=el("summary","","更多智能体选项");more.append(summary,add);picker.append(more);}else picker.append(add);
+    }
     container.append(picker);
     const header=el("header","agent-heading"),avatar=el("div","agent-avatar",p.name.slice(0,1)),identity=el("div","");
     identity.append(el("h2","",p.name),el("p","",`${destination(p.destination)} · ${p.chat_selected?"当前 Chat 选中 · ":""}${p.default?"默认接手未指定 Agent 的请求":["web","cli"].includes(p.destination)?"可在 Chat 中选择":"按明确绑定接手请求"}`));
@@ -86,5 +97,5 @@ window.AGHAgentProfiles = (() => {
     else if(p.evidence_state==="unknown")note(content,"未连接此入口的执行证据，装载状态和活动记录未知。");
     return true;
   }
-  return {render};
+  return {render,choices,select(key){selectedKey=key;activeTab="overview";}};
 })();

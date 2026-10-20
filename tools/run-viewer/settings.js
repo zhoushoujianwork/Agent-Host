@@ -4,13 +4,13 @@ const $ = id => document.getElementById(id);
 const KEEP = "__AGENT_HOST_KEEP_SECRET__";
 const SECTIONS = {
   general: ["◐", "通用", "选择你喜欢的外观，其他选项已准备好默认值。"],
-  agents: ["◈", "智能体", "管理智能体的工作目录、技能和知识源。保存后可在 Chat 中切换。"],
+  agents: ["◈", "智能体", "日常使用默认智能体，专属项目独立配置。"],
   models: ["⌁", "模型与连接", "选择模型。使用自定义服务时，再填写地址和密钥。"],
   channels: ["▤", "消息渠道", "连接你使用的消息工具。不需要的渠道保持关闭即可。"],
   shortcuts: ["⌘", "快捷键", "少一点点击，更快回到工作。"],
 };
 let catalog = {files:[]}, selected = null, category = "general", draft, dirty = false, busy = false;
-let agentProfiles = [], profileError = "";
+let agentProfiles = [], profileError = "", agentChoiceKey = null;
 const clone = value => JSON.parse(JSON.stringify(value));
 const node = (tag, cls, text) => {const n=document.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
 const fileSection = file => window.AGHSettings.section(file);
@@ -32,7 +32,7 @@ function setAt(path,value) {
 function mayLeave() {return !dirty||window.confirm("放弃尚未保存的设置？");}
 function sectionMatches(id) {
   const q=$("search").value.trim().toLowerCase();
-  return !q||[...SECTIONS[id],...catalog.files.filter(f=>fileSection(f)===id).map(fileTitle)].join(" ").toLowerCase().includes(q);
+  return !q||[...SECTIONS[id],...catalog.files.filter(f=>fileSection(f)===id).map(fileTitle),...(id==="agents"?agentProfiles.map(p=>p.name):[])].join(" ").toLowerCase().includes(q);
 }
 function renderNav() {
   $("categories").replaceChildren();
@@ -48,10 +48,16 @@ function render() {
   $("section-description").textContent=matches?SECTIONS[category][2]:"试试搜索外观、智能体、模型或消息渠道。";
   $("general").hidden=category!=="general"||!matches;$("shortcuts").hidden=category!=="shortcuts"||!matches;
   const files=matches?catalog.files.filter(file=>fileSection(file)===category):[];
-  if(!selected||!files.some(file=>file.id===selected.id)){selected=files[0]||null;draft=selected?clone(selected.value??null):null;dirty=false;}
-  $("files").replaceChildren();
-  for(const file of files){const b=node("button","file-tab"+(selected?.id===file.id?" active":""),fileTitle(file));b.type="button";b.onclick=()=>{if(file.id!==selected?.id&&mayLeave()){selected=file;draft=clone(file.value??null);dirty=false;feedback("");render();}};$("files").append(b);}
-  $("files").hidden=files.length<2;
+  const choices=category==="agents"?window.AGHAgentProfiles.choices(agentProfiles).filter(p=>files.some(file=>file.id===p.file_id)):[];
+  const choice=choices.find(p=>p.key===agentChoiceKey)||choices[0];
+  const target=choice?files.find(file=>file.id===choice.file_id):files.find(file=>file.id===selected?.id)||files[0]||null;
+  if(selected?.id!==target?.id||!selected){selected=target;draft=selected?clone(selected.value??null):null;dirty=false;}
+  if(choice){agentChoiceKey=choice.key;window.AGHAgentProfiles.select(choice.key);}
+  $("files").replaceChildren();$("files").setAttribute("aria-label",choices.length?"选择智能体":"选择配置");
+  if(choices.length){
+    for(const profile of choices){const b=node("button","file-tab"+(profile.key===choice.key?" active":""),profile.default?"默认智能体":profile.name);b.type="button";b.onclick=()=>{if(profile.key!==agentChoiceKey&&mayLeave()){agentChoiceKey=profile.key;selected=null;dirty=false;feedback("");render();}};$("files").append(b);}
+  }else for(const file of files){const b=node("button","file-tab"+(selected?.id===file.id?" active":""),fileTitle(file));b.type="button";b.onclick=()=>{if(file.id!==selected?.id&&mayLeave()){selected=file;draft=clone(file.value??null);dirty=false;feedback("");render();}};$("files").append(b);}
+  $("files").hidden=choices.length?choices.length<2:files.length<2;
   $("empty").hidden=!!selected||["general","shortcuts"].includes(category)||!matches;
   $("empty").textContent=category==="channels"?"还没有配置消息渠道。你仍可通过本地 CLI 使用 AGH。":"还没有可编辑的配置。请从已配置的 Host 打开工作台。";
   renderEditor();changed();
@@ -64,7 +70,7 @@ function renderEditor() {
     add(){const id="agent-"+crypto.randomUUID().slice(0,8);draft.agents.push({id,name:"新智能体",projects:[],native_skills:null,knowledge_sources:null});changed();return id;},
     capabilities:renderAgentCapabilities,
   }:null;
-  if(selected.category==="agents"&&window.AGHAgentProfiles.render($("editor"),agentProfiles,selected,draft,fields,renderField,profileError||catalog.agent_options_error,agentEditor))return;
+  if(selected.category==="agents"&&window.AGHAgentProfiles.render($("editor"),agentProfiles,selected,draft,fields,renderField,profileError||catalog.agent_options_error,agentEditor,!!agentChoiceKey))return;
   if(!fields.length){$("editor").append(node("p","notice","当前连接使用已有默认配置，无需在这里调整。"));return;}
   const card=node("section","simple-group");
   let group=null;
