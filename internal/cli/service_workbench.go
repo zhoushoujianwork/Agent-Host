@@ -109,6 +109,9 @@ func launchServiceWorkbenchSources(ctx context.Context, layout serviceLayout, py
 		args = append(args, "--channel-home", "cli="+cliState)
 	}
 	cmd := exec.CommandContext(childCtx, python, args...)
+	// Let the viewer cancel and reap its owned Chat execution before exit.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 20 * time.Second
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		provider := false

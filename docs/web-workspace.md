@@ -12,11 +12,15 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Set essential Agent, model connection and existing channel choices in the
   compact [settings page](settings-console.md). Advanced options stay in config.
 - Open or close the right Chat panel from the top bar. Switching modules keeps
-  its current state. Drafts save locally; task starters append without replacing
-  existing text. Web task submission is not yet connected.
-- The Chat composer grows with the draft and shows its character count and save
-  status. Clear can be undone until the next edit; Cmd/Ctrl+Enter saves locally.
-  Escape inside Chat collapses it and returns focus to its toggle.
+  its current state. Enter sends to the configured Host Agent; Shift+Enter adds
+  a line. Text and execution steps appear as Host emits them.
+- Drafts save locally. The composer grows with the draft and shows its character
+  count. Clear can be undone until the next edit. Escape collapses Chat.
+- Stop requests cancellation of the active Host execution and waits for its exit.
+  Partial text and steps remain visible. After failure or interruption, choose
+  New conversation before sending again; no task is automatically replayed.
+- Chat reconnects to the current viewer conversation after refresh. New conversation
+  clears that Web view while durable Host execution records remain available.
 - Choose light, dark or system appearance across all pages.
 
 Press **Cmd+W** to close the right Chat panel and stay on the current page.
@@ -34,6 +38,10 @@ There is no workbench entry, conversation canvas, card dragging or layout
 management in the active interface. Existing browser layout data is retained for
 a later return. Old workbench links open memory; old execution bookmarks retain
 their selected record.
+
+Chat uses the configured CLI destination within the selected Host root, separate
+from running channel services. A standalone viewer can select an explicit private
+`--chat-config`; see the [setup notes](web-workspace-detail.md#web-chat-execution).
 
 Run `make viewer` for local inspection. The separately installed production
 runtime is not updated by a checkout build.

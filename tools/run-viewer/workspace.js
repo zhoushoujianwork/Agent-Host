@@ -12,7 +12,8 @@ let clearedDraft = null;
 function updateComposer() {
   const hasText = draft.value.length > 0;
   $("clear-draft").disabled = !hasText;
-  $("save-draft").disabled = !draft.value.trim();
+  $("send-chat").disabled = !draft.value.trim();
+  document.dispatchEvent(new Event("agh:draft-change"));
   $("undo-clear").hidden = clearedDraft === null;
   $("draft-count").textContent = `${Array.from(draft.value).length.toLocaleString()} 字`;
   draft.style.height = "auto";
@@ -79,11 +80,6 @@ $("chat-toggle").onclick = () => {
   if (open) draft.focus();
 };
 $("panel-close").onclick = () => { showChat(false); $("chat-toggle").focus(); };
-$("save-draft").onclick = () => {
-  if (!draft.value.trim()) return;
-  persist("草稿已保存");
-  draft.focus();
-};
 $("clear-draft").onclick = () => {
   if (!draft.value) return;
   clearedDraft = draft.value;
@@ -99,8 +95,8 @@ $("undo-clear").onclick = () => {
 draft.oninput = () => { clearedDraft = null; persist(); };
 draft.onkeydown = event => {
   if (event.isComposing || event.repeat) return;
-  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === "Enter") {
-    event.preventDefault(); $("save-draft").onclick();
+  if (!event.altKey && !event.shiftKey && event.key === "Enter") {
+    event.preventDefault(); document.dispatchEvent(new Event("agh:chat-send"));
   }
 };
 $("chat-panel").addEventListener("keydown", event => {

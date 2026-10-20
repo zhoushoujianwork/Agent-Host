@@ -96,9 +96,10 @@ bot accounts and retain delivery evidence independently from execution.
 | Operations | Shared workbench, automatic user-login services, independent production runtime and verified encrypted backups | Backup excludes external account sessions and complete external project directories |
 
 The local workbench opens a [Web interface](web-workspace.md) on the memory graph,
-with execution records, settings and right-side Chat drafts. The conversation
-canvas is temporarily disabled. Browser
-task execution is not yet connected. It also provides a [settings console](settings-console.md) for
+with execution records, settings and right-side Chat execution through the configured
+CLI destination. Chat displays incremental answers and observed execution steps,
+and can cancel the owned Host process. The conversation canvas is temporarily
+disabled. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other
 options retain their configuration-file defaults. Checked
 saves retain private previous versions; applying service changes still requires

@@ -99,7 +99,7 @@ func lockChannelRuntime(root string) (*os.File, error) {
 	return lockChannelRuntimeForStart(context.Background(), root, "", false, io.Discard)
 }
 
-var channelViewerFiles = []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css", "settings_store.py", "settings.html", "settings.js", "settings.css"}
+var channelViewerFiles = []string{"server.py", "memory_view.py", "index.html", "app.js", "style.css", "memory.html", "memory.js", "memory.css", "settings_store.py", "settings.html", "settings.js", "settings.css", "chat_runtime.py", "chat.js", "workspace.js", "workspace.css", "theme.js", "theme.css", "pages.css", "embedded.css", "logo.svg", "shortcuts.js", "settings-fields.js", "settings-simple.css"}
 
 func validateChannelViewerSource(source string) error {
 	if !filepath.IsAbs(source) {

@@ -15,22 +15,22 @@ test("home and dormant workbench links land on memory without loading canvas dat
   const html=fs.readFileSync(path.join(__dirname,"index.html"),"utf8");assert.doesNotMatch(html,/id="workbench"|data-view="workbench"|id="canvas"/);
 });
 test("clear is reversible and new input dismisses the stale undo",()=>{
-  const h=setup();h.node("clear-draft").onclick();assert.equal(h.node("save-draft").disabled,true);assert.equal(h.node("undo-clear").hidden,false);
+  const h=setup();h.node("clear-draft").onclick();assert.equal(h.node("send-chat").disabled,true);assert.equal(h.node("undo-clear").hidden,false);
   h.node("undo-clear").onclick();assert.equal(h.node("draft").value,"Existing draft");assert.equal(h.stored().draft,"Existing draft");
   h.node("clear-draft").onclick();h.node("draft").value="New thought";h.node("draft").oninput();
   assert.equal(h.node("undo-clear").hidden,true);h.node("undo-clear").onclick();assert.equal(h.node("draft").value,"New thought");
 });
-test("save shortcut respects IME composition and empty drafts",()=>{
+test("send shortcut respects IME composition and keeps drafts until acceptance",()=>{
   const h=setup(),draft=h.node("draft");let prevented=0;
   const key={key:"Enter",metaKey:true,preventDefault(){prevented++;}};
   draft.onkeydown({...key,isComposing:true});assert.equal(prevented,0);
-  draft.value="  ";draft.oninput();draft.onkeydown(key);assert.equal(h.node("save-draft").disabled,true);
-  draft.value="A😀";draft.oninput();draft.onkeydown(key);assert.equal(h.node("draft-count").textContent,"2 字");assert.equal(h.node("draft-status").textContent,"草稿已保存");
+  draft.value="  ";draft.oninput();draft.onkeydown(key);assert.equal(h.node("send-chat").disabled,true);
+  draft.value="A😀";draft.oninput();draft.onkeydown(key);assert.equal(h.node("draft-count").textContent,"2 字");assert.equal(h.stored().draft,"A😀");
 });
 test("storage failures remain visible and retain recoverable text",()=>{
   const h=setup("","",true);h.node("clear-draft").onclick();h.node("undo-clear").onclick();
   assert.equal(h.node("draft").value,"Existing draft");assert.equal(h.node("draft-status").dataset.state,"error");
-  h.node("save-draft").onclick();assert.match(h.node("draft-status").textContent,/无法保存/);
+  h.node("draft").oninput();assert.match(h.node("draft-status").textContent,/无法保存/);
 });
 test("right Chat remains open across modules and respects an explicit close",()=>{
   const h=setup();for(const route of ["#memory","#settings","#executions"]){h.navigate(route);assert.equal(h.node("chat-panel").hidden,false);}

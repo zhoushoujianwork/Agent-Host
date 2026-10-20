@@ -18,8 +18,8 @@ save failures are visible. This is browser-local convenience state, not Host
 memory or an execution receipt. It is not synchronized across devices or ports.
 The composer has a bounded automatic height and independent scroll. Clear keeps
 one in-memory undo value until the next edit or task starter; it is not restored
-after reload. Empty drafts cannot be manually saved. Cmd/Ctrl+Enter saves without
-submitting and ignores IME composition. Escape inside the panel and its own close
+after reload. Empty messages cannot be sent. Enter and Cmd/Ctrl+Enter send; Shift+Enter inserts
+a newline. Sending ignores IME composition. Escape inside the panel and its own close
 button collapse Chat and return focus to the top-bar toggle. Explicit reopening
 focuses the draft. Save failures remain visible after undo or manual retries.
 
@@ -74,3 +74,57 @@ record fetches, legacy routes, panel state and non-destructive draft persistence
 
 `logo.svg` is an original vector AGH monogram, used by the rail, standalone
 headers, settings and favicon. It has no font or external asset dependency.
+
+
+## Web Chat execution
+
+`chat_runtime.py` launches the existing Host CLI as a child process using the
+private task-handoff configuration format. `--chat-config` explicitly selects a
+destination. Otherwise the viewer selects `config/web-chat.json` inside
+`--backup-root`, or the existing user CLI handoff only when its state, Agent
+catalog, workspace and native profile all belong to that root. A development
+viewer never implicitly launches another root's CLI task. The existing launcher
+validates configuration with `--check` before each launch. Provider credentials
+are loaded server-side and never returned to the browser.
+
+`GET /api/chat` returns bounded conversation projections and the owner action
+token. POST `/api/chat`, `/api/chat/stop` and `/api/chat/new` share the existing
+loopback Host, same-Origin, token and bounded-JSON checks. Messages are at most
+16 KiB. Only one turn executes at a time. Request IDs are idempotent within the
+current conversation; a lost HTTP response must not cause automatic replay.
+
+Host emits NDJSON; the bridge projects `text.delta`, phase transitions and tool
+activity. It excludes memory-extractor text, raw evidence and provider stderr.
+The browser polls the current projection every 350 ms during execution, keeping
+partial answers visible and preserving the user's expanded step controls and
+scroll position. It reconnects without resubmitting. Execution completion requires
+a successful Host exit and a completed receipt; execution is separate from task
+acceptance and memory persistence.
+
+Cancel sends SIGTERM to the owned Host child. Its signal context cancels the
+native adapter, which freezes and terminates its owned descendant tree, including
+tool shells that create separate process groups, and persists the
+interrupted result. The Web state remains stopping until process exit; closing
+the panel does not cancel. Viewer shutdown also cancels and waits for its child.
+A failed or interrupted conversation requires an explicit New conversation;
+changing the configured destination cannot silently resume a prior session.
+
+Conversation UI state is process-local, shared by owner tabs, with at most 20
+turns, 512 Ki characters per answer and 200 projected steps per turn. Restarting
+the viewer clears its conversation view, not the Host's durable journal. Native
+execution and provider failures are surfaced without a fallback provider. Startup
+stderr is not sent to the browser; inspect CLI configuration and Host records
+when execution fails. Configured CLI state remains subject to its exclusive lock,
+so another CLI process can cause an explicit launch failure.
+
+Validation: `python3 -B tools/run-viewer/chat_runtime_test.py` exercises incremental
+output, duplicate requests, real process cancellation, queued cancellation,
+configuration changes and HTTP boundaries. `node --test tools/run-viewer/chat_test.cjs`
+checks safe text rendering, response-loss retry identity and stop acknowledgement.
+
+An isolated real-provider check on 2026-10-20 observed incremental answer text,
+a running Bash tool and refresh reconnection. Clicking Stop during `sleep 90`
+terminated the Host, tool shell and sleep process; the durable receipt recorded
+`execution_status=canceled`, `acceptance_status=unverified` and skipped memory.
+Native adapter regressions also exercise descendants in a separate session and
+verify that an unrelated sibling process remains alive.

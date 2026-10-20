@@ -1,14 +1,15 @@
 # Local execution viewer
 
 The root page is the [Web interface](../../docs/web-workspace.md): memory first,
-with execution records, settings and right-side Chat drafts. The conversation
+with execution records, settings and right-side Chat execution. The conversation
 canvas/workbench is temporarily disabled; saved layout data is retained.
 The full execution inspector remains at `/executions.html`; existing `/?key=...`
-bookmarks open the selected execution inside the workspace. Web Chat execution
-is not yet connected; drafts remain local to the browser.
+bookmarks open the selected execution inside the workspace. Chat sends through
+the configured CLI destination and displays incremental answers and steps.
 
 Status: local execution inspection and owner memory management are implemented.
-Memory actions use the running Host; the page does not submit business tasks.
+Memory actions use the running Host; Chat owns a separate configured CLI process
+and can request its cancellation.
 
 Open saved Agent-Host runs as an HTML dashboard. Select a run to see the core
 route, component durations, actual agent/model observations, tool evidence,
@@ -194,3 +195,19 @@ restores the original file. Changes to channel services require a restart;
 saving does not restart services or run a task. See the
 [settings design](../../docs/settings-console.md) and
 [implementation details](../../docs/settings-console-detail.md).
+
+
+### Web Chat
+
+Right-side Chat now sends messages to a configured Host CLI Agent and displays
+incremental answer text, observed phases and tools. Enter sends; Shift+Enter
+adds a line. Stop cancels the active owned Host process and waits for its exit.
+Closing Chat only collapses it. Interrupted/failed sessions require New conversation.
+
+The viewer uses `--backup-root/config/web-chat.json` in the private CLI handoff
+format, or the user's existing CLI handoff when its destination belongs to that
+same root. An isolated viewer can pass `--chat-config /absolute/private/config.json`.
+It never silently chooses a different Host home or channel state. The browser
+never receives provider credentials. UI conversation state lasts for the viewer
+process; durable evidence stays in the selected CLI state. See
+[Web Chat implementation](../../docs/web-workspace-detail.md#web-chat-execution).

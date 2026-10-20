@@ -15,11 +15,13 @@ import fcntl
 import subprocess
 import threading
 import time
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
+from chat_runtime import ChatRuntime, ChatConflict, default_config
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
@@ -750,7 +752,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         target = urlsplit(self.path)
         try:
-            if target.path == "/api/records":
+            if target.path == "/api/chat":
+                chat = getattr(self.server, "chat_runtime", None)
+                result = chat.snapshot() if chat else {"enabled": False, "notice": "Chat 未配置。", "turns": [], "active_id": None}
+                catalogs = self.server.catalog.catalogs.items() if isinstance(self.server.catalog, MultiCatalog) else [("", self.server.catalog)]
+                prefix = next((name + ":" if name else "" for name, source in catalogs
+                               if chat and source.database.parent.resolve() == chat.state_home), None)
+                for turn in result["turns"]:
+                    turn["record_key"] = prefix + "db:" + turn["run_id"] if prefix is not None and turn["run_id"] else None
+                result["mutation_token"] = getattr(self.server, "mutation_token", None)
+                self.send(200, result)
+            elif target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
             elif target.path == "/api/settings":
                 store = getattr(self.server, "settings_store", None)
@@ -779,7 +791,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(400, {"error": "provide exactly one record key"})
                 else:
                     self.send(200, self.server.catalog.record(keys[0]))
-            elif target.path in {"/", "/index.html", "/logo.svg", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
+            elif target.path in {"/", "/index.html", "/logo.svg", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
@@ -793,7 +805,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         token = getattr(self.server, "mutation_token", None)
         route = urlsplit(self.path).path
-        if route not in {"/api/memory-action", "/api/settings"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
+        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -802,11 +814,27 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            limit = 1 << 20 if route == "/api/settings" else 8192
+            limit = 1 << 20 if route == "/api/settings" else 128 * 1024 if route == "/api/chat" else 8192
             if not 0 < length <= limit or self.headers.get("Content-Type") != "application/json" or self.headers.get("Transfer-Encoding"):
                 raise ValueError("provide a bounded JSON action")
             self.connection.settimeout(10)
             value = decode(self.rfile.read(length))
+            if route.startswith("/api/chat"):
+                chat = getattr(self.server, "chat_runtime", None)
+                if chat is None:
+                    raise ChatConflict("Chat 执行环境尚不可用。")
+                if route == "/api/chat" and set(value) == {"request_id", "message"}:
+                    turn_id = chat.start(value["request_id"], value["message"])
+                    self.send(202, {"turn_id": turn_id})
+                elif route == "/api/chat/stop" and set(value) == {"turn_id"} and isinstance(value["turn_id"], str):
+                    chat.stop(value["turn_id"])
+                    self.send(200, {"status": "stop_requested"})
+                elif route == "/api/chat/new" and not value:
+                    chat.reset()
+                    self.send(200, {"status": "new_conversation"})
+                else:
+                    raise ValueError("无效的 Chat 请求。")
+                return
             if route == "/api/settings":
                 if set(value) != {"file", "revision", "value"} or not isinstance(value["file"], str) or not isinstance(value["revision"], str):
                     raise ValueError("Provide a settings file, expected revision and value.")
@@ -816,7 +844,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("invalid memory action")
             status, result = self.server.catalog.action(value["key"], value["action"], value["note"], value["revision"])
             self.send(status, result)
-        except Conflict as error:
+        except (Conflict, ChatConflict) as error:
             self.send(409, {"error": str(error)})
         except KeyError:
             self.send(404, {"error": "Settings file is outside this console." if route == "/api/settings" else "record outside the selected source or scope"})
@@ -853,6 +881,7 @@ def main():
     parser.add_argument("--all-chats", action="store_true", help="Show every Agent and chat partition in this local console")
     parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
     parser.add_argument("--backup-root", type=Path, help="Explicit Host root for backup health and local settings")
+    parser.add_argument("--chat-config", type=Path, help="Private CLI handoff config for Web Chat; defaults only to a destination within --backup-root")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
     try:
@@ -872,12 +901,17 @@ def main():
     server.settings_store = SettingsStore(args.backup_root, args.host_binary,
                                         Path.home() / ".config/agent-host/task-handoff.json") if args.backup_root else None
     server.mutation_token = secrets.token_urlsafe(32)
+    server.chat_runtime = ChatRuntime(args.chat_config or default_config(args.backup_root))
+    def stop_server(_signal, _frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop_server)
     print(f"Execution viewer: http://127.0.0.1:{server.server_port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        server.chat_runtime.close()
         server.server_close()
 
 

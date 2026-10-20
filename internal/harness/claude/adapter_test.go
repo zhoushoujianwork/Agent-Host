@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -136,10 +137,13 @@ func fixture(mode string) {
 			return
 		}
 	}
-	if mode == "cancel_tree" {
+	if mode == "cancel_tree" || mode == "cancel_detached_tree" {
 		exe, _ := os.Executable()
 		child := exec.Command(exe)
 		child.Env = append(os.Environ(), "AGENT_HOST_CLAUDE_FIXTURE=grandchild")
+		if mode == "cancel_detached_tree" {
+			child.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		}
 		if err := child.Start(); err != nil {
 			panic(err)
 		}
@@ -180,7 +184,7 @@ func fixture(mode string) {
 			time.Sleep(5 * time.Millisecond)
 		}
 	}
-	if mode == "cancel_tree" || mode == "callback" {
+	if mode == "cancel_tree" || mode == "cancel_detached_tree" || mode == "callback" {
 		time.Sleep(10 * time.Second)
 		return
 	}
@@ -840,24 +844,36 @@ func TestNativeStreamingPolicyPreservesNativeOutputCaps(t *testing.T) {
 }
 
 func TestCancellationStopsProcessGroup(t *testing.T) {
-	adapter, request := fixtureAdapter(t, "cancel_tree")
-	marker := filepath.Join(t.TempDir(), "child-survived")
-	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	start := time.Now()
-	result, err := adapter.Run(ctx, request, func(o harness.Observation) error {
-		if o.Type == "text_delta" {
-			cancel()
-		}
-		return nil
-	})
-	if !errors.Is(err, context.Canceled) || result.Status != "canceled" || time.Since(start) > 2*time.Second {
-		t.Fatalf("cancellation result = %+v, err = %v", result, err)
-	}
-	time.Sleep(500 * time.Millisecond)
-	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("descendant survived group cancellation: %v", err)
+	for _, mode := range []string{"cancel_tree", "cancel_detached_tree"} {
+		t.Run(mode, func(t *testing.T) {
+			unrelated := exec.Command("/bin/sleep", "10")
+			if err := unrelated.Start(); err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = unrelated.Process.Kill(); _ = unrelated.Wait() }()
+			adapter, request := fixtureAdapter(t, mode)
+			marker := filepath.Join(t.TempDir(), "child-survived")
+			t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			start := time.Now()
+			result, err := adapter.Run(ctx, request, func(o harness.Observation) error {
+				if o.Type == "text_delta" {
+					cancel()
+				}
+				return nil
+			})
+			if !errors.Is(err, context.Canceled) || result.Status != "canceled" || time.Since(start) > 2*time.Second {
+				t.Fatalf("cancellation result = %+v, err = %v", result, err)
+			}
+			if err := unrelated.Process.Signal(syscall.Signal(0)); err != nil {
+				t.Fatalf("cancellation touched an unrelated process: %v", err)
+			}
+			time.Sleep(500 * time.Millisecond)
+			if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("descendant survived group cancellation: %v", err)
+			}
+		})
 	}
 }
 
