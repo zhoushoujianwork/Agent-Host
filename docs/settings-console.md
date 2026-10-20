@@ -28,6 +28,10 @@ configuration files. The simple page does not expose a generic JSON editor or
 arbitrary field additions and removals. Saving a visible field preserves the
 other saved values.
 
+The proposed [Agent profile](agent-profile-design.md) expands Agent visibility
+into capabilities, work context and served groups. It is a future design, not
+part of the delivered settings page described here.
+
 The page edits existing owner-local Host configuration. Initial installation and
 native account sign-in remain in their existing tools. Standalone previews can
 change appearance without a configured Host. Web Chat remains a local draft
