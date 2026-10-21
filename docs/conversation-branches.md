@@ -1,72 +1,49 @@
-# Conversation branches — proposal
+# Room conversations and concurrent execution — proposal
 
-Status: design only. Independent CLI conversations already run concurrently;
-forking a conversation into task branches is not implemented.
+Status: design only. This replaces the earlier task-branch interaction proposal.
+[Implementation details and evidence](conversation-branches-detail.md).
 
-## Goal
+## Goal and boundaries
 
-Let people start several tasks in one Web Chat, group or private conversation
-without losing shared background or mixing their answers. Each task gets its
-own execution history and can continue independently.
+Use the room entry to identify the conversation, and authenticated user identity
+to attribute each message. Host does not infer task boundaries from message text.
+A group, private chat or explicitly opened Web Chat is a room. Group members
+share that room's history; their identities remain distinct.
 
 ```mermaid
 flowchart LR
-  C["One conversation · shared background"] --> P["Last completed context checkpoint"]
-  P --> A["Task A · Alice · investigating"]
-  P --> B["Task B · Bob · preparing a report"]
-  A --> A2["Reply to A · continue its branch"]
-  B --> B2["Reply to B · continue its branch"]
+  R["Room · shared attributed history"] --> A["Alice's message · execution A"]
+  R --> B["Bob's message · execution B"]
+  A --> O["Replies return to the same room, linked to their messages"]
+  B --> O
 ```
 
-## How people use it
+## Interaction
 
-| Action | Proposed behavior |
-| --- | --- |
-| Start an independent task | Create a branch from the latest completed shared context; run alongside existing tasks. |
-| Reply to a task message | Continue that branch, including when another group member replies. |
-| Add a follow-up while its branch is busy | Queue it for that branch's next turn; other branches keep running. |
-| Say “continue” with several possible tasks | Ask which task; do not pick another person's most recent task. |
-| Ask to combine results | Create a synthesis task with attributed result references. |
+- Messages enter their actual room, with the sender's verified ID and available
+  display name. One person's messages do not form a separate group conversation.
+- Each received request gets its own execution record. Requests may overlap,
+  including requests from the same person, without classifying them as new
+  tasks or continuations.
+- Each execution sees a fixed snapshot of available room history. Running peers'
+  unfinished results are not presented as completed facts.
+- Replies remain linked to the original message in that room. Native quotes add
+  the explicitly referenced context; they do not select a hidden task branch.
+- Later messages use that room's history and speaker labels. Host does not guess
+  which earlier task “continue” refers to. If the request itself is unclear, AI
+  can ask an ordinary clarification in the room.
 
-Web shows task names, initiators and status in the same Chat, with an explicit
-“New task” action and a task selector for follow-ups. Group replies quote the
-original task message so answers remain attached to the right question.
+## Execution approach and scope
 
-## Core decisions
+Reuse a native session sequentially when possible. For overlapping requests,
+fork from a verified completed history point into separate native sessions.
+These are internal execution branches, not user-managed task conversations.
+Keep one writer per native session and return every result to the room record.
+Forking does not isolate simultaneous edits to the same file or remote resource.
 
-- **Share the starting context; give each branch a distinct native session.**
-  `resume` continues one branch. `fork` creates a new branch. Multiple executions
-  do not write concurrently to the same native session.
-- **Fork from a completed checkpoint.** If the parent is still running, use its
-  last completed point and show that its in-flight result is not included. Do not
-  wait for unrelated work or copy half-finished tool activity.
-- **Keep people distinguishable.** Every request carries the authenticated
-  speaker and an available display name. Task initiator, current speaker and
-  result recipient remain separate. A message written by Alice about Bob is
-  still Alice's message.
-- **Keep results attributed.** Completed branch results appear in the shared
-  conversation as linked summaries. Sibling histories are not silently merged;
-  a running branch keeps its original context until an explicit follow-up.
-- **Separate context from effects.** Forking conversation history does not undo,
-  repeat or isolate file edits, deployments or account changes. Parallel writes
-  to the same resource need coordinated ownership or separate workspaces.
+Web keeps ordinary Chat input and message-linked progress/replies. There is no
+task classifier, task selector, “New task” action or automatic task merge.
 
-## Delivery order and scope
-
-1. Resolve the observed persistence/startup regression checks, then verify native
-   fork and stable checkpoint behavior through the configured ACP
-   adapter, plus speaker attribution on real resumed/forked turns. If unsupported,
-   report that limitation; do not silently change engines or emulate full history.
-2. Deliver explicit fork/new-task and reply-to-branch routing across Host and CLI,
-   with distinct execution, context and delivery records.
-3. Add Web task controls and group/private reply routing with readable speakers.
-
-First delivery includes parallel task branches, branch-local follow-ups and
-correct reply attribution. Automatic topic splitting, automatic history merging
-and mid-tool-call forks are outside this increment.
-
-Current group handling already supplies authenticated sender IDs in per-turn
-Host instructions. Readable names and durable per-message speaker envelopes
-need verification and extension; this proposal does not claim them delivered.
-
-[Implementation details and evidence](conversation-branches-detail.md).
+First stabilize persistence/startup checks, then verify ACP checkpoint/fork and
+speaker preservation, and finally connect room-based intake across Web and IM.
+This proposal does not implement those changes or replay existing requests.

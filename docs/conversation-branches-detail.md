@@ -1,160 +1,124 @@
-# Conversation branch design details
+# Room conversation concurrency details
 
 [User-facing proposal and scope](conversation-branches.md).
 
-## Existing behavior and evidence
+## Deterministic identity
 
-- `internal/cli/chat_state.go` shares CLI home ownership; session locks in
-  `internal/state/lock_unix.go` protect one native conversation. Preserve those
-  locks: parallelism comes from distinct child sessions, not removing ownership.
-- `internal/harness/claude/adapter.go` currently chooses `--session-id` or
-  `--resume`; it does not forward a fork option. The installed Claude help and
-  [official CLI reference](https://code.claude.com/docs/en/cli-reference) describe
-  `--resume <id> --fork-session` as creating a new session ID. This documents the
-  primitive; it does not prove an atomic active-session checkpoint or Host support.
-- `internal/harness/acp/adapter.go` currently creates sessions or reconnects using
-  advertised resume/load capabilities. It does not call `session/fork`.
-  The [ACP session setup draft](https://github.com/agentclientprotocol/agent-client-protocol/blob/main/docs/protocol/v1/draft/session-setup.mdx)
-  mentions fork on supporting agents. Protocol documentation is not evidence that
-  the installed bridge implements the required behavior. Probe its advertised
-  capability and test actual fork/reconnect behavior before implementation.
-  Local inspection of the installed `claude-agent-acp` 0.81.2 adds concrete source
-  evidence: `dist/acp-agent.js` advertises `sessionCapabilities.fork`, and
-  `dist/fork-session.js` calls the Claude SDK's `forkSession`, optionally with
-  `upToMessageId`. Its checkpoint metadata currently uses a vendor-specific
-  extension; keep that mapping inside the adapter rather than treating it as a
-  portable ACP field. The fork handler returns a persisted child ID; verify the
-  subsequent child resume/load lifecycle before prompting. These source paths
-  narrow the feasibility work but are not a completed live fork acceptance test.
-- `internal/host/instances.go:invocationInstructions` supplies authenticated
-  `sender_id` and `conversation_type` each turn, with group-specific attribution
-  guidance. Existing fixture tests capture those instructions. Their inclusion
-  alone does not prove how a real resumed model retains every earlier speaker.
-- Group routing shares a conversation among members; private routing retains
-  separate audiences. Branching must preserve channel/account/tenant, Agent,
-  audience and project authorization boundaries.
+The room entry is the conversation-routing authority. For IM, derive room identity
+from authenticated channel, account/tenant and platform conversation ID. For Web,
+use an explicit persisted Chat/room ID; refresh and tabs opening that room reuse
+it. A user-created new Chat creates a new room. Agent bindings and authorization
+remain explicit; topics, message meaning and claimed names cannot change them.
 
-## Ownership model
+User identity attributes messages; it does not split a group into per-user private
+conversations. Different rooms stay separate even with the same person or Agent.
+Private-chat room identity comes from the verified platform endpoint.
 
-Keep three concepts distinct:
-
-| Concept | Responsibility |
+| Identity | Source and purpose |
 | --- | --- |
-| Conversation | Authorized channel audience and the visible message timeline. |
-| Task branch | Task owner, title, parent checkpoint, follow-up routing and native session binding. |
-| Run | One execution attempt, actual effects, result and delivery evidence. |
+| Room | Verified entry; shared history, authorized audience and reply destination. |
+| Sender | Verified user ID; attribution and existing permission checks. |
+| Message/request | Original platform message or Web request ID; deduplication and reply correlation. |
+| Run/native session | Execution evidence and engine continuity; internal identities. |
 
-A branch records its parent branch and completed source run/checkpoint, alongside
-the actual child native session identifier returned by the adapter. Reuse existing
-Session/Run identities where they fit; do not duplicate native transcripts into a
-new Host-owned model loop. A shared conversation can have many branches, and a
-branch can have many sequential runs.
+Do not introduce inferred task IDs, topic classifiers, task titles or task
+selection controls. A model may interpret a request's business meaning; that
+meaning does not become a Host routing key.
 
-Completed means a stable recorded turn boundary, with execution outcome and
-memory/acceptance outcomes retained separately. Initial fork support uses an
-eligible completed parent; unknown or interrupted parents do not become resumable
-or replayable through a fork request. Preserve inspectable failure evidence.
+## Intake and later messages
 
-## Fork and context semantics
+Persist the room, authenticated sender, original request ID and history snapshot
+before acknowledging intake. Duplicate delivery/retries find that receipt rather
+than creating another execution. Route all messages by their entry room, applying
+bounded execution capacity without inferring whether they belong to one task.
+Different senders and the same sender may have overlapping requests.
 
-Before launching child native work, validate the requested audience and source
-checkpoint, record branch intent, obtain the adapter's actual child identity and
-persist its binding. Enforce one execution lease per child session. Retain brief
-checkpoint/fork setup coordination on the parent as required by the native
-contract, releasing it before model/tool execution on the child.
+Capture fixed available room context at intake: attributed messages, recorded
+replies and explicit in-progress status. A result arriving later does not mutate
+an already running prompt. Later intake can see it through the room history.
 
-If the engine cannot select an immutable historical checkpoint, do not promise
-that forking a moving parent copies its last completed turn exactly. First prove
-a reusable immutable base or require a quiescent source for that backend. The
-first feasibility gate must resolve this before enabling busy-parent branches.
-Do not copy private native files while an engine is writing them.
+An explicit quote/reply is a source reference inside the room, not a switch to
+a persistent task conversation. Plain follow-ups also stay in that room. Do not
+route by someone's latest task, semantic similarity or model-generated labels.
+The model may ask for missing business information in ordinary conversation.
 
-A fresh context assembled from authorized Host evidence is a separately named
-operation with explicit reduced-history semantics; it is not a transparent
-fallback for a failed native fork. A fork never replays the parent's tools.
-Reapply current tool and audience policy; historical context cannot grant access.
+A later message does not implicitly cancel or rewrite another active execution.
+Stop targets the actual run/message selected by the user, leaving peers active.
+Cancellation does not imply rollback of effects.
 
-Context is fixed at branch intake. A result from sibling B is not injected
-mid-run into A. A later request can explicitly reference B's result and its
-source. A synthesis branch reads selected completed results and reports
-disagreements without rewriting their original histories or replaying effects.
+## Native sessions and shared history
 
-## Intake and follow-up routing
+Sequential requests may resume a compatible idle native session. Overlapping
+requests fork a verified completed checkpoint and get distinct native session IDs.
+Keep existing leases through execution and memory processing. Fork setup may need
+brief checkpoint coordination; never hold a room-wide lock across model calls.
 
-Persist conversation/message-to-branch links before acknowledging intake:
+The authoritative room record contains attributed incoming messages and public
+replies linked to their source requests. Preserve receipt order and source times
+when replies finish out of order. The last child to finish must not overwrite
+the room's canonical history.
 
-1. Explicit branch choice or a reply to an attributed task/result message wins.
-2. An explicit new-task action creates a sibling branch from the selected base.
-3. A clear continuation of the requester's single active task may use that branch.
-4. Ambiguous continuations with multiple candidates require a task choice.
+A fork inherits only its selected native history, not sibling replies. Track the
+room entries included by a checkpoint/context. Supply missing authorized room
+entries as attributed source context on later requests. Do not claim a native
+transcript merge or that the parent executed child tools. Host assembles context;
+the native engine retains its model/tool loop.
 
-Automatic semantic topic classification is not required for first delivery.
-Group members may collaborate on the same branch by replying; do not replace
-task identity with sender identity or create a permanent branch per person.
-Queue follow-ups within a busy branch. Use existing channel concurrency limits
-and expose capacity queueing independently from session ownership conflicts.
-Cancellation targets the branch/run, leaving siblings active.
+Before enabling overlap, prove immutable completed-point forking while a peer is
+running. Report unsupported capability explicitly; do not read a moving native
+transcript, silently change engines or call a reconstructed prompt a full fork.
+Unknown/interrupted source runs do not become replayable. Fork never repeats
+earlier tools and does not inherit authority from historical text.
 
-## Speaker attribution and replies
+## Speaker attribution and delivery
 
-Build a structured envelope from verified channel metadata for every message:
-platform/account/tenant, conversation and message IDs, sender ID, available display
-name and quoted-message reference. Keep task initiator, current sender, demand
-owner and notification recipient as distinct values. Names are display labels;
-authorization uses authenticated identity and existing policy. Resolve missing
-names only through authorized platform/directory data; otherwise use a stable
-neutral label instead of guessing a person.
+Each message envelope contains authenticated room, sender and message IDs,
+available display name and quote source. Preserve labels with every historical
+message supplied to the engine, not only in a replaceable current-turn system
+prompt. Names may be duplicated or absent; identity uses authenticated IDs.
+Use verified platform/directory names or stable neutral labels, without guessing.
 
-Retain speaker labels with each message in native history/context, not only in a
-replaceable current-turn system prompt. Keep authorization in trusted Host
-instructions. Message/quote contents remain source material and cannot override
-the envelope. Validate this on real resumed and forked sessions: the model must
-distinguish “Alice said X” from “Bob quoted Alice saying X”.
+The current speaker, quoted author, person mentioned in text and authorized
+result recipient are distinct. “I am Alice” cannot replace authenticated metadata;
+“Alice asked about Bob” remains Alice's statement. Authorization stays in trusted
+Host instructions; messages remain source material. Group context cannot import
+private rooms or owner-only profiles.
 
-Group fork context contains only context visible to that audience. Private
-profiles and other conversations are not imported because two accounts map to
-the same user. Reply to the originating task's message/thread using the platform's
-verified reply target. Keep requester identity separate from delivery audience;
-a group result remains visible to the group. Duplicate delivery must not create
-a new branch or repeat external actions.
+Return results to the originating room using verified reply targets. Web links
+progress, Stop and answers to the original message; IM uses supported reply/quote
+controls. No task selector is needed. Replies stay visible to the room audience.
 
-## Resource effects and memory
+## Current evidence and acceptance
 
-Native session separation does not isolate a shared working directory or remote
-resource. Read-only tasks may overlap; conflicting writes use resource ownership
-at the narrow operation/task boundary. Repository edits can use separate
-worktrees where appropriate; an external action needs its existing idempotency
-and permission controls. Do not turn a resource conflict into a home-wide lock.
+Existing CLI home/session locks support independent native sessions, not room
+fork behavior. `invocationInstructions` already includes authenticated `sender_id`
+and `conversation_type`, with group attribution guidance. Real resumed/forked
+speaker-history preservation still requires verification.
 
-Shared memory retains its publication coordinator and source attribution. A
-branch conclusion is not automatically accepted truth or group consensus.
-Cancellation/failure does not publish an invented successful result. New turns
-retrieve eligible published knowledge under existing policy; running contexts
-are not retroactively mutated.
+The [official Claude CLI reference](https://code.claude.com/docs/en/cli-reference)
+documents `--resume <id> --fork-session`; the Host print adapter does not forward
+fork. The Host ACP adapter currently creates/reconnects sessions without calling
+`session/fork`. Installed `claude-agent-acp` 0.81.2 source advertises fork and calls
+the SDK with optional `upToMessageId`. Its checkpoint metadata is vendor-specific;
+keep the mapping inside the adapter. Verify child resume/load after fork. Source
+support is not a completed live acceptance test.
 
-## Acceptance and rollout
+Earlier checks on 2026-10-21 observed `SQLITE_BUSY` in the independent CLI process
+test and a native startup timeout in the Web workbench test. Stabilize that
+baseline before adding room forks. Parallel sessions also do not isolate files
+or remote resources: coordinate conflicting writes at the affected resource and
+retain existing idempotency, permission and memory-publication controls.
+The room-design revision's `make check` again failed the independent CLI process
+test, this time with `SQLITE_BUSY` while updating a run. No runtime code was
+changed in this revision; the concurrency baseline remains an explicit blocker.
 
-The documentation-only check on 2026-10-21 in the current working tree failed
-`TestIndependentCLIProcessesExecuteConcurrently` with `SQLITE_BUSY` during run
-creation, and `TestCLIWorkbenchObservesOfficialChatAfterStartup` with a native
-fixture startup timeout. These observations do not identify a proven root cause
-in this design-only change. Restore a reliable persistence/startup baseline
-before enabling branch intake; earlier bounded overlap success is not sufficient
-evidence of robustness under concurrent test load.
+Acceptance covers overlapping messages by two people and by the same person in
+one room, distinct native IDs, fixed context, correct speakers/quotes and linked
+replies. Similar topics in different rooms must stay separate; different topics
+in one room must not create inferred conversations. Later input must see both
+completed replies without completion order overwriting history.
 
-Verify two child sessions inherit the intended completed context, execute
-simultaneously, preserve their own follow-ups and leave the parent unchanged.
-Verify a busy-parent fork uses the advertised checkpoint or clearly reports the
-unsupported case. Exercise restart between fork creation and binding persistence,
-request redelivery, child cancellation and uncertain outcomes without replay.
-
-For groups, have Alice and Bob start different tasks, then cross-reply to one
-task. Verify speaker labels, branch selection, quote provenance and result targets
-on both supported platforms. Confirm no owner-private context crosses into the
-group. For Web, verify branch switching and live task statuses through refresh.
-
-Add branch metadata compatibly; existing linear sessions remain valid. Enable
-the new intake path only after adapter acceptance passes. Rollback disables new
-branch creation while retaining branch evidence and allowing supported existing
-branches to finish. No destructive transcript conversion or automatic merge is
-needed.
+Exercise duplicate delivery, refresh, restart during fork binding, cancellation
+and uncertain outcomes without replay. Existing linear evidence remains readable.
+Rollback disables new fork intake while retaining room records and allowing
+supported in-flight requests to finish; no destructive transcript conversion.

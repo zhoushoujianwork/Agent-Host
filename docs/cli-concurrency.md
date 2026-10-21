@@ -20,6 +20,6 @@ the new CLI processes, then starting the previous binary normally.
 
 [Implementation and verification](cli-concurrency-detail.md).
 
-[Proposed conversation branches](conversation-branches.md) would let independent
-tasks inside one visible conversation share a context checkpoint and run in
-separate native sessions. That next increment is not implemented.
+[Proposed room conversation concurrency](conversation-branches.md) routes by room
+entry, attributes messages to authenticated users, and isolates overlapping
+requests in native execution branches without inferring tasks. It is not implemented.
