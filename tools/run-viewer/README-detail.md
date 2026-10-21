@@ -178,6 +178,10 @@ Untrusted requests, model output and tool data are rendered with `textContent`;
 no source HTML, Markdown scripts or commands are executed. No external assets
 or telemetry are used. This is not a remote or multi-user security design.
 
+The managed viewer installation includes `executions.html` alongside the root
+workspace page, so execution links work from installed runtimes as well as the
+source checkout. Viewer preparation tests check its installed contents explicitly.
+
 ## Validation
 
 ```sh

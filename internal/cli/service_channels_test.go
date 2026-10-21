@@ -178,11 +178,11 @@ func TestChannelViewerPreparationRetainsStateAndRejectsSymlinkTargets(t *testing
 			t.Fatal("viewer file is not private", name, err)
 		}
 	}
-	for _, name := range []string{"markdown-parser.js", "markdown.js"} {
+	for _, name := range []string{"executions.html", "markdown-parser.js", "markdown.js"} {
 		installed, err := os.ReadFile(filepath.Join(layout.Root, "viewer", name))
 		original, readErr := os.ReadFile(filepath.Join(source, name))
 		if err != nil || readErr != nil || string(installed) != string(original) {
-			t.Fatal("Chat Markdown dependency missing from installed viewer", name, err, readErr)
+			t.Fatal("Workbench dependency missing from installed viewer", name, err, readErr)
 		}
 	}
 	target := filepath.Join(layout.Root, "viewer", "server.py")
