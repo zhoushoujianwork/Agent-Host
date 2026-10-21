@@ -514,17 +514,34 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 			return err
 		}
 	}
-	release, err := state.Acquire(o.home)
+	store, release, err := openExecutionState(ctx, o.home, command == "chat")
 	if err != nil {
 		return err
 	}
 	defer func() { runErr = errors.Join(runErr, release()) }()
-	store, err := state.Open(o.home, false)
-	if err != nil {
-		return err
-	}
 	defer func(owner *state.Store) { runErr = errors.Join(runErr, owner.Close()) }(store)
 	store = store.WithPartition(o.agentID, o.audienceID)
+	leases := make(map[string]func() error)
+	defer func() {
+		for _, release := range leases {
+			runErr = errors.Join(runErr, release())
+		}
+	}()
+	leaseSession := func(id string) error {
+		if _, held := leases[id]; held {
+			return nil
+		}
+		release, err := state.AcquireChatSession(o.home, id)
+		if err == nil {
+			leases[id] = release
+		}
+		return err
+	}
+	if command == "chat" && o.resume != "" {
+		if err := leaseSession(o.resume); err != nil {
+			return err
+		}
+	}
 	if command == "chat" && o.agentsConfig != "" {
 		catalog, err := loadAgents(o.agentsConfig)
 		if err != nil {
@@ -570,8 +587,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if err := resolveOptions(ctx, store, &o, command == "chat"); err != nil {
 		return err
 	}
-	if err := store.Recover(ctx); err != nil {
-		return fmt.Errorf("recover: %w", err)
+	if command != "chat" {
+		if err := store.Recover(ctx); err != nil {
+			return fmt.Errorf("recover: %w", err)
+		}
 	}
 	if command == "memory reject" || command == "memory invalidate" || command == "memory restore" {
 		return localReview(ctx, store, command, o, pos[0], out)
@@ -639,6 +658,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
 		defer cancel()
+		if err := leaseSession(s.ID); err != nil {
+			return err
+		}
 		run, err := h.Run(turnCtx, s, input)
 		if notice := feedbackNotice(run); notice != "" {
 			fmt.Fprintln(errout, notice)

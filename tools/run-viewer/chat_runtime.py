@@ -523,10 +523,13 @@ class ChatRuntime:
                         row["status"] = "canceled" if stopping else "unknown"
                 # Classify known launch failures; never expose arbitrary stderr,
                 # which can contain provider credentials or private configuration.
-                busy = not turn["run_id"] and b"another host owns this state home:" in b"".join(diagnostics)
+                stderr_tail = b"".join(diagnostics)
+                session_busy = not turn["run_id"] and b"another CLI owns this conversation;" in stderr_tail
+                busy = session_busy or (not turn["run_id"] and b"another host owns this state home:" in stderr_tail)
                 if busy and not stopping:
-                    failure = "执行环境正被另一个 CLI 任务占用，本次尚未开始。请等待该任务结束后手动发送；无需新建对话。"
-                    turn["error_code"] = "state_busy"
+                    failure = ("此对话正在由另一项任务处理，本次尚未开始。其他独立对话可并发执行；请在本轮结束后手动继续。" if session_busy else
+                               "状态目录正被维护操作或旧版 CLI 独占，本次尚未开始。新版 CLI 的独立对话支持并发；请在独占操作结束后手动发送。")
+                    turn["error_code"] = "session_busy" if session_busy else "state_busy"
                 elif not failure and child and child.returncode and not turn["run_id"]:
                     failure = f"Host 启动失败（退出码 {child.returncode}），尚未生成执行记录。请检查 CLI 配置或服务日志。"
                 turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" else "")

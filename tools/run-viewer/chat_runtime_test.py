@@ -21,6 +21,8 @@ def emit(kind, **value):
  print(json.dumps(dict(type=kind,run_id='run-test',session_id='session-test',**value)),flush=True)
 if message == 'busy':
  print('another host owns this state home: resource temporarily unavailable',file=sys.stderr); sys.exit(1)
+if message == 'session-busy':
+ print('another CLI owns this conversation; independent conversations can run concurrently',file=sys.stderr); sys.exit(1)
 if message == 'fail':
  print('private-token-must-not-leak',file=sys.stderr); sys.exit(3)
 child = None
@@ -207,6 +209,13 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.start("manual", "hello")
         done = self.wait_for(lambda s: s["active_id"] is None)
         self.assertEqual(done["turns"][-1]["status"], "completed")
+
+    def test_busy_session_does_not_block_independent_conversations(self):
+        self.runtime.start("same-session", "session-busy")
+        done = self.wait_for(lambda s: s["active_id"] is None)
+        self.assertEqual(done["turns"][0]["error_code"], "session_busy")
+        self.assertIn("独立对话可并发", done["turns"][0]["error"])
+        self.assertFalse(done["needs_new"])
 
     def test_prelaunch_stop_cannot_race_into_execution(self):
         ready = threading.Event()

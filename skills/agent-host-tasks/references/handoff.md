@@ -99,8 +99,12 @@ service. Use the existing dedicated `ROOT/cli-state`, not
 `ROOT/channels/<channel>/state`. A channel's Agent catalog may reference projects
 registered only in that channel. Configure a separate daily-task Agent catalog
 with the intended workspace and no unrelated project bindings; do not copy the
-channel catalog wholesale. A locked CLI home remains an explicit blocker; do
-not delete lock files or create a fresh home to evade ownership.
+channel catalog wholesale. Independent CLI conversations share the configured
+home and execute concurrently. The same native conversation has one owner.
+Exclusive maintenance, channel workers and older CLI versions retain exclusive
+home ownership; a conflict with those owners remains an explicit blocker. Do
+not delete locks or create a fresh home to evade ownership. See
+[concurrency behavior](../../../docs/cli-concurrency.md).
 
 ## Direct CLI
 

@@ -168,7 +168,9 @@ bot accounts and retain delivery evidence independently from execution.
 The local workbench opens a [Web interface](web-workspace.md) on the memory graph,
 with execution records, settings and right-side Chat execution through the configured
 CLI destination. Chat renders streamed Markdown and expandable native Claude activity,
-and can cancel the owned Host process. The conversation canvas is temporarily
+and can cancel the owned Host process. [Independent CLI/Web conversations](cli-concurrency.md)
+execute concurrently in the configured CLI state home, with one owner per native
+conversation. The conversation canvas is temporarily
 disabled. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other
 options retain their configuration-file defaults. Checked

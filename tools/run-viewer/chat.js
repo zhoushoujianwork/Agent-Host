@@ -167,7 +167,7 @@
     const signature = latest ? `${latest.id}:${latest.status}` : "";
     if (signature !== latestStatus) {
       if (latest?.status === "canceled") el("chat-state").textContent = "已中止。点击「新对话」继续。";
-      if (latest?.status === "failed") el("chat-state").textContent = latest.error_code === "state_busy" ? latest.error : "执行失败。请检查错误后开启新对话。";
+      if (latest?.status === "failed") el("chat-state").textContent = ["state_busy","session_busy"].includes(latest.error_code) ? latest.error : "执行失败。请检查错误后开启新对话。";
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }

@@ -156,8 +156,10 @@ explicit truncation notice; original evidence stays in the Host journal. Restart
 the viewer clears its conversation view, not the Host's durable journal. Native
 execution and provider failures are surfaced without a fallback provider. Startup
 stderr is not sent to the browser; inspect CLI configuration and Host records
-when execution fails. Configured CLI state remains subject to its exclusive lock,
-so another CLI process can cause an explicit launch failure.
+when execution fails. Independent CLI/Web conversations share the configured
+state home and execute concurrently. Session leases prevent duplicate native
+continuation, while maintenance and older binaries retain exclusive ownership.
+See [CLI concurrency details](cli-concurrency-detail.md).
 
 Validation: `python3 -B tools/run-viewer/chat_runtime_test.py` exercises incremental
 output, duplicate requests, real process cancellation, queued cancellation,

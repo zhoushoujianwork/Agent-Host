@@ -150,6 +150,9 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 		q.Set("mode", "ro")
 	} else {
 		q.Set("mode", "rwc")
+		// Obtain the SQLite writer reservation before reading in a transaction;
+		// concurrent processes can then wait instead of failing a WAL upgrade.
+		q.Set("_txlock", "immediate")
 	}
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())
@@ -718,8 +721,52 @@ func sessionCanResume(ctx context.Context, q rowQuerier, id string) error {
 }
 
 func (s *Store) Recover(ctx context.Context) error {
+	return s.recoverRuns(ctx, "")
+}
+
+// RecoverIdleChatRuns only closes attempts whose native conversation has no
+// live CLI owner. A peer's startup must never interrupt another running chat.
+func (s *Store) RecoverIdleChatRuns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, "SELECT DISTINCT session_id FROM runs WHERE execution_status='running'")
+	if err != nil {
+		return err
+	}
+	var sessions []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return errors.Join(err, rows.Close())
+		}
+		sessions = append(sessions, id)
+	}
+	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, id := range sessions {
+		release, err := AcquireChatSession(s.home, id)
+		if errors.Is(err, ErrSessionBusy) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		err = errors.Join(s.recoverRuns(ctx, id), release())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) recoverRuns(ctx context.Context, sessionID string) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, "SELECT payload FROM runs WHERE execution_status='running'")
+		query := "SELECT payload FROM runs WHERE execution_status='running'"
+		var args []any
+		if sessionID != "" {
+			query += " AND session_id=?"
+			args = append(args, sessionID)
+		}
+		rows, err := tx.QueryContext(ctx, query, args...)
 		if err != nil {
 			return err
 		}

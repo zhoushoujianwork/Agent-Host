@@ -132,4 +132,8 @@ test("polling does not scroll away selected text and busy launch remains sendabl
   assert.equal(h.el("chat-state").textContent,"环境忙，本次尚未开始");
   h.el("draft").value="manual retry";h.events["agh:draft-change"]();
   assert.equal(h.el("send-chat").disabled,false);
+  h.snapshot.turns[0].error_code="session_busy";
+  h.snapshot.turns[0].id="same-session";
+  h.snapshot.turns[0].error="此对话忙，独立对话可并发";
+  await h.poll();assert.equal(h.el("chat-state").textContent,"此对话忙，独立对话可并发");
 });

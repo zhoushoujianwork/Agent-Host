@@ -76,8 +76,9 @@ effects, switch providers or duplicate active work locally. `--resume-from`
 checks the original destination and requires an observed process exit. If the
 exit is unknown, establish whether the old process is still active and inspect
 external effects before manually continuing; do not edit the receipt to bypass
-the check. Missing setup or a locked home is a blocker, not a reason to invent
-another Agent or runtime home.
+the check. Independent conversations can execute concurrently in the configured
+CLI home. A busy conversation, exclusive maintenance or an older CLI owner is
+still a blocker; do not invent another Agent/home or delete locks to bypass it.
 
 Review the returned evidence and relevant artifacts before accepting completion;
 independently check changed files and appropriate validation. Distinguish native

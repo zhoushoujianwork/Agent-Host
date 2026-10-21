@@ -20,9 +20,10 @@ disabled. [Implementation notes](web-workspace-detail.md).
   Copy buttons are available for prompts, completed replies (Markdown) and code
   blocks, with success or failure feedback. Managed installation includes the
   Markdown renderer and parser needed by Chat.
-- If another CLI task owns the configured state directory, Chat explains that
-  execution has not started. Wait for that task to finish, then send manually;
-  no new conversation is required and nothing is automatically retried.
+- Independent Web and CLI conversations execute concurrently in the configured
+  CLI state directory. The same conversation has one execution owner; exclusive
+  maintenance or an older CLI process can still block startup. See
+  [concurrent CLI tasks](cli-concurrency.md). Nothing is automatically retried.
 - Drafts save locally. The composer grows with the draft and shows its character
   count. Clear can be undone until the next edit. Escape collapses Chat.
 - Stop requests cancellation of the active Host execution and waits for its exit.
