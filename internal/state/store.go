@@ -105,9 +105,9 @@ func OpenForProjectInspection(home string) (*Store, error) {
 	return open(home, true, true, false)
 }
 
-// OpenForMemoryInspection lets startup verify schema-14 file publications before
-// the owning worker performs the additive external-receipt migration. It cannot
-// write operational state or use the new external-memory tables.
+// OpenForMemoryInspection lets startup verify schema-14/15 file publications
+// before the owning worker performs additive receipt/room migrations. It never
+// writes operational state or relies on the new tables.
 func OpenForMemoryInspection(home string) (*Store, error) {
 	return open(home, true, false, true)
 }
@@ -175,7 +175,7 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 	}
 	if readOnly {
 		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
-		compatibleMemory := memoryInspection && version == 14
+		compatibleMemory := memoryInspection && (version == 14 || version == 15)
 		if version != SchemaVersion && !compatibleProjects && !compatibleMemory {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
