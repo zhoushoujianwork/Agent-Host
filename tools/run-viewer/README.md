@@ -24,6 +24,8 @@ The execution list groups loaded records by conversation, with messages numbered
 in chronological order and the speaker shown when recorded. Conversations with
 recent activity appear first; search keeps the matching conversation's loaded
 context together. See [session grouping](README-detail.md#session-groups).
+Use the entry selector to switch between CLI Chat, Feishu, DingTalk and other
+mounted sources. The selected entry also controls which execution detail opens.
 
 ## Start
 

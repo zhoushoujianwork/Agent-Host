@@ -183,6 +183,15 @@ per-source recent-run limits remain in force. Search matches whole loaded
 conversations, preserving context and numbering; each run keeps its own selected
 state and execution-detail link. Collapsed groups retain their state on refresh.
 
+The entry selector uses the explicit source `channel` metadata rather than the
+database/report storage kind. CLI Chat includes Web Chat when both use the same
+configured CLI state source. Known channel labels are CLI Chat, Feishu and
+DingTalk; custom mounted channels retain their own names. Standalone state and
+unqualified archives keep separate local/archive options. Configured sources
+without records remain selectable. Switching entries selects a run from that
+entry or clears stale details when it has no records. Refresh preserves the
+selection and does not rebuild an unchanged selector.
+
 ### Chat outcomes
 
 Chat keeps the process lifecycle (`status`, `exit_code`) separate from

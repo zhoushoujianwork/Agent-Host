@@ -210,13 +210,15 @@ async function refresh() {
     state.index = index;
     renderSources();
     renderList();
-    $("empty").hidden = index.records.length !== 0;
-    if (!index.records.length) {
+    const visible = index.records.filter(row => matchesEntry(row,$("source-filter").value));
+    $("empty").hidden = visible.length !== 0;
+    if (!visible.length) {
       state.key = null;
       state.record = null;
       $("content").hidden = true;
-    } else if (!state.key) {
-      await select(new URL(location.href).searchParams.get("key") || index.default_key);
+    } else if (!state.key || !visible.some(row => row.key === state.key)) {
+      const requested = new URL(location.href).searchParams.get("key");
+      await select(visible.find(row => row.key === requested)?.key || visible.find(row => row.key === index.default_key)?.key || visible[0].key);
       // select owns its error state.
       return;
     } else {
@@ -235,6 +237,7 @@ async function refresh() {
   finally { state.busy = false; $("refresh").disabled = false; }
 }
 function renderSources() {
+  renderEntryOptions();
   const node = $("source-status");
   node.replaceChildren();
   const statuses = {
@@ -252,6 +255,40 @@ function renderSources() {
   }
 }
 const expandedSessions = new Map();
+function entryId(source) {
+  return source.channel ? `channel:${source.channel}` : source.kind === "report" ? "report" : "local";
+}
+function matchesEntry(row, entry) {
+  return entry === "all" || entryId(row.source) === entry;
+}
+function renderEntryOptions() {
+  const labels = {cli:"CLI Chat",feishu:"飞书",dingtalk:"钉钉",preview:"Web Chat"};
+  const entries = new Map();
+  for (const source of [...array(state.index.sources),...state.index.records.map(row => row.source)]) {
+    entries.set(entryId(source),source.channel ? labels[source.channel] || source.channel : source.kind === "report" ? "归档报告" : "本机记录");
+  }
+  const picker = $("source-filter"), selected = picker.value;
+  const options = [["all","全部入口"],...entries];
+  const signature = JSON.stringify(options);
+  if (picker.dataset.entries !== signature) {
+    picker.replaceChildren(...options.map(([value,label]) => {const option=dom("option","",label);option.value=value;return option;}));
+    picker.value = options.some(([value]) => value === selected) ? selected : "all";
+    picker.dataset.entries = signature;
+  }
+}
+function changeEntry() {
+  renderList();
+  const rows = (state.index?.records || []).filter(row => matchesEntry(row,$("source-filter").value));
+  $("empty").hidden = rows.length !== 0;
+  if (rows.length) select(rows.find(row => row.key === state.key)?.key || rows[0].key);
+  else {
+    ++state.generation;
+    state.key = null; state.record = null;
+    $("content").hidden = true;
+    $("sync-state").textContent = "所选入口暂无执行记录";
+    $("error").hidden = true;
+  }
+}
 function sessionGroups(rows) {
   const groups = new Map();
   const timestamp = row => row.received_at && !row.received_at.startsWith("0001-") ? row.received_at : row.created_at || "";
@@ -271,7 +308,7 @@ function renderList() {
   if (!state.index) return;
   const query = $("search").value.toLowerCase().trim();
   const source = $("source-filter").value;
-  const groups = sessionGroups(state.index.records.filter(row => source === "all" || row.source.kind === source))
+  const groups = sessionGroups(state.index.records.filter(row => matchesEntry(row,source)))
     .filter(group => group.rows.some(row => [row.input,row.id,row.project_id,row.project_name,json(row.projects || []),row.workspace,row.scope,
       row.room_id,row.session_id,row.native_session_id,row.sender_id,row.sender_name,row.agent_id,row.audience_id,row.source.name,row.label,runLabels[row.label]].join(" ").toLowerCase().includes(query)));
   $("record-count").textContent = `${groups.length} 个会话 · ${groups.reduce((n,g) => n + g.rows.length,0)} 条`;
@@ -616,7 +653,7 @@ function rawPanel(panel, record) {
 }
 
 $("search").addEventListener("input", renderList);
-$("source-filter").addEventListener("change", renderList);
+$("source-filter").addEventListener("change", changeEntry);
 $("refresh").addEventListener("click", refresh);
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {state.tab = button.dataset.tab; renderRecord();}));
 $("close-dialog").addEventListener("click", () => $("phase-dialog").close());

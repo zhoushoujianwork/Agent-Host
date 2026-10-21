@@ -3,13 +3,13 @@ const {test}=require("node:test"),assert=require("node:assert/strict"),fs=requir
 const source=fs.readFileSync(require("node:path").join(__dirname,"app.js"),"utf8");
 function setup(records) {
   const nodes=new Map(),selected=[];
-  const dom=(tag,className="",text="")=>({tag,className,textContent:text,children:[],scrollTop:0,value:"",listeners:{},
-    append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},
+  const dom=(tag,className="",text="")=>({tag,className,textContent:text,children:[],scrollTop:0,value:"",listeners:{},dataset:{},
+    append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
     setAttribute(key,value){this[key]=value;},addEventListener(key,callback){this.listeners[key]=callback;}});
   const $=id=>{if(!nodes.has(id))nodes.set(id,dom("div"));return nodes.get(id);};
   $("source-filter").value="all";
-  const state={index:{records,database_count:records.length,database_limit:200},key:null};
-  const context={$ ,state,dom,json:JSON.stringify,short:value=>String(value).slice(0,8),date:value=>value,
+  const state={index:{records,database_count:records.length,database_limit:200},key:null,generation:0};
+  const context={$ ,state,dom,array:value=>Array.isArray(value)?value:[],json:JSON.stringify,short:value=>String(value).slice(0,8),date:value=>value,
     badge:status=>dom("span","badge",status),runLabels:{},select:key=>selected.push(key),placeholder:(node,text)=>node.append(dom("p","",text))};
   vm.createContext(context);
   vm.runInContext(source.slice(source.indexOf("const expandedSessions"),source.indexOf("function metric(")),context);
@@ -47,4 +47,37 @@ test("selected conversation opens, shows numbered messages and sender, and retai
   h.$("search").value="alice";h.renderList();
   assert.equal(h.$("record-list").children[0].children.length,3);
   assert.match(h.$("record-count").textContent,/1 个会话 · 2 条/);
+});
+
+test("entry picker distinguishes CLI Chat, Feishu and DingTalk, retaining selection during refresh",()=>{
+  const records=[row("1",{source:{id:"cli:db",kind:"database",channel:"cli"}}),
+    row("2",{source:{id:"feishu:db",kind:"database",channel:"feishu"}}),
+    row("3",{source:{id:"dingtalk:db",kind:"database",channel:"dingtalk"}})];
+  const h=setup(records);h.renderEntryOptions();
+  const picker=h.$("source-filter");
+  assert.deepEqual(picker.children.map(o=>o.textContent),["全部入口","CLI Chat","飞书","钉钉"]);
+  picker.value="channel:feishu";h.state.key="1";h.changeEntry();
+  assert.deepEqual(h.selected,["2"]);
+  assert.match(h.$("record-count").textContent,/1 个会话 · 1 条/);
+  const options=picker.children;h.renderEntryOptions();
+  assert.equal(picker.children,options);assert.equal(picker.value,"channel:feishu");
+  h.state.index.sources=[{id:"cli:db",channel:"cli",kind:"database"},{id:"dingtalk:db",channel:"dingtalk",kind:"database"}];
+  h.state.index.records=records.filter(r=>r.source.channel!=="feishu");h.renderEntryOptions();
+  assert.equal(picker.value,"all");
+});
+
+test("configured empty entries stay selectable and hide details from other entries",()=>{
+  const h=setup([row("1",{source:{id:"cli:db",kind:"database",channel:"cli"}})]);
+  h.state.index.sources=[{id:"feishu:db",channel:"feishu",kind:"database",status:"no_runs"}];
+  h.renderEntryOptions();h.state.key="1";h.state.record={id:"1"};
+  h.$("source-filter").value="channel:feishu";h.changeEntry();
+  assert.equal(h.state.key,null);assert.equal(h.state.record,null);
+  assert.equal(h.$("content").hidden,true);assert.equal(h.$("empty").hidden,false);
+  assert.equal(h.selected.length,0);
+});
+
+test("standalone and archive sources retain distinct entry options",()=>{
+  const h=setup([row("1",{source:{id:"db",kind:"database"}}),row("2",{source:{id:"archive",kind:"report"}})]);
+  h.renderEntryOptions();assert.deepEqual(h.$("source-filter").children.map(o=>o.textContent),["全部入口","本机记录","归档报告"]);
+  h.$("source-filter").value="report";h.changeEntry();assert.deepEqual(h.selected,["2"]);
 });
