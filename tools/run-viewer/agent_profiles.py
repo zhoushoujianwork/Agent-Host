@@ -133,9 +133,19 @@ def observations(catalog, destination, agent_id):
                                            "workspace": run.get("workspace") or run.get("scope")})
                 if "events" not in tables:
                     continue
-                events = [json.loads(raw) for raw, in conn.execute("SELECT payload FROM events WHERE run_id=? ORDER BY seq", (run["id"],))]
                 if result["native_inventory"] is None:
-                    for event in reversed(events):
+                    # Fetch initialization evidence only; tool output can dwarf
+                    # the inventory and is available in the execution detail.
+                    events = conn.execute(
+                        "SELECT payload FROM events WHERE run_id=? "
+                        "AND json_extract(payload,'$.phase')='execute' "
+                        "AND json_extract(payload,'$.component') IN ('harness.acp','harness.claude') "
+                        "AND (json_extract(payload,'$.data.raw.native_initialization') "
+                        "OR (json_extract(payload,'$.data.raw.type')='system' "
+                        "AND json_extract(payload,'$.data.raw.subtype')='init')) ORDER BY seq DESC",
+                        (run["id"],))
+                    for (payload,) in events:
+                        event = json.loads(payload)
                         raw = (event.get("data") or {}).get("raw") or {}
                         if event.get("phase") != "execute" or event.get("component") not in {"harness.acp", "harness.claude"} or not isinstance(raw, dict):
                             continue

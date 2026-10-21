@@ -62,6 +62,9 @@ Unchanged file-memory reads reuse a verified snapshot. A changed publication,
 manual file edit or index change triggers verification again; simultaneous reads
 share that verification. The first read after startup or a change can still take
 longer. Verification errors remain visible. See the [read-path details](README-detail.md#verified-memory-read-cache).
+Memory and Agent lists read only the events needed for their summaries; complete
+native transcripts remain in execution details. Large JSON responses use gzip
+when the browser supports it. See the [projection details](README-detail.md#bounded-list-reads).
 
 To inspect an isolated host or choose an available port:
 

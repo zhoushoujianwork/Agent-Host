@@ -2,6 +2,7 @@
 """Serve an owner-local workbench with Host-owned memory controls."""
 
 import argparse
+import gzip
 import hashlib
 import json
 import http.client
@@ -740,9 +741,28 @@ class MultiCatalog:
 
 class Handler(BaseHTTPRequestHandler):
     def send(self, status, data, content_type="application/json; charset=utf-8"):
-        body = json.dumps(data, ensure_ascii=False).encode() if isinstance(data, dict) else data
+        is_json = isinstance(data, dict)
+        body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode() if is_json else data
+        compress = False
+        if is_json and len(body) >= 1024:
+            for encoding in self.headers.get("Accept-Encoding", "").split(","):
+                name, *parameters = encoding.strip().lower().split(";")
+                if name != "gzip":
+                    continue
+                try:
+                    quality = next((float(p.strip()[2:]) for p in parameters if p.strip().startswith("q=")), 1)
+                    compress = 0 < quality <= 1
+                except ValueError:
+                    compress = False
+                break
+        if compress:
+            body = gzip.compress(body, compresslevel=1, mtime=0)
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if is_json:
+            self.send_header("Vary", "Accept-Encoding")
+        if compress:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")

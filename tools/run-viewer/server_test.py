@@ -1,6 +1,7 @@
 """Exercise read-only loading, archived review provenance, and HTTP boundaries."""
 
 import hashlib
+import gzip
 import importlib.util
 import json
 from pathlib import Path
@@ -415,6 +416,21 @@ class HTTPTests(unittest.TestCase):
         self.server.server_close()
         self.worker.join()
         CatalogTests.tearDown(self)
+
+    def test_large_json_compression_preserves_content_and_negotiation(self):
+        payload = {"records": [{"input": "Recorded source 原文" * 300}]}
+        self.catalog.index = lambda: payload
+        for accept, compressed in (("gzip", True), ("br, gzip;q=0.5", True),
+                                   ("gzip;q=0", False), ("gzip;q=invalid", False), ("identity", False)):
+            with self.subTest(accept=accept), urlopen(Request(self.base + "/api/records", headers={"Accept-Encoding": accept})) as response:
+                body = response.read()
+                self.assertEqual(int(response.headers["Content-Length"]), len(body))
+                self.assertEqual(response.headers["Vary"], "Accept-Encoding")
+                self.assertEqual(response.headers.get("Content-Encoding"), "gzip" if compressed else None)
+                if compressed:
+                    self.assertLess(len(body), 1024)
+                    body = gzip.decompress(body)
+                self.assertEqual(json.loads(body), payload)
 
     def test_backup_health_is_read_only_and_omits_recovery_key(self):
         with urlopen(self.base + "/api/backup") as response:

@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import server
 from agent_profiles import profiles
@@ -157,8 +158,16 @@ class ProfileTests(unittest.TestCase):
             self.db.execute("INSERT INTO runs VALUES(?,?,?)",(run_id,date,json.dumps({"id":run_id,"agent_id":"default","created_at":date})))
             native = {"type":"native.evidence","phase":"execute","component":"harness.acp","model":"actual-model","at":date,"data":{"raw":{"native_initialization":True,"admitted":True,"skills":skills,"mcp_servers":[{"name":"confluence","status":"connected"}],"PRIVATE_SECRET":"SECRET"}}}
             self.db.execute("INSERT INTO events VALUES(?,?,?)",(run_id,1,json.dumps(native)))
+            for seq in range(2, 66):
+                transcript = {"type": "native.evidence", "phase": "execute", "component": "harness.acp",
+                              "data": {"raw": {"output": "TRANSCRIPT_SENTINEL" + "x" * 32768}}}
+                self.db.execute("INSERT INTO events VALUES(?,?,?)", (run_id, seq, json.dumps(transcript)))
+            rejected = {**native, "data": {"raw": {"native_initialization": True, "admitted": False, "skills": ["rejected"]}}}
+            self.db.execute("INSERT INTO events VALUES(?,?,?)", (run_id, 66, json.dumps(rejected)))
         self.db.commit()
-        result=profiles(self.store,self.catalog,web,"ops")
+        with patch("agent_profiles.json.loads", wraps=json.loads) as decode:
+            result=profiles(self.store,self.catalog,web,"ops")
+        self.assertFalse(any("TRANSCRIPT_SENTINEL" in str(call.args[0]) for call in decode.call_args_list))
         p=next(p for p in result["profiles"] if p["destination"]=="web" and p["id"]=="default")
         self.assertEqual(p["transport"],"acp")
         self.assertFalse(p["chat_selected"])

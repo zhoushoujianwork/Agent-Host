@@ -244,6 +244,21 @@ Legacy v1/v2 rows retain absent metadata; the viewer does not migrate or extract
 new identities. Memory reads and related runs/events use one read-only database
 snapshot. Channel inbox and reply capabilities are never queried.
 
+### Bounded list reads
+
+Memory database projections select only `memory.retrieval.evaluated` and
+`decision.completed` events in SQLite before decoding them. Agent inventory
+reads select execution initialization evidence in reverse sequence order and stop
+at the newest admitted inventory; skill assembly uses its own event filter.
+These list paths do not decode native tool transcripts or scan them for every
+memory. Execution details still load the complete stored event stream. Existing
+source, partition, history limits and file-memory verification remain in force.
+
+JSON uses compact serialization and, for responses of at least 1 KiB, gzip level
+1 when the client explicitly accepts gzip with positive quality. Responses vary
+by `Accept-Encoding`, retain `no-store`, and keep the same decoded JSON fields.
+Clients requesting identity or disabling gzip receive uncompressed JSON.
+
 Report projections retain explicit inspection rows, injected memory snapshots
 and the existing-memory text/ID pairs recorded in Jev comparison inputs. Later
 inspection lifecycle state takes precedence over older injection snapshots.

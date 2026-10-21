@@ -60,7 +60,11 @@ def database_rows(catalog):
         records = []
         for (raw,) in conn.execute("SELECT payload FROM runs" + run_where + " ORDER BY created_at DESC,rowid DESC LIMIT 200", run_args):
             run = object_payload(raw)
-            events = [object_payload(e[0]) for e in conn.execute("SELECT payload FROM events WHERE run_id=? ORDER BY seq", (run["id"],))]
+            # List projections need memory decisions, not native tool transcripts.
+            # Keep the complete event stream available through Catalog.record().
+            events = [object_payload(e[0]) for e in conn.execute(
+                "SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type') "
+                "IN ('memory.retrieval.evaluated','decision.completed') ORDER BY seq", (run["id"],))]
             records.append({"key": "db:" + run["id"], "run": run, "events": events})
         return rows, records, total, run_total, context
     finally:

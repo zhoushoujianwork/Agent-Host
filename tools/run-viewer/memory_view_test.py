@@ -18,10 +18,31 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import server
-from memory_view import memory_catalog
+from memory_view import memory_catalog, object_payload
 
 
 class MemoryTests(unittest.TestCase):
+    def test_projection_skips_native_transcripts_but_preserves_memory_evidence(self):
+        conn = self.database()
+        native = {"type": "native.evidence", "data": {"raw": "TRANSCRIPT_SENTINEL" + "x" * 32768}}
+        for seq in range(64):
+            conn.execute("INSERT INTO events VALUES(?,?,?)", ("source-a", seq, json.dumps(native)))
+        decision = {"type": "decision.completed", "data": {"decision": {
+            "kind": "store", "store": True, "details": {"reason": "Recorded reason"}}}}
+        retrieval = {"type": "memory.retrieval.evaluated", "data": {"scope": "/project-a", "decisions": [
+            {"memory_id": "m-a", "accepted": False, "reason": "Recorded exclusion"}]}}
+        for seq, event in enumerate((decision, retrieval), 64):
+            conn.execute("INSERT INTO events VALUES(?,?,?)", ("source-a", seq, json.dumps(event)))
+        conn.commit()
+        conn.close()
+        with patch("memory_view.object_payload", wraps=object_payload) as decode:
+            result = memory_catalog(self.catalog)
+        self.assertFalse(any("TRANSCRIPT_SENTINEL" in str(call.args[0]) for call in decode.call_args_list))
+        memory = next(m for m in result["memories"] if m["memory"]["id"] == "m-a")
+        self.assertEqual(memory["decision"]["reason"], "Recorded reason")
+        self.assertEqual(memory["uses"][0]["reason"], "Recorded exclusion")
+        self.assertEqual(len(self.catalog.record("db:source-a")["events"]), 66)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="ah-memory-", dir="/tmp")
         self.root = Path(self.temporary.name)
