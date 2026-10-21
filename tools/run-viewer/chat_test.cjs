@@ -2,12 +2,13 @@
 const {test}=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 async function setup() {
-  const nodes=new Map(),events={},calls=[],timers=[];
+  const nodes=new Map(),events={},calls=[],timers=[],copied=[];
+  let copyFails=false,selection="";
   function make(tag="div") {return {tag,hidden:false,disabled:false,value:"",textContent:"",dataset:{},children:[],scrollHeight:100,scrollTop:0,clientHeight:100,append(...v){this.children.push(...v);},replaceChildren(...v){this.children=v;},remove(){this.removed=true;},addEventListener(k,v){this[k]=v;}};}
   const el=id=>{if(!nodes.has(id))nodes.set(id,make());return nodes.get(id);};
   let snapshot={enabled:true,mutation_token:"token",turns:[],active_id:null},failResponse=false,sequence=0;
   el("draft").oninput=()=>{};
-  const context={document:{getElementById:el,createElement:make,addEventListener(k,v){events[k]=v;}},TextEncoder,crypto:{randomUUID(){return "request-"+(++sequence);}},setTimeout(callback){timers.push(callback);},async fetch(url,options={}){
+  const context={getSelection:()=>({toString:()=>selection}),navigator:{clipboard:{async writeText(text){if(copyFails)throw Error("denied");copied.push(text);}}},document:{getElementById:el,createElement:make,addEventListener(k,v){events[k]=v;}},TextEncoder,crypto:{randomUUID(){return "request-"+(++sequence);}},setTimeout(callback){timers.push(callback);},async fetch(url,options={}){
     calls.push({url,...options});
     if(options.method==="POST"){
       const value=JSON.parse(options.body);
@@ -23,7 +24,7 @@ async function setup() {
   vm.createContext(context);
   for(const file of ["markdown-parser.js","markdown.js","chat.js"]) vm.runInContext(fs.readFileSync(path.join(__dirname,file),"utf8"),context);
   await flush();
-  return {el,calls,events,set snapshot(v){snapshot=v;},get snapshot(){return snapshot;},loseResponse(){failResponse=true;},async poll(){timers.shift()();await flush();}};
+  return {el,calls,events,copied,select(text){selection=text;},denyClipboard(){copyFails=true;},set snapshot(v){snapshot=v;},get snapshot(){return snapshot;},loseResponse(){failResponse=true;},async poll(){timers.shift()();await flush();}};
 }
 test("accepted sends clear the matching draft and render HTML as inert Markdown text",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();await h.el("send-chat").onclick();
@@ -107,4 +108,28 @@ test("unchanged polls preserve an open native Agent selector",async()=>{
 test("a single default Agent does not show a redundant Chat selector",async()=>{
   const h=await setup();h.snapshot={...h.snapshot,selected_agent:"daily",agents:[{id:"daily",name:"Default"}]};await h.poll();assert.equal(h.el("chat-agent-bar").hidden,true);
   h.snapshot.agents.push({id:"project",name:"Project"});await h.poll();assert.equal(h.el("chat-agent-bar").hidden,false);
+});
+
+test("message, reply and code copy preserve source and report clipboard denial",async()=>{
+  const h=await setup();
+  h.snapshot.turns=[{id:"copy",input:"original prompt",status:"completed",output:[{id:"1",kind:"text",content:"**Answer**\n\n```js\nconst value = 1;\n```"}]}];
+  await h.poll();const turn=h.el("chat-messages").children[0];
+  await turn.children[6].children[0].onclick();
+  await turn.children[7].children[0].onclick();
+  const pre=turn.children[2].children[0].children[1].children[1];
+  await pre.children[1].onclick();
+  assert.equal(h.copied[0],"original prompt");
+  assert.equal(h.copied[1],h.snapshot.turns[0].output[0].content);
+  assert.equal(h.copied[2].trim(),"const value = 1;");
+  h.denyClipboard();await turn.children[6].children[0].onclick();
+  assert.match(h.el("chat-state").textContent,/Ctrl\/Cmd\+C/);
+});
+
+test("polling does not scroll away selected text and busy launch remains sendable",async()=>{
+  const h=await setup();h.select("selected text");h.el("chat-scroll").scrollTop=12;
+  h.snapshot.turns=[{id:"busy",input:"prompt",status:"failed",error_code:"state_busy",error:"环境忙，本次尚未开始",output:[]}];
+  await h.poll();assert.equal(h.el("chat-scroll").scrollTop,12);
+  assert.equal(h.el("chat-state").textContent,"环境忙，本次尚未开始");
+  h.el("draft").value="manual retry";h.events["agh:draft-change"]();
+  assert.equal(h.el("send-chat").disabled,false);
 });

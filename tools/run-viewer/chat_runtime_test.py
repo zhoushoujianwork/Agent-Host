@@ -19,7 +19,10 @@ import json, os, signal, subprocess, sys, time
 message = sys.argv[sys.argv.index('-m') + 1]
 def emit(kind, **value):
  print(json.dumps(dict(type=kind,run_id='run-test',session_id='session-test',**value)),flush=True)
-if message == 'fail': sys.exit(3)
+if message == 'busy':
+ print('another host owns this state home: resource temporarily unavailable',file=sys.stderr); sys.exit(1)
+if message == 'fail':
+ print('private-token-must-not-leak',file=sys.stderr); sys.exit(3)
 child = None
 def stop(sig, frame):
  if child:
@@ -191,7 +194,19 @@ class RuntimeTests(unittest.TestCase):
         done = self.wait_for(lambda s: s["active_id"] is None)
         self.assertEqual(done["turns"][0]["status"], "failed")
         self.assertEqual(done["turns"][0]["exit_code"], 3)
-        self.assertTrue(done["turns"][0]["error"])
+        self.assertIn("退出码 3", done["turns"][0]["error"])
+        self.assertNotIn("private-token", done["turns"][0]["error"])
+
+    def test_busy_state_is_actionable_and_allows_manual_send(self):
+        self.runtime.start("busy", "busy")
+        done = self.wait_for(lambda s: s["active_id"] is None)
+        self.assertEqual(done["turns"][0]["error_code"], "state_busy")
+        self.assertIn("尚未开始", done["turns"][0]["error"])
+        self.assertFalse(done["needs_new"])
+        self.assertEqual(done["turns"][0]["run_id"], "")
+        self.runtime.start("manual", "hello")
+        done = self.wait_for(lambda s: s["active_id"] is None)
+        self.assertEqual(done["turns"][-1]["status"], "completed")
 
     def test_prelaunch_stop_cannot_race_into_execution(self):
         ready = threading.Event()

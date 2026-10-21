@@ -26,6 +26,24 @@
     if (text !== undefined) result.textContent = text;
     return result;
   }
+  function copyButton(label, value) {
+    const button = node("button","chat-copy",label);
+    button.type = "button"; button.title = label; button.ariaLabel = label;
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        await navigator.clipboard.writeText(value());
+        button.textContent = "已复制 ✓";
+      } catch {
+        button.textContent = "复制失败";
+        el("chat-state").textContent = "无法访问剪贴板，请拖选文字后使用 Ctrl/Cmd+C 复制。";
+      } finally {
+        button.disabled = false;
+        setTimeout(() => { button.textContent = label; },1800);
+      }
+    };
+    return button;
+  }
   function duration(ms) {
     const seconds = Math.floor(Math.max(0,ms) / 1000);
     return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
@@ -67,10 +85,15 @@
         const status = node("div","chat-turn-status");
         const error = node("p","chat-turn-error");
         const record = node("a","chat-record","查看执行记录 ↗");
-        root.append(user,work,output,status,error,record);
+        const userActions = node("div","chat-actions chat-user-actions");
+        userActions.append(copyButton("复制消息",() => user.textContent));
+        const answerActions = node("div","chat-actions");
+        const copyAnswer = copyButton("复制回复",() => item.reply);
+        answerActions.append(copyAnswer);
+        root.append(user,work,output,status,error,record,userActions,answerActions);
         el("chat-messages").append(root);
         work.open = ["starting","running","stopping"].includes(turn.status);
-        item = {root,work,summary,activity,output,status,error,record,blocks:new Map()}; rendered.set(turn.id,item);
+        item = {root,work,summary,activity,output,status,error,record,answerActions,copyAnswer,blocks:new Map()}; rendered.set(turn.id,item);
       }
       const rows = turn.output || (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
       const active = ["starting","running","stopping"].includes(turn.status);
@@ -122,6 +145,9 @@
       reconcile(item.activity,workNodes);
       reconcile(item.output,answerNodes);
       item.output.hidden = !rows.some((row,index) => row.kind === "text" && index > lastTool);
+      item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("\n\n");
+      item.answerActions.hidden = !item.reply;
+      item.copyAnswer.disabled = active;
       item.root.dataset.status = turn.status;
       const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
       item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[turn.status] || turn.status}`;
@@ -141,11 +167,11 @@
     const signature = latest ? `${latest.id}:${latest.status}` : "";
     if (signature !== latestStatus) {
       if (latest?.status === "canceled") el("chat-state").textContent = "已中止。点击「新对话」继续。";
-      if (latest?.status === "failed") el("chat-state").textContent = "执行失败。请检查记录后开启新对话。";
+      if (latest?.status === "failed") el("chat-state").textContent = latest.error_code === "state_busy" ? latest.error : "执行失败。请检查错误后开启新对话。";
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }
-    if (follow) scroll.scrollTop = scroll.scrollHeight;
+    if (follow && !globalThis.getSelection?.()?.toString()) scroll.scrollTop = scroll.scrollHeight;
     el("latest-chat").hidden = follow || !state.turns.length;
   }
   async function refresh() {

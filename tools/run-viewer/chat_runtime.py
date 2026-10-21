@@ -4,6 +4,7 @@ Host owns execution, native sessions and durable evidence. This bridge only
 launches the validated command, projects its public events and requests cancel.
 """
 
+from collections import deque
 import hashlib
 import json
 import os
@@ -458,6 +459,11 @@ class ChatRuntime:
         finished = None
         failure = ""
         child = None
+        diagnostics = deque(maxlen=8)
+        reader = None
+        def drain_errors(stream):
+            while chunk := stream.read(1024):
+                diagnostics.append(chunk)
         try:
             command, cwd, env, identity = self.launcher(self.config)
             with self.lock:
@@ -469,7 +475,9 @@ class ChatRuntime:
                     command = [*command, "--resume", self.session]
                 command = [*command, "--format", "json", "-m", turn["input"]]
                 child = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+                reader = threading.Thread(target=drain_errors, args=(child.stderr,), daemon=True)
+                reader.start()
                 self.child = child
                 turn["status"] = "running"
                 self.identity = identity
@@ -500,6 +508,9 @@ class ChatRuntime:
                         pass
                     child.wait()
                 child.stdout.close()
+                if reader:
+                    reader.join()
+                child.stderr.close()
             with self.lock:
                 stopping = turn["status"] == "stopping"
                 turn["exit_code"] = child.returncode if child else None
@@ -510,11 +521,19 @@ class ChatRuntime:
                 for row in turn["output"]:
                     if row.get("status") == "running":
                         row["status"] = "canceled" if stopping else "unknown"
+                # Classify known launch failures; never expose arbitrary stderr,
+                # which can contain provider credentials or private configuration.
+                busy = not turn["run_id"] and b"another host owns this state home:" in b"".join(diagnostics)
+                if busy and not stopping:
+                    failure = "执行环境正被另一个 CLI 任务占用，本次尚未开始。请等待该任务结束后手动发送；无需新建对话。"
+                    turn["error_code"] = "state_busy"
+                elif not failure and child and child.returncode and not turn["run_id"]:
+                    failure = f"Host 启动失败（退出码 {child.returncode}），尚未生成执行记录。请检查 CLI 配置或服务日志。"
                 turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" else "")
                 if turn["status"] == "completed":
                     self.session = turn["session_id"] or None
                 else:
-                    self.needs_new = True
+                    self.needs_new = not busy
                 self.child = None
                 self.active = None
 

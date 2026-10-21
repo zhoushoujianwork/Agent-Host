@@ -16,6 +16,13 @@ disabled. [Implementation notes](web-workspace-detail.md).
   a line. Claude replies render Markdown as they stream. Expand the activity summary
   to inspect actual tool calls, parameters, results and earlier commentary in order;
   the final reply stays visible below it. The summary counts tool calls, not Host phases.
+- Select message, reply or tool text with the mouse and copy with Ctrl/Cmd+C.
+  Copy buttons are available for prompts, completed replies (Markdown) and code
+  blocks, with success or failure feedback. Managed installation includes the
+  Markdown renderer and parser needed by Chat.
+- If another CLI task owns the configured state directory, Chat explains that
+  execution has not started. Wait for that task to finish, then send manually;
+  no new conversation is required and nothing is automatically retried.
 - Drafts save locally. The composer grows with the draft and shows its character
   count. Clear can be undone until the next edit. Escape collapses Chat.
 - Stop requests cancellation of the active Host execution and waits for its exit.

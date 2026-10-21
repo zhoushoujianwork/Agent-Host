@@ -23,7 +23,15 @@
   function blockNode(block) {
     if (block.kind === "hr") return element("hr");
     if (block.kind === "code") {
-      const pre = element("pre"); pre.append(element("code", block.text)); return pre;
+      const pre = element("pre");
+      const copy = element("button","复制代码");
+      copy.type = "button"; copy.className = "chat-copy chat-code-copy"; copy.ariaLabel = "复制代码";
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(block.text); copy.textContent = "已复制 ✓"; }
+        catch { copy.textContent = "复制失败，请拖选代码复制"; }
+        setTimeout(() => { copy.textContent = "复制代码"; },1800);
+      };
+      pre.append(element("code", block.text),copy); return pre;
     }
     if (block.kind === "list") {
       const list = element(block.ordered ? "ol" : "ul");

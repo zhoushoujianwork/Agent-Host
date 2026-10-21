@@ -384,3 +384,15 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 .settings-modal iframe { display: block; width: 100%; height: 100%; border: 0; }
 .settings-modal-close { position: absolute; z-index: 1; top: 17px; right: 17px; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; font-size: 22px; line-height: 1; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 @media(max-width:600px) { .settings-modal { width: calc(100vw - 20px); height: calc(100dvh - 24px); border-radius: 12px; } }
+
+/* Native selection and visible, keyboard-accessible message actions. */
+.chat-turn { display: flex; flex-direction: column; }
+.chat-turn :is(.chat-user,.chat-answer,.chat-native-content,.chat-turn-error,.chat-turn-status) { -webkit-user-select: text; user-select: text; cursor: text; }
+.chat-user { order: -2; margin-bottom: 4px; }
+.chat-user-actions { order: -1; align-self: flex-end; margin-bottom: 16px; }
+.chat-actions { display: flex; gap: 6px; margin-top: 6px; }
+.chat-copy { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; padding: 6px 8px; cursor: pointer; }
+.chat-copy:hover,.chat-copy:focus-visible { background: var(--surface-soft); border-color: var(--line); color: var(--ink); }
+.chat-copy:disabled { opacity: .5; cursor: default; }
+.chat-answer pre { position: relative; padding-top: 42px; }
+.chat-code-copy { position: absolute; top: 5px; right: 6px; }
