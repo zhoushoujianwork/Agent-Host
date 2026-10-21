@@ -189,6 +189,9 @@ materializing preselected Skills. The new Web message remains the execution
 input; it cannot silently change the native Skill package of the selected
 runtime. Changes to published memory or execution configuration still require
 a compatible new channel context before takeover.
+The Web fork also retains the original receipt-bound read-only history tool;
+its stable MCP authority must match the native checkpoint without fabricating
+an incoming channel message or enabling channel reply delivery.
 
 Session projection and selection are local to the viewer process. After a viewer
 restart, select the Session again from durable execution records. Closing a panel

@@ -61,6 +61,7 @@ type Config struct {
 	ValidateKnowledge     func() error
 	HistoryHome           string
 	HistoryExecutable     string
+	HistoryMessageID      string
 	Scope                 string
 	ProjectID             string
 	ProjectName           string
@@ -507,8 +508,12 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, err)
 		}
 	}
-	if channelMessageID != "" && h.Config.HistoryHome != "" && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
-		binding, err := history.Resolve(h.Config.HistoryHome, channelMessageID)
+	historyMessageID := channelMessageID
+	if historyMessageID == "" {
+		historyMessageID = h.Config.HistoryMessageID
+	}
+	if historyMessageID != "" && h.Config.HistoryHome != "" && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
+		binding, err := history.Resolve(h.Config.HistoryHome, historyMessageID)
 		if err != nil {
 			return h.failBeforeExecution(j, fmt.Errorf("assemble conversation history: %w", err))
 		}

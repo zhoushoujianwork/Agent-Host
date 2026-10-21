@@ -44,7 +44,7 @@ func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *tes
 			if _, err := store.MigrateFileMemory(t.Context(), filepath.Join(root, "memory"), filepath.Join(root, "cache", "memory"), "takeover-test"); err != nil {
 				t.Fatal(err)
 			}
-			base := options{home: fixture.home, workspace: root, defaultWorkspace: root, defaultScope: root, model: "fixture", binary: "/bin/echo"}
+			base := options{home: fixture.home, workspace: root, defaultWorkspace: root, defaultScope: root, model: "fixture", binary: "/bin/echo", historyEnabled: true, historyExecutable: "/bin/echo"}
 			client, err := jev.New("synthetic-not-used", "fixture")
 			if err != nil {
 				t.Fatal(err)
@@ -113,6 +113,9 @@ func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *tes
 			}
 			if runner.requests[0].SkillPluginDigest == "" || runner.requests[1].SkillPluginDigest != runner.requests[0].SkillPluginDigest {
 				t.Fatal("Web continuation changed preselected source Skills", runner.requests)
+			}
+			if len(runner.requests[0].MCPServers) != 1 || len(runner.requests[1].MCPServers) != 1 || runner.requests[1].MCPServers[0].Name != "conversation_history" || runner.requests[1].MCPServers[0].SessionKey != runner.requests[0].MCPServers[0].SessionKey {
+				t.Fatal("Web continuation lost authenticated source history", runner.requests)
 			}
 			invoke(original.ID, "web-1")
 			if len(runner.requests) != 2 {

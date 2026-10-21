@@ -180,6 +180,7 @@ func resolveSessionTakeover(ctx context.Context, service *channel.Service, agent
 	// materialize that same set, rather than silently changing native capabilities
 	// based on its new input. Changed source configuration still fails validation.
 	h.Config.RuntimeRecallQuery = message.Text
+	h.Config.HistoryMessageID = message.ID
 	for _, supplement := range message.Supplements {
 		h.Config.RuntimeRecallQuery += "\n" + supplement.Text
 	}
