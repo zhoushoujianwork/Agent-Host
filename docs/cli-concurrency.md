@@ -19,3 +19,7 @@ The change keeps the existing database schema and data. Rollback requires ending
 the new CLI processes, then starting the previous binary normally.
 
 [Implementation and verification](cli-concurrency-detail.md).
+
+[Proposed conversation branches](conversation-branches.md) would let independent
+tasks inside one visible conversation share a context checkpoint and run in
+separate native sessions. That next increment is not implemented.
