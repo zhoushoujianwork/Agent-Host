@@ -159,8 +159,12 @@ func TestGenericMessagingCannotBypassReadBoundsOrSenderPolicy(t *testing.T) {
 		t.Fatal("generic route widened collection")
 	}
 	a.Parameters["download-resources"] = "true"
+	if err := enforceMessaging(c, &a); err != nil || a.Parameters["output-dir"] != "downloads" {
+		t.Fatal("explicit downloads unavailable", err)
+	}
+	a.Parameters["download-resources"] = "false"
 	if err := enforceMessaging(c, &a); err == nil {
-		t.Fatal("generic route enabled downloads")
+		t.Fatal("output destination accepted without downloading")
 	}
 	a = Args{Command: "chat message send", OperationID: "send", Parameters: map[string]string{"open-dingtalk-id": "verified-peer", "content": "Requested", "ai-tag": "false"}}
 	if err := enforceMessaging(c, &a); err == nil {

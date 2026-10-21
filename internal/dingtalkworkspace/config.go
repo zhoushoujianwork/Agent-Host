@@ -21,7 +21,7 @@ type Config struct {
 }
 
 var Services = map[string]string{
-	"chat":     "Send as the authorized owner, inspect send status, find conversations and read bounded message history.",
+	"chat":     "Send as the authorized owner, inspect send status, find conversations, read bounded message history and download requested message attachments.",
 	"aisearch": "Find people by name, department or responsibility (AI搜问).",
 	"contact":  "Read enterprise contacts, departments and the current user's identity.",
 	"calendar": "Read calendars and availability; manage appointments and meeting rooms.",

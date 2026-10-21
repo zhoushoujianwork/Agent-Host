@@ -113,7 +113,8 @@ audience removes the personal-workspace mount.
 ## Outcomes and evidence
 
 The optional `chat` service exposes only `chat message send`,
-`chat message query-send-status`, `chat +chat-messages` and `chat search`.
+`chat message query-send-status`, `chat +chat-messages`, `chat search` and
+`chat +messages-resource-download`.
 Dedicated send/read/status tools call these official contracts through the same
 owner worker. The generic command route applies the same messaging restrictions;
 enabling chat does not enable group administration, permission changes,
@@ -130,7 +131,26 @@ reading. Tests do not send real messages.
 
 Task history reads require a positive time window at most 24 hours, maximum
 20 items and exactly one target. Host fixes ascending order, one page and no
-reactions; resource downloads and alternate target selectors are not accepted.
+reactions; alternate target selectors are not accepted. Downloads are opt-in:
+`read_messages.download_resources=true` forwards the official `download-resources`
+flag, with optional `output_dir` mapped to `output-dir` (default `downloads`).
+The generic history route accepts the same flags without relaxing its bounds.
+`output_dir` without a download request is rejected. Original `resourceDownloads`
+ledgers, partial results and failures remain intact.
+
+Independent resource downloads use the official `chat +messages-resource-download`
+read contract and exact `resourceRefs[].download.arguments` from the authorized
+message read. `mediaId` requires its original message and conversation context;
+`fileId` uses the official drive download resolver without enabling other drive
+operations. Only this command may use the leaf `output` parameter: all other
+commands still reject global output capture. Its other accepted parameters are
+`type`, `resource-id`, `message-id` and `open-conversation-id`. Host rejects
+`overwrite`; the official implementation validates relative destinations,
+rejects traversal and symlink components, writes a temporary file, verifies its
+length and publishes atomically without replacing an existing file. Paths are
+relative to the MCP worker's inherited execution workspace. Host verifies the
+configured owner registry before both history and independent downloads. The
+90-second worker timeout still applies; failed downloads are not replayed.
 The canonical history schema declares `group`; its pinned, source-verified
 `conversation-id` alias bypasses natural-name resolution and keeps the exact
 selector used by the existing collector. Original message and coverage JSON is
@@ -200,3 +220,18 @@ current infrastructure state, ticket approval/closure, unrelated product
 writes, encrypted chat support or retry behavior under transport failures.
 Private receipts, operation IDs, user identities and runtime credentials remain
 outside tracked documentation.
+
+### Historical attachment downloads (2026-10-21)
+
+The configured owner read a two-minute private history window through
+`Service.Call(read_messages)` and the embedded official worker, with explicit
+downloads enabled. Its ledger reported two downloads and zero failures:
+`visit-battle-handbook.skill` (153,859 bytes) and `patsnap-expert.skill`
+(55,328 bytes). Independent `execute_command` resource downloads produced
+byte-identical files. The installed MCP stdio server repeated the two-file
+download with zero failures. Both archives passed ZIP CRC verification and contained
+their respective `SKILL.md`. A repeated independent download to an existing
+path failed and left its hash unchanged. Private source IDs, raw download
+receipts and SHA-256 evidence remain in the runtime validation directory.
+This validates the tool/worker path with real account access; it does not
+claim a new native-assistant chat round trip, installation or publication.

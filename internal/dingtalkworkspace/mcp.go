@@ -18,21 +18,23 @@ type Service struct {
 	Run                                Runner
 }
 type Args struct {
-	Service        string            `json:"service,omitempty"`
-	Query          string            `json:"query,omitempty"`
-	Offset         int               `json:"offset,omitempty"`
-	Limit          int               `json:"limit,omitempty"`
-	Command        string            `json:"command,omitempty"`
-	Parameters     map[string]string `json:"parameters,omitempty"`
-	Confirmed      bool              `json:"confirmed,omitempty"`
-	OperationID    string            `json:"operation_id,omitempty"`
-	ConversationID string            `json:"conversation_id,omitempty"`
-	PeerID         string            `json:"peer_open_dingtalk_id,omitempty"`
-	Text           string            `json:"text,omitempty"`
-	Title          string            `json:"title,omitempty"`
-	After          string            `json:"after,omitempty"`
-	Before         string            `json:"before,omitempty"`
-	TaskID         string            `json:"open_task_id,omitempty"`
+	Service           string            `json:"service,omitempty"`
+	Query             string            `json:"query,omitempty"`
+	Offset            int               `json:"offset,omitempty"`
+	Limit             int               `json:"limit,omitempty"`
+	Command           string            `json:"command,omitempty"`
+	Parameters        map[string]string `json:"parameters,omitempty"`
+	Confirmed         bool              `json:"confirmed,omitempty"`
+	OperationID       string            `json:"operation_id,omitempty"`
+	ConversationID    string            `json:"conversation_id,omitempty"`
+	PeerID            string            `json:"peer_open_dingtalk_id,omitempty"`
+	Text              string            `json:"text,omitempty"`
+	Title             string            `json:"title,omitempty"`
+	After             string            `json:"after,omitempty"`
+	Before            string            `json:"before,omitempty"`
+	TaskID            string            `json:"open_task_id,omitempty"`
+	DownloadResources bool              `json:"download_resources,omitempty"`
+	OutputDir         string            `json:"output_dir,omitempty"`
 }
 
 func (s Service) Call(ctx context.Context, name string, raw json.RawMessage) (any, error) {

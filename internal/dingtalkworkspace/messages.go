@@ -78,6 +78,14 @@ func (s Service) ReadForwardedCard(ctx context.Context, conversationID, messageI
 // The generic command entry point must preserve the dedicated message tools'
 // identity, deduplication and bounded-read contracts as well.
 func enforceMessaging(c Config, a *Args) error {
+	if a.Command == "chat +messages-resource-download" {
+		for key := range a.Parameters {
+			if !slices.Contains([]string{"type", "resource-id", "message-id", "open-conversation-id", "output"}, key) {
+				return errors.New("parameter is outside the message resource download scope; existing files cannot be overwritten")
+			}
+		}
+		return nil
+	}
 	if a.Command != "chat message send" && a.Command != "chat +chat-messages" {
 		return nil
 	}
@@ -94,6 +102,18 @@ func enforceMessaging(c Config, a *Args) error {
 		p["idempotency-key"] = uuid.NewSHA1(uuid.NameSpaceOID, []byte(c.Profile+":"+a.OperationID)).String()
 	} else {
 		allowed = append(allowed, "start", "end", "order", "page-all", "page-limit", "max-items", "no-reactions")
+		if download, ok := p["download-resources"]; ok {
+			if download != "true" && download != "false" {
+				return errors.New("download-resources must be true or false")
+			}
+			allowed = append(allowed, "download-resources")
+			if download == "true" {
+				allowed = append(allowed, "output-dir")
+				if p["output-dir"] == "" {
+					p["output-dir"] = "downloads"
+				}
+			}
+		}
 		start, e := time.Parse(time.RFC3339, p["start"])
 		end, e2 := time.Parse(time.RFC3339, p["end"])
 		limit, e3 := strconv.Atoi(p["max-items"])
@@ -163,6 +183,15 @@ func (s Service) messageCall(ctx context.Context, c Config, configured bool, nam
 			}
 			params["start"], params["end"] = after.UTC().Format(time.RFC3339), before.UTC().Format(time.RFC3339)
 			params["order"], params["page-all"], params["page-limit"], params["max-items"], params["no-reactions"] = "asc", "true", "1", strconv.Itoa(a.Limit), "true"
+			if a.OutputDir != "" && !a.DownloadResources {
+				return nil, errors.New("output_dir requires download_resources=true")
+			}
+			if a.DownloadResources {
+				params["download-resources"] = "true"
+				if a.OutputDir != "" {
+					params["output-dir"] = a.OutputDir
+				}
+			}
 		}
 	}
 	raw, _ := json.Marshal(Args{Command: command, Parameters: params, OperationID: a.OperationID, Confirmed: a.Confirmed})

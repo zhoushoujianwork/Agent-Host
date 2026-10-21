@@ -35,7 +35,7 @@ func allowedChatCommand(path string) bool {
 		return true
 	}
 	switch path {
-	case "chat message send", "chat message query-send-status", "chat +chat-messages", "chat search":
+	case "chat message send", "chat message query-send-status", "chat +chat-messages", "chat search", "chat +messages-resource-download":
 		return true
 	}
 	return false
@@ -68,10 +68,17 @@ func commandArguments(parts []string, params map[string]string, schema map[strin
 		if _, ok := declared[canonical]; !ok || !pathWord.MatchString(key) || strings.ContainsRune(value, 0) || len(value) > 32768 {
 			return nil, errors.New("parameter is absent from the official leaf schema or exceeds its limit")
 		}
-		// Global identity, credential, output and destination overrides are never
-		// forwarded even if an upstream leaf later declares a same-named flag.
+		// Global identity, credential and destination overrides are not forwarded.
+		// Only the reviewed resource downloader has a leaf output exception.
 		switch key {
-		case "profile", "token", "client-id", "client-secret", "format", "output", "output-file", "yes", "help", "endpoint", "base-url", "api-base-url", "header":
+		case "output":
+			// This shortcut's leaf output is a file destination, not global
+			// stdout capture. The official downloader confines it to cwd,
+			// rejects symlinks and atomically publishes without overwriting.
+			if strings.Join(parts, " ") != "chat +messages-resource-download" {
+				return nil, errors.New("Host-managed DingTalk parameter cannot be overridden")
+			}
+		case "profile", "token", "client-id", "client-secret", "format", "output-file", "yes", "help", "endpoint", "base-url", "api-base-url", "header":
 			return nil, errors.New("Host-managed DingTalk parameter cannot be overridden")
 		}
 		keys = append(keys, key)
