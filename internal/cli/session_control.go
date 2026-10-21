@@ -176,5 +176,12 @@ func resolveSessionTakeover(ctx context.Context, service *channel.Service, agent
 	if !ok {
 		return nil, errors.New("channel runtime cannot continue sessions")
 	}
+	// ResolveProjects preselects the source receipt's Skills. A Web fork must
+	// materialize that same set, rather than silently changing native capabilities
+	// based on its new input. Changed source configuration still fails validation.
+	h.Config.RuntimeRecallQuery = message.Text
+	for _, supplement := range message.Supplements {
+		h.Config.RuntimeRecallQuery += "\n" + supplement.Text
+	}
 	return h, nil
 }

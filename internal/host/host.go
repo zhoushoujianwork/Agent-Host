@@ -71,6 +71,8 @@ type Config struct {
 	DecisionProvider      string
 	ToolsDisabled         bool
 	AllowedTools          []string
+	// RuntimeRecallQuery keeps a fork's selected Skills aligned with its source runtime.
+	RuntimeRecallQuery string
 }
 
 type Host struct {
@@ -394,6 +396,9 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		query := input
 		for _, supplement := range r.Supplements {
 			query += "\n" + supplement.Text
+		}
+		if h.Config.RuntimeRecallQuery != "" {
+			query = h.Config.RuntimeRecallQuery
 		}
 		for _, project := range recallProjects(r) {
 			if !h.Store.FileMemoryEnabled() {

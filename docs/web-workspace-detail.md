@@ -184,6 +184,11 @@ checkpoint through ordinary room assembly. Web actions do not generate IM replie
 or reuse expiring DingTalk webhooks. A source must have a completed, finalized run
 and compatible runtime/model; missing native state fails through the adapter.
 Duplicate request IDs recover the recorded turn and cannot execute tools twice.
+Channel Web forks retain the source receipt's memory-retrieval query when
+materializing preselected Skills. The new Web message remains the execution
+input; it cannot silently change the native Skill package of the selected
+runtime. Changes to published memory or execution configuration still require
+a compatible new channel context before takeover.
 
 Session projection and selection are local to the viewer process. After a viewer
 restart, select the Session again from durable execution records. Closing a panel

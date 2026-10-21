@@ -34,23 +34,24 @@ func (sessionTestDecider) Decide(context.Context, string, []state.Memory) (memor
 func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *testing.T) {
 	for _, provider := range []string{"dingtalk", "feishu"} {
 		t.Run(provider, func(t *testing.T) {
-			root, err := filepath.EvalSymlinks(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			store, err := state.Open(filepath.Join(root, "state"), false)
+			fixture := seedReviewFixture(t)
+			root := fixture.workspace
+			store, err := state.Open(fixture.home, false)
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer store.Close()
-			base := options{home: filepath.Join(root, "state"), workspace: root, defaultWorkspace: root, defaultScope: root, model: "fixture", binary: "/bin/echo", noTools: true}
+			if _, err := store.MigrateFileMemory(t.Context(), filepath.Join(root, "memory"), filepath.Join(root, "cache", "memory"), "takeover-test"); err != nil {
+				t.Fatal(err)
+			}
+			base := options{home: fixture.home, workspace: root, defaultWorkspace: root, defaultScope: root, model: "fixture", binary: "/bin/echo"}
 			client, err := jev.New("synthetic-not-used", "fixture")
 			if err != nil {
 				t.Fatal(err)
 			}
 			agents := agentCatalog{DefaultAgent: "default", Agents: []agentDefinition{{ID: "default", Name: "Assistant"}}}
 			service := &channel.Service{Store: store, Channel: provider, ClientID: "app", OwnerID: "owner"}
-			message := state.ChannelMessage{ID: "source", Channel: provider, AccountID: "app", TenantID: "tenant", MessageID: "om_source", ConversationID: "oc_chat", ConversationType: "1", SenderID: "owner", AgentID: "default", AudienceID: "owner", Profile: "fixture", Binding: "binding", Scope: root, MessageType: "text", Text: "original question"}
+			message := state.ChannelMessage{ID: "source", Channel: provider, AccountID: "app", TenantID: "tenant", MessageID: "om_source", ConversationID: "oc_chat", ConversationType: "1", SenderID: "owner", AgentID: "default", AudienceID: "owner", Profile: "fixture", Binding: "binding", Scope: root, MessageType: "text", Text: "fixture test procedure"}
 			replyURL := "https://example.invalid/reply"
 			if provider == "feishu" {
 				message.ReplyTarget = &state.ChannelReplyTarget{Kind: "feishu", ID: "oc_chat", MessageID: "om_source", UUID: "reply-source"}
@@ -109,6 +110,9 @@ func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *tes
 			invoke(original.ID, "web-1")
 			if len(runner.requests) != 2 || runner.requests[1].ForkFromNativeSessionID != seed.NativeSessionID {
 				t.Fatal("lost native channel context", runner.requests)
+			}
+			if runner.requests[0].SkillPluginDigest == "" || runner.requests[1].SkillPluginDigest != runner.requests[0].SkillPluginDigest {
+				t.Fatal("Web continuation changed preselected source Skills", runner.requests)
 			}
 			invoke(original.ID, "web-1")
 			if len(runner.requests) != 2 {
