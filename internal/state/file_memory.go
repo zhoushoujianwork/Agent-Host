@@ -697,7 +697,10 @@ func (s *Store) enableFileMemory(ctx context.Context, c FileMemoryConfig) error 
 			return fail(err)
 		}
 	}
-	return old.Close()
+	// Retain the operational connection for append-only execution evidence.
+	// Memory publication may hold the index connection and its own file lock.
+	s.eventDB = old
+	return nil
 }
 
 func captureFileSnapshot(ctx context.Context, tx *sql.Tx) (fileSnapshot, error) {

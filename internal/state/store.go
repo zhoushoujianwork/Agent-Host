@@ -17,11 +17,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store holds a single SQLite connection. The owning host must hold Acquire's
-// process lock before opening a writable Store. Read-only inspection is safe
-// while the host is running.
+// Store serializes SQLite work on its operational and optional file-memory
+// index connections. A writable host must hold the appropriate exclusive or
+// shared chat lock. Read-only inspection is safe while the host is running.
 type Store struct {
 	db                    *sql.DB
+	eventDB               *sql.DB
 	legacyProjectMetadata bool
 	agentID               string
 	audienceID            string
@@ -313,6 +314,9 @@ func (s *Store) Close() error {
 	if s.borrowed {
 		return nil
 	}
+	if s.eventDB != nil {
+		return errors.Join(s.db.Close(), s.eventDB.Close())
+	}
 	return s.db.Close()
 }
 
@@ -530,7 +534,15 @@ func (s *Store) AppendEvent(ctx context.Context, e *event.Event) error {
 		return errors.New("event run ID and type are required")
 	}
 	next := *e
-	err := s.transaction(ctx, func(tx *sql.Tx) error {
+	// Append-only evidence does not change publication receipts. Keep it off
+	// the file-memory publication lock and the rebuildable index connection.
+	writer := s
+	if s.eventDB != nil {
+		copy := *s
+		copy.db = s.eventDB
+		writer = &copy
+	}
+	err := writer.sqlTransaction(ctx, func(tx *sql.Tx) error {
 		run, err := s.readRun(ctx, tx, e.RunID)
 		if err != nil {
 			return err

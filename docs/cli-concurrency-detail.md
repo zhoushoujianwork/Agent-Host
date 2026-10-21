@@ -21,6 +21,11 @@
   (`_txlock=immediate`, existing five-second busy timeout). Only brief persistence
   transactions serialize. File memory retains its existing publication lock and
   evidence/manifest coordination across processes.
+- Append-only execution events retain a separate connection to the operational
+  database when file memory is enabled. They do not acquire the memory publication
+  lock or wait for the rebuildable index connection. Event sequence allocation,
+  partition checks and channel feedback remain in one SQLite transaction. Run
+  and memory status changes still recover publication receipts before mutation.
 
 No database schema or stored identity changes are required. Read-only inspection
 continues to use its existing path; `HostActive` detects shared owners as active.
@@ -37,3 +42,7 @@ State tests cover shared ownership, exclusive maintenance and old-owner
 exclusion, cancelable initialization, process-exit lock release, recovery of an
 abandoned run, and preservation of a live peer. Full repository checks and a
 bounded live CLI overlap check supplement these fixtures.
+
+File-memory regression tests hold the publication lock or reserve the index
+connection while appending a native event, then verify the saved sequence and
+body. These checks reproduce the prior event timeout without requiring a model.

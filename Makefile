@@ -76,6 +76,7 @@ check:
 		{ test -z "$$unformatted" || { printf '%s\n' "$$unformatted"; exit 1; }; }
 	go vet ./...
 	go test ./...
+	$(PYTHON) -B tools/operations/tencent_key_audit_test.py
 	$(PYTHON) -B tools/install_test.py
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py
 	$(PYTHON) -B skills/agent-host-tasks/scripts/chat_test.py
