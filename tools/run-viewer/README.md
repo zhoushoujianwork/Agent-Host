@@ -20,6 +20,10 @@ route, component durations, actual agent/model observations, tool evidence,
 Jev choices and probabilities, and the candidate/review/memory lifecycle.
 Execution completion, business acceptance, memory persistence, and experiment
 results remain separate.
+The execution list groups loaded records by conversation, with messages numbered
+in chronological order and the speaker shown when recorded. Conversations with
+recent activity appear first; search keeps the matching conversation's loaded
+context together. See [session grouping](README-detail.md#session-groups).
 
 ## Start
 

@@ -28,6 +28,19 @@ def write_run(conn, run_id, scope="/test/project", **fields):
 
 
 class CatalogTests(unittest.TestCase):
+    def test_record_index_projects_room_identity_without_copying_room_history(self):
+        conn = self.database()
+        write_run(conn, "room-run", room={"room_id": "room:generation", "request_id": "message-2",
+            "received_at": "2026-10-21T05:00:00Z", "sender_id": "alice", "sender_name": "Alice",
+            "history": [{"input": "private previous context"}]})
+        conn.close()
+        row = next(r for r in self.catalog.index()["records"] if r["id"] == "room-run")
+        self.assertEqual(row["room_id"], "room:generation")
+        self.assertEqual(row["request_id"], "message-2")
+        self.assertEqual(row["sender_name"], "Alice")
+        self.assertEqual(row["received_at"], "2026-10-21T05:00:00Z")
+        self.assertNotIn("history", json.dumps(row))
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="agent-host-viewer-test-")
         self.root = Path(self.temporary.name)

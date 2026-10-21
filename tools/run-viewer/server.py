@@ -81,9 +81,14 @@ def partition_sql(payload="payload"):
 
 
 def summary(key, run, source, event_count=None, review_events=0):
+    room, origin = run.get("room") or {}, run.get("source") or {}
     return {
         "key": key, "id": run["id"], "session_id": run.get("session_id"),
         "native_session_id": run.get("native_session_id"),
+        "room_id": room.get("room_id"), "request_id": room.get("request_id"),
+        "received_at": room.get("received_at"),
+        "sender_id": room.get("sender_id") or origin.get("sender_id"),
+        "sender_name": room.get("sender_name") or origin.get("sender_name"),
         "agent_id": partition(run)[0], "audience_id": partition(run)[1],
         "project_id": run.get("project_id", ""), "project_name": run.get("project_name", ""),
         "projects": run.get("projects", []), "additional_directories": run.get("additional_directories", []),

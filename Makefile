@@ -90,6 +90,7 @@ check:
 	python3 -B tools/release/package_test.py
 	python3 -B tools/release/export_public_test.py
 	python3 -B tools/run-viewer/server_test.py
+	node --test tools/run-viewer/app_test.cjs
 	python3 -B tools/run-viewer/memory_view_test.py
 	python3 -B tools/run-viewer/settings_test.py
 	python3 -B tools/run-viewer/agent_profiles_test.py

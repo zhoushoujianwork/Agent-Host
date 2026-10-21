@@ -168,6 +168,21 @@ eligibility alone.
 
 ## Local HTTP boundary
 
+### Session groups
+
+The execution index exposes only room ID, request ID, received time and sender
+identity from the run's room snapshot; it does not copy room history. The list
+groups by source, Agent, audience and room ID, including forked runs. Old rows
+fall back to their recorded Host session, then native session; rows without an
+identity stay separate. Reset room generations and archived sources never merge.
+
+Conversations sort by latest loaded message time. Messages within a conversation
+sort by recorded received time, falling back to run creation time, with stable
+timestamp/key tie breakers. Numbers describe loaded messages only: existing
+per-source recent-run limits remain in force. Search matches whole loaded
+conversations, preserving context and numbering; each run keeps its own selected
+state and execution-detail link. Collapsed groups retain their state on refresh.
+
 ### Chat outcomes
 
 Chat keeps the process lifecycle (`status`, `exit_code`) separate from

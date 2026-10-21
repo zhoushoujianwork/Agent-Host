@@ -251,32 +251,61 @@ function renderSources() {
     node.append(dom("p", "note", "CLI source is not mounted. Use service run --config-dir ROOT/config, or service workbench for CLI-only use."));
   }
 }
+const expandedSessions = new Map();
+function sessionGroups(rows) {
+  const groups = new Map();
+  const timestamp = row => row.received_at && !row.received_at.startsWith("0001-") ? row.received_at : row.created_at || "";
+  const compare = (a,b) => (Date.parse(timestamp(a)) || 0) - (Date.parse(timestamp(b)) || 0)
+    || timestamp(a).localeCompare(timestamp(b)) || a.key.localeCompare(b.key);
+  for (const row of rows) {
+    const kind = row.room_id ? "room" : row.session_id ? "host" : row.native_session_id ? "native" : "run";
+    const id = row.room_id || row.session_id || row.native_session_id || row.key;
+    const key = JSON.stringify([row.source.id,row.agent_id || "default",row.audience_id || "owner",kind,id]);
+    if (!groups.has(key)) groups.set(key,{key,id,kind,rows:[]});
+    groups.get(key).rows.push(row);
+  }
+  for (const group of groups.values()) group.rows.sort(compare);
+  return [...groups.values()].sort((a,b) => compare(b.rows.at(-1),a.rows.at(-1)));
+}
 function renderList() {
   if (!state.index) return;
   const query = $("search").value.toLowerCase().trim();
   const source = $("source-filter").value;
-  const rows = state.index.records.filter((row) => (source === "all" || row.source.kind === source)
-    && [row.input, row.id, row.project_id, row.project_name, json(row.projects || []), row.workspace, row.scope,
-      row.session_id, row.native_session_id, row.agent_id, row.audience_id, row.source.name, row.label, runLabels[row.label]].join(" ").toLowerCase().includes(query));
-  $("record-count").textContent = `${rows.length} 条`;
-  $("record-count").title = `本机数据库 ${state.index.database_count} 条，最多加载最近 ${state.index.database_limit} 条；归档报告单独加载。`;
+  const groups = sessionGroups(state.index.records.filter(row => source === "all" || row.source.kind === source))
+    .filter(group => group.rows.some(row => [row.input,row.id,row.project_id,row.project_name,json(row.projects || []),row.workspace,row.scope,
+      row.room_id,row.session_id,row.native_session_id,row.sender_id,row.sender_name,row.agent_id,row.audience_id,row.source.name,row.label,runLabels[row.label]].join(" ").toLowerCase().includes(query)));
+  $("record-count").textContent = `${groups.length} 个会话 · ${groups.reduce((n,g) => n + g.rows.length,0)} 条`;
+  $("record-count").title = `本机数据库 ${state.index.database_count} 条，每个来源最多加载最近 ${state.index.database_limit} 条；会话内按接收时间正序，序号仅针对已加载记录。搜索命中会话时保留已加载上下文。`;
   const list = $("record-list");
   const scroll = list.scrollTop;
   list.replaceChildren();
-  if (!rows.length) placeholder(list, state.index.records.length ? "No records match the current search or source filter. Clear the filters to see loaded runs." : "没有执行记录；请查看数据源状态。");
-  for (const row of rows) {
-    const button = dom("button", `record ${row.key === state.key ? "selected" : ""}`);
-    button.setAttribute("aria-pressed", String(row.key === state.key));
-    const top = dom("div", "record-top");
-    top.append(dom("span", "", `${row.source.kind === "report" ? "归档" : "本机"} · ${short(row.id)}`), badge(row.execution_status));
-    button.append(top, dom("div", "record-title", runLabels[row.label] || row.input || "未记录请求正文"));
-    button.append(dom("div", "record-bottom", `Agent ${row.agent_id || "default"} · ${row.audience_id === "owner" || !row.audience_id ? "私聊" : "群聊 " + short(row.audience_id)}`));
-    const bottom = dom("div", "record-bottom");
-    const project = row.projects?.length > 1 ? row.projects.map((p) => p.name || p.id).join(" + ") : row.project_name || row.project_id;
-    bottom.append(dom("span", "", project ? `${row.source.name} · ${project}` : row.source.name), dom("span", "", row.created_at.slice(11, 16)));
-    button.append(bottom);
-    button.addEventListener("click", () => select(row.key));
-    list.append(button);
+  if (!groups.length) placeholder(list, state.index.records.length ? "没有匹配的会话；请调整搜索或来源筛选。" : "没有执行记录；请查看数据源状态。");
+  for (const group of groups) {
+    const section = dom("details","record-session");
+    const selected = group.rows.some(row => row.key === state.key);
+    section.open = Boolean(query) || (expandedSessions.get(group.key) ?? (selected || !state.key && group === groups[0]));
+    section.addEventListener("toggle",() => expandedSessions.set(group.key,section.open));
+    const heading = dom("summary","record-session-heading");
+    const sessionLabel = short(group.id) + (group.kind === "room" && group.id.includes(":") ? ":" + short(group.id.split(":").at(-1)) : "");
+    heading.append(dom("strong","record-session-title",group.rows[0].input || "未记录请求正文"),
+      dom("span","record-session-meta",`${group.rows[0].source.name} · Agent ${group.rows[0].agent_id || "default"} · ${group.rows[0].audience_id && group.rows[0].audience_id !== "owner" ? "群聊" : "私聊"} · ${group.rows.length} 条`),
+      dom("span","record-session-meta",`${group.kind === "run" ? "独立记录" : "会话 " + sessionLabel} · 按消息时间正序`));
+    section.append(heading);
+    for (const [index,row] of group.rows.entries()) {
+      const button = dom("button", `record ${row.key === state.key ? "selected" : ""}`);
+      button.setAttribute("aria-pressed", String(row.key === state.key));
+      const top = dom("div", "record-top");
+      top.append(dom("span", "", `${index + 1}. ${row.source.kind === "report" ? "归档" : "本机"} · ${short(row.id)}`), badge(row.execution_status));
+      button.append(top, dom("div", "record-title", runLabels[row.label] || row.input || "未记录请求正文"));
+      button.append(dom("div", "record-bottom", row.sender_name || (row.sender_id === "local-owner" ? "本地用户" : row.sender_id) || "提问人未记录"));
+      const bottom = dom("div", "record-bottom");
+      const project = row.projects?.length > 1 ? row.projects.map((p) => p.name || p.id).join(" + ") : row.project_name || row.project_id;
+      bottom.append(dom("span", "", project || row.source.name), dom("span", "", date(row.received_at && !row.received_at.startsWith("0001-") ? row.received_at : row.created_at)));
+      button.append(bottom);
+      button.addEventListener("click", () => select(row.key));
+      section.append(button);
+    }
+    list.append(section);
   }
   list.scrollTop = scroll;
 }

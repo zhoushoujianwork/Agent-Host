@@ -33,6 +33,10 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 [data-page="executions"] .record:hover { border-color: var(--accent); background: var(--surface-raised); }
 [data-page="executions"] .record.selected { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
 [data-page="executions"] .record-title { font-size: 12px; font-weight: 550; }
+[data-page="executions"] .record-session { margin: 10px 0 16px; border-bottom: 1px solid var(--line); }
+[data-page="executions"] .record-session-heading { padding: 10px 4px; cursor: pointer; color: var(--ink); }
+[data-page="executions"] .record-session-title { font-size: 12px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+[data-page="executions"] .record-session-meta { display: block; color: var(--muted); font-size: 10px; line-height: 1.7; margin-top: 5px; overflow-wrap: anywhere; }
 [data-page="executions"] .sidebar .badge { background: var(--surface-soft); color: var(--muted); }
 [data-page="executions"] .sidebar .badge.good { background: var(--accent-soft); color: var(--accent); }
 [data-page="executions"] .sidebar .badge.bad { background: var(--danger-soft); color: var(--danger); }
