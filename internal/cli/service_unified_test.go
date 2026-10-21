@@ -8,9 +8,49 @@ import (
 	"path/filepath"
 	"testing"
 
+	"agent-host/internal/harness/acp"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/state"
 )
+
+func TestUnifiedSharedACPProfileDiscovery(t *testing.T) {
+	root, dir := unifiedFixture(t)
+	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{
+		"bot": map[string]any{"enabled": false}, "dws": map[string]any{"enabled": true, "profile": "fixture-corp:fixture-owner", "services": []string{"contact"}},
+	}})
+	path := filepath.Join(dir, "execution.acp.json")
+	profile := acp.Config{Version: 1, Transport: "acp", Engine: "claude", Command: filepath.Join(root, "fixture-claude"), AdapterVersion: acp.ClaudeBridgeVersion}
+	writeBotJSON(t, path, profile)
+	var host unifiedHost
+	if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+		t.Fatal(err)
+	}
+	selected := host.Profiles["default"]
+	selected.Execution.ExecutionConfig = path
+	host.Profiles["default"] = selected
+	writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+	channels, err := discoverUnifiedChannels(dir)
+	if err != nil || len(channels) != 1 {
+		t.Fatal("shared ACP profile rejected before channel startup", channels, err)
+	}
+	_, loaded, _, err := loadService(channels[0].Root)
+	if err != nil || loaded.ExecutionConfig != path {
+		t.Fatal("shared execution selection lost", loaded.ExecutionConfig, err)
+	}
+	profile.AdapterVersion = "unsupported"
+	writeBotJSON(t, path, profile)
+	if _, err := discoverUnifiedChannels(dir); err == nil {
+		t.Fatal("invalid execution profile accepted")
+	}
+	profile.AdapterVersion = acp.ClaudeBridgeVersion
+	writeBotJSON(t, path, profile)
+	if err := os.Chmod(path, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := discoverUnifiedChannels(dir); err == nil {
+		t.Fatal("non-private execution profile accepted")
+	}
+}
 
 func unifiedFixture(t *testing.T) (string, string) {
 	t.Helper()

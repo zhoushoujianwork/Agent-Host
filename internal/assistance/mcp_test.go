@@ -81,6 +81,42 @@ func encoded(t *testing.T, value any) json.RawMessage {
 	return b
 }
 
+func TestContextSessionAuthorityRetainsGrantsAcrossRuns(t *testing.T) {
+	store, first, cfg, _ := contextFixture(t)
+	session, err := store.Session(t.Context(), first.Run.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.ID, session.NativeSessionID = "next-session", "next-native"
+	if err := store.CreateSession(t.Context(), session); err != nil {
+		t.Fatal(err)
+	}
+	run := first.Run
+	run.ID, run.SessionID, run.NativeSessionID = "next-run", session.ID, session.NativeSessionID
+	if err := store.CreateRun(t.Context(), run); err != nil {
+		t.Fatal(err)
+	}
+	next, err := Resolve(t.Context(), first.Home, first.ConfigPath, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := first.Server("/usr/bin/agent-host"), next.Server("/usr/bin/agent-host")
+	if a.SessionKey == "" || a.SessionKey != b.SessionKey || first.Fingerprint == next.Fingerprint || a.Args[4] == b.Args[4] {
+		t.Fatal("context run receipt and stable scope were conflated")
+	}
+	cfg.Sources[0].ConversationID = "changed-source"
+	if err := os.WriteFile(first.ConfigPath, encoded(t, cfg), 0600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := Resolve(t.Context(), first.Home, first.ConfigPath, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.Server("/usr/bin/agent-host").SessionKey == a.SessionKey {
+		t.Fatal("context source-policy change retained session authority")
+	}
+}
+
 func TestContextSearchReadCitationsAndEligibilityAreReadOnly(t *testing.T) {
 	store, b, _, evidence := contextFixture(t)
 	ctx := t.Context()

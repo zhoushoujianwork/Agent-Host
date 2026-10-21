@@ -57,15 +57,16 @@ harness change shared by channels, not a Web-only Claude connection.
 1. **Implemented:** configurable Claude ACP adapter, Host context/tool policy,
    streamed events, native continuation and execution cancellation. Bounded real
    Claude checks passed; [setup and limits](acp-execution.md).
-2. **Pending platform acceptance:** exercise the shared adapter in DingTalk/Feishu,
-   with channel-appropriate progress,
-   final delivery and authenticated interaction/stop controls.
+2. **Owner-private platform acceptance passed:** the
+   [local DingTalk/Feishu rollout](acp-channel-rollout.md) verified real intake,
+   replies, tool/Skill use, memory and two-turn continuation. Group/meeting
+   acceptance and authenticated interaction/stop controls remain pending.
 3. Connect a second engine to prove switching; retain explicit legacy print
    selection until required execution contracts pass. Never silently fall back
    or reuse native sessions across engines/transports.
 
-The second engine, warm bridge reuse, interactive channel controls and real
-platform acceptance remain open. The
+The second engine, warm bridge reuse, interactive channel controls and broader
+group/meeting platform acceptance remain open. The
 [detailed boundary](architecture-detail.md#shared-acp-execution--planned) records
 session isolation, capability limits and separate auxiliary extraction checks.
 The product proposals below remain a separate track.

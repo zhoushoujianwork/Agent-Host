@@ -4,6 +4,8 @@ package history
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -41,8 +43,10 @@ func Resolve(home, currentMessageID string) (Binding, error) {
 }
 
 func (b Binding) Server(executable string) harness.MCPServer {
+	raw, _ := json.Marshal([]string{PolicyVersion, b.home, b.Fingerprint})
+	digest := sha256.Sum256(raw)
 	return harness.MCPServer{Name: "conversation_history", Command: executable,
-		Args: []string{"history-mcp", "--home", b.home, "--message", b.receipt.MessageID, "--fingerprint", b.Fingerprint}}
+		Args: []string{"history-mcp", "--home", b.home, "--message", b.receipt.MessageID, "--fingerprint", b.Fingerprint}, SessionKey: hex.EncodeToString(digest[:])}
 }
 
 type tool = mcpstdio.Tool

@@ -39,13 +39,25 @@ func (a *Adapter) binding(req harness.Request) (string, string, error) {
 		return "", "", errors.New("ACP requires an explicit native profile and Host session binding")
 	}
 	key := sha256.Sum256([]byte(req.NativeSessionID))
+	type serverIdentity struct {
+		Name, Command string
+		Args          []string
+		Authority     string `json:",omitempty"`
+	}
+	servers := make([]serverIdentity, len(req.MCPServers))
+	for i, server := range req.MCPServers {
+		servers[i] = serverIdentity{Name: server.Name, Command: server.Command, Args: server.Args}
+		if server.SessionKey != "" {
+			servers[i].Args, servers[i].Authority = nil, server.SessionKey
+		}
+	}
 	identity, _ := json.Marshal(struct {
 		Config                                 Config
 		Native, Profile, Workspace, Permission string
 		ToolsDisabled                          bool
 		Allowed, Directories                   []string
-		MCP                                    []harness.MCPServer
-	}{a.config, a.native, req.NativeProfile, req.Workspace, req.PermissionMode, req.ToolsDisabled, req.AllowedTools, req.AdditionalDirectories, req.MCPServers})
+		MCP                                    []serverIdentity
+	}{a.config, a.native, req.NativeProfile, req.Workspace, req.PermissionMode, req.ToolsDisabled, req.AllowedTools, req.AdditionalDirectories, servers})
 	digest := sha256.Sum256(identity)
 	return filepath.Join(req.NativeProfile, "agent-host-acp", "sessions", hex.EncodeToString(key[:])+".json"), hex.EncodeToString(digest[:]), nil
 }

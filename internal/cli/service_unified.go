@@ -15,6 +15,7 @@ import (
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/email"
+	"agent-host/internal/harness/acp"
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/mcpstdio"
@@ -95,6 +96,16 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 		if strings.HasPrefix(name, "agents.") && strings.HasSuffix(name, ".json") && agentIdentifier.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, "agents."), ".json")) {
 			if _, err := loadAgents(filepath.Join(directory, name)); err != nil {
 				return nil, err
+			}
+			continue
+		}
+		if strings.HasPrefix(name, "execution.") && strings.HasSuffix(name, ".json") && agentIdentifier.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, "execution."), ".json")) {
+			path := filepath.Join(directory, name)
+			if _, err := privateServicePath(path, false); err != nil {
+				return nil, err
+			}
+			if _, _, err := acp.Load(path); err != nil {
+				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 			continue
 		}

@@ -5,6 +5,11 @@ same Host adapter. Routing, authorized context, memory and delivery continue
 through Host. The existing print backend remains available when no ACP profile
 is selected. [Configuration and implementation details](acp-execution-detail.md).
 
+The [2026-10-21 local channel rollout](acp-channel-rollout.md) passed real
+owner-private DingTalk/Feishu intake and replies, tool/Skill use, memory recall
+and two-turn native continuation. Other deployments still require explicit
+profile selection and restart.
+
 ## Getting started
 
 1. Install the pinned Claude ACP bridge, version **0.81.2**, with Node.js 22 or

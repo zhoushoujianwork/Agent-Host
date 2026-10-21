@@ -70,6 +70,25 @@ func historyFixture(t *testing.T, count int, quote bool) (string, Binding) {
 
 const initialize = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test"}}}`
 
+func TestHistorySessionAuthorityExcludesOnlyCurrentReceipt(t *testing.T) {
+	_, b := historyFixture(t, 1, false)
+	first := b.Server("/usr/bin/agent-host")
+	b.receipt.MessageID = "next-receipt"
+	next := b.Server("/usr/bin/agent-host")
+	if first.SessionKey == "" || first.SessionKey != next.SessionKey || first.Args[4] == next.Args[4] {
+		t.Fatal("receipt rotation changed authority or retained old invocation")
+	}
+	b.Fingerprint = "different-authorized-scope"
+	if b.Server("/usr/bin/agent-host").SessionKey == first.SessionKey {
+		t.Fatal("scope change retained session authority")
+	}
+	b.Fingerprint = next.Args[6]
+	b.home += "/different-state"
+	if b.Server("/usr/bin/agent-host").SessionKey == first.SessionKey {
+		t.Fatal("state home change retained session authority")
+	}
+}
+
 func serveLines(t *testing.T, binding Binding, lines ...string) []map[string]json.RawMessage {
 	t.Helper()
 	var output bytes.Buffer

@@ -27,6 +27,9 @@ func TestReplyRequirementsReachEveryNativeTurnIncludingResume(t *testing.T) {
 		t.Fatal("reply guidance should not reset a native conversation on every turn")
 	}
 	for i, request := range runner.requests {
+		if !strings.Contains(request.Prompt, "Host automatically screens user declarations") || !strings.Contains(request.Prompt, "Do not claim either that the current turn was saved or that it was not saved") {
+			t.Fatalf("turn %d lost Host memory ownership and pending-publication guidance", i+1)
+		}
 		marker := strings.LastIndex(request.Prompt, "Host reply requirements for this turn")
 		question := strings.LastIndex(request.Prompt, questions[i])
 		if question < 0 || marker <= question || !strings.HasSuffix(request.Prompt, knowledge.SummaryInstructions+"\n"+knowledge.CitationInstructions) {

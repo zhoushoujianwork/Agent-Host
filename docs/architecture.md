@@ -7,6 +7,8 @@ contracts; [progress and next steps](release-follow-up.md) own the remaining wor
 Historical acceptance records describe their original revision, not every later change.
 The [2026-10-20 acceptance review](architecture-review-2026-10-20.md) records
 current cross-entry, tool/Skill and automatic-memory checks and remaining limits.
+The [2026-10-21 channel rollout](acp-channel-rollout.md) adds real owner-private
+DingTalk/Feishu ACP intake, replies, tools, memory and continuation acceptance.
 
 ## Goal and usage
 
@@ -116,8 +118,9 @@ Execution-engine, authorization and storage terms are explained in the
 The [first Claude ACP backend](acp-execution.md) is implemented behind Host's
 shared harness boundary. Agent, CLI and managed service configuration can select
 it for all current conversation entries. Real Claude streaming, tool execution,
-session continuation and cancellation have bounded local evidence. Real channel
-platform acceptance and a second engine remain open.
+session continuation and cancellation have bounded local evidence. Owner-private
+DingTalk/Feishu intake, replies, tools, memory and native continuation now have
+live acceptance. Broader group/meeting checks and a second engine remain open.
 
 Every conversation entry uses the same Host execution boundary. DingTalk and
 Feishu receive the same engine events as Web; each channel presents them using
@@ -157,7 +160,7 @@ bot accounts and retain delivery evidence independently from execution.
 | Area | Current behavior | Boundary / next gap |
 | --- | --- | --- |
 | Execution and channels | Claude Code streaming/continuation; CLI, DingTalk and Feishu chat; Feishu meeting text; attachments, queues and failed-session handoff | Codex execution and meeting audio are planned; broader platform acceptance remains open |
-| Shared engine interface | Configurable Claude ACP runner shared by CLI/channel workers and the Web Host CLI destination; streamed events, native continuation and cancellation implemented | Codex, interactive approval UI, channel Stop controls, warm bridge reuse and platform acceptance remain open; native sessions do not migrate across engines |
+| Shared engine interface | Configurable Claude ACP runner shared by CLI/channel workers and the Web Host CLI destination; streamed events, native continuation and cancellation implemented | Codex, interactive approval UI, channel Stop controls, warm bridge reuse and broader group/meeting acceptance remain open; native sessions do not migrate across engines |
 | Project work | Bounded local Git discovery, selected-target enrollment, automatic routing and shared execution receipts | No durable feature/worktree ownership or PR/MR delivery lifecycle |
 | Memory and Skills | Explicitly migrated file backend, source-grounded facts and procedures, automatic selected-experience publication, blacklist and scoped native Skills | Legacy SQLite experience requires review; general extraction quality and scale remain unmeasured |
 | Knowledge and actions | Dokki/Confluence/local Markdown retrieval, authorized Confluence page/blog writes and managed Gmail/163 email tools | Source enablement and upstream account permissions apply; Gmail onboarding and real mail send/reply acceptance remain separate |
@@ -212,9 +215,9 @@ implementation. A passing automated check does not establish production quality.
 
 ## Next direction
 
-The next execution increment builds on the shared Claude ACP adapter: complete
-live DingTalk/Feishu acceptance and supported channel interactions, then connect
-a second engine. Channel delivery limits and
+The next execution increment builds on the shared Claude ACP adapter: extend
+owner-private DingTalk/Feishu acceptance to groups and supported channel
+interactions, then connect a second engine. Channel delivery limits and
 existing authorization policy remain explicit. The current print backend stays
 available during this controlled migration; it is not the long-term-only interface.
 

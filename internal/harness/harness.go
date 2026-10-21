@@ -47,6 +47,9 @@ type MCPServer struct {
 	Name    string
 	Command string
 	Args    []string
+	// SessionKey is Host-derived stable authority for a receipt-bound server.
+	// The current Args still launch the tool; this key is never sent to it.
+	SessionKey string `json:"-"`
 }
 
 // Observation contains protocol evidence and normalized UI fields.

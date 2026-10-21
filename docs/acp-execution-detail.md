@@ -33,6 +33,11 @@ Unknown fields, engines, transport/version combinations and unavailable commands
 fail validation. A missing `execution_config` retains the existing print path;
 selecting ACP never falls back after failure.
 
+Managed configuration directories accept owner-private `execution.<name>.json`
+files, such as `config/execution.acp.json`. Discovery validates each profile
+before starting or stopping a channel; it does not treat the profile as a
+channel/plugin envelope. Other unknown component files remain errors.
+
 An Agent can reference the profile relative to its own catalog file:
 
 ```json
@@ -149,6 +154,16 @@ bindings cannot overwrite existing ones; resume requires an exact compatible
 binding. Native ACP IDs are also retained in execution event evidence. This
 avoids changing existing print transcripts or adding a state schema migration.
 
+Receipt-bound Host MCP servers provide a stable authorization key separately
+from their current launch arguments. History keys retain the state home and
+verified channel/account/conversation/Agent/audience/project grants. Context
+keys retain the selected-source policy and authorized project runtime. Each
+new turn still launches those tools with its current receipt/run and performs
+the existing authorization checks. Resume passes that current configuration to
+the bridge; it never reuses an earlier receipt to make the session compatible.
+Other MCP servers retain exact argument comparison. The receipt-binding policy
+revision renews older Host sessions once before dispatch.
+
 Each turn starts and owns its bridge process. It negotiates resume support,
 prefers `session/resume`, otherwise uses supported `session/load`. Setup replay
 is excluded from fresh answer/tool delivery and learning; failed restoration
@@ -206,6 +221,9 @@ runner with its existing restrictions, not a runtime fallback for business ACP.
 
 These checks do not establish real DingTalk/Feishu platform acceptance, Codex
 support, file-diff completeness or production quality.
+Later [owner-private channel acceptance](acp-channel-rollout.md) records real
+DingTalk/Feishu intake, replies, tools, memory and continuation on 2026-10-21;
+the remaining group/meeting and quality limits still apply.
 
 ### Formal Web capability acceptance, 2026-10-20
 

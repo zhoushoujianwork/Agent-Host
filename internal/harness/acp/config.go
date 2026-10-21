@@ -72,6 +72,7 @@ func Load(path string) (Config, string, error) {
 		}
 	}
 	canonical, _ := json.Marshal(c)
-	sum := sha256.Sum256(canonical)
+	// Renew Host sessions created before receipt-bound MCP authority was stable.
+	sum := sha256.Sum256(append([]byte("host-acp-receipt-bindings-v2\n"), canonical...))
 	return c, hex.EncodeToString(sum[:]), nil
 }

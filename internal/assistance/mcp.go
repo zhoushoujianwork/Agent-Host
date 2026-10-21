@@ -24,6 +24,7 @@ type Binding struct {
 	ConfigPath  string
 	RunID       string
 	Fingerprint string
+	sessionKey  string
 	Run         state.Run
 	Sources     []string
 }
@@ -101,7 +102,9 @@ func Resolve(ctx context.Context, home, configPath, runID string) (Binding, erro
 	}
 	b, _ := json.Marshal([]any{policy, run.ID, run.AgentID, run.AudienceID, run.ProjectID, run.Scope, run.RuntimeFingerprint, sources})
 	digest := sha256.Sum256(b)
-	return Binding{Home: home, ConfigPath: configPath, RunID: runID, Fingerprint: hex.EncodeToString(digest[:]), Run: run, Sources: sources}, nil
+	stable, _ := json.Marshal([]any{policy, home, configPath, run.AgentID, run.AudienceID, run.ProjectID, run.Scope, run.RuntimeFingerprint, sources})
+	sessionDigest := sha256.Sum256(stable)
+	return Binding{Home: home, ConfigPath: configPath, RunID: runID, Fingerprint: hex.EncodeToString(digest[:]), sessionKey: hex.EncodeToString(sessionDigest[:]), Run: run, Sources: sources}, nil
 }
 
 func (b Binding) Server(executable string) harness.MCPServer {
@@ -109,7 +112,7 @@ func (b Binding) Server(executable string) harness.MCPServer {
 	if b.ConfigPath != "" {
 		args = append(args, "--config", b.ConfigPath)
 	}
-	return harness.MCPServer{Name: "host_context", Command: executable, Args: args}
+	return harness.MCPServer{Name: "host_context", Command: executable, Args: args, SessionKey: b.sessionKey}
 }
 
 func schema(properties map[string]any, required ...string) map[string]any {

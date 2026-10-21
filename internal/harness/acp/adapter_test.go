@@ -45,6 +45,7 @@ func TestACPProcess(t *testing.T) {
 			var params map[string]any
 			_ = json.Unmarshal(p.Params, &params)
 			_ = os.WriteFile(filepath.Join(params["cwd"].(string), "session-method"), []byte(p.Method), 0600)
+			_ = os.WriteFile(filepath.Join(params["cwd"].(string), "session-params"), p.Params, 0600)
 			if os.Getenv("AGH_ACP_NO_INIT") != "1" {
 				servers := []map[string]string{}
 				for _, value := range params["mcpServers"].([]any) {
@@ -159,6 +160,33 @@ func TestStreamPatchesAndCompatibleResume(t *testing.T) {
 	req.PermissionMode = "bypassPermissions"
 	if _, err = a.Run(t.Context(), req, emit); err == nil {
 		t.Fatal("incompatible session accepted")
+	}
+}
+
+func TestReceiptBoundMCPResumeRefreshesInvocationWithoutChangingAuthority(t *testing.T) {
+	a, req := fixture(t)
+	req.MCPServers = []harness.MCPServer{{Name: "conversation_history", Command: a.native,
+		Args: []string{"history-mcp", "--home", req.Workspace, "--message", "receipt-1", "--fingerprint", "scope"}, SessionKey: "same-authorized-conversation"}}
+	if _, err := a.Run(t.Context(), req, nil); err != nil {
+		t.Fatal(err)
+	}
+	req.Resume = true
+	req.MCPServers[0].Args[4] = "receipt-2"
+	if _, err := a.Run(t.Context(), req, nil); err != nil {
+		t.Fatal("new receipt broke compatible continuation", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(req.Workspace, "session-params"))
+	if err != nil || !strings.Contains(string(raw), "receipt-2") || strings.Contains(string(raw), "receipt-1") || strings.Contains(string(raw), "same-authorized-conversation") {
+		t.Fatal("resumed native setup did not receive only the current invocation", string(raw), err)
+	}
+	req.MCPServers[0].SessionKey = "different-conversation"
+	if _, err := a.Run(t.Context(), req, nil); err == nil {
+		t.Fatal("changed MCP authority reused a native session")
+	}
+	req.MCPServers[0].SessionKey = "same-authorized-conversation"
+	req.MCPServers[0].Command += "-changed"
+	if _, err := a.Run(t.Context(), req, nil); err == nil {
+		t.Fatal("changed MCP executable reused a native session")
 	}
 }
 
