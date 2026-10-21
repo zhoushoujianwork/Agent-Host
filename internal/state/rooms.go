@@ -23,13 +23,14 @@ PRAGMA user_version=16;
 `
 
 type RoomInput struct {
-	ReceivedAt time.Time `json:"received_at"`
-	Key        string    `json:"-"`
-	RequestID  string    `json:"request_id"`
-	SenderID   string    `json:"sender_id"`
-	SenderName string    `json:"sender_name,omitempty"`
-	Text       string    `json:"text"`
-	ReplyToID  string    `json:"reply_to_id,omitempty"`
+	ContinueFrom string    `json:"-"`
+	ReceivedAt   time.Time `json:"received_at"`
+	Key          string    `json:"-"`
+	RequestID    string    `json:"request_id"`
+	SenderID     string    `json:"sender_id"`
+	SenderName   string    `json:"sender_name,omitempty"`
+	Text         string    `json:"text"`
+	ReplyToID    string    `json:"reply_to_id,omitempty"`
 }
 
 // RoomTurn is immutable intake evidence, persisted with both session and run.
@@ -106,6 +107,15 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			return err
 		}
 		roomID := key + ":" + strconv.Itoa(epoch)
+		if input.ContinueFrom != "" {
+			parent, err := s.readSession(ctx, tx, input.ContinueFrom)
+			if err != nil {
+				return err
+			}
+			if parent.Room != nil {
+				roomID = parent.Room.RoomID
+			}
+		}
 		var duplicate string
 		err = tx.QueryRowContext(ctx, "SELECT session_id FROM room_messages WHERE room_id=? AND request_id=?", roomID, input.RequestID).Scan(&duplicate)
 		if err == nil {
@@ -113,7 +123,7 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			if err != nil {
 				return err
 			}
-			if result.Room == nil || result.Room.Text != input.Text || result.Room.SenderID != input.SenderID || result.Room.ReplyToID != input.ReplyToID {
+			if result.Room == nil || result.Room.Text != input.Text || result.Room.SenderID != input.SenderID || result.Room.ReplyToID != input.ReplyToID || input.ContinueFrom != "" && result.Room.ParentSessionID != input.ContinueFrom {
 				return errors.New("room request ID already has different content or sender")
 			}
 			return nil
@@ -125,6 +135,34 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			return errors.New("session already belongs to a room request")
 		}
 		turn := &RoomTurn{RoomID: roomID, RoomInput: input}
+		if input.ContinueFrom != "" {
+			parent, err := s.readSession(ctx, tx, input.ContinueFrom)
+			if err != nil {
+				return err
+			}
+			if parent.Model != session.Model || parent.Scope != session.Scope || !sameRecoveryRuntime(parent, session) {
+				return errors.New("takeover source does not match the selected runtime")
+			}
+			if err := sessionCanResume(ctx, tx, parent.ID); err != nil {
+				return err
+			}
+			var payload []byte
+			if err := tx.QueryRowContext(ctx, "SELECT payload FROM runs WHERE session_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", parent.ID).Scan(&payload); err != nil {
+				return err
+			}
+			var run Run
+			if err := json.Unmarshal(payload, &run); err != nil {
+				return err
+			}
+			var sealed bool
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM events WHERE run_id=? AND json_extract(payload,'$.type')='run.finished')", run.ID).Scan(&sealed); err != nil {
+				return err
+			}
+			if !sealed || run.CompletedAt == nil || parent.NativeSessionID == "" {
+				return errors.New("takeover source is still finalizing or has no native context")
+			}
+		}
+
 		rows, err := tx.QueryContext(ctx, `SELECT session_id,run_id FROM room_messages WHERE room_id=? ORDER BY rowid DESC LIMIT 20`, roomID)
 		if err != nil {
 			return err
@@ -180,18 +218,27 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			entry.Input, entry.InputTruncated = recoveryText(entry.Input, 4000)
 			turn.History = append(turn.History, entry)
 		}
+		if input.ContinueFrom != "" {
+			parent, err := s.readSession(ctx, tx, input.ContinueFrom)
+			if err != nil {
+				return err
+			}
+			turn.ParentSessionID, turn.ForkFromNativeSessionID = parent.ID, parent.NativeSessionID
+		}
 		if turn.ParentSessionID != "" {
 			parent, err := s.readSession(ctx, tx, turn.ParentSessionID)
 			if err != nil {
 				return err
 			}
 			included := map[string]RoomEntry{}
-			for _, entry := range parent.Room.History {
-				included[entry.RequestID] = entry
-			}
-			for _, entry := range turn.History {
-				if entry.RequestID == parent.Room.RequestID {
+			if parent.Room != nil {
+				for _, entry := range parent.Room.History {
 					included[entry.RequestID] = entry
+				}
+				for _, entry := range turn.History {
+					if entry.RequestID == parent.Room.RequestID {
+						included[entry.RequestID] = entry
+					}
 				}
 			}
 			for _, entry := range turn.History {

@@ -19,6 +19,7 @@ import (
 	"agent-host/internal/channel/feishumeeting"
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/event"
+	"agent-host/internal/host"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
 	"agent-host/internal/taskfeedback"
@@ -256,11 +257,6 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	observe := func(kind, message string) error {
 		return sink(event.Event{Version: event.Version, At: time.Now().UTC(), Type: kind, Phase: "channel", Component: "channel.feishu-meeting", Message: message})
 	}
-	stopMemory, err := startManagedMemoryControl(ctx, store, o, client)
-	if err != nil {
-		return fmt.Errorf("start memory workbench control: %w", err)
-	}
-	defer stopMemory()
 	profile := channel.Key("feishu-meeting-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
 	if cfg.AutoJoin {
 		profile = channel.Key("feishu-meeting-auto-v1", cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, o.workspace, o.model, o.binary, fmt.Sprint(o.noTools), strings.Join(o.allowedTools, "\x00"), client.Provider(), client.Model())
@@ -292,6 +288,13 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	service.ResolveAgent = func(ctx context.Context, m state.ChannelMessage) (*channel.Service, error) {
 		return resolveAgentChannel(ctx, service, agents, o, client, sink, m)
 	}
+	stopMemory, err := startManagedMemoryControl(ctx, store, o, client, func(ctx context.Context, run state.Run) (*host.Host, error) {
+		return resolveSessionTakeover(ctx, service, agents, o, client, run)
+	})
+	if err != nil {
+		return fmt.Errorf("start memory workbench control: %w", err)
+	}
+	defer stopMemory()
 	if err := service.Validate(); err != nil {
 		return err
 	}

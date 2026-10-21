@@ -43,6 +43,7 @@ test("selected conversation opens, shows numbered messages and sender, and retai
   assert.match(group.children[1].children[0].children[0].textContent,/^1\./);
   assert.equal(group.children[1].children[2].textContent,"Alice");
   group.children[2].listeners.click();assert.deepEqual(h.selected,["2"]);
+  group.children[0].listeners.click();assert.deepEqual(h.selected,["2","2"]);
   group.open=false;group.listeners.toggle();h.renderList();assert.equal(h.$("record-list").children[0].open,false);
   h.$("search").value="alice";h.renderList();
   assert.equal(h.$("record-list").children[0].children.length,3);

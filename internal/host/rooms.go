@@ -28,6 +28,17 @@ func (h *Host) RunRoom(ctx context.Context, input state.RoomInput) (state.Run, e
 	return h.Run(ctx, session, input.Text)
 }
 
+// TakeoverSession forks the exact completed native context. It never mutates
+// the original channel receipt or impersonates its sender.
+func (h *Host) TakeoverSession(ctx context.Context, parent state.Session, requestID, text string) (state.Session, error) {
+	h = h.partitioned()
+	if !h.RoomConcurrencyEnabled() || !h.matchesRuntime(parent) || parent.Model != h.Config.Model {
+		return state.Session{}, errors.New("selected session cannot continue with the current execution configuration")
+	}
+	return h.RoomSession(ctx, state.RoomInput{Key: "web-takeover:" + parent.ID, ContinueFrom: parent.ID,
+		RequestID: requestID, SenderID: "local-owner", SenderName: "Local owner (Web)", Text: text})
+}
+
 // Channel provenance is always read from the authenticated durable receipt.
 func (h *Host) RoomChannelSession(ctx context.Context, receiptID string) (state.Session, error) {
 	h = h.partitioned()

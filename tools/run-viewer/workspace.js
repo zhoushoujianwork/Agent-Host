@@ -112,6 +112,7 @@ $("chat-toggle").onclick = () => {
   showChat(open);
   if (open) draft.focus();
 };
+document.addEventListener("agh:session-select", () => showChat(true));
 $("panel-close").onclick = () => { showChat(false); $("chat-toggle").focus(); };
 $("clear-draft").onclick = () => {
   if (!draft.value) return;

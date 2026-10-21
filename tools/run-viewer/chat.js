@@ -7,12 +7,17 @@
   const scroll = el("chat-scroll");
   let follow = true;
   let latestStatus = "";
-  let selectedAgent, agentOptions = "";
+  let agentOptions = "";
+  let selectedContext;
+  let selectionQueue = Promise.resolve();
+  let selecting = 0;
+  let selectionFailed = false, viewEpoch = 0;
   const drafts = new Map();
+  const requests = new Map();
   function controls() {
-    const busy = pending || Boolean(state.active_id);
+    const busy = pending || selecting > 0 || Boolean(state.active_id);
     el("send-chat").hidden = false;
-    el("send-chat").disabled = pending || (state.active_ids || (state.active_id ? [state.active_id] : [])).length >= (state.max_concurrent || 4) || !state.enabled || state.needs_new || !el("draft").value.trim();
+    el("send-chat").disabled = pending || selecting > 0 || selectionFailed || (state.active_ids || (state.active_id ? [state.active_id] : [])).length >= (state.max_concurrent || 4) || !state.enabled || state.needs_new || !el("draft").value.trim();
     el("stop-chat").hidden = (state.active_ids || (state.active_id ? [state.active_id] : [])).length !== 1;
     const active = state.turns.find(t => t.id === state.active_id);
     el("stop-chat").disabled = pending || active?.status === "stopping";
@@ -53,14 +58,15 @@
     if (current.length !== children.length || current.some((child,index) => child !== children[index])) parent.replaceChildren(...children);
   }
   function render() {
-    if (selectedAgent !== state.selected_agent) {
-      if (selectedAgent !== undefined) {
-        drafts.set(selectedAgent,el("draft").value);
-        el("draft").value = drafts.get(state.selected_agent) || "";
+    const context = state.context_id || state.room_id || state.selected_agent;
+    if (selectedContext !== context) {
+      if (selectedContext !== undefined) {
+        drafts.set(selectedContext,el("draft").value);
+        el("draft").value = drafts.get(context) || "";
         el("draft").oninput();
       }
-      selectedAgent = state.selected_agent;
-      request = null; follow = true;
+      selectedContext = context;
+      request = requests.get(context) || null; follow = true;
     }
     const signatureOptions=JSON.stringify(state.agents || []);
     if (agentOptions !== signatureOptions) {
@@ -69,6 +75,8 @@
     }
     if (el("chat-agent").value !== (state.selected_agent || "")) el("chat-agent").value = state.selected_agent || "";
     el("chat-agent-bar").hidden = (state.agents || []).length < 2;
+    el("chat-session").hidden = !state.context_id;
+    el("chat-session").textContent = state.context_id ? `Agent ${state.selected_agent} · Session ${(state.selected_session || "").slice(0,8)}\n${state.notice || ""}` : "";
     el("chat-welcome").hidden = state.turns.length > 0;
     el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";
     const ids = new Set(state.turns.map(t => t.id));
@@ -152,7 +160,7 @@
       item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("\n\n");
       item.answerActions.hidden = !item.reply;
       item.copyAnswer.disabled = active;
-      item.stop.hidden = !active;
+      item.stop.hidden = !active || turn.read_only;
       item.stop.disabled = pending || turn.status === "stopping";
       item.root.dataset.status = turn.status;
       const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
@@ -184,13 +192,17 @@
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }
+    if (state.context_id && state.needs_new && !pending && !selectionFailed) el("chat-state").textContent = state.notice;
     if (follow && !globalThis.getSelection?.()?.toString()) scroll.scrollTop = scroll.scrollHeight;
     el("latest-chat").hidden = follow || !state.turns.length;
   }
   async function refresh() {
+    const epoch = viewEpoch;
     const response = await fetch("/api/chat",{cache:"no-store"});
     if (!response.ok) throw Error("无法读取执行状态");
-    state = await response.json(); token = state.mutation_token;
+    const result = await response.json();
+    if (epoch !== viewEpoch) return;
+    state = result; token = state.mutation_token;
     render();
   }
   async function action(path, value) {
@@ -203,17 +215,21 @@
   async function send() {
     if (el("send-chat").disabled || pending) return;
     const message = el("draft").value;
+    const sendingContext = selectedContext;
     if (new TextEncoder().encode(message).length > 16 * 1024) {
       el("chat-state").textContent = "单次消息最多 16 KiB，请缩短后发送。"; return;
     }
     // A lost response retains this ID. Explicit retry cannot replay a task that
     // the server already accepted, including when it has since completed.
-    if (!request || request.message !== message) request = {request_id:crypto.randomUUID(),message,...(state.selected_agent?{agent_id:state.selected_agent}:{})};
+    if (!request || request.message !== message) request = {request_id:crypto.randomUUID(),message,...(state.selected_agent?{agent_id:state.selected_agent}:{}),context_id:state.context_id || state.room_id};
+    requests.set(sendingContext,request);
     pending = true; controls(); el("chat-state").textContent = "正在发送…";
     try {
       await action("/api/chat",request);
-      if (el("draft").value === message) { el("draft").value = ""; el("draft").oninput(); }
-      request = null; follow = true; el("chat-state").textContent = "已发送";
+      if (selectedContext === sendingContext && el("draft").value === message) { el("draft").value = ""; el("draft").oninput(); }
+      requests.delete(sendingContext);
+      if (selectedContext === sendingContext) request = null;
+      follow = true; el("chat-state").textContent = "已发送";
       await refresh();
     } catch (error) { el("chat-state").textContent = `${error.message} 未确认时请先查看当前执行，再重试。`; }
     finally { pending = false; controls(); }
@@ -223,11 +239,29 @@
     if (pending || state.active_id) { el("chat-agent").value=state.selected_agent; return; }
     const agent_id=el("chat-agent").value;
     pending=true;controls();
-    try {await action("/api/chat/agent",{agent_id});await refresh();el("chat-state").textContent="已切换智能体，各自的对话与上下文独立保留。";}
+    try {await action("/api/chat/agent",{agent_id});selectionFailed=false;await refresh();el("chat-state").textContent="已切换智能体，各自的对话与上下文独立保留。";}
     catch(error){el("chat-agent").value=state.selected_agent;el("chat-state").textContent=error.message;}
     finally{pending=false;controls();}
   };
   document.addEventListener("agh:chat-send",send);
+  document.addEventListener("agh:session-select", event => {
+    const key = event.detail?.key;
+    if (!key) return;
+    selecting++; viewEpoch++; controls();
+    selectionQueue = selectionQueue.catch(() => {}).then(async () => {
+      try {
+        if (!token) await refresh();
+        await action("/api/chat/session", {key});
+        selectionFailed = false;
+        follow = true;
+        await refresh();
+        el("chat-state").textContent = state.needs_new ? state.notice : "已切换到所选 Session，可以继续接管。";
+      } catch (error) {
+        selectionFailed = true;
+        el("chat-state").textContent = `无法接入所选 Session：${error.message}`;
+      } finally { selecting--; controls(); }
+    });
+  });
   document.addEventListener("agh:draft-change",controls);
   async function stopTurn(turnId) {
     if (!turnId || pending) return;
@@ -240,7 +274,7 @@
   el("new-chat").onclick = async () => {
     if (pending || state.active_id) return;
     pending = true; controls();
-    try { await action("/api/chat/new",{}); request = null; follow = true; await refresh(); el("chat-state").textContent = "已开启新对话，历史执行记录仍保留。"; }
+    try { await action("/api/chat/new",{}); selectionFailed=false;request = null; follow = true; await refresh(); el("chat-state").textContent = "已开启新对话，历史执行记录仍保留。"; }
     catch (error) { el("chat-state").textContent = error.message; }
     finally { pending = false; controls(); }
   };

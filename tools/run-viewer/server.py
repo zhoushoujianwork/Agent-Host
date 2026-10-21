@@ -661,6 +661,39 @@ class Catalog:
         finally:
             conn.close()
 
+    def session_history(self, key):
+        record = self.record(key)
+        if record.get("snapshot") or not key.startswith("db:"):
+            raise ChatConflict("归档快照无法接管，请选择本机 Session。")
+        selected = record["run"]
+        conn = self.connection()
+        try:
+            row = conn.execute("SELECT payload FROM sessions WHERE id=?", (selected["session_id"],)).fetchone()
+            if row is None:
+                raise ChatConflict("此记录没有可用的原生会话。")
+            session = decode(row[0])
+            if partition(session) != partition(selected):
+                raise ChatConflict("Session 与所选记录的范围不一致。")
+            ids = [entry.get("run_id") for entry in session.get("room", {}).get("history", []) if entry.get("run_id")]
+            room_id = session.get("room", {}).get("room_id")
+            if room_id:
+                ids += [row[0] for row in conn.execute("SELECT id FROM runs WHERE json_extract(payload,'$.room.room_id')=? AND COALESCE(json_extract(payload,'$.agent_id'),'default')=? AND COALESCE(json_extract(payload,'$.audience_id'),'owner')=? AND json_extract(payload,'$.runtime_fingerprint') IS ? ORDER BY created_at,rowid", (room_id, *partition(selected), selected.get("runtime_fingerprint")))]
+            ids += [decode(row[0])["id"] for row in conn.execute("SELECT payload FROM runs WHERE session_id=? ORDER BY created_at,rowid", (session["id"],))]
+            records = []
+            for identifier in dict.fromkeys(ids[-40:]):
+                row = conn.execute("SELECT payload FROM runs WHERE id=?", (identifier,)).fetchone()
+                if row is None:
+                    continue
+                run = decode(row[0])
+                if partition(run) != partition(selected) or run.get("scope") != selected.get("scope") or run.get("runtime_fingerprint") != selected.get("runtime_fingerprint"):
+                    raise ChatConflict("会话历史与原始上下文不一致。")
+                events = [decode(e[0]) for e in conn.execute("SELECT payload FROM events WHERE run_id=? ORDER BY seq", (identifier,))]
+                records.append({"run": run, "events": events, "key": "db:" + identifier})
+            records.sort(key=lambda record: record["run"]["created_at"])
+            return records
+        finally:
+            conn.close()
+
 
 class MultiCatalog:
     """Combine channel projections without merging their underlying state."""
@@ -844,7 +877,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         token = getattr(self.server, "mutation_token", None)
         route = urlsplit(self.path).path
-        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
+        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent", "/api/chat/session"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -862,9 +895,18 @@ class Handler(BaseHTTPRequestHandler):
                 chat = getattr(self.server, "chat_runtime", None)
                 if chat is None:
                     raise ChatConflict("Chat 执行环境尚不可用。")
-                if route == "/api/chat" and set(value) in ({"request_id", "message"}, {"request_id", "message", "agent_id"}):
-                    turn_id = chat.start(value["request_id"], value["message"], value["agent_id"]) if "agent_id" in value else chat.start(value["request_id"], value["message"])
+                if route == "/api/chat" and {"request_id", "message"} <= set(value) <= {"request_id", "message", "agent_id", "context_id"}:
+                    extra = {key: value[key] for key in ("agent_id", "context_id") if key in value}
+                    turn_id = chat.start(value["request_id"], value["message"], **extra)
                     self.send(202, {"turn_id": turn_id})
+                elif route == "/api/chat/session" and set(value) == {"key"} and isinstance(value["key"], str):
+                    key = value["key"]
+                    catalog = self.server.catalog
+                    if isinstance(catalog, MultiCatalog):
+                        name, _, key = key.partition(":")
+                        catalog = catalog.catalogs[name]
+                    chat.attach(catalog, key)
+                    self.send(200, {"status": "session_selected"})
                 elif route == "/api/chat/agent" and set(value) == {"agent_id"} and isinstance(value["agent_id"], str):
                     chat.select(value["agent_id"])
                     self.send(200, {"status": "agent_selected"})

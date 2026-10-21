@@ -96,5 +96,7 @@ check:
 	python3 -B tools/run-viewer/agent_profiles_test.py
 	node --test tools/run-viewer/agent-profiles_test.cjs
 	python3 -B tools/run-viewer/chat_runtime_test.py
+	python3 -B tools/run-viewer/session_chat_test.py
+	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs
 	python3 -B experiments/history/dws_platform_test.py
 	python3 -B experiments/experience/observe_test.py

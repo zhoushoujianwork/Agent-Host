@@ -115,6 +115,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	takeoverSession                                                                    string
 	room, requestID, receivedAt                                                        string
 	renewRuntime                                                                       bool
 	feedbackOtherUsersOnly                                                             bool
@@ -230,6 +231,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", "", "Third-party Jev gateway URL for custom")
 	fs.StringVar(&o.jevModel, "jev-model", "", "Jev model")
 	fs.StringVar(&o.resume, "resume", "", "Host session ID")
+	fs.StringVar(&o.takeoverSession, "takeover-session", "", "Continue the exact completed session in a new Web turn")
 	fs.StringVar(&o.receivedAt, "received-at", "", "Room message intake timestamp (RFC3339)")
 	fs.StringVar(&o.room, "room", "", "Explicit local chat room ID (one-shot messages only)")
 	fs.StringVar(&o.requestID, "request-id", "", "Unique message ID within --room")
@@ -512,7 +514,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		expires = &t
 	}
 	var client *jev.Client
-	if o.room != "" || o.requestID != "" {
+	if o.takeoverSession != "" {
+		if command != "chat" || !o.oneShot || o.room != "" || o.resume != "" || o.requestID == "" || len(o.requestID) > 200 {
+			return errors.New("takeover requires one message, a request ID and an exclusive source session")
+		}
+		o.resume = o.takeoverSession
+	} else if o.room != "" || o.requestID != "" {
 		if command != "chat" || !o.oneShot || o.room == "" || o.requestID == "" || o.resume != "" || len(o.room) > 200 || len(o.requestID) > 200 {
 			return errors.New("room messages require chat -m, --room and --request-id, without --resume")
 		}
@@ -606,6 +613,15 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	}
 	renderer := &terminal.Renderer{Out: out, JSON: o.format == "json"}
 	h := composeHost(store, o, client, renderer.Render)
+	if command == "chat" && o.takeoverSession != "" {
+		parent, err := store.Session(ctx, o.takeoverSession)
+		if err != nil {
+			return err
+		}
+		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
+		defer cancel()
+		return runSessionTakeover(turnCtx, h, parent, o.requestID, o.message, renderer.Render, leaseSession)
+	}
 	if command != "chat" {
 		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
 		defer cancel()

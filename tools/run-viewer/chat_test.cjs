@@ -17,6 +17,7 @@ async function setup() {
         if(failResponse){failResponse=false;throw Error("lost reply");}
       }
       if(url==="/api/chat/agent")snapshot={...snapshot,selected_agent:value.agent_id,turns:[]};
+      if(url==="/api/chat/session")snapshot={...snapshot,context_id:value.key,selected_agent:"daily",turns:[{id:value.key,input:value.key,text:"Original reply",status:"completed",read_only:true}]};
       return {ok:true,json:async()=>({turn_id:"turn"})};
     }
     return {ok:true,json:async()=>JSON.parse(JSON.stringify(snapshot))};
@@ -33,11 +34,41 @@ test("accepted sends clear the matching draft and render HTML as inert Markdown 
   const turn=h.el("chat-messages").children[0];assert.equal(turn.children[2].children[0].children[1].children[0].children[0].textContent,'<img src=x onerror="bad()">');
   assert.equal(h.calls.filter(c=>c.method==="POST").length,1);
 });
+
+test("session selection replaces history, separates drafts and sends the selected context",async()=>{
+  const h=await setup();
+  h.snapshot={...h.snapshot,selected_agent:"daily",context_id:"first"};await h.poll();
+  h.el("draft").value="draft for first";
+  h.events["agh:session-select"]({detail:{key:"second"}});
+  assert.equal(h.el("send-chat").disabled,true);
+  await flush();await flush();
+  assert.equal(h.el("draft").value,"");
+  assert.equal(h.el("chat-messages").children.at(-1).children[0].textContent,"second");
+  h.el("draft").value="draft for second";
+  h.events["agh:session-select"]({detail:{key:"first"}});await flush();await flush();
+  assert.equal(h.el("draft").value,"draft for first");
+  h.events["agh:session-select"]({detail:{key:"second"}});await flush();await flush();
+  assert.equal(h.el("draft").value,"draft for second");
+  await h.el("send-chat").onclick();
+  const send=h.calls.findLast(c=>c.url==="/api/chat"&&c.method==="POST");
+  assert.equal(JSON.parse(send.body).context_id,"second");
+});
 test("a lost response keeps text and request identity for explicit retry without automatic replay",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();h.loseResponse();await h.el("send-chat").onclick();
   assert.equal(h.el("draft").value,"hello");const first=h.calls.find(c=>c.method==="POST");
   await h.el("send-chat").onclick();const posts=h.calls.filter(c=>c.method==="POST");
   assert.equal(posts.length,2);assert.equal(JSON.parse(first.body).request_id,JSON.parse(posts[1].body).request_id);
+});
+
+test("switching sessions preserves a lost-response request identity for safe retry",async()=>{
+  const h=await setup();h.snapshot={...h.snapshot,selected_agent:"daily",context_id:"first"};await h.poll();
+  h.el("draft").value="continue this task";h.events["agh:draft-change"]();h.loseResponse();await h.el("send-chat").onclick();
+  const first=h.calls.find(c=>c.url==="/api/chat"&&c.method==="POST");
+  for(const key of ["second","first"]){h.events["agh:session-select"]({detail:{key}});await flush();await flush();}
+  assert.equal(h.el("draft").value,"continue this task");
+  await h.el("send-chat").onclick();
+  const retry=h.calls.findLast(c=>c.url==="/api/chat"&&c.method==="POST");
+  assert.equal(JSON.parse(retry.body).request_id,JSON.parse(first.body).request_id);
 });
 test("stop remains pending until the Host snapshot confirms process exit",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();await h.el("send-chat").onclick();

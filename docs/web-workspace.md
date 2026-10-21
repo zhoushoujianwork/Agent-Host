@@ -9,6 +9,12 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Explore the memory graph, source evidence, memory library and review queue.
 - Inspect execution records, tool evidence and separate execution, acceptance
   and memory outcomes.
+- Click a Session heading or a message in execution records to open its history
+  in the right Chat panel and continue from its native context. CLI, DingTalk
+  and Feishu sessions retain their original Agent, project, model and audience.
+  Web replies stay in Web; later messages in the same channel room can inherit
+  the completed Web turn. Busy, unavailable or incompatible contexts show an
+  explicit error instead of silently starting over.
 - Set essential Agent, model connection and existing channel choices in the
   compact [settings page](settings-console.md). Advanced options stay in config.
 - Open or close the right Chat panel from the top bar. Switching modules keeps
@@ -49,8 +55,9 @@ management in the active interface. Existing browser layout data is retained for
 a later return. Old workbench links open memory; old execution bookmarks retain
 their selected record.
 
-Chat uses the configured CLI destination within the selected Host root, separate
-from running channel services. A standalone viewer can select an explicit private
+New conversations use the configured CLI destination within the selected Host
+root. Selecting a channel Session connects to that channel's running Host through
+its private local control socket. A standalone viewer can select an explicit private
 `--chat-config`; see the [setup notes](web-workspace-detail.md#web-chat-execution).
 
 Run `make viewer` for local inspection. The separately installed production

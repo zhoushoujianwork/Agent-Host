@@ -145,7 +145,9 @@ continue to handle user identity, messages and delivery.
   without interactive approval support cannot silently approve a native request.
 
 Claude ACP now executes through the common boundary. Richer channel controls,
-other engines and cross-channel Web attachment remain to be implemented.
+other engines remain to be implemented. The Web Session picker now attaches
+CLI, DingTalk and Feishu conversation history and continues compatible native
+contexts through their owning execution paths.
 Existing channel services and the standalone Web CLI
 destination remain separate today. The [ACP implementation notes](architecture-detail.md#shared-acp-execution--planned)
 define the boundary and acceptance checks.
@@ -178,8 +180,8 @@ disabled. It also provides a [settings console](settings-console.md) for
 essential Agent, native model, provider and existing channel choices. Other
 options retain their configuration-file defaults. Checked
 saves retain private previous versions; applying service changes still requires
-a restart. The console does not turn CLI chat into a client of a running channel
-Host.
+a restart. New Chat conversations use the configured CLI destination; selecting
+a channel Session continues through that channel Host's private control socket.
 
 The feature guides retain bounded native/platform evidence separately from
 implementation. A passing automated check does not establish production quality.

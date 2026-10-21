@@ -174,6 +174,10 @@ class AgentChatRuntime:
 
     def snapshot(self):
         with self.lock:
+            if self.current is not None and getattr(self.current, "attached", False):
+                result = self.current.snapshot()
+                result.update(selected_agent=self.selected_agent, agents=[])
+                return result
             try:
                 destination = agent_destination(self.config) if self.config else None
                 if destination and self.current is None:
@@ -196,15 +200,36 @@ class AgentChatRuntime:
                 raise ChatConflict("请等待当前执行结束或中止后，再切换智能体。")
             self._select(agent_id, agent_destination(self.config))
 
-    def start(self, request_id, message, agent_id=None):
+    def attach(self, source, key):
+        from session_chat import SessionChatRuntime
+        with self.lock:
+            records = source.session_history(key)
+            selected = next(record["run"] for record in records if record["key"] == key)
+            session = selected["session_id"]
+            identity = (str(source.database.parent.resolve()), session)
+            if identity not in self.contexts:
+                if len(self.contexts) >= 128:
+                    raise ChatConflict("已保留的会话过多，请重新启动页面服务。")
+                self.contexts[identity] = SessionChatRuntime(source, key, self.config, self.launcher, selected)
+            self.current = self.contexts[identity]
+            self.selected_agent = self.current.agent_id
+
+    def start(self, request_id, message, agent_id=None, context_id=None):
         with self.lock:
             snapshot = self.snapshot()
-            if not snapshot["enabled"] or (agent_id is not None and agent_id != self.selected_agent):
+            if not snapshot["enabled"] or (agent_id is not None and agent_id != self.selected_agent) or (context_id is not None and context_id != snapshot.get("context_id", snapshot.get("room_id"))):
                 raise ChatConflict("当前智能体已变化，请刷新后重新发送。")
             return self.current.start(request_id, message)
 
     def reset(self):
         with self.lock:
+            if self.current and getattr(self.current, "attached", False):
+                if self.current.active:
+                    raise ChatConflict("请先中止当前执行。")
+                if not self.config:
+                    raise ChatConflict("未配置独立 Web 对话，请选择已有 Session 继续接管。")
+                destination = agent_destination(self.config)
+                self._select(destination["selected_agent"], destination)
             if self.current:
                 self.current.reset()
 
@@ -250,6 +275,7 @@ class ChatRuntime:
             finally:
                 os.unlink(temporary)
         self.session = None
+        self.takeover_session = None
         self.identity = saved.get("identity")
         self.needs_new = False
         self.closed = False
@@ -576,7 +602,8 @@ class ChatRuntime:
                     return
                 if self.identity and self.identity != identity:
                     raise ValueError("执行配置已变化，请开启新对话。")
-                command = [*command, "--room", turn["room_id"], "--request-id", turn["request_id"], "--received-at", datetime.fromtimestamp(turn["started_at"], timezone.utc).isoformat(),
+                conversation = ["--takeover-session", self.takeover_session] if self.takeover_session else ["--room", turn["room_id"]]
+                command = [*command, *conversation, "--request-id", turn["request_id"], "--received-at", datetime.fromtimestamp(turn["started_at"], timezone.utc).isoformat(),
                            "--format", "json", "-m", turn["input"]]
                 child = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
@@ -595,6 +622,8 @@ class ChatRuntime:
                 event = json.loads(line)
                 if not isinstance(event, dict):
                     raise ValueError("Host 返回了无效事件。")
+                if event.get("error") and not event.get("type"):
+                    raise ValueError(str(event["error"]))
                 result = self._event(turn, event)
                 if result:
                     finished = result
@@ -638,6 +667,8 @@ class ChatRuntime:
                     failure = f"Host 启动失败（退出码 {child.returncode}），尚未生成执行记录。请检查 CLI 配置或服务日志。"
                 turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" and not any(turn.get(k) for k in ("execution_error", "memory_error", "experience_error")) else "")
                 if turn["status"] == "completed":
+                    if self.takeover_session and turn["session_id"]:
+                        self.takeover_session = turn["session_id"]
                     self.session = turn["session_id"] or None
                 self.children.pop(turn["id"], None)
                 self.workers.pop(turn["id"], None)

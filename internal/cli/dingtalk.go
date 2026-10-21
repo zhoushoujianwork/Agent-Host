@@ -301,11 +301,6 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		return renderer.Render(e)
 	}
 	var channelMu sync.Mutex
-	stopMemory, err := startManagedMemoryControl(ctx, store, o, client)
-	if err != nil {
-		return fmt.Errorf("start memory workbench control: %w", err)
-	}
-	defer stopMemory()
 	var seq int64
 	start := time.Now()
 	emitChannel := func(kind, message, status string, data map[string]any) error {
@@ -368,6 +363,13 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		}
 		return composeHost(store, selected, client, sink), runtimeOptions(selected), nil
 	}
+	stopMemory, err := startManagedMemoryControl(ctx, store, o, client, func(ctx context.Context, run state.Run) (*host.Host, error) {
+		return resolveSessionTakeover(ctx, service, agents, o, client, run)
+	})
+	if err != nil {
+		return fmt.Errorf("start memory workbench control: %w", err)
+	}
+	defer stopMemory()
 	if err := service.Validate(); err != nil {
 		return err
 	}

@@ -14,12 +14,14 @@ import (
 	"time"
 
 	"agent-host/internal/decision/jev"
+	"agent-host/internal/host"
 	"agent-host/internal/state"
 )
 
 // The managed Host remains the sole database writer. The browser projection
 // connects through an owner-private socket and never receives model credentials.
 type memoryControl struct {
+	sessions    *sessionControl
 	external    *externalMemoryControl
 	store       *state.Store
 	publish     func(context.Context, state.Candidate, string) (state.Memory, error)
@@ -37,6 +39,10 @@ type memoryAction struct {
 }
 
 func (m *memoryControl) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/session-chat" && m.sessions != nil {
+		m.sessions.ServeHTTP(w, r)
+		return
+	}
 	if r.URL.Path == "/external-memory" && m.external != nil {
 		m.external.ServeHTTP(w, r)
 		return
@@ -166,9 +172,13 @@ func startMemoryControl(ctx context.Context, home string, control *memoryControl
 	}, nil
 }
 
-func startManagedMemoryControl(ctx context.Context, store *state.Store, o options, client *jev.Client) (func(), error) {
+func startManagedMemoryControl(ctx context.Context, store *state.Store, o options, client *jev.Client, resolve ...func(context.Context, state.Run) (*host.Host, error)) (func(), error) {
 	external := newExternalMemoryControl(store, o, client)
-	stop, err := startMemoryControl(ctx, o.home, &memoryControl{external: external, store: store, publish: func(ctx context.Context, c state.Candidate, note string) (state.Memory, error) {
+	var sessions *sessionControl
+	if len(resolve) == 1 {
+		sessions = &sessionControl{store: store, resolve: resolve[0], timeout: o.timeout, slots: make(chan struct{}, 4)}
+	}
+	stop, err := startMemoryControl(ctx, o.home, &memoryControl{sessions: sessions, external: external, store: store, publish: func(ctx context.Context, c state.Candidate, note string) (state.Memory, error) {
 		selected := o
 		selected.agentID, selected.audienceID, selected.scope = c.AgentID, "owner", c.Scope
 		return composeHost(store, selected, client, nil).AcceptExperience(ctx, c.ID, note, nil)
@@ -181,5 +191,16 @@ func startManagedMemoryControl(ctx context.Context, store *state.Store, o option
 		return nil, err
 	}
 	stopExternal := external.start(ctx)
-	return func() { stop(); stopExternal() }, nil
+	return func() {
+		if sessions != nil {
+			sessions.mu.Lock()
+			sessions.closed = true
+			sessions.mu.Unlock()
+		}
+		stop()
+		if sessions != nil {
+			sessions.workers.Wait()
+		}
+		stopExternal()
+	}, nil
 }

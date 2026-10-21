@@ -59,8 +59,10 @@ receipts exclude original request/response text and native context.
 
 The [main architecture diagram](architecture.md#core-architecture) shows the
 chosen target and ACP delivery status. This diagram records the retained print baseline: entries
-reach Host, and Host runs Claude's print/stream-JSON adapter. Web currently
-launches a separately configured Host CLI, not a running channel worker.
+reach Host, and Host runs Claude's print/stream-JSON adapter. New Web chats
+launch a separately configured Host CLI. Selecting an existing channel Session
+uses the owning worker's private control socket; Host forks its exact completed
+native context and preserves the original room and audience.
 
 ```mermaid
 flowchart TD

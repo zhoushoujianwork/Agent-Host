@@ -247,6 +247,8 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 [data-page="workspace"] .chat-panel { background: var(--surface); border-color: var(--line); width: 360px; min-height: 0; }
 [data-page="workspace"] .chat-agent-bar { display:flex; align-items:center; gap:12px; padding:10px 20px; border-bottom:1px solid var(--line); flex-shrink:0; }
 [data-page="workspace"] .chat-agent-bar[hidden] { display:none; }
+[data-page="workspace"] .chat-session { padding:10px 20px; border-bottom:1px solid var(--line); font-size:11px; line-height:1.6; color:var(--muted); flex-shrink:0; white-space:pre-line; }
+[data-page="workspace"] .chat-session[hidden] { display:none; }
 [data-page="workspace"] .chat-agent-bar label { font-size:11px; color:var(--muted); white-space:nowrap; }
 [data-page="workspace"] .chat-agent-bar select { flex:1; min-width:0; font-size:12px; padding:7px 9px; border:1px solid var(--line); border-radius:7px; color:var(--ink); background:var(--surface); }
 [data-page="workspace"] .chat-heading { padding: 20px; border-bottom: 1px solid var(--line); gap: 12px; flex-shrink: 0; }

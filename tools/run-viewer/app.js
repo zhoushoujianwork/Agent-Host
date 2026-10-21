@@ -182,7 +182,7 @@ function showError(error) {
   $("error").textContent = `读取失败：${error.message}\n${state.record ? "当前页面保留上次读取的数据；它可能已过时。" : "执行记录尚未加载。"}`;
   $("sync-state").textContent = "连接失败 · 数据未同步";
 }
-async function select(key) {
+async function select(key, attach = true) {
   const generation = ++state.generation;
   state.key = key;
   state.record = null;
@@ -199,6 +199,7 @@ async function select(key) {
     $("error").hidden = true;
     $("sync-state").textContent = `已同步 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
     renderRecord();
+    if (attach) (window.parent?.document || document).dispatchEvent(new CustomEvent("agh:session-select", {detail:{key}}));
   } catch (error) { if (generation === state.generation) showError(error); }
 }
 async function refresh() {
@@ -218,7 +219,7 @@ async function refresh() {
       $("content").hidden = true;
     } else if (!state.key || !visible.some(row => row.key === state.key)) {
       const requested = new URL(location.href).searchParams.get("key");
-      await select(visible.find(row => row.key === requested)?.key || visible.find(row => row.key === index.default_key)?.key || visible[0].key);
+      await select(visible.find(row => row.key === requested)?.key || visible.find(row => row.key === index.default_key)?.key || visible[0].key, Boolean(requested));
       // select owns its error state.
       return;
     } else {
@@ -323,6 +324,7 @@ function renderList() {
     section.open = Boolean(query) || (expandedSessions.get(group.key) ?? (selected || !state.key && group === groups[0]));
     section.addEventListener("toggle",() => expandedSessions.set(group.key,section.open));
     const heading = dom("summary","record-session-heading");
+    heading.addEventListener("click", () => select(group.rows.at(-1).key));
     const sessionLabel = short(group.id) + (group.kind === "room" && group.id.includes(":") ? ":" + short(group.id.split(":").at(-1)) : "");
     heading.append(dom("strong","record-session-title",group.rows[0].input || "未记录请求正文"),
       dom("span","record-session-meta",`${group.rows[0].source.name} · Agent ${group.rows[0].agent_id || "default"} · ${group.rows[0].audience_id && group.rows[0].audience_id !== "owner" ? "群聊" : "私聊"} · ${group.rows.length} 条`),

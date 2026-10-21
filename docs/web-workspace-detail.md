@@ -161,6 +161,42 @@ state home and execute concurrently. Session leases prevent duplicate native
 continuation, while maintenance and older binaries retain exclusive ownership.
 See [CLI concurrency details](cli-concurrency-detail.md).
 
+### Existing Session takeover
+
+`POST /api/chat/session` accepts a catalog record key after the same-origin
+owner mutation check. The catalog resolves the exact configured source and
+enforces its Agent/audience/project visibility before loading bounded room history
+and native activity. Archive reports cannot be continued. Drafts and lost-response
+request IDs are separate for each selected context; sends carry `context_id`, so
+a concurrent selection cannot redirect an old draft to another conversation.
+
+CLI sessions use the validated CLI destination with `--takeover-session` and an
+explicit request ID. DingTalk/Feishu sessions use `/session-chat` on the selected
+state home's existing `0600` Unix control socket. The owning channel service
+reconstructs the original Agent, audience and projects from durable source receipts;
+the browser cannot supply executable paths, credentials or replacement identities.
+Provider and execution failures never trigger another backend or implicit replay.
+
+Host forks the exact completed native session into an immutable Web message,
+identifies its speaker as `local-owner`, and joins its original room/epoch. The
+original receipt remains unchanged. Later channel intake can use that completed
+checkpoint through ordinary room assembly. Web actions do not generate IM replies
+or reuse expiring DingTalk webhooks. A source must have a completed, finalized run
+and compatible runtime/model; missing native state fails through the adapter.
+Duplicate request IDs recover the recorded turn and cannot execute tools twice.
+
+Session projection and selection are local to the viewer process. After a viewer
+restart, select the Session again from durable execution records. Closing a panel
+does not stop execution. Stop cancels the viewer's child; for channel continuation,
+closing the socket cancels the owning service's request context. The service
+accepts up to four Web continuation requests at once, and each selected Web
+context sends one at a time. Historical channel executions are read-only in Chat.
+
+`session_chat_test.py`, the Chat/browser tests, Host takeover tests and CLI service
+control tests cover history, exact fork parents, repeated continuation, duplicate
+requests, source isolation, stale sends and original channel delivery preservation.
+These are synthetic checks, not claims of live platform acceptance.
+
 Validation: `python3 -B tools/run-viewer/chat_runtime_test.py` exercises incremental
 output, duplicate requests, real process cancellation, queued cancellation,
 configuration changes and HTTP boundaries. `node --test tools/run-viewer/chat_test.cjs`
