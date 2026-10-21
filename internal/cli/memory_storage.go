@@ -51,7 +51,12 @@ func runMemoryStorage(ctx context.Context, args []string, out, errout io.Writer)
 		}
 		defer func() { runErr = errors.Join(runErr, release()) }()
 	}
-	s, err := state.Open(home, command == "verify")
+	var s *state.Store
+	if command == "verify" {
+		s, err = state.OpenForMemoryInspection(home)
+	} else {
+		s, err = state.Open(home, false)
+	}
 	if err != nil {
 		return err
 	}

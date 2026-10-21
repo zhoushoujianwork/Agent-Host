@@ -26,6 +26,28 @@ func memoryStorageCommand(t *testing.T, args ...string) state.FileMemoryReport {
 	return report
 }
 
+func TestMemoryVerifyRemainsReadOnlyAcrossRoomSchemaUpgrade(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "state")
+	memoryStorageCommand(t, "migrate", "--home", home, "--memory-root", filepath.Join(root, "memory"), "--memory-cache", filepath.Join(root, "cache"), "--memory-source", "room-upgrade")
+	db, err := sql.Open("sqlite", filepath.Join(home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec("DROP TABLE room_messages; DROP TABLE rooms; PRAGMA user_version=15;"); err != nil {
+		t.Fatal(err)
+	}
+	report := memoryStorageCommand(t, "verify", "--home", home)
+	if report.Digest == "" {
+		t.Fatal("missing verified publication")
+	}
+	var version int
+	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 15 {
+		t.Fatal("read-only verifier migrated an active writer's database", version, err)
+	}
+}
+
 func historicalMemorySQL(t *testing.T, home, id string) (string, int, []byte) {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(home, "state.db"))
