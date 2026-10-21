@@ -155,7 +155,7 @@ func (s *Service) Receive(ctx context.Context, m dingtalk.Message) error {
 		ReplyToID: m.ReplyToID,
 		ID:        Key("dingtalk", s.ClientID, m.ID), Channel: "dingtalk", AccountID: s.ClientID,
 		TenantID: m.TenantID, MessageID: m.ID, ConversationID: m.ConversationID,
-		SenderID: m.SenderID, Profile: s.Profile, ConversationType: m.ConversationType,
+		SenderName: m.SenderName, SenderID: m.SenderID, Profile: s.Profile, ConversationType: m.ConversationType,
 		AgentID: selection.AgentID, AudienceID: selection.AudienceID,
 		Binding: binding,
 		Scope:   s.Scope, MessageType: m.MessageType, Text: m.Text,
@@ -207,11 +207,9 @@ func (s *Service) Work(ctx context.Context) error {
 	return errors.Join(err, <-done)
 }
 
-// Native turns in the same authenticated binding remain FIFO, including reply
-// delivery. Ordinary conversations sharing memory also stay serial, so their
-// decisions cannot finalize against stale snapshots. Isolated card lanes skip
-// automatic memory writes. Independent audiences and card lanes use a bounded
-// pool; interrupted claimed work is never replayed.
+// Fork-capable Hosts execute bounded independent message sessions, even in one
+// room. Legacy Hosts retain binding/memory-writer exclusion. Publication still
+// protects durable memory; interrupted claimed work is never replayed.
 func (s *Service) workMessages(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
@@ -251,6 +249,9 @@ func (s *Service) workMessages(ctx context.Context) error {
 			for _, message := range active {
 				busy = append(busy, message)
 			}
+			if supportsRooms(s.Host) {
+				busy = nil
+			}
 			m, err := s.Store.ClaimNextEligibleChannelMessage(ctx, s.Profile, busy)
 			if errors.Is(err, sql.ErrNoRows) {
 				break
@@ -258,11 +259,11 @@ func (s *Service) workMessages(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("claim channel input: %w", err)
 			}
-			active[m.Binding] = m
+			active[m.ID] = m
 			workers.Add(1)
 			go func() {
 				defer workers.Done()
-				done <- completion{binding: m.Binding, err: s.process(ctx, m)}
+				done <- completion{binding: m.ID, err: s.process(ctx, m)}
 			}()
 		}
 		select {

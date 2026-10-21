@@ -41,9 +41,21 @@ test("a lost response keeps text and request identity for explicit retry without
 });
 test("stop remains pending until the Host snapshot confirms process exit",async()=>{
   const h=await setup();h.el("draft").value="hello";h.events["agh:draft-change"]();await h.el("send-chat").onclick();
-  await h.el("stop-chat").onclick();assert.equal(h.el("send-chat").hidden,true);
+  await h.el("stop-chat").onclick();assert.equal(h.el("send-chat").hidden,false);
   h.snapshot.active_id=null;h.snapshot.turns[0].status="canceled";h.snapshot.needs_new=true;await h.poll();
   assert.equal(h.el("send-chat").disabled,true);assert.equal(h.el("new-chat").disabled,false);
+});
+
+test("overlapping room messages keep send available and stop the selected original message",async()=>{
+  const h=await setup();
+  h.snapshot.active_id="a";h.snapshot.active_ids=["a","b"];h.snapshot.max_concurrent=4;
+  h.snapshot.turns=[{id:"a",input:"Alice",status:"running",output:[]},{id:"b",input:"Bob",status:"running",output:[]}];
+  h.el("draft").value="third request";await h.poll();
+  assert.equal(h.el("send-chat").hidden,false);assert.equal(h.el("send-chat").disabled,false);
+  assert.equal(h.el("stop-chat").hidden,true);
+  await h.el("chat-messages").children[1].children[8].onclick();
+  const stop=h.calls.find(call=>call.url==="/api/chat/stop");
+  assert.equal(JSON.parse(stop.body).turn_id,"b");
 });
 
 test("native tool payloads stay in transcript order and use safe literal nodes",async()=>{

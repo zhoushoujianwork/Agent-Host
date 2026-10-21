@@ -9,6 +9,7 @@ import (
 )
 
 type Session struct {
+	Room                  *RoomTurn    `json:"room,omitempty"`
 	AgentID               string       `json:"agent_id,omitempty"`
 	AudienceID            string       `json:"audience_id,omitempty"`
 	ID                    string       `json:"id"`
@@ -87,6 +88,8 @@ type Memory struct {
 }
 
 type Run struct {
+	CompletedAt           *time.Time         `json:"completed_at,omitempty"`
+	Room                  *RoomTurn          `json:"room,omitempty"`
 	Preparation           *PreparationSource `json:"preparation,omitempty"`
 	AgentID               string             `json:"agent_id,omitempty"`
 	AudienceID            string             `json:"audience_id,omitempty"`
@@ -148,6 +151,7 @@ func (r Run) WorkingDirectory() string {
 
 // RunSource links native execution and derived memory to an accepted channel input.
 type RunSource struct {
+	SenderName       string        `json:"sender_name,omitempty"`
 	TaskRootID       string        `json:"task_root_id,omitempty"`
 	Input            *ChannelInput `json:"input_material,omitempty"`
 	ConversationType string        `json:"conversation_type,omitempty"`
@@ -179,6 +183,7 @@ const (
 // ChannelMessage is safe to inspect without disclosing its private reply URL.
 // Execution and delivery have independent status fields.
 type ChannelMessage struct {
+	SenderName string `json:"sender_name,omitempty"`
 	// Host-derived private task lane; it never changes audience or sender identity.
 	TaskRootID            string            `json:"task_root_id,omitempty"`
 	ConversationBinding   string            `json:"conversation_binding,omitempty"`

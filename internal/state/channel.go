@@ -32,6 +32,9 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 	if m.MessageType == "text" && strings.TrimSpace(m.Text) == "" {
 		return false, errors.New("channel text message cannot be empty")
 	}
+	if len(m.SenderName) > 200 || strings.ContainsAny(m.SenderName, "\x00\r\n") {
+		return false, errors.New("invalid channel sender display name")
+	}
 	if len(m.Text) > 16*1024 {
 		return false, errors.New("channel message text exceeds 16 KiB")
 	}
@@ -441,13 +444,30 @@ func (s *Store) CreateChannelRun(ctx context.Context, run Run, messageID string)
 			return errors.New("channel run does not match its pinned native session")
 		}
 		var sessionID string
-		if err = tx.QueryRowContext(ctx, "SELECT session_id FROM channel_sessions WHERE binding=?", binding).Scan(&sessionID); err != nil {
+		session, err := s.readSession(ctx, tx, run.SessionID)
+		if err != nil {
+			return err
+		}
+		if session.Room != nil {
+			if session.Room.RequestID != m.MessageID || session.Room.SenderID != m.SenderID || session.Room.SenderName != m.SenderName || session.Room.ReplyToID != m.ReplyToID || !strings.HasPrefix(session.Room.RoomID, s.roomKey(m.Binding)+":") {
+				return errors.New("room execution does not match authenticated message")
+			}
+			var roomSession string
+			if err = tx.QueryRowContext(ctx, "SELECT session_id FROM room_messages WHERE room_id=? AND request_id=?", session.Room.RoomID, m.MessageID).Scan(&roomSession); err != nil {
+				return err
+			}
+			if roomSession != session.ID {
+				return errors.New("room message session mismatch")
+			}
+			sessionID = session.ID
+		} else if err = tx.QueryRowContext(ctx, "SELECT session_id FROM channel_sessions WHERE binding=?", binding).Scan(&sessionID); err != nil {
 			return wrap("read channel run binding", err)
 		}
 		if sessionID != run.SessionID || scope != run.Scope || m.Text != run.Input {
 			return errors.New("channel run does not match its message session, scope, or text")
 		}
 		run.Source = &RunSource{TaskRootID: m.TaskRootID, Input: m.Input, AgentID: run.AgentID, AudienceID: run.AudienceID, ConversationType: m.ConversationType, Channel: m.Channel, ChannelMessageID: m.ID, AccountID: m.AccountID, TenantID: m.TenantID, MessageID: m.MessageID, ConversationID: m.ConversationID, SenderID: m.SenderID}
+		run.Source.SenderName = m.SenderName
 		run.MemoryAttribution, err = memoryAttributionForChannel(ctx, tx, m)
 		if err != nil {
 			return err

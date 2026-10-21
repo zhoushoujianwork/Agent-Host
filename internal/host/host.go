@@ -168,6 +168,9 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 		if err != nil {
 			return s, err
 		}
+		if s.Room != nil {
+			return s, errors.New("room execution sessions are immutable; send a new message to the room")
+		}
 		if s.Model != h.Config.Model || !h.matchesRuntime(s) {
 			return s, errors.New("session project/workspace/runtime differs from this configuration; start a new session")
 		}
@@ -176,8 +179,12 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 		}
 		return s, nil
 	}
-	s := state.Session{AgentID: partitionAgent(h.Config.AgentID), AudienceID: partitionAudience(h.Config.AudienceID), Projects: append([]state.ProjectRef(nil), h.Config.Projects...), AdditionalDirectories: append([]string(nil), h.Config.AdditionalDirectories...), ID: ID(), Scope: h.Config.Scope, ProjectID: h.Config.ProjectID, ProjectName: h.Config.ProjectName, Workspace: h.workspace(), RuntimeFingerprint: h.Config.RuntimeFingerprint, Model: h.Config.Model, NativeSessionID: ID(), CreatedAt: time.Now().UTC()}
+	s := h.newSession()
 	return s, h.Store.CreateSession(ctx, s)
+}
+
+func (h *Host) newSession() state.Session {
+	return state.Session{AgentID: partitionAgent(h.Config.AgentID), AudienceID: partitionAudience(h.Config.AudienceID), Projects: append([]state.ProjectRef(nil), h.Config.Projects...), AdditionalDirectories: append([]string(nil), h.Config.AdditionalDirectories...), ID: ID(), Scope: h.Config.Scope, ProjectID: h.Config.ProjectID, ProjectName: h.Config.ProjectName, Workspace: h.workspace(), RuntimeFingerprint: h.Config.RuntimeFingerprint, Model: h.Config.Model, NativeSessionID: ID(), CreatedAt: time.Now().UTC()}
 }
 
 type journal struct {
@@ -326,6 +333,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	execution := harness.RunnerIdentity(h.Runner)
 	r := state.Run{AgentID: s.AgentID, AudienceID: s.AudienceID, Projects: append([]state.ProjectRef(nil), s.Projects...), AdditionalDirectories: append([]string(nil), s.AdditionalDirectories...), Supplements: append([]state.UserSupplement(nil), h.Config.Supplements...), ID: ID(), SessionID: s.ID, Scope: s.Scope, ProjectID: s.ProjectID, ProjectName: s.ProjectName, Workspace: s.Workspace, RuntimeFingerprint: s.RuntimeFingerprint, Input: input, Agent: execution.Agent, RequestedModel: h.Config.Model, NativeSessionID: s.NativeSessionID, ExecutionStatus: "running", MemoryStatus: "blocked", AcceptanceStatus: "unverified", CreatedAt: time.Now().UTC()}
 	r.Preparation = preparation
+	r.Room = s.Room
 	if preparation != nil {
 		var sources []string
 		sources, err = assistance.SelectedSources(ctx, h.Store, h.Config.ContextConfig, s.ProjectID)
@@ -464,7 +472,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		}
 	}
 	var recentRequestsContext string
-	if recovery == nil {
+	if recovery == nil && s.Room == nil {
 		var requests []state.ChannelRequestContext
 		recentRequestsContext, requests, err = h.channelRecentRequestsContext(ctx, r, resume)
 		if err != nil {
@@ -588,7 +596,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, Prompt: assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.NativeSkillContext(skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.NativeSkillContext(skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool

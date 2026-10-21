@@ -45,6 +45,7 @@ func ValidateConfig(cfg Config) error {
 }
 
 type Message struct {
+	SenderName       string
 	ReplyToID        string
 	ID               string
 	ConversationID   string
@@ -133,6 +134,7 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 			StaffID    string `json:"staffId"`
 		} `json:"atUsers"`
 		SenderID       string          `json:"senderId"`
+		SenderName     string          `json:"senderNick"`
 		SenderStaffID  string          `json:"senderStaffId"`
 		SenderCorpID   string          `json:"senderCorpId"`
 		ChatbotCorpID  string          `json:"chatbotCorpId"`
@@ -217,8 +219,11 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 	if supported && (strings.TrimSpace(text) == "" || len(text) > maxTextBytes) {
 		return message, reject("text is empty or exceeds its byte limit")
 	}
+	if len(callback.SenderName) > 200 || strings.ContainsAny(callback.SenderName, "\x00\r\n") {
+		callback.SenderName = ""
+	}
 	message = Message{ID: callback.ID, ConversationID: callback.ConversationID, ConversationType: callback.ConversationType, SenderID: callback.SenderStaffID,
-		TenantID: callback.ChatbotCorpID, MessageType: callback.MessageType, ReplyURL: callback.ReplyURL,
+		SenderName: callback.SenderName, TenantID: callback.ChatbotCorpID, MessageType: callback.MessageType, ReplyURL: callback.ReplyURL,
 		CreatedAt: time.UnixMilli(callback.CreatedAt), ReplyExpiresAt: expires}
 	if supported {
 		message.Text, message.Attachments = text, attachments

@@ -24,6 +24,8 @@ type Adapter struct {
 	binary string
 }
 
+func (a *Adapter) SupportsFork() bool { return true }
+
 func New(binary string) *Adapter {
 	if binary == "" {
 		binary = "claude"
@@ -177,6 +179,12 @@ func argumentsWithStreamEnvironment(req harness.Request, policy map[string]strin
 		sessionFlag = "--resume"
 	}
 	args = append(args, sessionFlag, req.NativeSessionID)
+	if req.ForkFromNativeSessionID != "" {
+		if req.Resume || req.ForkFromNativeSessionID == req.NativeSessionID {
+			return nil, errors.New("fork requires a distinct new session")
+		}
+		args = append(args, "--resume", req.ForkFromNativeSessionID, "--fork-session")
+	}
 	if req.RestrictedReadOnly {
 		allowed := []string{"Read", "Glob", "Grep"}
 		if len(req.MCPServers) > 0 {

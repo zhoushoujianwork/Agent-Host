@@ -8,24 +8,25 @@ import (
 // Request carries explicit native execution policy. An empty PermissionMode
 // preserves native defaults; business instances may explicitly select bypass.
 type Request struct {
-	NativeProfile         string
-	PermissionMode        string
-	HostInstructions      string
-	Prompt                string
-	Images                []Image
-	AdditionalDirectories []string
-	Workspace             string
-	Model                 string
-	NativeSessionID       string
-	Resume                bool
-	ToolsDisabled         bool
-	RestrictedReadOnly    bool // Fixed member capability profile; never grants execution or mutation.
-	AllowedTools          []string
-	MCPServers            []MCPServer
-	JSONSchema            string
-	Extraction            bool   // Isolated, tool-free, nonpersistent extraction invocation.
-	SkillPluginDir        string // Explicit task-scoped, instruction-only native package.
-	SkillPluginDigest     string // Expected snapshot digest; cache content cannot change it.
+	NativeProfile           string
+	PermissionMode          string
+	HostInstructions        string
+	Prompt                  string
+	Images                  []Image
+	AdditionalDirectories   []string
+	Workspace               string
+	Model                   string
+	NativeSessionID         string
+	ForkFromNativeSessionID string // Immutable completed parent; never resume it in place.
+	Resume                  bool
+	ToolsDisabled           bool
+	RestrictedReadOnly      bool // Fixed member capability profile; never grants execution or mutation.
+	AllowedTools            []string
+	MCPServers              []MCPServer
+	JSONSchema              string
+	Extraction              bool   // Isolated, tool-free, nonpersistent extraction invocation.
+	SkillPluginDir          string // Explicit task-scoped, instruction-only native package.
+	SkillPluginDigest       string // Expected snapshot digest; cache content cannot change it.
 }
 
 const (

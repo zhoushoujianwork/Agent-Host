@@ -26,8 +26,9 @@ func TestACPProcess(t *testing.T) {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 64<<10), 4<<20)
 	send := func(v any) { raw, _ := json.Marshal(v); fmt.Println(string(raw)) }
+	sessionID := "native-acp-session"
 	update := func(v any) {
-		send(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "native-acp-session", "update": v}})
+		send(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": sessionID, "update": v}})
 	}
 	var promptID json.RawMessage
 	for scanner.Scan() {
@@ -40,10 +41,18 @@ func TestACPProcess(t *testing.T) {
 			if os.Getenv("AGH_ACP_WRONG_VERSION") == "1" {
 				version = "unknown"
 			}
-			result = map[string]any{"protocolVersion": 1, "agentInfo": map[string]string{"name": "@agentclientprotocol/claude-agent-acp", "version": version}, "agentCapabilities": map[string]any{"loadSession": true, "promptCapabilities": map[string]bool{"image": true}, "sessionCapabilities": map[string]any{"additionalDirectories": map[string]any{}}}}
+			result = map[string]any{"protocolVersion": 1, "agentInfo": map[string]string{"name": "@agentclientprotocol/claude-agent-acp", "version": version}, "agentCapabilities": map[string]any{"loadSession": true, "promptCapabilities": map[string]bool{"image": true}, "sessionCapabilities": map[string]any{"additionalDirectories": map[string]any{}, "fork": map[string]any{}}}}
+		case "session/fork":
+			var params map[string]any
+			_ = json.Unmarshal(p.Params, &params)
+			_ = os.WriteFile(filepath.Join(params["cwd"].(string), "fork-parent"), []byte(params["sessionId"].(string)), 0600)
+			result = map[string]string{"sessionId": fmt.Sprintf("native-fork-%d", os.Getpid())}
 		case "session/new", "session/load":
 			var params map[string]any
 			_ = json.Unmarshal(p.Params, &params)
+			if p.Method == "session/load" {
+				sessionID = params["sessionId"].(string)
+			}
 			_ = os.WriteFile(filepath.Join(params["cwd"].(string), "session-method"), []byte(p.Method), 0600)
 			_ = os.WriteFile(filepath.Join(params["cwd"].(string), "session-params"), p.Params, 0600)
 			if os.Getenv("AGH_ACP_NO_INIT") != "1" {
@@ -56,12 +65,12 @@ func TestACPProcess(t *testing.T) {
 					}
 					servers = append(servers, map[string]string{"name": server["name"].(string), "status": status})
 				}
-				send(map[string]any{"jsonrpc": "2.0", "method": "_claude/sdkMessage", "params": map[string]any{"sessionId": "native-acp-session", "message": map[string]any{"type": "system", "subtype": "init", "model": "observed-model", "mcp_servers": servers}}})
+				send(map[string]any{"jsonrpc": "2.0", "method": "_claude/sdkMessage", "params": map[string]any{"sessionId": sessionID, "message": map[string]any{"type": "system", "subtype": "init", "model": "observed-model", "mcp_servers": servers}}})
 			}
 			if p.Method == "session/load" {
 				update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"type": "text", "text": "OLD REPLAY MUST NOT DELIVER"}})
 			}
-			result = map[string]any{"sessionId": "native-acp-session", "models": map[string]string{"currentModelId": "observed-model"}, "modes": map[string]any{"availableModes": []map[string]string{{"id": "bypassPermissions"}}}}
+			result = map[string]any{"sessionId": sessionID, "models": map[string]string{"currentModelId": "observed-model"}, "modes": map[string]any{"availableModes": []map[string]string{{"id": "bypassPermissions"}}}}
 		case "session/prompt":
 			promptID = p.ID
 			var params struct {
@@ -72,7 +81,7 @@ func TestACPProcess(t *testing.T) {
 			_ = json.Unmarshal(p.Params, &params)
 			text := params.Prompt[0].Text
 			if text == "permission" {
-				send(map[string]any{"jsonrpc": "2.0", "id": "permission-1", "method": "session/request_permission", "params": map[string]any{"sessionId": "native-acp-session", "options": []map[string]string{{"kind": "allow_once", "optionId": "yes"}}}})
+				send(map[string]any{"jsonrpc": "2.0", "id": "permission-1", "method": "session/request_permission", "params": map[string]any{"sessionId": sessionID, "options": []map[string]string{{"kind": "allow_once", "optionId": "yes"}}}})
 				continue
 			}
 			update(map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"type": "text", "text": "**First** "}})

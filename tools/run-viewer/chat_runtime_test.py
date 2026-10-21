@@ -79,7 +79,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(midway["active_id"], turn)
         self.assertEqual(self.runtime.start("one", "hello"), turn)
         with self.assertRaises(ChatConflict):
-            self.runtime.start("two", "duplicate")
+            self.runtime.start("one", "different content")
         done = self.wait_for(lambda s: s["active_id"] is None)
         self.assertEqual(done["turns"][0]["text"], "First answer")
         self.assertEqual(done["turns"][0]["status"], "completed")
@@ -88,7 +88,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.start("one", "hello"), turn)
         self.assertEqual(len(self.runtime.snapshot()["turns"]), 1)
 
-    def test_switching_agents_preserves_owned_conversations_and_native_resumes(self):
+    def test_switching_agents_preserves_rooms_without_resuming_a_mutable_native_session(self):
         catalog=self.root/"agents.json"
         catalog.write_text(json.dumps({"agents":[{"id":"a","name":"Agent A"},{"id":"b","name":"Agent B"}]})); catalog.chmod(0o600)
         config=self.root/"chat.json"
@@ -119,7 +119,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.runtime.snapshot()["turns"]),2)
         self.assertEqual(launched,["a","b","a"])
         observed=[json.loads(line) for line in (self.root/"resume-evidence.jsonl").read_text().splitlines()]
-        self.assertEqual(observed,[{"agent":"a","resume":None},{"agent":"b","resume":None},{"agent":"a","resume":"session-a"}])
+        self.assertEqual(observed,[{"agent":"a","resume":None},{"agent":"b","resume":None},{"agent":"a","resume":None}])
         self.runtime.reset()
         self.runtime.select("b")
         self.assertIs(self.runtime.current,b_context)
@@ -185,9 +185,6 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(calls[0]["status"], "canceled")
         with self.assertRaises(ProcessLookupError):
             os.kill(pid, 0)
-        with self.assertRaises(ChatConflict):
-            self.runtime.start("next", "hello")
-        self.runtime.reset()
         self.runtime.start("next", "hello")
         self.wait_for(lambda s: s["active_id"] is None)
 
@@ -198,6 +195,56 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(done["turns"][0]["exit_code"], 3)
         self.assertIn("退出码 3", done["turns"][0]["error"])
         self.assertNotIn("private-token", done["turns"][0]["error"])
+
+    def test_same_room_overlap_and_stop_only_the_selected_message(self):
+        first = self.runtime.start("first", "slow")
+        self.wait_for(lambda s: any(r.get("tool_id") == "waiting-tool" for r in s["turns"][0]["output"]))
+        second = self.runtime.start("second", "slow")
+        snapshot = self.wait_for(lambda s: len(s["active_ids"]) == 2 and any(r.get("tool_id") == "waiting-tool" for r in s["turns"][1]["output"]))
+        self.assertEqual(snapshot["turns"][0]["room_id"], snapshot["turns"][1]["room_id"])
+        self.runtime.stop(first)
+        snapshot = self.wait_for(lambda s: s["turns"][0]["status"] == "canceled")
+        self.assertEqual(snapshot["active_ids"], [second])
+        self.assertEqual(snapshot["turns"][1]["status"], "running")
+
+    def test_room_capacity_is_bounded_and_all_children_are_joined_on_close(self):
+        for i in range(4):
+            self.runtime.start(str(i), "slow")
+        with self.assertRaises(ChatConflict):
+            self.runtime.start("overflow", "hello")
+        self.runtime.close()
+        self.assertEqual(self.runtime.snapshot()["active_ids"], [])
+        self.assertFalse(self.runtime.children)
+
+    def test_room_survives_viewer_restart_and_reset_persists_new_room(self):
+        room_file = self.root / "rooms/default.json"
+        first = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        room = first.room_id
+        first.close()
+        second = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        self.assertEqual(second.room_id, room)
+        second.reset()
+        self.assertNotEqual(second.room_id, room)
+        third = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        self.assertEqual(third.room_id, second.room_id)
+        second.close()
+        third.close()
+
+    def test_accepted_receipt_is_durable_and_restart_never_replays_it(self):
+        self.runtime.close()
+        room_file = self.root / "rooms/default.json"
+        self.runtime = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        turn = self.runtime.start("receipt", "slow")
+        self.wait_for(lambda s: bool(s["turns"][0]["run_id"]))
+        restored = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        try:
+            snapshot = restored.snapshot()
+            self.assertEqual(snapshot["turns"][0]["id"], turn)
+            self.assertEqual(snapshot["turns"][0]["status"], "unknown")
+            self.assertEqual(restored.start("receipt", "slow"), turn)
+            self.assertFalse(restored.workers)
+        finally:
+            restored.close()
 
     def test_busy_state_is_actionable_and_allows_manual_send(self):
         self.runtime.start("busy", "busy")

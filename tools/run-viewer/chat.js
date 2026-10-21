@@ -11,9 +11,9 @@
   const drafts = new Map();
   function controls() {
     const busy = pending || Boolean(state.active_id);
-    el("send-chat").hidden = Boolean(state.active_id);
-    el("send-chat").disabled = busy || !state.enabled || state.needs_new || !el("draft").value.trim();
-    el("stop-chat").hidden = !state.active_id;
+    el("send-chat").hidden = false;
+    el("send-chat").disabled = pending || (state.active_ids || (state.active_id ? [state.active_id] : [])).length >= (state.max_concurrent || 4) || !state.enabled || state.needs_new || !el("draft").value.trim();
+    el("stop-chat").hidden = (state.active_ids || (state.active_id ? [state.active_id] : [])).length !== 1;
     const active = state.turns.find(t => t.id === state.active_id);
     el("stop-chat").disabled = pending || active?.status === "stopping";
     el("stop-chat").textContent = active?.status === "stopping" ? "正在中止…" : "■ 中止执行";
@@ -90,10 +90,12 @@
         const answerActions = node("div","chat-actions");
         const copyAnswer = copyButton("复制回复",() => item.reply);
         answerActions.append(copyAnswer);
-        root.append(user,work,output,status,error,record,userActions,answerActions);
+        const stop = node("button","chat-copy","中止此条执行"); stop.type = "button";
+        stop.onclick = () => stopTurn(turn.id);
+        root.append(user,work,output,status,error,record,userActions,answerActions,stop);
         el("chat-messages").append(root);
         work.open = ["starting","running","stopping"].includes(turn.status);
-        item = {root,work,summary,activity,output,status,error,record,answerActions,copyAnswer,blocks:new Map()}; rendered.set(turn.id,item);
+        item = {root,work,summary,activity,output,status,error,record,answerActions,copyAnswer,stop,blocks:new Map()}; rendered.set(turn.id,item);
       }
       const rows = turn.output || (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
       const active = ["starting","running","stopping"].includes(turn.status);
@@ -148,6 +150,8 @@
       item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("\n\n");
       item.answerActions.hidden = !item.reply;
       item.copyAnswer.disabled = active;
+      item.stop.hidden = !active;
+      item.stop.disabled = pending || turn.status === "stopping";
       item.root.dataset.status = turn.status;
       const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
       item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[turn.status] || turn.status}`;
@@ -166,8 +170,8 @@
     const latest = state.turns.at(-1);
     const signature = latest ? `${latest.id}:${latest.status}` : "";
     if (signature !== latestStatus) {
-      if (latest?.status === "canceled") el("chat-state").textContent = "已中止。点击「新对话」继续。";
-      if (latest?.status === "failed") el("chat-state").textContent = ["state_busy","session_busy"].includes(latest.error_code) ? latest.error : "执行失败。请检查错误后开启新对话。";
+      if (latest?.status === "canceled") el("chat-state").textContent = "已中止此条执行，可以继续发送消息。";
+      if (latest?.status === "failed") el("chat-state").textContent = ["state_busy","session_busy"].includes(latest.error_code) ? latest.error : "此条执行失败，可以检查记录后继续发送消息。";
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }
@@ -216,13 +220,14 @@
   };
   document.addEventListener("agh:chat-send",send);
   document.addEventListener("agh:draft-change",controls);
-  el("stop-chat").onclick = async () => {
-    if (!state.active_id || pending) return;
+  async function stopTurn(turnId) {
+    if (!turnId || pending) return;
     pending = true; controls();
-    try { await action("/api/chat/stop",{turn_id:state.active_id}); el("chat-state").textContent = "已请求中止，等待执行退出。"; await refresh(); }
+    try { await action("/api/chat/stop",{turn_id:turnId}); el("chat-state").textContent = "已请求中止，等待执行退出。"; await refresh(); }
     catch (error) { el("chat-state").textContent = error.message; }
     finally { pending = false; controls(); }
   };
+  el("stop-chat").onclick = () => stopTurn(state.active_id);
   el("new-chat").onclick = async () => {
     if (pending || state.active_id) return;
     pending = true; controls();

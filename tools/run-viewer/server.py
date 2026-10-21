@@ -535,7 +535,7 @@ class Catalog:
 
     def schema_version(self, conn):
         version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15):
+        if version not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16):
             raise ValueError(f"unsupported state schema: {version}")
         return version
 

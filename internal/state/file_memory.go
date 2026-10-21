@@ -648,6 +648,10 @@ func (s *Store) enableFileMemory(ctx context.Context, c FileMemoryConfig) error 
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(FULL)")
+	// This connection writes both the index and attached runtime. Reserve all
+	// writers before reading, just like the standalone operational connection.
+	// Otherwise append-only events can invalidate its deferred WAL snapshot.
+	q.Set("_txlock", "immediate")
 	u.RawQuery = q.Encode()
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {

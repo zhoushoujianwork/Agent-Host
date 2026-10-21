@@ -15,6 +15,16 @@ import (
 	"agent-host/internal/state"
 )
 
+type roomHost interface {
+	RoomConcurrencyEnabled() bool
+	RoomChannelSession(context.Context, string) (state.Session, error)
+}
+
+func supportsRooms(h Host) bool {
+	rooms, ok := h.(roomHost)
+	return ok && rooms.RoomConcurrencyEnabled()
+}
+
 func (s *Service) projectsConfigured() bool { return s.ResolveHost != nil || s.ResolveProjects != nil }
 
 func (s *Service) availableProjects(ctx context.Context) ([]state.Project, error) {
@@ -65,6 +75,10 @@ func (s *Service) conversationCommand(ctx context.Context, m state.ChannelMessag
 		if parts[0] == "/status" {
 			reply, err := s.conversationStatus(ctx, m)
 			return true, reply, err
+		}
+		if supportsRooms(s.Host) {
+			err := s.Store.WithPartition(m.AgentID, m.AudienceID).ResetRoom(ctx, m.Binding)
+			return true, "已开始新对话，正在执行的消息仍会分别回复。", err
 		}
 		if !s.projectsConfigured() {
 			_, err := s.session(ctx, m.Binding, true)
@@ -240,6 +254,14 @@ func (s *Service) resolveProjects(ctx context.Context, ids []string, primary str
 
 func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state.Run, string, error) {
 	if !s.projectsConfigured() {
+		if rooms, ok := s.Host.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
+			session, err := rooms.RoomChannelSession(ctx, m.ID)
+			if err != nil {
+				return state.Run{}, "", err
+			}
+			run, err := s.Host.RunChannel(ctx, session, m.Text, m.ID)
+			return run, "", err
+		}
 		session, notice, err := s.sessionWithHost(ctx, s.Host, m.Binding, false)
 		if err != nil {
 			return state.Run{}, "", err
@@ -268,6 +290,18 @@ func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state
 }
 
 func (s *Service) runResolved(ctx context.Context, m state.ChannelMessage, h Host, runtime assembly.Runtime) (state.Run, string, error) {
+	if rooms, ok := h.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
+		binding := Key("room-execution-v1", m.Binding, m.ID, runtime.Fingerprint)
+		if err := s.Store.ResolveChannelProjects(ctx, m.ID, binding, runtime.ProjectID, runtime.Workspace, runtime.Scope, runtime.Fingerprint, runtime.Projects, runtime.AdditionalDirectories); err != nil {
+			return state.Run{}, "", err
+		}
+		session, err := rooms.RoomChannelSession(ctx, m.ID)
+		if err != nil {
+			return state.Run{}, "", err
+		}
+		run, err := h.RunChannel(ctx, session, m.Text, m.ID)
+		return run, "", err
+	}
 	session, notice, err := s.routedSession(ctx, m, h, runtime, false)
 	if err != nil {
 		return state.Run{ProjectID: runtime.ProjectID, ProjectName: runtime.ProjectName, Workspace: runtime.Workspace, Projects: runtime.Projects, AdditionalDirectories: runtime.AdditionalDirectories}, "", err

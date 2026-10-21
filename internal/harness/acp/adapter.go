@@ -24,6 +24,8 @@ type Adapter struct {
 	native string
 }
 
+func (a *Adapter) SupportsFork() bool { return true }
+
 func New(config Config, native string) *Adapter { return &Adapter{config: config, native: native} }
 func (a *Adapter) Identity() harness.Identity {
 	return harness.Identity{Agent: "local-claude-acp", Component: "harness.acp", Transport: "acp", Engine: a.config.Engine, Version: a.config.AdapterVersion}
@@ -137,6 +139,21 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 		return result, err
 	}
 	var previous sessionBinding
+	if req.ForkFromNativeSessionID != "" {
+		if req.Resume || req.ForkFromNativeSessionID == req.NativeSessionID {
+			return result, errors.New("fork requires a distinct new session")
+		}
+		parent := req
+		parent.NativeSessionID = req.ForkFromNativeSessionID
+		parentPath, _, e := a.binding(parent)
+		if e != nil {
+			return result, e
+		}
+		previous, err = loadBinding(parentPath, identity)
+		if err != nil {
+			return result, fmt.Errorf("load fork parent: %w", err)
+		}
+	}
 	if req.Resume {
 		previous, err = loadBinding(path, identity)
 		if err != nil {
@@ -273,7 +290,22 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 		params["additionalDirectories"] = req.AdditionalDirectories
 	}
 	method := "session/new"
-	if req.Resume {
+	if req.ForkFromNativeSessionID != "" {
+		if initialized.Capabilities.Sessions["fork"] == nil {
+			return result, errors.New("ACP agent does not support native session fork")
+		}
+		var forked struct {
+			ID string `json:"sessionId"`
+		}
+		if err = conn.call(setupCtx, "session/fork", map[string]any{"sessionId": previous.Session, "cwd": req.Workspace}, &forked); err != nil {
+			return result, fmt.Errorf("fork completed native session: %w", err)
+		}
+		if forked.ID == "" || forked.ID == previous.Session || len(forked.ID) > 512 || strings.ContainsAny(forked.ID, "\x00\r\n") {
+			return result, errors.New("ACP fork did not return a distinct valid native session")
+		}
+		previous.Session = forked.ID
+	}
+	if req.Resume || req.ForkFromNativeSessionID != "" {
 		params["sessionId"] = previous.Session
 		if initialized.Capabilities.Sessions["resume"] != nil {
 			method = "session/resume"
@@ -298,7 +330,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	if json.Unmarshal(sessionRaw, &session) != nil {
 		return result, errors.New("invalid ACP session setup")
 	}
-	if req.Resume {
+	if req.Resume || req.ForkFromNativeSessionID != "" {
 		session.ID = previous.Session
 	}
 	if session.ID == "" || len(session.ID) > 512 || strings.ContainsAny(session.ID, "\x00\r\n") {

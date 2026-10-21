@@ -115,6 +115,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	room, requestID, receivedAt                                                        string
 	renewRuntime                                                                       bool
 	feedbackOtherUsersOnly                                                             bool
 	renewedFrom                                                                        string
@@ -229,6 +230,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", "", "Third-party Jev gateway URL for custom")
 	fs.StringVar(&o.jevModel, "jev-model", "", "Jev model")
 	fs.StringVar(&o.resume, "resume", "", "Host session ID")
+	fs.StringVar(&o.receivedAt, "received-at", "", "Room message intake timestamp (RFC3339)")
+	fs.StringVar(&o.room, "room", "", "Explicit local chat room ID (one-shot messages only)")
+	fs.StringVar(&o.requestID, "request-id", "", "Unique message ID within --room")
 	fs.BoolVar(&o.renewRuntime, "renew-runtime", false, "Allow a fresh session before dispatch when the selected runtime changes")
 	fs.StringVar(&o.message, "m", "", "One-shot input")
 	fs.StringVar(&o.message, "message", "", "One-shot input")
@@ -508,6 +512,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		expires = &t
 	}
 	var client *jev.Client
+	if o.room != "" || o.requestID != "" {
+		if command != "chat" || !o.oneShot || o.room == "" || o.requestID == "" || o.resume != "" || len(o.room) > 200 || len(o.requestID) > 200 {
+			return errors.New("room messages require chat -m, --room and --request-id, without --resume")
+		}
+	}
 	if command != "memory reject" && command != "memory invalidate" && command != "memory restore" {
 		client, err = newJevClient(o.provider, o.jevEndpoint, o.jevModel)
 		if err != nil {
@@ -611,7 +620,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		return err
 	}
 	var s state.Session
-	if o.resume != "" && (!o.oneShot || o.renewRuntime) {
+	if o.room != "" {
+		s = state.Session{Scope: o.scope, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint}
+	} else if o.resume != "" && (!o.oneShot || o.renewRuntime) {
 		// Interactive input is not known yet. Inspect the owned session now;
 		// compare its exact runtime after reading the first task, before dispatch.
 		s, err = store.Session(ctx, o.resume)
@@ -627,7 +638,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if err != nil {
 		return err
 	}
-	if o.format == "text" {
+	if o.format == "text" && s.ID != "" {
 		if _, err := fmt.Fprintf(out, "Session %s\nWorkspace %s\nAgent local-claude · Claude %s · Jev %s/%s\n", s.ID, s.WorkingDirectory(), o.model, client.Provider(), client.Model()); err != nil {
 			return err
 		}
@@ -646,6 +657,27 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		h = composeHost(store, o, client, renderer.Render)
 		h.Config.PreviousSessionID = o.renewedFrom
+		if o.room != "" {
+			turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
+			defer cancel()
+			var received time.Time
+			if o.receivedAt != "" {
+				var e error
+				received, e = time.Parse(time.RFC3339Nano, o.receivedAt)
+				if e != nil {
+					return e
+				}
+			}
+			roomSession, err := h.RoomSession(turnCtx, state.RoomInput{ReceivedAt: received, Key: "web-cli:" + o.room, RequestID: o.requestID, SenderID: "local-owner", SenderName: "Local owner", Text: input})
+			if err != nil {
+				return err
+			}
+			if err = leaseSession(roomSession.ID); err != nil {
+				return err
+			}
+			_, err = h.Run(turnCtx, roomSession, input)
+			return err
+		}
 		if previous != o.runtimeFingerprint {
 			var err error
 			s, err = h.Session(ctx, "")

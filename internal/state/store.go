@@ -289,6 +289,11 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 					return err
 				}
 			}
+			if version < 16 {
+				if _, err := tx.Exec(schemaRoomsV16); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.Exec(schemaApprovals); err != nil {
 				return err
 			}
@@ -324,6 +329,12 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if err := s.assignPartition(&session.AgentID, &session.AudienceID); err != nil {
 		return err
 	}
+	return insertSession(ctx, s.db, session)
+}
+
+func insertSession(ctx context.Context, db interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, session Session) error {
 	if session.ID == "" || session.Scope == "" || session.NativeSessionID == "" {
 		return errors.New("session ID, scope and native session ID are required")
 	}
@@ -334,7 +345,7 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, "INSERT INTO sessions(id,payload) VALUES(?,?)", session.ID, payload)
+	_, err = db.ExecContext(ctx, "INSERT INTO sessions(id,payload) VALUES(?,?)", session.ID, payload)
 	return wrap("create session", err)
 }
 
@@ -381,6 +392,9 @@ func createRun(ctx context.Context, tx *sql.Tx, run Run) error {
 	}
 	if run.CreatedAt.IsZero() {
 		run.CreatedAt = time.Now().UTC()
+	}
+	if err := linkRoomRun(ctx, tx, session, &run); err != nil {
+		return err
 	}
 	run.ExecutionStatus = "running"
 	run.MemoryStatus = "pending_execution"
@@ -587,6 +601,8 @@ func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, erro
 			return errors.New("run is already terminal; replay is forbidden")
 		}
 		run.ExecutionStatus = status
+		now := time.Now().UTC()
+		run.CompletedAt = &now
 		run.Output = output
 		run.Model = model
 		run.Error = errorText

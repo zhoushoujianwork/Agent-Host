@@ -378,6 +378,26 @@ func (h meetingScopedHost) Session(ctx context.Context, id string) (state.Sessio
 	return h.host.Session(ctx, id)
 }
 
+func (h meetingScopedHost) RoomConcurrencyEnabled() bool {
+	rooms, ok := h.host.(interface{ RoomConcurrencyEnabled() bool })
+	return ok && rooms.RoomConcurrencyEnabled()
+}
+
+func (h meetingScopedHost) RoomChannelSession(ctx context.Context, receipt string) (state.Session, error) {
+	ctx, cancel := meetingContext(ctx, h.meeting)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return state.Session{}, err
+	}
+	rooms, ok := h.host.(interface {
+		RoomChannelSession(context.Context, string) (state.Session, error)
+	})
+	if !ok {
+		return state.Session{}, errors.New("meeting host does not support room execution")
+	}
+	return rooms.RoomChannelSession(ctx, receipt)
+}
+
 func (h meetingScopedHost) RunChannel(ctx context.Context, session state.Session, input, receipt string) (state.Run, error) {
 	ctx, cancel := meetingContext(ctx, h.meeting)
 	defer cancel()

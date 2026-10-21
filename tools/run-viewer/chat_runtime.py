@@ -1,10 +1,11 @@
-"""Bridge one owner-local Web conversation to the configured Host CLI.
+"""Bridge concurrent owner-local room messages to the configured Host CLI.
 
 Host owns execution, native sessions and durable evidence. This bridge only
 launches the validated command, projects its public events and requests cancel.
 """
 
 from collections import deque
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -12,12 +13,13 @@ import re
 from pathlib import Path
 import signal
 import subprocess
+import tempfile
 import sys
 import threading
 import time
 import uuid
 
-from settings_store import private_bytes
+from settings_store import private_bytes, atomic_write
 
 ROOT = Path(__file__).resolve().parents[2]
 PROVIDER_KEYS = {"TYPESAFE_API_KEY", "JEV_API_KEY", "ANTHROPIC_BASE_URL",
@@ -164,8 +166,10 @@ class AgentChatRuntime:
         if key not in self.contexts:
             if len(self.contexts) >= 128:
                 raise ChatConflict("此页面已保留 128 个智能体会话，请重新启动页面服务后继续。")
-            self.contexts[key] = ChatRuntime(self.config, lambda path: self.launcher(path, agent_id))
+            room_file = Path(destination["state_home"]) / "web-chat/rooms" / (hashlib.sha256(json.dumps(key).encode()).hexdigest() + ".json")
+            self.contexts[key] = ChatRuntime(self.config, lambda path: self.launcher(path, agent_id), room_file)
         self.selected_agent, self.current = agent_id, self.contexts[key]
+        self.current.state_home = Path(destination["state_home"]).resolve()
 
     def snapshot(self):
         with self.lock:
@@ -217,30 +221,76 @@ class AgentChatRuntime:
 
 
 class ChatRuntime:
-    def __init__(self, config, launcher=configured_launch):
+    def __init__(self, config, launcher=configured_launch, room_file=None):
         self.config = Path(config) if config else None
         self.launcher = launcher
         self.lock = threading.RLock()
         self.turns = []
-        self.active = None
-        self.child = None
-        self.worker = None
+        self.children = {}
+        self.workers = {}
+        self.room_file = room_file
+        self.room_id = uuid.uuid4().hex
+        saved = {}
+        if room_file:
+            room_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(prefix=".room-", dir=room_file.parent)
+            try:
+                with os.fdopen(fd, "w") as stream:
+                    json.dump({"room_id": self.room_id}, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                try:
+                    os.link(temporary, room_file)
+                except FileExistsError:
+                    saved = json.loads(private_bytes(room_file, max_bytes=4 << 20))
+                    self.room_id = saved["room_id"]
+                    if not isinstance(self.room_id, str) or not re.fullmatch(r"[0-9a-f]{32}", self.room_id):
+                        raise ValueError("Web Chat 房间记录无效。")
+            finally:
+                os.unlink(temporary)
         self.session = None
-        self.identity = None
+        self.identity = saved.get("identity")
         self.needs_new = False
         self.closed = False
         self.state_home = None
         self.native_indexes = {}
         self.native_messages = {}
+        receipts = saved.get("turns", [])
+        if not isinstance(receipts, list) or len(receipts) > 20:
+            raise ValueError("Web Chat 消息收据无效。")
+        for receipt in receipts:
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("input"), str) or len(receipt["input"].encode()) > 16 * 1024 or receipt.get("room_id") != self.room_id or receipt.get("sender_id") != "local-owner" or not isinstance(receipt.get("request_id"), str) or not 0 < len(receipt["request_id"]) <= 64:
+                raise ValueError("Web Chat 消息收据无效。")
+            if receipt.get("status") in ("starting", "running", "stopping"):
+                receipt.update(status="unknown", error="页面服务重启，此条执行结果尚未确认。请查看执行记录；不会自动重试。")
+            receipt["output"] = []
+            self.turns.append(receipt)
+
+    def _persist(self):
+        if self.room_file:
+            fields = ("id", "request_id", "input", "room_id", "sender_id", "status", "run_id", "session_id", "exit_code", "started_at", "elapsed_ms", "error", "error_code", "model", "transport", "engine")
+            receipts = []
+            for turn in self.turns:
+                receipt = {key: turn[key] for key in fields if key in turn}
+                receipt["text"] = turn["text"][:8000]
+                receipt["output_truncated"] = bool(turn["output"] or len(turn["text"]) > 8000)
+                receipts.append(receipt)
+            atomic_write(self.room_file, json.dumps({"room_id": self.room_id, "identity": self.identity, "turns": receipts}, ensure_ascii=False).encode())
+
+    @property
+    def active(self):
+        return next((t["id"] for t in self.turns if t["status"] in ("starting", "running", "stopping")), None)
 
     def snapshot(self):
         with self.lock:
             snapshot = json.loads(json.dumps({"enabled": self.config is not None,
                 "notice": "" if self.config else "尚未配置 Chat 执行环境，请配置此 Host 的 CLI 连接。",
-                "active_id": self.active, "needs_new": self.needs_new, "turns": self.turns}))
+                "room_id": self.room_id, "active_id": self.active,
+                "active_ids": [t["id"] for t in self.turns if t["status"] in ("starting", "running", "stopping")],
+                "max_concurrent": 4, "needs_new": False, "turns": self.turns}))
             for turn in snapshot["turns"]:
                 started = turn.pop("started_at", None)
-                if turn["id"] == self.active and started:
+                if turn["status"] in ("starting", "running", "stopping") and started:
                     turn["elapsed_ms"] = max(0, int((time.time() - started) * 1000))
             return snapshot
 
@@ -257,10 +307,8 @@ class ChatRuntime:
                 return previous["id"]
             if self.closed or not self.config:
                 raise ChatConflict("Chat 执行环境尚不可用。")
-            if self.active:
-                raise ChatConflict("已有任务正在执行，请等待或中止。")
-            if self.needs_new:
-                raise ChatConflict("上一轮未正常结束，请先开启新对话；不会自动重试。")
+            if sum(t["status"] in ("starting", "running", "stopping") for t in self.turns) >= 4:
+                raise ChatConflict("此房间已有 4 条消息正在执行，请稍后发送。")
             if len(self.turns) >= 20:
                 raise ChatConflict("此对话已达 20 轮，请开启新对话。")
             turn = {"id": uuid.uuid4().hex, "request_id": request_id, "input": message,
@@ -268,9 +316,16 @@ class ChatRuntime:
                     "run_id": "", "session_id": "", "exit_code": None,
                     "started_at": time.time()}
             self.turns.append(turn)
-            self.active = turn["id"]
-            self.worker = threading.Thread(target=self._run, args=(turn,), daemon=True)
-            self.worker.start()
+            turn["room_id"] = self.room_id
+            turn["sender_id"] = "local-owner"
+            try:
+                self._persist()
+            except (OSError, ValueError):
+                self.turns.pop()
+                raise
+            worker = threading.Thread(target=self._run, args=(turn,), daemon=True)
+            self.workers[turn["id"]] = worker
+            worker.start()
             return turn["id"]
 
     def reset(self):
@@ -278,7 +333,9 @@ class ChatRuntime:
             if self.active:
                 raise ChatConflict("请先中止当前执行，再开启新对话。")
             self.turns = []
+            self.room_id = uuid.uuid4().hex
             self.session = self.identity = None
+            self._persist()
             self.native_indexes = {}
             self.native_messages = {}
             self.needs_new = False
@@ -288,16 +345,19 @@ class ChatRuntime:
             turn = next((t for t in self.turns if t["id"] == turn_id), None)
             if turn is None:
                 raise KeyError("execution not found")
-            if self.active != turn_id or turn["status"] == "stopping":
+            if turn["status"] not in ("starting", "running"):
                 return
-            if self.child and self.child.poll() is not None:
+            child = self.children.get(turn_id)
+            if turn["status"] == "stopping":
+                return
+            if child and child.poll() is not None:
                 return
             turn["status"] = "stopping"
-            if self.child and self.child.poll() is None:
+            if child and child.poll() is None:
                 # Host's signal context cancels its native process group and
                 # persists the interrupted outcome before exiting.
                 try:
-                    self.child.send_signal(signal.SIGTERM)
+                    child.send_signal(signal.SIGTERM)
                 except ProcessLookupError:
                     pass
 
@@ -388,6 +448,7 @@ class ChatRuntime:
             if kind == "run.started":
                 turn["run_id"] = str(event.get("run_id", ""))
                 turn["session_id"] = str(event.get("session_id", ""))
+                self._persist()
             if kind == "agent.dispatched":
                 execution = (event.get("data") or {}).get("execution") or {}
                 if isinstance(execution, dict):
@@ -469,16 +530,15 @@ class ChatRuntime:
             with self.lock:
                 if turn["status"] == "stopping":
                     return
-                if self.session and self.identity != identity:
+                if self.identity and self.identity != identity:
                     raise ValueError("执行配置已变化，请开启新对话。")
-                if self.session:
-                    command = [*command, "--resume", self.session]
-                command = [*command, "--format", "json", "-m", turn["input"]]
+                command = [*command, "--room", turn["room_id"], "--request-id", turn["request_id"], "--received-at", datetime.fromtimestamp(turn["started_at"], timezone.utc).isoformat(),
+                           "--format", "json", "-m", turn["input"]]
                 child = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
                 reader = threading.Thread(target=drain_errors, args=(child.stderr,), daemon=True)
                 reader.start()
-                self.child = child
+                self.children[turn["id"]] = child
                 turn["status"] = "running"
                 self.identity = identity
                 self.state_home = Path(command[command.index("--home") + 1]).resolve() if "--home" in command else None
@@ -535,16 +595,19 @@ class ChatRuntime:
                 turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" else "")
                 if turn["status"] == "completed":
                     self.session = turn["session_id"] or None
-                else:
-                    self.needs_new = not busy
-                self.child = None
-                self.active = None
+                self.children.pop(turn["id"], None)
+                self.workers.pop(turn["id"], None)
+                try:
+                    self._persist()
+                except (OSError, ValueError):
+                    turn["error"] += " 页面收据保存失败，请保留执行记录编号。"
 
     def close(self):
         with self.lock:
             self.closed = True
-            if self.active:
-                self.stop(self.active)
-            worker = self.worker
-        if worker:
+            for turn in self.turns:
+                if turn["status"] in ("starting", "running"):
+                    self.stop(turn["id"])
+            workers = list(self.workers.values())
+        for worker in workers:
             worker.join()

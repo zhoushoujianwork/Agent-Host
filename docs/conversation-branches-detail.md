@@ -1,124 +1,113 @@
 # Room conversation concurrency details
 
-[User-facing proposal and scope](conversation-branches.md).
+[User-facing design and delivered scope](conversation-branches.md).
 
-## Deterministic identity
+## Identity and persistence
 
-The room entry is the conversation-routing authority. For IM, derive room identity
-from authenticated channel, account/tenant and platform conversation ID. For Web,
-use an explicit persisted Chat/room ID; refresh and tabs opening that room reuse
-it. A user-created new Chat creates a new room. Agent bindings and authorization
-remain explicit; topics, message meaning and claimed names cannot change them.
+IM derives its room from the existing authenticated channel/account/tenant/
+conversation binding and Agent/audience partition. Group bindings exclude the
+individual sender; private/group endpoints stay separate. Explicit forwarded-card
+isolation remains in its existing binding. Project selection and authorization
+remain unchanged; message topics never create task branches.
 
-User identity attributes messages; it does not split a group into per-user private
-conversations. Different rooms stay separate even with the same person or Agent.
-Private-chat room identity comes from the verified platform endpoint.
+Web persists a random room ID per configured CLI catalog/home/Agent beneath
+`HOME/web-chat/rooms/`. Multiple tabs of that viewer use the same room. New Chat
+atomically replaces that room and clears its projection. CLI also accepts
+`chat --room ID --request-id ID -m MESSAGE`; this local owner entry cannot accept
+an arbitrary remote sender identity. `--resume` remains the explicit linear API
+and cannot mutate a sealed room execution.
 
-| Identity | Source and purpose |
-| --- | --- |
-| Room | Verified entry; shared history, authorized audience and reply destination. |
-| Sender | Verified user ID; attribution and existing permission checks. |
-| Message/request | Original platform message or Web request ID; deduplication and reply correlation. |
-| Run/native session | Execution evidence and engine continuity; internal identities. |
+Schema 16 adds `rooms` (reset epoch) and `room_messages` (unique room/request,
+unique execution session, optional run link). Old sessions/runs remain unchanged.
+A short immediate transaction selects the checkpoint and stores `Session.Room`:
+authenticated actor/message, receive time, fixed history, parent and inherited IDs.
+Run creation atomically links the receipt once; duplicates cannot launch another
+native turn. Channel run creation validates the room against the durable provider
+receipt, then derives `Run.Source` from that receipt.
 
-Do not introduce inferred task IDs, topic classifiers, task titles or task
-selection controls. A model may interpret a request's business meaning; that
-meaning does not become a Host routing key.
+The Web bridge persists the accepted request before returning its ACK, records
+Host run/session IDs when observed, and saves a bounded final reply. After viewer
+restart, unfinished projections become unknown and are never automatically
+replayed. Existing execution records retain full output. The bridge does not
+claim ownership of a surviving CLI child after a restart.
 
-## Intake and later messages
+## Checkpoints and context
 
-Persist the room, authenticated sender, original request ID and history snapshot
-before acknowledging intake. Duplicate delivery/retries find that receipt rather
-than creating another execution. Route all messages by their entry room, applying
-bounded execution capacity without inferring whether they belong to one task.
-Different senders and the same sender may have overlapping requests.
+Every room execution gets a fresh Host/native binding. The newest compatible
+completed receipt in intake order is eligible as a parent, independent of finish
+order. Parent sessions never receive another prompt. ACP resolves its opaque
+native ID from the private binding, verifies identical runtime/capability identity,
+calls `session/fork`, then resumes/loads the returned child before prompting.
+It saves a distinct child binding and refuses uncertain existing destinations.
+The print adapter supplies explicit parent resume, fork and child session flags.
+Unsupported ACP fork/reconnect capability fails explicitly; no engine fallback.
 
-Capture fixed available room context at intake: attributed messages, recorded
-replies and explicit in-progress status. A result arriving later does not mutate
-an already running prompt. Later intake can see it through the room history.
+New rooms with no completed checkpoint start empty sessions concurrently; there
+is no artificial seed prompt or business-tool replay. Failed, canceled, running
+and unknown executions cannot be checkpoint sources. Native completion timestamps
+prevent a queued input from inheriting results completed after its receive time.
 
-An explicit quote/reply is a source reference inside the room, not a switch to
-a persistent task conversation. Plain follow-ups also stay in that room. Do not
-route by someone's latest task, semantic similarity or model-generated labels.
-The model may ask for missing business information in ordinary conversation.
+A snapshot contains at most 20 prior receipts in the same room and exact
+Agent/audience/project/runtime authority. Requests/replies are bounded to
+4,000/8,000 characters with explicit truncation flags. Public replies and request
+status remain linked to original IDs. Entries already present unchanged in the
+parent history are marked inherited and omitted from the new native prompt;
+changed status and sibling replies are supplied with speaker labels. This is
+context assembly, not a native transcript merge. Existing history tools remain
+available within their existing authorization.
 
-A later message does not implicitly cancel or rewrite another active execution.
-Stop targets the actual run/message selected by the user, leaving peers active.
-Cancellation does not imply rollback of effects.
+Current actor metadata also appears in trusted per-turn instructions; the durable
+prompt envelope preserves speaker labels across future forks. DingTalk uses the
+authenticated callback's `senderNick` when available. Feishu keeps its verified
+sender ID when no verified display name is supplied. Claimed names in text cannot
+replace platform identity. Quote authors and current senders remain distinct.
 
-## Native sessions and shared history
+## Scheduling, cancellation and database locks
 
-Sequential requests may resume a compatible idle native session. Overlapping
-requests fork a verified completed checkpoint and get distinct native session IDs.
-Keep existing leases through execution and memory processing. Fork setup may need
-brief checkpoint coordination; never hold a room-wide lock across model calls.
+Fork-capable channel Hosts claim up to the existing configured capacity, keyed
+by receipt ID rather than room. A slow model or reply does not block the same
+room's next message. Legacy test/custom runners without fork capability retain
+linear scheduling. Feishu meeting wrappers preserve both capability and lifetime
+cancellation. Provider reply targets remain unchanged: group attribution/quotes
+for DingTalk, original-message reply IDs for Feishu IM.
 
-The authoritative room record contains attributed incoming messages and public
-replies linked to their source requests. Preserve receipt order and source times
-when replies finish out of order. The last child to finish must not overwrite
-the room's canonical history.
+Web owns a child process and worker per message. The composer stays sendable
+until the four-message capacity is full; per-message Stop signals only that CLI.
+Shutdown joins every owned child. A canceled/failed sibling does not require
+resetting the room or cancel peers. No execution is automatically retried.
 
-A fork inherits only its selected native history, not sibling replies. Track the
-room entries included by a checkpoint/context. Supply missing authorized room
-entries as attributed source context on later requests. Do not claim a native
-transcript merge or that the parent executed child tools. Host assembles context;
-the native engine retains its model/tool loop.
+The file-memory index connection attaches the operational database. It now uses
+`_txlock=immediate`, matching the standalone writable connection. Reserving the
+write transaction before reads prevents an independent append-only event writer
+from invalidating a deferred WAL snapshot and causing `SQLITE_BUSY`. Publication
+locks still protect memory receipts; they never span native model execution.
 
-Before enabling overlap, prove immutable completed-point forking while a peer is
-running. Report unsupported capability explicitly; do not read a moving native
-transcript, silently change engines or call a reconstructed prompt a full fork.
-Unknown/interrupted source runs do not become replayable. Fork never repeats
-earlier tools and does not inherit authority from historical text.
+## Upgrade and rollback
 
-## Speaker attribution and delivery
+Stop old writers before installing the schema-16 binary; keep a consistent state
+backup. Migration only adds tables and optional JSON fields. It neither converts
+old native sessions nor replays old requests. Old binaries reject newer schemas:
+rollback requires stopping new writers and restoring the pre-upgrade backup,
+rather than editing `user_version` or deleting lock files. Preserve the newer
+state separately when investigating rollback. Runtime deployment is a separate,
+explicit operation from building/testing the checkout.
 
-Each message envelope contains authenticated room, sender and message IDs,
-available display name and quote source. Preserve labels with every historical
-message supplied to the engine, not only in a replaceable current-turn system
-prompt. Names may be duplicated or absent; identity uses authenticated IDs.
-Use verified platform/directory names or stable neutral labels, without guessing.
+## Verification
 
-The current speaker, quoted author, person mentioned in text and authorized
-result recipient are distinct. “I am Alice” cannot replace authenticated metadata;
-“Alice asked about Bob” remains Alice's statement. Authorization stays in trusted
-Host instructions; messages remain source material. Group context cannot import
-private rooms or owner-only profiles.
+- Deterministic file-memory run-update/event-write competition; repeated independent
+  CLI process overlap, including two processes sending to the same room.
+- Host overlap by same/different senders; shared sealed parent, distinct children,
+  fixed snapshots, late queued input, out-of-order completion, inherited context,
+  duplicate rejection, room reset and private/group isolation.
+- Channel worker overlap and replies linked to original message/sender; Web
+  capacity, peer-safe Stop, durable ACK/restart receipts, room persistence,
+  copy/select text and per-message controls.
+- Real Claude ACP 0.81.2 acceptance: two children forked the same completed parent
+  concurrently, returned different native IDs, preserved Alice/Bob labels and
+  recalled a marker supplied only to the parent.
+- Real Claude print acceptance: explicit fork preserved the parent-only marker
+  and assigned child ID. Opt-in tests use isolated temporary native profiles and
+  inherited provider credentials, never production conversation transcripts.
 
-Return results to the originating room using verified reply targets. Web links
-progress, Stop and answers to the original message; IM uses supported reply/quote
-controls. No task selector is needed. Replies stay visible to the room audience.
-
-## Current evidence and acceptance
-
-Existing CLI home/session locks support independent native sessions, not room
-fork behavior. `invocationInstructions` already includes authenticated `sender_id`
-and `conversation_type`, with group attribution guidance. Real resumed/forked
-speaker-history preservation still requires verification.
-
-The [official Claude CLI reference](https://code.claude.com/docs/en/cli-reference)
-documents `--resume <id> --fork-session`; the Host print adapter does not forward
-fork. The Host ACP adapter currently creates/reconnects sessions without calling
-`session/fork`. Installed `claude-agent-acp` 0.81.2 source advertises fork and calls
-the SDK with optional `upToMessageId`. Its checkpoint metadata is vendor-specific;
-keep the mapping inside the adapter. Verify child resume/load after fork. Source
-support is not a completed live acceptance test.
-
-Earlier checks on 2026-10-21 observed `SQLITE_BUSY` in the independent CLI process
-test and a native startup timeout in the Web workbench test. Stabilize that
-baseline before adding room forks. Parallel sessions also do not isolate files
-or remote resources: coordinate conflicting writes at the affected resource and
-retain existing idempotency, permission and memory-publication controls.
-The room-design revision's `make check` again failed the independent CLI process
-test, this time with `SQLITE_BUSY` while updating a run. No runtime code was
-changed in this revision; the concurrency baseline remains an explicit blocker.
-
-Acceptance covers overlapping messages by two people and by the same person in
-one room, distinct native IDs, fixed context, correct speakers/quotes and linked
-replies. Similar topics in different rooms must stay separate; different topics
-in one room must not create inferred conversations. Later input must see both
-completed replies without completion order overwriting history.
-
-Exercise duplicate delivery, refresh, restart during fork binding, cancellation
-and uncertain outcomes without replay. Existing linear evidence remains readable.
-Rollback disables new fork intake while retaining room records and allowing
-supported in-flight requests to finish; no destructive transcript conversion.
+Live checks can be repeated with `AGH_TEST_ACP_CONFIG`/`AGH_TEST_MODEL` for ACP or
+`AGH_TEST_CLAUDE_FORK`/`AGH_TEST_MODEL` for print. Normal checks skip provider calls.

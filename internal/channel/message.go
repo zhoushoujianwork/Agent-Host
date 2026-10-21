@@ -13,6 +13,7 @@ import (
 // Message is authenticated, explicitly addressed text from a channel adapter.
 // API text adapters grant no media capabilities.
 type Message struct {
+	SenderName       string
 	ReplyToID        string
 	ID               string
 	ConversationID   string
@@ -77,7 +78,7 @@ func (s *Service) ReceiveMessage(ctx context.Context, m Message) error {
 		ReplyToID: m.ReplyToID,
 		ID:        Key(actualChannel, s.ClientID, m.TenantID, m.ConversationID, m.ID),
 		Channel:   actualChannel, AccountID: s.ClientID, TenantID: m.TenantID,
-		MessageID: m.ID, ConversationID: m.ConversationID, SenderID: m.SenderID,
+		MessageID: m.ID, ConversationID: m.ConversationID, SenderName: m.SenderName, SenderID: m.SenderID,
 		Profile: s.Profile, ConversationType: m.ConversationType,
 		AgentID: selection.AgentID, AudienceID: selection.AudienceID,
 		Binding: binding,

@@ -27,7 +27,7 @@ def sensitive(key):
     return not key.endswith(("_file", "_path")) and bool(re.search(r"secret|password|(?:^|_)token$|access_token|refresh_token|auth_token|bearer|api[_-]?key|authorization|^key$", key))
 
 
-def private_bytes(path):
+def private_bytes(path, max_bytes=MAX_BYTES):
     info = path.lstat()
     if path.resolve() != path or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ValueError("Settings require an owner-private regular file without symlinks.")
@@ -35,8 +35,8 @@ def private_bytes(path):
         opened = os.fstat(stream.fileno())
         if not os.path.samestat(info, opened):
             raise Conflict("The settings file changed while opening; refresh first.")
-        data = stream.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
+        data = stream.read(max_bytes + 1)
+    if len(data) > max_bytes:
         raise ValueError("The settings file exceeds the size limit.")
     return data
 
