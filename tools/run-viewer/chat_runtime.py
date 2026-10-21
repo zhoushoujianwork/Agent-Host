@@ -12,6 +12,7 @@ import os
 import re
 from pathlib import Path
 import signal
+import sqlite3
 import subprocess
 import tempfile
 import sys
@@ -255,6 +256,7 @@ class ChatRuntime:
         self.state_home = None
         self.native_indexes = {}
         self.native_messages = {}
+        self._outcome_reads = set()
         receipts = saved.get("turns", [])
         if not isinstance(receipts, list) or len(receipts) > 20:
             raise ValueError("Web Chat 消息收据无效。")
@@ -268,7 +270,7 @@ class ChatRuntime:
 
     def _persist(self):
         if self.room_file:
-            fields = ("id", "request_id", "input", "room_id", "sender_id", "status", "run_id", "session_id", "exit_code", "started_at", "elapsed_ms", "error", "error_code", "model", "transport", "engine")
+            fields = ("id", "request_id", "input", "room_id", "sender_id", "status", "run_id", "session_id", "exit_code", "started_at", "elapsed_ms", "error", "error_code", "model", "transport", "engine", "execution_status", "execution_error", "memory_status", "memory_error", "experience_error")
             receipts = []
             for turn in self.turns:
                 receipt = {key: turn[key] for key in fields if key in turn}
@@ -283,6 +285,7 @@ class ChatRuntime:
 
     def snapshot(self):
         with self.lock:
+            self._restore_outcomes()
             snapshot = json.loads(json.dumps({"enabled": self.config is not None,
                 "notice": "" if self.config else "尚未配置 Chat 执行环境，请配置此 Host 的 CLI 连接。",
                 "room_id": self.room_id, "active_id": self.active,
@@ -293,6 +296,43 @@ class ChatRuntime:
                 if turn["status"] in ("starting", "running", "stopping") and started:
                     turn["elapsed_ms"] = max(0, int((time.time() - started) * 1000))
             return snapshot
+
+    def _restore_outcomes(self):
+        # Older Web receipts only retained the process exit status. Recover the
+        # separate outcomes from this destination's exact recorded run, read-only.
+        pending = [t for t in self.turns if t.get("run_id") and "execution_status" not in t
+                   and t["id"] not in self._outcome_reads and t["status"] in {"completed", "failed", "canceled"}]
+        if not pending or not self.state_home:
+            return
+        database = self.state_home / "state.db"
+        try:
+            conn = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=.2)
+            try:
+                for turn in pending:
+                    row = conn.execute("SELECT payload FROM events WHERE run_id=? "
+                        "AND json_extract(payload,'$.type')='run.finished' ORDER BY seq DESC LIMIT 1",
+                        (turn["run_id"],)).fetchone()
+                    self._outcome_reads.add(turn["id"])
+                    if row:
+                        self._outcome(turn, json.loads(row[0]))
+            finally:
+                conn.close()
+        except (OSError, ValueError, sqlite3.Error):
+            # Missing evidence remains unknown; never infer success from text.
+            pass
+
+    @staticmethod
+    def _outcome(turn, event):
+        if not isinstance(event, dict):
+            return
+        data = event.get("data") or {}
+        if not isinstance(data, dict):
+            return
+        for field in ("execution_status", "memory_status", "memory_error", "experience_error"):
+            if isinstance(data.get(field), str):
+                turn[field] = data[field]
+        if isinstance(data.get("error"), str):
+            turn["execution_error"] = data["error"]
 
     def start(self, request_id, message):
         if not isinstance(request_id, str) or len(request_id) > 64 or not request_id:
@@ -445,6 +485,10 @@ class ChatRuntime:
             kind = event.get("type")
             if kind == "run.finished" and isinstance(event.get("elapsed_ms"), (int, float)):
                 turn["elapsed_ms"] = max(0, event["elapsed_ms"])
+            if kind == "run.finished":
+                self._outcome(turn, event)
+            if kind == "phase.finished" and event.get("phase") == "execute":
+                turn["execution_status"] = event.get("status", "unknown")
             if kind == "run.started":
                 turn["run_id"] = str(event.get("run_id", ""))
                 turn["session_id"] = str(event.get("session_id", ""))
@@ -592,7 +636,7 @@ class ChatRuntime:
                     turn["error_code"] = "session_busy" if session_busy else "state_busy"
                 elif not failure and child and child.returncode and not turn["run_id"]:
                     failure = f"Host 启动失败（退出码 {child.returncode}），尚未生成执行记录。请检查 CLI 配置或服务日志。"
-                turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" else "")
+                turn["error"] = failure or ("执行未正常完成，请查看执行记录或检查模型连接。" if turn["status"] == "failed" and not any(turn.get(k) for k in ("execution_error", "memory_error", "experience_error")) else "")
                 if turn["status"] == "completed":
                     self.session = turn["session_id"] or None
                 self.children.pop(turn["id"], None)

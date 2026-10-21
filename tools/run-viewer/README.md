@@ -10,6 +10,10 @@ the configured CLI destination and displays incremental answers and native Claud
 Status: local execution inspection and owner memory management are implemented.
 Memory actions use the running Host; Chat owns a separate configured CLI process
 and can request its cancellation.
+Chat displays execution and memory processing separately. A successful reply
+remains completed if memory processing fails; the recorded memory error appears
+below its status. Older saved messages recover these outcomes from their exact
+local run receipts when available. See the [receipt details](README-detail.md#chat-outcomes).
 
 Open saved Agent-Host runs as an HTML dashboard. Select a run to see the core
 route, component durations, actual agent/model observations, tool evidence,

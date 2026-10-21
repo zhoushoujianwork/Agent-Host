@@ -83,6 +83,7 @@
         const activity = node("div","chat-work-content"); work.append(summary,activity);
         const output = node("div","chat-native-output");
         const status = node("div","chat-turn-status");
+        const memoryStatus = node("div","chat-turn-status chat-memory-status");
         const error = node("p","chat-turn-error");
         const record = node("a","chat-record","查看执行记录 ↗");
         const userActions = node("div","chat-actions chat-user-actions");
@@ -92,19 +93,20 @@
         answerActions.append(copyAnswer);
         const stop = node("button","chat-copy","中止此条执行"); stop.type = "button";
         stop.onclick = () => stopTurn(turn.id);
-        root.append(user,work,output,status,error,record,userActions,answerActions,stop);
+        root.append(user,work,output,status,memoryStatus,error,record,userActions,answerActions,stop);
         el("chat-messages").append(root);
         work.open = ["starting","running","stopping"].includes(turn.status);
-        item = {root,work,summary,activity,output,status,error,record,answerActions,copyAnswer,stop,blocks:new Map()}; rendered.set(turn.id,item);
+        item = {root,work,summary,activity,output,status,memoryStatus,error,record,answerActions,copyAnswer,stop,blocks:new Map()}; rendered.set(turn.id,item);
       }
-      const rows = turn.output || (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
+      const rows = turn.output?.length ? turn.output : (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
       const active = ["starting","running","stopping"].includes(turn.status);
+      const executionStatus = turn.execution_status || turn.status;
       const calls = rows.filter(row => row.kind === "tool" && row.stage === "call");
       const lastTool = rows.findLastIndex(row => row.kind === "tool");
       const usefulStatus = row => row.kind === "status" && !["init","status","success"].includes(row.label);
       item.work.hidden = !calls.length && !rows.some(usefulStatus);
       const working = calls.findLast(row => row.status === "running");
-      item.summary.textContent = [active ? working ? `正在调用 ${working.name}` : statusNames[turn.status] : turn.status === "completed" ? "处理完成" : statusNames[turn.status],
+      item.summary.textContent = [active ? executionStatus === "completed" ? "正在收尾" : working ? `正在调用 ${working.name}` : statusNames[turn.status] : executionStatus === "completed" && turn.status === "failed" ? "后续处理失败" : turn.status === "completed" ? "处理完成" : statusNames[turn.status],
         Number.isFinite(turn.elapsed_ms) ? duration(turn.elapsed_ms) : "",
         calls.length ? `${turn.output_truncated ? "最近 " : ""}${calls.length} 次工具调用` : ""].filter(Boolean).join(" · ");
       const rowIds = new Set(rows.map(row => row.id));
@@ -154,11 +156,18 @@
       item.stop.disabled = pending || turn.status === "stopping";
       item.root.dataset.status = turn.status;
       const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
-      item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[turn.status] || turn.status}`;
+      item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[executionStatus] || executionStatus}`;
+      item.status.dataset.status = executionStatus;
+      const memoryState = turn.memory_status || (active && executionStatus === "completed" ? "running" : active ? "pending" : "unknown");
+      item.memoryStatus.textContent = `记忆处理 · ${{completed:"已完成",unchanged:"无需更新",failed:"失败",running:"正在处理",pending:"等待执行完成",skipped:"已跳过",canceled:"已中止",unknown:"状态未确认"}[memoryState] || memoryState}`;
+      item.memoryStatus.dataset.status = memoryState;
       const isLatest = state.turns.at(-1)?.id === turn.id;
       if (item.wasLatest && !isLatest) item.work.open = false;
       item.wasLatest = isLatest;
-      item.error.textContent = turn.error || ""; item.error.hidden = !turn.error;
+      const details = [["执行",turn.execution_error],["记忆处理",turn.memory_error],["经验处理",turn.experience_error]]
+        .filter(([,error]) => error).map(([label,error]) => `${label}：${error}`);
+      if (turn.error && (!details.length || turn.error !== "执行未正常完成，请查看执行记录或检查模型连接。")) details.unshift(turn.error);
+      item.error.textContent = details.join("\n"); item.error.hidden = !details.length;
       if (turn.output_truncated && !item.truncation) {
         item.truncation = node("p","chat-native-truncated","仅显示最近的原生输出，完整内容见执行记录。");
         item.root.append(item.truncation);
@@ -168,10 +177,10 @@
     }
     controls();
     const latest = state.turns.at(-1);
-    const signature = latest ? `${latest.id}:${latest.status}` : "";
+    const signature = latest ? `${latest.id}:${latest.status}:${latest.execution_status}:${latest.memory_status}` : "";
     if (signature !== latestStatus) {
       if (latest?.status === "canceled") el("chat-state").textContent = "已中止此条执行，可以继续发送消息。";
-      if (latest?.status === "failed") el("chat-state").textContent = ["state_busy","session_busy"].includes(latest.error_code) ? latest.error : "此条执行失败，可以检查记录后继续发送消息。";
+      if (latest?.status === "failed") el("chat-state").textContent = latest.execution_status === "completed" ? latest.memory_status === "failed" ? "回复已完成，记忆处理失败；具体原因见消息下方。" : "回复已完成，后续处理失败；请查看具体错误。" : ["state_busy","session_busy"].includes(latest.error_code) ? latest.error : "此条执行失败，可以检查记录后继续发送消息。";
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }

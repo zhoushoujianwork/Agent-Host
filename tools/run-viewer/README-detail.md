@@ -168,6 +168,22 @@ eligibility alone.
 
 ## Local HTTP boundary
 
+### Chat outcomes
+
+Chat keeps the process lifecycle (`status`, `exit_code`) separate from
+`execution_status` and `memory_status`. Public `run.finished` receipt data supplies
+these outcomes and their `execution_error`, `memory_error` and `experience_error`;
+raw stderr remains private. Execution phase completion is visible while Host
+finishes memory processing. A memory failure does not label the completed model
+execution as failed. Errors render as literal text, with their processing stage.
+
+The room receipt persists these fields across viewer restarts. Older terminal
+messages without separate outcomes read only the exact `run.finished` event from
+the configured destination's read-only state database. Missing evidence stays
+unknown; answer text alone never proves successful execution. No task is replayed.
+
+### HTTP routes
+
 The server binds to `127.0.0.1` and accepts only matching loopback Host headers.
 Only fixed asset and JSON routes are served. PUT/PATCH/DELETE and unsupported
 POST routes return 405. `POST /api/memory-action` requires a matching Origin,

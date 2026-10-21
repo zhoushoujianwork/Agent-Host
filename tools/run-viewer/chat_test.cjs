@@ -53,7 +53,7 @@ test("overlapping room messages keep send available and stop the selected origin
   h.el("draft").value="third request";await h.poll();
   assert.equal(h.el("send-chat").hidden,false);assert.equal(h.el("send-chat").disabled,false);
   assert.equal(h.el("stop-chat").hidden,true);
-  await h.el("chat-messages").children[1].children[8].onclick();
+  await h.el("chat-messages").children[1].children[9].onclick();
   const stop=h.calls.find(call=>call.url==="/api/chat/stop");
   assert.equal(JSON.parse(stop.body).turn_id,"b");
 });
@@ -94,6 +94,40 @@ test("ACP footer distinguishes observed model from a default configuration alias
   h.snapshot.turns[0].model="observed-native-model";await h.poll();assert.equal(turn.children[3].textContent,"observed-native-model · ACP · 执行完成");
 });
 
+test("reply success and memory failure are separate, with the recorded error shown literally",async()=>{
+  const h=await setup();
+  h.snapshot.turns=[{id:"partial",input:"hi",status:"failed",execution_status:"completed",memory_status:"failed",
+    memory_error:"Jev provider custom returned HTTP 404 (Not Found) <script>bad()</script>",
+    error:"执行未正常完成，请查看执行记录或检查模型连接。",model:"Claude",text:"Hello",output:[]}];
+  await h.poll();
+  const turn=h.el("chat-messages").children[0];
+  assert.equal(turn.children[3].textContent,"Claude · 执行完成");
+  assert.equal(turn.children[2].hidden,false);
+  assert.equal(turn.children[8].hidden,false);
+  assert.equal(turn.children[3].dataset.status,"completed");
+  assert.equal(turn.children[4].textContent,"记忆处理 · 失败");
+  assert.equal(turn.children[4].dataset.status,"failed");
+  assert.match(turn.children[5].textContent,/记忆处理：Jev.*HTTP 404.*<script>/);
+  assert.equal(turn.children[5].children.length,0);
+  assert.doesNotMatch(turn.children[5].textContent,/执行未正常完成/);
+  assert.match(h.el("chat-state").textContent,/回复已完成，记忆处理失败/);
+  h.snapshot.turns[0].status="running";h.snapshot.turns[0].memory_status=undefined;h.snapshot.turns[0].memory_error="";h.snapshot.turns[0].error="";
+  await h.poll();
+  assert.equal(turn.children[3].textContent,"Claude · 执行完成");
+  assert.equal(turn.children[4].textContent,"记忆处理 · 正在处理");
+});
+
+test("execution failures remain failures and absent memory evidence stays unknown",async()=>{
+  const h=await setup();
+  h.snapshot.turns=[{id:"failed",input:"hi",status:"failed",execution_status:"failed",memory_status:"skipped",execution_error:"Model request timed out",output:[]}];
+  await h.poll();const turn=h.el("chat-messages").children[0];
+  assert.match(turn.children[3].textContent,/执行失败/);
+  assert.equal(turn.children[4].textContent,"记忆处理 · 已跳过");
+  assert.equal(turn.children[5].textContent,"执行：Model request timed out");
+  h.snapshot.turns[0].memory_status=undefined;await h.poll();
+  assert.equal(turn.children[4].textContent,"记忆处理 · 状态未确认");
+});
+
 test("Agent picker keeps drafts separate and cannot switch during execution",async()=>{
   const h=await setup();h.snapshot.agents=[{id:"a",name:"A"},{id:"b",name:"B"}];h.snapshot.selected_agent="a";await h.poll();
   assert.equal(h.el("chat-agent").disabled,false);
@@ -126,14 +160,14 @@ test("message, reply and code copy preserve source and report clipboard denial",
   const h=await setup();
   h.snapshot.turns=[{id:"copy",input:"original prompt",status:"completed",output:[{id:"1",kind:"text",content:"**Answer**\n\n```js\nconst value = 1;\n```"}]}];
   await h.poll();const turn=h.el("chat-messages").children[0];
-  await turn.children[6].children[0].onclick();
   await turn.children[7].children[0].onclick();
+  await turn.children[8].children[0].onclick();
   const pre=turn.children[2].children[0].children[1].children[1];
   await pre.children[1].onclick();
   assert.equal(h.copied[0],"original prompt");
   assert.equal(h.copied[1],h.snapshot.turns[0].output[0].content);
   assert.equal(h.copied[2].trim(),"const value = 1;");
-  h.denyClipboard();await turn.children[6].children[0].onclick();
+  h.denyClipboard();await turn.children[7].children[0].onclick();
   assert.match(h.el("chat-state").textContent,/Ctrl\/Cmd\+C/);
 });
 

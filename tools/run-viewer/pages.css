@@ -318,8 +318,10 @@ body[data-page] .topbar,body[data-page] .page-top { background: var(--surface); 
 .chat-work-content { margin-top: 12px; padding-left: 12px; border-left: 1px solid var(--line); }
 .chat-work-content .chat-answer { color: var(--muted); font-size: 13px; }
 .chat-turn-status { color: var(--muted); font-size: 10px; margin-top: 12px; display: flex; align-items: center; gap: 7px; }
-.chat-turn[data-status="running"] .chat-turn-status::before,.chat-turn[data-status="starting"] .chat-turn-status::before { content: ""; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: chat-pulse 1.3s ease-in-out infinite; }
-.chat-turn[data-status="failed"] .chat-turn-status,.chat-turn-error { color: var(--danger); }
+.chat-turn-status:is([data-status="running"],[data-status="starting"])::before { content: ""; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: chat-pulse 1.3s ease-in-out infinite; }
+.chat-turn-status[data-status="failed"],.chat-turn-error { color: var(--danger); }
+.chat-turn-error { white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-memory-status { margin-top: 6px; }
 [data-page="workspace"] .chat-body .chat-turn-error { color: var(--danger); font-size: 11px; margin-top: 8px; }
 .chat-record { display: inline-block; margin-top: 10px; font-size: 10px; color: var(--accent); }
 .chat-native-row { margin: 0 0 16px; min-width: 0; }

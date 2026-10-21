@@ -1,6 +1,7 @@
 """Exercise live event projection, process cancellation and owner HTTP boundaries."""
 import json
 import os
+import sqlite3
 from pathlib import Path
 import subprocess
 import sys
@@ -43,11 +44,49 @@ else: time.sleep(.3)
 emit('text.delta',delta='answer')
 emit('text.delta',agent='memory-extractor',delta='not the answer')
 emit('tool.activity',data={'tool':{'name':'Read','stage':'result'}})
+if message == 'memory-fail':
+ emit('phase.finished',phase='execute',status='completed')
+ emit('run.finished',phase='receipt',status='failed',data={'execution_status':'completed','error':'','memory_status':'failed','memory_error':'Jev provider custom returned HTTP 404 (Not Found)'})
+ sys.exit(1)
 emit('run.finished',status='completed')
 '''
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_successful_reply_with_failed_memory_retains_separate_durable_outcomes(self):
+        room_file = self.root / "room.json"
+        runtime = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        self.runtime.close()
+        self.runtime = runtime
+        runtime.start("memory-failure", "memory-fail")
+        turn = self.wait_for(lambda s: s["active_id"] is None)["turns"][0]
+        self.assertEqual(turn["status"], "failed")
+        self.assertEqual(turn["exit_code"], 1)
+        self.assertEqual(turn["execution_status"], "completed")
+        self.assertEqual(turn["memory_status"], "failed")
+        self.assertIn("HTTP 404", turn["memory_error"])
+        self.assertEqual(turn["text"], "First answer")
+        self.assertEqual(turn["error"], "")
+        restored = ChatRuntime(self.root / "config.json", self.launch, room_file)
+        self.addCleanup(restored.close)
+        saved = restored.snapshot()["turns"][0]
+        for field in ("execution_status", "memory_status", "memory_error", "execution_error"):
+            self.assertEqual(saved[field], turn[field])
+        self.assertFalse(restored.workers)
+
+    def test_old_receipt_recovers_only_its_own_recorded_outcomes(self):
+        self.runtime.state_home = self.root
+        self.runtime.turns = [{"id": "old", "run_id": "recorded", "status": "failed"},
+                              {"id": "missing", "run_id": "missing", "status": "failed"}]
+        event = {"type": "run.finished", "data": {"execution_status": "completed", "memory_status": "failed", "memory_error": "Recorded 404"}}
+        with sqlite3.connect(self.root / "state.db") as conn:
+            conn.execute("CREATE TABLE events(run_id TEXT, seq INTEGER, payload TEXT)")
+            conn.execute("INSERT INTO events VALUES(?,?,?)", ("recorded", 1, json.dumps(event)))
+        turns = self.runtime.snapshot()["turns"]
+        self.assertEqual(turns[0]["execution_status"], "completed")
+        self.assertEqual(turns[0]["memory_error"], "Recorded 404")
+        self.assertNotIn("execution_status", turns[1])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
