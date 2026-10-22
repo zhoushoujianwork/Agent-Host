@@ -88,6 +88,68 @@ func TestManagedServiceIdentityRequiresExecutableOwnerAndExactRoot(t *testing.T)
 	}
 }
 
+func TestCheckoutRestartRecognizesOnlySelectedDeployedBinary(t *testing.T) {
+	base := t.TempDir()
+	if err := os.Chmod(base, 0700); err != nil {
+		t.Fatal(err)
+	}
+	directory, root := filepath.Join(base, "config"), filepath.Join(base, "channels", "dingtalk")
+	for _, path := range []string{directory, filepath.Join(base, "bin")} {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	binary := filepath.Join(base, "bin", "agent-host")
+	if err := os.WriteFile(binary, []byte("fixture"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Resolve macOS temporary-directory aliases just as production config does.
+	base, _ = filepath.EvalSymlinks(base)
+	directory, root, binary = filepath.Join(base, "config"), filepath.Join(base, "channels", "dingtalk"), filepath.Join(base, "bin", "agent-host")
+	got := deployedRuntimeBinary(root, directory)
+	if got != binary {
+		t.Fatal("deployed executable not recognized", got)
+	}
+	for _, selector := range []string{"--root", "--config-dir"} {
+		selected := root
+		if selector == "--config-dir" {
+			selected = directory
+		}
+		process := managedServiceProcess{uid: os.Getuid(), command: binary + " service run " + selector + " " + selected + " --no-browser"}
+		if !sameManagedService(process, selector, selected, got) {
+			t.Fatal("deployed process rejected", process)
+		}
+		if sameManagedService(process, selector, selected+"-other", got) {
+			t.Fatal("other runtime matched")
+		}
+		process.uid++
+		if sameManagedService(process, selector, selected, got) {
+			t.Fatal("other owner matched")
+		}
+	}
+	if deployedRuntimeBinary(filepath.Join(base, "other", "dingtalk"), directory) != "" {
+		t.Fatal("unrelated root gained executable alias")
+	}
+	if err := os.Chmod(binary, 0777); err != nil {
+		t.Fatal(err)
+	}
+	if deployedRuntimeBinary(root, directory) != "" {
+		t.Fatal("writable executable trusted")
+	}
+	if err := os.Chmod(binary, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(binary, binary+".real"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(binary+".real", binary); err != nil {
+		t.Fatal(err)
+	}
+	if deployedRuntimeBinary(root, directory) != "" {
+		t.Fatal("symlink executable trusted")
+	}
+}
+
 func TestManagedServiceRestartReplacesSupervisorAfterPreflight(t *testing.T) {
 	root, directory := unifiedFixture(t)
 	writeBotJSON(t, filepath.Join(directory, "channels.dingtalk.json"), map[string]any{
@@ -95,7 +157,10 @@ func TestManagedServiceRestartReplacesSupervisorAfterPreflight(t *testing.T) {
 			"dws": map[string]any{"enabled": true, "profile": "fixture:owner", "services": []string{"contact"}},
 		},
 	})
-	binary := filepath.Join(root, "agent-host")
+	binary := filepath.Join(root, "bin", "agent-host")
+	if err := os.MkdirAll(filepath.Dir(binary), 0700); err != nil {
+		t.Fatal(err)
+	}
 	build := exec.CommandContext(t.Context(), "go", "build", "-o", binary, "../../cmd/agent-host")
 	if raw, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build restart fixture: %v\n%s", err, raw)
@@ -162,6 +227,19 @@ func TestManagedServiceRestartReplacesSupervisorAfterPreflight(t *testing.T) {
 		t.Fatal("duplicate direct start did not reject the lock", err, string(raw))
 	}
 	args = append(args, "--restart")
+	// Reproduce make run taking over a separately deployed runtime. The
+	// replacement executable is a copy at a different checkout path.
+	compiled, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary = filepath.Join(root, "checkout", "agent-host")
+	if err := os.MkdirAll(filepath.Dir(binary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binary, compiled, 0700); err != nil {
+		t.Fatal(err)
+	}
 	second := start()
 	newWorker := waitPID(oldWorker, 2)
 	if raw, err := os.ReadFile(evidence); err != nil || string(raw) != "original" {

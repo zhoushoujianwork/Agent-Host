@@ -36,7 +36,7 @@ func inspectManagedServiceProcess(ctx context.Context, pid int) (managedServiceP
 	return managedServiceProcess{parent, uid, fields[3]}, nil
 }
 
-func sameManagedService(process managedServiceProcess, selector, path string) bool {
+func sameManagedService(process managedServiceProcess, selector, path string, runtimeBinary ...string) bool {
 	if process.uid != os.Getuid() {
 		return false
 	}
@@ -46,13 +46,44 @@ func sameManagedService(process managedServiceProcess, selector, path string) bo
 	}
 	// make invokes ./bin/agent-host, whereas workers use the absolute executable.
 	prefixes := []string{binary, os.Args[0]}
+	prefixes = append(prefixes, runtimeBinary...)
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(process.command, prefix+" service run ") &&
+		if prefix != "" && strings.HasPrefix(process.command, prefix+" service run ") &&
 			strings.Contains(" "+process.command+" ", " "+selector+" "+path+" ") {
 			return true
 		}
 	}
 	return false
+}
+
+// The selected private unified runtime can have its own deployed executable.
+// A checkout's explicit --restart may replace that service without requiring
+// both processes to have been launched from the same checkout binary.
+func deployedRuntimeBinary(root, directory string) string {
+	if directory == "" || unifiedDirectory(root) != directory {
+		return ""
+	}
+	if _, err := privateServicePath(directory, true); err != nil {
+		return ""
+	}
+	base := filepath.Dir(directory)
+	if _, err := privateServicePath(base, true); err != nil {
+		return ""
+	}
+	binary := filepath.Join(base, "bin", "agent-host")
+	actual, err := filepath.EvalSymlinks(binary)
+	if err != nil || actual != binary {
+		return ""
+	}
+	info, err := os.Lstat(binary)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 || info.Mode().Perm()&0100 == 0 {
+		return ""
+	}
+	owner, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(owner.Uid) != os.Geteuid() {
+		return ""
+	}
+	return binary
 }
 
 func signalManagedRuntime(ctx context.Context, root, directory string) error {
@@ -69,7 +100,8 @@ func signalManagedRuntime(ctx context.Context, root, directory string) error {
 		return errors.New("invalid running service PID; restart aborted")
 	}
 	worker, err := inspectManagedServiceProcess(ctx, pid)
-	if err != nil || !sameManagedService(worker, "--root", root) {
+	binary := deployedRuntimeBinary(root, directory)
+	if err != nil || !sameManagedService(worker, "--root", root, binary) {
 		return errors.New("service PID does not identify this runtime; restart aborted")
 	}
 	// Stop the supervisor so it drains every worker and the workbench normally.
@@ -83,7 +115,7 @@ func signalManagedRuntime(ctx context.Context, root, directory string) error {
 				selector = "--config-dir"
 			}
 		}
-		if err == nil && sameManagedService(parent, selector, selected) {
+		if err == nil && sameManagedService(parent, selector, selected, binary) {
 			pid = worker.parent
 		}
 	}

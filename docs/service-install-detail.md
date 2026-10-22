@@ -120,6 +120,17 @@ the served settings routes, so a missing imported module is caught at startup.
 `RUNTIME_ROOT`. Direct service starts remain fail-on-duplicate unless they also
 request `--restart`. Internal worker mode cannot request a managed restart.
 
+A checkout restart also recognizes the selected private unified runtime's
+independent `ROOT/bin/agent-host`. The deployed executable must be owned by the
+current user, executable, non-symlinked and not writable by group/others; the
+configuration and runtime directories remain private. The process owner, exact
+channel root and supervisor configuration path must still match. This permits
+`make run` after a separately deployed binary has started the same runtime,
+without treating arbitrary executables or unrelated runtime PIDs as managed.
+On 2026-10-22, the real checkout `make run RUN_ARGS=--no-browser` replaced the
+independent service successfully; Feishu and DingTalk reconnected at 15:31:59
+and 15:32:05 Singapore time, and the workbench returned HTTP 200.
+
 The supervisor checks every enabled configuration and reads the source viewer
 assets before stopping an existing instance. A busy `run.lock` triggers inspection of
 the private `service.pid`: the live process must have the current user, matching
