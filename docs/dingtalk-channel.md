@@ -46,7 +46,9 @@ available even when its intake failed before execution. Older replies without
 a usable reference require the original card or link when ambiguous.
 DWS quote replies are accepted as rich-text messages and use these same exact
 card and bot-reply references.
-These isolated tasks retain execution evidence but skip automatic memory learning.
+Owner-private ticket tasks can search and read existing scoped memory on demand,
+including its revisions and source evidence. These isolated tasks retain execution
+evidence but skip automatic memory learning.
 Cards receive receipt, execution, reply and terminal reactions; platform failures
 remain explicit and uncertain sends are not retried.
 

@@ -510,14 +510,18 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	var result harness.Result
 	mcpServers := append([]harness.MCPServer(nil), h.Config.MCPServers...)
 	instructions := h.Config.HostInstructions
-	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && r.ProjectID != "" && len(r.Projects) == 1 && (r.Source == nil || r.Source.ConversationType != "2") {
+	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && len(r.Projects) <= 1 && (r.ProjectID != "" || r.Source != nil && r.Source.TaskRootID != "") && r.MemoryAttribution != "unresolved" && (r.Source == nil || r.Source.ConversationType != "2") {
 		binding, err := assistance.Resolve(ctx, h.Config.ContextHome, h.Config.ContextConfig, r.ID)
 		if err != nil {
 			return h.failBeforeExecution(j, fmt.Errorf("assemble owner context: %w", err))
 		}
 		mcpServers = append(mcpServers, binding.Server(h.Config.ContextExecutable))
-		instructions += "\n\n" + assistance.Instructions
-		if err := j.emit(event.Event{Type: "context.assembled", Phase: "execute", Component: "assembly.context", Status: "completed", Message: "configured scoped read-only matters, memory and citations", Data: map[string]any{"binding_fingerprint": binding.Fingerprint, "selected_sources": len(binding.Sources)}}); err != nil {
+		if binding.MemoryOnly {
+			instructions += "\n\n" + assistance.MemoryInstructions
+		} else {
+			instructions += "\n\n" + assistance.Instructions
+		}
+		if err := j.emit(event.Event{Type: "context.assembled", Phase: "execute", Component: "assembly.context", Status: "completed", Message: "configured scoped read-only context and memory citations", Data: map[string]any{"binding_fingerprint": binding.Fingerprint, "selected_sources": len(binding.Sources), "memory_only": binding.MemoryOnly}}); err != nil {
 			return h.failBeforeExecution(j, err)
 		}
 	}

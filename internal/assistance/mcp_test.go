@@ -273,3 +273,115 @@ func TestProcessorSkipsUnchangedWindowsAndPreservesRetryableFailures(t *testing.
 		t.Fatal("failed processing not retried")
 	}
 }
+
+func TestDefaultOwnerContextExposesOnlyScopedMemory(t *testing.T) {
+	store, projectBinding, _, _ := contextFixture(t)
+	ctx := t.Context()
+	run := projectBinding.Run
+	run.ID, run.ProjectID, run.ProjectName, run.Projects = "default-memory-run", "", "", nil
+	session, err := store.Session(ctx, run.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.ID, session.ProjectID, session.ProjectName, session.Projects = "default-memory-session", "", "", nil
+	if err := store.CreateSession(ctx, session); err != nil {
+		t.Fatal(err)
+	}
+	run.SessionID = session.ID
+	if err := store.CreateRun(ctx, run); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Resolve(ctx, projectBinding.Home, "", run.ID)
+	if err != nil || !b.MemoryOnly || len(b.Tools()) != 3 || len(b.Sources) != 0 {
+		t.Fatal(b, err)
+	}
+	result, err := b.Call(ctx, store, "search_context", json.RawMessage(`{"query":"readiness"}`))
+	if err != nil || !strings.Contains(string(encoded(t, result)), "memory/probe-memory/1") || strings.Contains(string(encoded(t, result)), "current_matter") {
+		t.Fatal(result, err)
+	}
+	for _, name := range []string{"read_context", "read_context_evidence"} {
+		value, err := b.Call(ctx, store, name, json.RawMessage(`{"reference":"memory/probe-memory/1"}`))
+		if err != nil || !strings.Contains(string(encoded(t, value)), "/readyz") {
+			t.Fatal(name, err)
+		}
+		for _, ref := range []string{"memory/probe-memory/2", "memory/foreign-memory/1", "matter/guessed/1"} {
+			if _, err := b.Call(ctx, store, name, encoded(t, map[string]any{"reference": ref})); err == nil {
+				t.Fatal("unavailable reference exposed", ref)
+			}
+		}
+	}
+	if _, err := b.Call(ctx, store, "list_private_suggestions", json.RawMessage(`{}`)); err == nil {
+		t.Fatal("suggestions exposed")
+	}
+	if _, err := b.Call(ctx, store, "search_context", json.RawMessage(`{"kind":"matters"}`)); err == nil {
+		t.Fatal("matters exposed")
+	}
+	if err := store.CompleteRun(ctx, run.ID, "completed", "done", "fixture", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Call(ctx, store, "search_context", json.RawMessage(`{"query":"readiness"}`)); err == nil {
+		t.Fatal("ended task retained memory access")
+	}
+}
+
+func TestIndependentCardContextCanReadMemoryWithoutMatters(t *testing.T) {
+	store, projectBinding, _, _ := contextFixture(t)
+	ctx := t.Context()
+	m := state.ChannelMessage{ID: "memory-card", AgentID: "default", AudienceID: "owner", ReplyExpiresAt: time.Now().Add(time.Hour), Channel: "dingtalk", AccountID: "app", TenantID: "corp", MessageID: "card", ConversationID: "dm", ConversationType: "1", SenderID: "owner", Profile: "profile", Binding: "binding", Scope: projectBinding.Run.Scope, MessageType: "interactiveCard", Text: "Forwarded interactive card", Input: &state.ChannelInput{Quote: &state.ChannelQuote{MessageType: "interactiveCard", Body: "FTP request"}}}
+	if _, err := store.EnqueueChannelMessage(ctx, m, "reply", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ClaimNextChannelMessage(ctx, m.Profile); err != nil {
+		t.Fatal(err)
+	}
+	run := projectBinding.Run
+	run.ID, run.Input = "memory-card-run", m.Text
+	stored, err := store.ChannelMessage(ctx, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BindChannelSession(ctx, stored.Binding, run.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateChannelRun(ctx, run, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Resolve(ctx, projectBinding.Home, projectBinding.ConfigPath, run.ID)
+	if err != nil || !b.MemoryOnly || b.Run.AutomaticMemorySkipReason() != "independent_card_task" {
+		t.Fatal("card memory binding unavailable", err)
+	}
+	if _, err := b.Call(ctx, store, "read_context", json.RawMessage(`{"reference":"memory/probe-memory/1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Call(ctx, store, "list_private_suggestions", json.RawMessage(`{}`)); err == nil {
+		t.Fatal("card task gained suggestion access")
+	}
+}
+
+func TestMemoryEvidencePagesPreserveLargeUnicodeSource(t *testing.T) {
+	evidence := map[string]any{"text": strings.Repeat("历史 evidence ", 10000)}
+	var combined strings.Builder
+	for offset := 0; ; {
+		value, err := memoryEvidencePage(evidence, offset, 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := value.(map[string]any)
+		if len(encoded(t, page)) >= 64<<10 {
+			t.Fatal("evidence page exceeds MCP limit")
+		}
+		combined.WriteString(page["evidence_json_excerpt"].(string))
+		offset = page["next_offset"].(int)
+		if !page["truncated"].(bool) {
+			break
+		}
+	}
+	if combined.String() != string(encoded(t, evidence)) {
+		t.Fatal("evidence was lost or duplicated across pages")
+	}
+	m := state.Memory{ID: "large-note", Text: "source note", Objects: []state.MemoryObject{{Name: "SFTP", Kind: "tool", Evidence: state.ExternalEvidence{ID: "source", Text: strings.Repeat("large", 20000)}}}}
+	view := memoryView(m)
+	if len(encoded(t, view)) > 4096 || !strings.Contains(string(encoded(t, view)), "source") {
+		t.Fatal("memory view duplicated evidence or lost its reference")
+	}
+}

@@ -510,3 +510,20 @@ observation limits are recorded separately from execution and reply results;
 this evidence is distinct from historical channel and explicit-selection checks.
 It used the earlier command and project-question interface and does not establish
 live acceptance of the current default-execution policy.
+
+### On-demand owner memory in ticket conversations
+
+Owner-private independent card conversations, including default-scope ticket
+tasks, mount the existing `host_context` MCP in memory-only mode. `search_context`, `read_context` and
+`read_context_evidence` use the admitted run's exact Agent, audience and memory
+scope, with current revision and lifecycle checks on every call. This lets the
+Agent retrieve a saved Runbook that the bounded automatic recall did not select.
+These conversations cannot use this binding to inspect matters or suggestions.
+Imported source notes retain their IDs, revisions, evidence and historical
+limitations; they do not establish current environment state or execution
+permission. Automatic memory publication remains skipped for independent cards.
+
+Memory reads return compact object associations with their evidence references,
+avoiding repeated embedded tool results. Large supporting evidence uses bounded
+JSON excerpt pages with Unicode offsets, a full-content hash and explicit
+truncation; follow every page before claiming complete source coverage.
