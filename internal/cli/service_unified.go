@@ -264,6 +264,9 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		return layout, zero, nil, errors.New("channel references an unknown execution profile")
 	}
 	c := p.Execution
+	if c.SkillsRoot == "" {
+		c.SkillsRoot = filepath.Join(filepath.Dir(directory), "managed-skills")
+	}
 	if host.Memory != nil && host.Memory.Backend == "files" {
 		if _, err := os.Stat(filepath.Join(layout.State, "file-memory.json")); err != nil {
 			return layout, zero, nil, errors.New("file memory requires explicit memory migrate before startup")

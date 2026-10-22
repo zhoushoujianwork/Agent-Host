@@ -80,7 +80,7 @@ func runMemoryStorage(ctx context.Context, args []string, out, errout io.Writer)
 
 func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) error {
 	if !store.FileMemoryEnabled() {
-		return nil
+		return refreshManagedRuntime(ctx, store, o)
 	}
 	raw, err := os.ReadFile(state.FileMemoryMarker(o.home))
 	if err != nil {
@@ -92,6 +92,9 @@ func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) err
 	}
 	if o.workspaceCache == "" {
 		o.workspaceCache = filepath.Dir(config.CacheRoot)
+	}
+	if o.skillsRoot == "" {
+		o.skillsRoot = filepath.Join(filepath.Dir(config.MemoryRoot), "managed-skills")
 	}
 	o.memorySource = config.SourceID
 	o.procedureRecallHints = nil
@@ -135,7 +138,7 @@ func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) err
 		return err
 	}
 	o.skillFingerprint, o.skillsPreselected = "", o.retrievalQuery != ""
-	if o.skillsPreselected && !o.noTools {
+	if o.skillsPreselected && !o.noTools && o.agentID != state.DefaultAgentID {
 		var matches, persistent []state.Memory
 		for _, scope := range scopes {
 			r, _, err := partition.RetrieveWithProcedureHints(ctx, scope, o.retrievalQuery, o.procedureRecallHints, 16)
@@ -147,7 +150,10 @@ func refreshFileRuntime(ctx context.Context, store *state.Store, o *options) err
 		}
 		o.skillFingerprint, err = assembly.SkillSetDigest(assembly.Select(matches, persistent, 12*1024), assembly.SkillIdentity{SourceIdentity: config.SourceID, AgentID: o.agentID, AudienceID: o.audienceID, Scopes: scopes}, time.Now())
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return refreshManagedRuntime(ctx, store, o)
 }
 
 func fileRuntimeCompatibility(o options) string {

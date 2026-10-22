@@ -1,8 +1,9 @@
 # Host-managed Skills and plugin guidance
 
-Status: proposed architecture direction, 2026-10-22. This document changes the
-target design, not the running service. The [technical details](managed-skills-design-detail.md)
-define assembly, lifecycle and acceptance. See the [architecture](architecture.md)
+Status: implemented in source, 2026-10-22; local native acceptance uses isolated
+read-only fixtures. Production rollout and operator adoption are separate.
+The [technical details](managed-skills-design-detail.md) define assembly, lifecycle
+and acceptance. See the [architecture](architecture.md)
 for the delivered foundation.
 The [Platform Skills Web design](platform-skills-web-design.md) adds the shared
 Settings subsection and the Agent profile's effective-catalog view.
@@ -45,20 +46,20 @@ freshly resolving the customer, resource IDs, accounts and allowed changes.
   handling steps ultimately live in Skills; a chat answer, saved file, memory
   receipt or rejected experience is not automatically a published method.
 
-## Scope and implementation order
+## Delivered scope
 
-1. Add the agh-managed catalog, publication and disablement lifecycle, with
-   explicit registration of existing operator-authored Skills. Retain source
-   files and review evidence; do not silently adopt or overwrite native Skills.
-2. Assemble the effective catalog and selection guide for the default Agent
-   across supported entries. Preserve identities, session compatibility and
-   actual load observations. Load method bodies before related execution.
-3. Give each enabled plugin a versioned usage Skill bound to its real tool
-   contract. Verify enabled, disabled, unavailable and changed configurations,
-   then accept the complete cross-entry workflow with real native execution.
+1. The agh-managed catalog provides explicit adoption, review, publication,
+   enablement, withdrawal and rollback. It pins source files and review evidence
+   without silently adopting or overwriting native Skills.
+2. The shared execution path assembles the complete effective catalog and
+   selection guide for the default Agent. It preserves identities, session
+   compatibility and observations of actual Skill/reference loads.
+3. Ready Email, DingTalk workspace, knowledge, owner-context and conversation-history
+   adapters supply usage Skills bound to their actual public tool definitions.
+   Configuration changes participate in readiness and session compatibility.
 
-Existing reviewed procedures already render as scoped native Skills; installed
-operator catalogs can also be inherited by native profiles. Unified agh
-registration, default proactive loading and plugin guidance readiness are the
-new work. This design does not claim a public plugin SDK, marketplace, new
-execution engine or automatic execution of generated scripts.
+Use `skills import` for authored adoption and `chat --skills-root` to select the
+managed store. Native profiles keep their existing mounts during adoption. See
+the [operator commands and validation](managed-skills-design-detail.md#implemented-storage-and-operator-commands).
+This increment does not add a public plugin SDK, marketplace, execution engine
+or automatic execution of generated scripts.

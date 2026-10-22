@@ -49,9 +49,12 @@ Built-in capabilities use MCP tools or channel adapters:
 
 Accounts and source credentials require local configuration. Arbitrary third-party
 MCP registration, a public plugin SDK and a plugin marketplace are not delivered.
-Host mounts a private Claude Skill package from the task's eligible learned
-procedures. It does not install arbitrary native plugins or rewrite handwritten
-skills. See [support details](README-detail.md#plugin-and-integration-boundaries).
+Host mounts a private Claude Skill snapshot containing eligible reviewed
+procedures, explicitly adopted authored revisions and enabled-plugin usage guidance.
+The default Agent receives every effective descriptor and loads relevant bodies
+and references natively. See the [managed Skills guide](docs/managed-skills-design.md)
+for explicit import, review, publication and enablement. It does not rewrite
+handwritten Skills. See [support details](README-detail.md#plugin-and-integration-boundaries).
 
 ## Start
 
@@ -93,8 +96,9 @@ live in the Git-ignored `.agent-host/` directory.
 
 The [file-memory guide](docs/file-memory-design.md) explains explicit migration
 and verification before enabling `host.json`'s `memory.backend: "files"`.
-Published documents and Skills live in `memory/`; rebuildable SQLite indexes and
-task context copies live in `cache/`. Operational state remains durable.
+Published knowledge and reviewed experience live in `memory/`; adopted authored
+revisions live in `managed-skills/`. Rebuildable indexes and task snapshots live
+in `cache/`. Operational state remains durable.
 
 For a terminal conversation, supply your configured Jev credentials and run:
 

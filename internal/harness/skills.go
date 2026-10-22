@@ -20,21 +20,31 @@ type SkillManifest struct {
 }
 
 type SkillSource struct {
-	Name              string   `json:"name"`
-	MemoryID          string   `json:"memory_id"`
-	Revision          int      `json:"revision"`
-	Scope             string   `json:"scope"`
-	SourceRunID       string   `json:"source_run_id"`
-	ExternalReceiptID string   `json:"external_receipt_id,omitempty"`
-	EvidenceIDs       []string `json:"evidence_ids"`
+	ToolContractDigest string   `json:"tool_contract_digest,omitempty"`
+	Kind               string   `json:"kind,omitempty"`
+	SkillID            string   `json:"skill_id,omitempty"`
+	Title              string   `json:"title,omitempty"`
+	Applicability      string   `json:"applicability,omitempty"`
+	ContentDigest      string   `json:"content_digest,omitempty"`
+	Helpers            bool     `json:"helpers,omitempty"`
+	Name               string   `json:"name"`
+	MemoryID           string   `json:"memory_id"`
+	Revision           int      `json:"revision"`
+	Scope              string   `json:"scope"`
+	SourceRunID        string   `json:"source_run_id"`
+	ExternalReceiptID  string   `json:"external_receipt_id,omitempty"`
+	EvidenceIDs        []string `json:"evidence_ids"`
 }
 
 type SkillFile struct {
-	Path   string `json:"path"`
-	SHA256 string `json:"sha256"`
+	Path       string `json:"path"`
+	SHA256     string `json:"sha256"`
+	Executable bool   `json:"executable,omitempty"`
 }
 
 const SkillManifestVersion = "host-native-skills-v1"
+
+const ManagedSkillManifestVersion = "host-native-skills-v2"
 
 // ContentDigest deliberately omits task paths and creation times. Equal scoped
 // publication snapshots stay compatible across task-specific cache directories.

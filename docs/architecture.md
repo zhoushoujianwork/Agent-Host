@@ -9,9 +9,10 @@ The [2026-10-20 acceptance review](architecture-review-2026-10-20.md) records
 current cross-entry, tool/Skill and automatic-memory checks and remaining limits.
 The [2026-10-21 channel rollout](acp-channel-rollout.md) adds real owner-private
 DingTalk/Feishu ACP intake, replies, tools, memory and continuation acceptance.
-The [2026-10-22 managed Skills direction](managed-skills-design.md) proposes a
-unified agh catalog, proactive default-Agent loading and enabled-plugin usage
-guidance. These additions are design work, not delivered runtime behavior.
+The [2026-10-22 managed Skills implementation](managed-skills-design.md) adds
+authored publication, all-entry default-Agent discovery and enabled-plugin usage
+guidance. Local native acceptance uses isolated read-only fixtures; production
+adoption and platform rollout are separate.
 
 ## Goal and usage
 
@@ -101,8 +102,8 @@ Read these as separate responsibilities, even when they work on the same request
 | Evidence / 证据 | Attributed source material and observed execution results. 带来源的原始材料与执行观测，例如消息、工具输出；保留它不代表内容已被证实。 |
 | Memory / 长期记忆 | Eligible facts, preferences, decisions or procedures retained for later tasks. 可供后续任务使用的事实、偏好、决策或方法；与聊天原文、执行日志分别保存。 |
 | Skill / 方法技能 | A reusable procedure delivered as `SKILL.md` with conditions and evidence. 保存适用条件、步骤与证据的可复用方法；记住方法不代表已经执行成功。 |
-| Managed Skill / 纳管技能（目标设计） | A versioned, reviewed and enabled catalog entry governed by agh, covering authored methods, eligible experience and plugin usage. 可复用处理方法统一以技能交付；安装、发布、装载和执行结果分别记录。 |
-| Plugin / 插件 | A configured capability whose adapter supplies tools and whose target design also supplies matching usage guidance. 插件启用后应同时让 Agent 知道可用能力及使用方法，不因此获得业务操作授权。 |
+| Managed Skill / 纳管技能 | A versioned, reviewed and enabled catalog entry governed by agh, covering authored methods, eligible experience and plugin usage. 可复用处理方法统一以技能交付；安装、发布、装载和执行结果分别记录。 |
+| Plugin / 插件 | A configured capability whose adapter supplies tools and whose adapter also supplies matching usage guidance. 插件启用后应同时让 Agent 知道可用能力及使用方法，不因此获得业务操作授权。 |
 | Datasource / 数据源 | A configured source the assistant can consult, such as Confluence or local Markdown. 可按需查询的资料来源；读取资料不会自动把它变成长期记忆。 |
 
 For example, “fix the login test” arrives through a **Channel**, selects an
@@ -191,7 +192,7 @@ a channel Session continues through that channel Host's private control socket.
 The feature guides retain bounded native/platform evidence separately from
 implementation. A passing automated check does not establish production quality.
 
-## Reusable methods and enabled-plugin guidance — proposed
+## Reusable methods and enabled-plugin guidance
 
 **Every reusable handling procedure should ultimately be delivered as a Skill,
 registered and governed by agh.** The default Agent automatically receives the
@@ -243,10 +244,9 @@ for a particular approval, message or mutation. See the
 
 ## Next direction
 
-Alongside execution work, the [managed Skills increment](managed-skills-design.md)
-unifies reusable-method delivery and enabled-plugin guidance under agh, with
-proactive loading by the default Agent. Existing scoped experience Skills and
-native catalog inheritance are foundations, not completion of this increment.
+The [managed Skills increment](managed-skills-design.md) is implemented and locally
+validated. Explicit operator adoption and production/platform rollout remain
+separate from the source implementation and isolated native acceptance.
 
 The next execution increment builds on the shared Claude ACP adapter: extend
 owner-private DingTalk/Feishu acceptance to groups and supported channel

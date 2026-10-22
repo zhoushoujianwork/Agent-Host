@@ -58,6 +58,7 @@ It observes ROOT/cli-state; use chat --home ABSOLUTE_ROOT/cli-state for the same
 `
 
 type serviceConfig struct {
+	SkillsRoot                 string   `json:"skills_root,omitempty"`
 	ExecutionConfig            string   `json:"execution_config,omitempty"`
 	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
@@ -293,6 +294,9 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
+	if c.SkillsRoot != "" && (!filepath.IsAbs(c.SkillsRoot) || filepath.Clean(c.SkillsRoot) != c.SkillsRoot || strings.ContainsAny(c.SkillsRoot, "\x00\r\n")) {
+		return errors.New("service skills_root must be a clean absolute path")
+	}
 	if c.MemoryScope != "" && (strings.TrimSpace(c.MemoryScope) != c.MemoryScope || len(c.MemoryScope) > 4096 || strings.ContainsAny(c.MemoryScope, "\x00\r\n")) {
 		return errors.New("service memory_scope must be a nonempty single-line identity")
 	}
@@ -374,6 +378,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		args = append(args, "--jev-endpoint", c.JevEndpoint)
 	}
 	args = append(args, "--native-profile", layout.Native)
+	if c.SkillsRoot != "" {
+		args = append(args, "--skills-root", c.SkillsRoot)
+	}
 	if c.ExecutionConfig != "" {
 		args = append(args, "--execution-config", c.ExecutionConfig)
 	}

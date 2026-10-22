@@ -47,6 +47,9 @@ func readSchema(id string) map[string]any {
 
 const excerptInstructions = " Returns a bounded character excerpt, not necessarily a complete document. Inspect _agent_host.coverage; request its next_offset with the same ID and expected_content_sha256=full_content_sha256 to continue. Preserve source scope and partial coverage. Each call rereads the source; changed content rejects continuation."
 
+// ToolContract exposes the same public definitions used by tools/list, without credentials.
+func ToolContract(provider string) any { return toolsFor(provider) }
+
 func toolsFor(provider string) []mcpTool {
 	switch provider {
 	case "local_markdown":

@@ -23,6 +23,13 @@ import (
 const testSession = "e7a0d011-08ab-48ca-908e-77d853094ba0"
 
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "managed-skill-fixture" {
+		if err := serveManagedSkillFixture(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if mode := os.Getenv("AGENT_HOST_CLAUDE_FIXTURE"); mode != "" {
 		fixture(mode)
 		os.Exit(0)

@@ -23,6 +23,7 @@ import (
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/harness"
 	"agent-host/internal/knowledge"
+	"agent-host/internal/managedskills"
 	"agent-host/internal/projectruntime"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
@@ -33,6 +34,7 @@ const usage = `Agent-Host: native Claude chat with observable, source-linked mem
 
 Usage:
   agent-host chat [-m MESSAGE] [--resume SESSION] [options]
+  agent-host skills list|import|review|publish|enable|disable|withdraw|rollback --root PATH [--help]
   agent-host memory search [options] QUERY
   agent-host memory connection [add|show|revoke] [options]
   agent-host memory submit|receipt|recall|read [--help] [options]
@@ -96,6 +98,7 @@ Options (place before positional IDs/queries):
   --dingtalk-workspace-config PATH  Private built-in DingTalk workspace configuration
   --knowledge-config PATH  Private Dokki/Confluence source configuration
   --agents-config PATH  Private agent roles, context selections and group bindings
+  --skills-root PATH    Shared Host-managed Skill publication catalog
   --agent ID            Logical instance for chat and local state (default default)
   --audience ID         Conversation partition for local state (default owner)
   --native-profile PATH Native Claude configuration directory
@@ -115,6 +118,10 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	skillsRoot, managedFingerprint                                                     string
+	managedEntries                                                                     []managedskills.Entry
+	managedMemories                                                                    []state.Memory
+	managedUnready                                                                     map[string]string
 	takeoverSession                                                                    string
 	room, requestID, receivedAt                                                        string
 	renewRuntime                                                                       bool
@@ -201,6 +208,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.home, "home", filepath.Join(cwd, ".agent-host", "cli-state"), "Host state directory")
 	fs.StringVar(&o.workspace, "workspace", cwd, "Native working directory")
 	fs.StringVar(&o.defaultScope, "memory-scope", "", "Explicit durable default memory scope")
+	fs.StringVar(&o.skillsRoot, "skills-root", "", "Host-managed publication catalog root (default HOME/managed-skills)")
 	fs.StringVar(&o.workspaceCache, "workspace-cache", "", "Private root for rebuildable task context views")
 	fs.BoolVar(&o.knowledgePluginDisabled, "disable-knowledge-plugin", false, "Skip disabled managed knowledge plugin")
 	fs.BoolVar(&o.disableDingTalkWorkspace, "disable-dingtalk-workspace", false, "Disable DingTalk workspace discovery and mounting")
@@ -408,6 +416,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		_, err := fmt.Fprintf(out, "agent-host %s (commit %s, dirty=%s, %s/%s, %s)\n", info.Version, revision, dirty, info.GOOS, info.GOARCH, info.GoVersion)
 		return err
+	}
+	if args[0] == "skills" {
+		return runSkills(args[1:], out, errout)
 	}
 	if args[0] == "feedback" {
 		return runFeedback(ctx, args[1:], out, errout)

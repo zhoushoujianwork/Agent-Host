@@ -62,6 +62,9 @@ func integer(minimum, maximum, initial int) map[string]any {
 	return map[string]any{"type": "integer", "minimum": minimum, "maximum": maximum, "default": initial}
 }
 
+// ToolContract is the adapter-owned public guidance contract.
+func ToolContract() any { return toolsList() }
+
 func toolsList() []tool {
 	annotations := map[string]bool{"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false}
 	return []tool{

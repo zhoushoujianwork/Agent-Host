@@ -1,7 +1,7 @@
 # Host-managed Skills: implementation contract
 
-Companion to the [main design](managed-skills-design.md). All additions below are
-proposed unless identified as existing behavior; they are not a deployment receipt.
+Companion to the [main design](managed-skills-design.md). The contract below is implemented in source. Local validation and remaining
+acceptance limits are recorded at the end; this is not a production deployment receipt.
 
 ## Ownership and source of truth
 
@@ -105,3 +105,129 @@ no action replay. Test the default Agent across supported CLI/Web/channel paths.
 Record catalog exposure, actual Skill/reference loads, tool calls, business
 acceptance and publication separately. Real native acceptance must show proactive
 loading without a named Skill; file presence and offline checks alone are insufficient.
+
+
+## Implemented storage and operator commands
+
+`internal/managedskills` owns a private `catalog.json`, serialized mutations and
+atomic replacement. Each imported revision contains its full instruction tree,
+metadata and content digest. Review and publication change audit state, never
+pinned content. Re-import creates a new draft while the old selected publication
+stays active. Review requires an actor and evidence note; every later lifecycle
+command requires the exact inspected revision and digest. Conflicting enabled
+names require explicit disablement before selecting the replacement.
+
+Only authored content enters through import. Experience remains authoritative in
+its existing reviewed memory source and is projected into the same effective
+catalog; rejection, blacklist, invalidation and expiry are preserved. Adapter-owned
+usage contracts are derived from the actual mounted definitions, never retrieved
+pages or credential settings. `skills list` inspects authored history; the run's
+catalog event includes authored, experience and plugin entries together.
+
+Example adoption (replace paths and provenance deliberately):
+
+```sh
+agent-host skills import --root /runtime/managed-skills \
+  --source /canonical/authored/sftp-delivery --id sftp-delivery \
+  --actor operator --applicability 'Customer SFTP delivery; select actual region' \
+  --agents default --audiences owner --scopes 'project:delivery' \
+  --plugins dingtalk --tools mcp__dingtalk__read_ticket \
+  --provenance 'Reviewed authored regional runbook'
+agent-host skills list --root /runtime/managed-skills
+agent-host skills review --root /runtime/managed-skills --id sftp-delivery \
+  --revision 1 --digest INSPECTED_SHA256 --actor reviewer --note 'Reviewed both regional references'
+agent-host skills publish --root /runtime/managed-skills --id sftp-delivery \
+  --revision 1 --digest INSPECTED_SHA256 --actor operator
+agent-host skills enable --root /runtime/managed-skills --id sftp-delivery \
+  --revision 1 --digest INSPECTED_SHA256 --actor operator
+```
+
+`disable`, `withdraw` and `rollback` use the same identity/revision/digest/actor
+arguments. Import accepts `--expires-at RFC3339` and optional `--contracts` JSON
+mapping mounted plugin names to expected tool-contract hashes. A changed required
+contract is unready even if its tool names remain present. The exact public
+contract is pinned in the usage Skill's `references/contract.json`; its digest is
+`managedskills.ContractDigest(contract)` (canonical JSON), also exposed as
+`tool_contract_digest` in the catalog descriptor. Plugin settings enter only as opaque fingerprints.
+
+`SKILL.md` requires `name` and `description`. Only these and `metadata` are adopted
+from native frontmatter. References are copied completely; symlinks, executable
+dynamic context and native hooks/permission overrides fail. Existing `scripts/`
+require explicit `--helpers`; their content and owner execution bit are pinned.
+This does not execute or generate helpers. Source
+edits require another import and review. No native directory is silently adopted.
+
+`--skills-root` selects one shared catalog across CLI/Web/channel runtimes. Unified
+services default to `ROOT/managed-skills` and accept `execution.skills_root` in the
+selected execution profile. File-memory runtimes default beside their shared
+`memory_root`; standalone legacy homes default to `HOME/managed-skills`. An absent
+catalog is empty, not an instruction to import global Skills. This does not create
+a new per-channel publication authority when a runtime already shares memory.
+
+Default-Agent assembly collects all eligible procedures, independent of retrieval
+query, and adds authored and enabled-plugin entries. Other Agents keep their
+existing selection. The native v2 manifest pins full reference/helper hashes;
+limits are 512 entries, 256 KiB per file, 8 MiB total and 128 KiB of complete
+descriptors, with explicit failure
+rather than truncation. The legacy v1 renderer keeps its existing limits.
+The always-loaded Host instruction guide carries every effective descriptor;
+bodies load through native Skill and Read calls. No operational Skills mount in
+tool-free or restricted-member runs.
+
+Session compatibility includes the catalog/revision and plugin contract/configuration
+snapshot. A final pre-dispatch check rejects changed catalogs or plugins; the next
+turn assembles a compatible session. Already-dispatched runs retain their immutable
+snapshot. Native loading remains native policy, not a new authorization gateway.
+This increment does not make model compliance a mathematical guarantee.
+
+The standard compact backup also retains `ROOT/managed-skills/catalog.json`,
+including immutable authored revisions and audit history. Restore checks its
+content integrity without re-adopting source directories or changing provenance.
+Custom `--skills-root` locations require their own backup policy.
+
+## Local validation and evidence
+
+Automated tests cover adoption/review/publication, pinned regional references,
+new revisions/rollback/withdrawal, corruption, unsafe imports, scope/audience/Agent
+restrictions, expiry, dependencies and contract incompatibility, all-entry assembly
+beyond the legacy eight-Skill limit, tool-free mode, plugin guidance readiness,
+configuration privacy and disablement on continuation. Existing CLI/Web/channel
+suites exercise the shared `refreshFileRuntime` / `composeHost` / `Host.run` path.
+
+The opt-in `TestManagedNativeProactiveLoading` uses the installed Claude executable,
+a disposable profile/workspace and a local read-only fixture MCP. Provider secrets
+are read through the existing protected profile mechanism; their values are not
+copied into catalog bodies, arguments or test logs. On 2026-10-22, US and China
+cases both passed: the user prompt named no Skill; native execution loaded both
+procedure and plugin guidance, read the selected regional reference and exact tool
+contract, then called `read_ticket` for `US-FTP-001` or `CN-FTP-001` respectively.
+The answer included its regional marker, the latest comment and current pending
+task. The last recorded native pass took 29.51 seconds (US 15.05, China 14.46),
+with successful Skill/reference results observed before the ticket tool call. These are synthetic tickets and environment settings, not live SFTP receipt
+claims. No real approval, infrastructure write or outgoing message was performed.
+
+Run the native acceptance separately from offline checks:
+
+```sh
+AGENT_HOST_MANAGED_SKILL_SMOKE_PROFILE=/approved/native/profile \
+  go test ./internal/harness/claude -run '^TestManagedNativeProactiveLoading$' -v -count=1
+```
+
+`skills.catalog.provided` records exposure and dependency failures.
+`skills.load.observed` and `skills.reference.observed` record native requested,
+completed or failed calls, with source/file digests and read arguments. Existing
+`tool.activity` retains actual results and ordering. Reference coverage requires
+checking read ranges/results; a mount or successful partial read is not full
+coverage. Lifecycle audit, native execution, task acceptance and memory publication
+remain separate records. Real platform/channel rollout remains separate from this
+local native fixture acceptance; production was not restarted or silently migrated.
+
+
+Read-only code localization used offload session
+`704b80b7-0897-47e0-b341-6fad688d567f`, profile `cc`, model
+`claude-sonnet-5[1m]`. The first invocation exited 0 but reported BLOCKED by tool
+availability (5 turns, measured 22.596 s, estimated USD 0.069264). Resuming that
+same session with exact file paths completed localization with no edits (exit 0,
+8 turns, measured 30.816 s, estimated USD 0.176601). Key findings were checked
+against source by the implementing agent. These are reported worker estimates,
+not verified billing, savings or total parent/worker cost.

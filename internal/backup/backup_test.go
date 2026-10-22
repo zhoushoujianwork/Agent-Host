@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/managedskills"
 	"agent-host/internal/state"
 	"filippo.io/age"
 )
@@ -36,6 +37,47 @@ func backupFixture(t *testing.T) (string, Policy) {
 		t.Fatal(e)
 	}
 	return root, p
+}
+
+func TestManagedSkillCatalogRoundTripPreservesPinnedAuthority(t *testing.T) {
+	root, policy := backupFixture(t)
+	source := filepath.Join(root, "authored-input")
+	if err := os.Mkdir(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte("---\nname: delivery\ndescription: Reviewed customer delivery\n---\nKeep US and China environments distinct.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e, err := managedskills.Import(source, managedskills.Entry{ID: "delivery", Owner: "operator", Applicability: "customer delivery", Agents: []string{"default"}, Audiences: []string{"owner"}, Scopes: []string{"project-a"}, Provenance: []string{"reviewed authored source"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := managedskills.Update(filepath.Join(root, "managed-skills"), "import", e.ID, "operator", "", "", 0, &e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published := c.Records[0].Revisions[0].Entry
+	for _, action := range []string{"review", "publish", "enable"} {
+		c, err = managedskills.Update(filepath.Join(root, "managed-skills"), action, e.ID, "reviewer", published.Digest, "reviewed pinned source", 1, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	point, err := Create(t.Context(), root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(filepath.Dir(root), "restored-skills")
+	if _, err = Restore(t.Context(), filepath.Join(policy.Destination, point.Archive), policy.IdentityFile, target); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := managedskills.Load(filepath.Join(target, "managed-skills"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if managedskills.Hash(c) != managedskills.Hash(restored) {
+		t.Fatal("immutable revisions, source provenance or lifecycle audit changed during restore")
+	}
 }
 
 func TestEncryptedTarRoundTripAndFailurePreservesRecovery(t *testing.T) {

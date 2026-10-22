@@ -166,6 +166,9 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	h.Objects = objectmemory.New(legacy, o.model)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
+	h.Config.ManagedEntries, h.Config.ManagedMemories, h.Config.ManagedUnready = o.managedEntries, o.managedMemories, o.managedUnready
+	h.Config.ManagedCatalog = o.managedFingerprint != ""
+	h.Config.ValidateManaged = managedValidator(store, o)
 	h.Config.ProcedureRecallHints = append([]state.ProcedureRecallHint(nil), o.procedureRecallHints...)
 	if o.historyEnabled && !o.noTools {
 		h.Config.HistoryHome, h.Config.HistoryExecutable = o.home, o.historyExecutable

@@ -79,18 +79,18 @@ func TestProcedureHintsParticipateInSkillPreselectionWithinConversation(t *testi
 	if err := refreshFileRuntime(ctx, s, &o); err != nil {
 		t.Fatal(err)
 	}
-	if len(o.procedureRecallHints) != 1 || o.skillFingerprint == "" || !o.skillsPreselected {
-		t.Fatal("same-conversation procedure absent from preselected native Skill set", o.procedureRecallHints, o.skillFingerprint)
+	if len(o.procedureRecallHints) != 1 || len(o.managedMemories) != 1 || o.managedFingerprint == "" || o.skillsPreselected {
+		t.Fatal("same-conversation procedure absent from preselected native Skill set", o.procedureRecallHints, o.managedFingerprint)
 	}
 	o.recallBinding = "another-conversation"
-	if err := refreshFileRuntime(ctx, s, &o); err != nil || len(o.procedureRecallHints) != 0 || o.skillFingerprint != "" {
-		t.Fatal("recall hints crossed conversations", err)
+	if err := refreshFileRuntime(ctx, s, &o); err != nil || len(o.procedureRecallHints) != 0 || len(o.managedMemories) != 1 {
+		t.Fatal("recall hints crossed conversations or full catalog disappeared", err)
 	}
 	o.recallBinding = m.Binding
 	if err := s.InvalidateMemory(ctx, f.memoryID, "withdraw"); err != nil {
 		t.Fatal(err)
 	}
-	if err := refreshFileRuntime(ctx, s, &o); err != nil || len(o.procedureRecallHints) != 0 || o.skillFingerprint != "" {
+	if err := refreshFileRuntime(ctx, s, &o); err != nil || len(o.procedureRecallHints) != 0 || len(o.managedMemories) != 0 {
 		t.Fatal("inactive procedure affected native session selection", err)
 	}
 }

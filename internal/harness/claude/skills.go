@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"agent-host/internal/harness"
+	"agent-host/internal/managedskills"
 )
 
 var hostSkillName = regexp.MustCompile(`^procedure-[a-f0-9]{24}$`)
@@ -55,7 +56,7 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return manifest, errors.New("native skill package must be a private directory")
 	}
-	raw, err := readPrivateSkillFile(filepath.Join(root, "manifest.json"), 64<<10)
+	raw, err := readPrivateSkillFile(filepath.Join(root, "manifest.json"), 1<<20)
 	if err != nil {
 		return manifest, err
 	}
@@ -71,13 +72,26 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 	if err != nil {
 		return manifest, err
 	}
-	if manifest.Version != harness.SkillManifestVersion || manifest.Digest != expected || digest != expected || manifest.AgentID == "" || manifest.AudienceID == "" || manifest.SourceIdentity == "" || len(manifest.Scopes) == 0 || len(manifest.Sources) == 0 || len(manifest.Sources) > 8 {
+	managed := manifest.Version == harness.ManagedSkillManifestVersion
+	limit := 8
+	if managed {
+		limit = 512
+	}
+	if (!managed && manifest.Version != harness.SkillManifestVersion) || manifest.Digest != expected || digest != expected || manifest.AgentID == "" || manifest.AudienceID == "" || manifest.SourceIdentity == "" || len(manifest.Scopes) == 0 || len(manifest.Sources) == 0 || len(manifest.Sources) > limit {
 		return manifest, errors.New("native skill manifest does not match the selected snapshot")
 	}
 	files := map[string]string{}
+	executables := map[string]bool{}
 	allowed := map[string]bool{".claude-plugin/plugin.json": true}
 	for _, source := range manifest.Sources {
-		if !hostSkillName.MatchString(source.Name) || source.MemoryID == "" || source.Revision < 1 || (source.SourceRunID == "" && source.ExternalReceiptID == "") || (source.SourceRunID != "" && source.ExternalReceiptID != "") || source.Scope == "" || len(source.EvidenceIDs) == 0 {
+		if !hostSkillName.MatchString(source.Name) || source.Revision < 1 {
+			return manifest, errors.New("invalid native skill identity")
+		}
+		if managed && (source.Kind == "authored" || source.Kind == "plugin_usage") {
+			if source.SkillID == "" || source.Title == "" || source.Applicability == "" || !skillDigest.MatchString(source.ContentDigest) {
+				return manifest, errors.New("managed native skill source is incomplete")
+			}
+		} else if source.MemoryID == "" || (source.SourceRunID == "" && source.ExternalReceiptID == "") || (source.SourceRunID != "" && source.ExternalReceiptID != "") || source.Scope == "" || len(source.EvidenceIDs) == 0 || (managed && source.Kind != "reviewed_experience") {
 			return manifest, errors.New("native skill source is incomplete")
 		}
 		path := "skills/" + source.Name + "/SKILL.md"
@@ -87,6 +101,18 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 		allowed[path] = true
 	}
 	for _, file := range manifest.Files {
+		if file.Executable && (!managed || !strings.Contains(file.Path, "/scripts/")) {
+			return manifest, errors.New("executable native file is not an adopted helper")
+		}
+		executables[file.Path] = file.Executable
+		if managed && managedskills.SafePath(file.Path) {
+			for _, source := range manifest.Sources {
+				prefix := "skills/" + source.Name + "/"
+				if strings.HasPrefix(file.Path, prefix+"references/") || (source.Helpers && strings.HasPrefix(file.Path, prefix+"scripts/")) {
+					allowed[file.Path] = true
+				}
+			}
+		}
 		if !allowed[file.Path] || !skillDigest.MatchString(file.SHA256) || files[file.Path] != "" {
 			return manifest, errors.New("native skill manifest contains an unexpected or duplicate file")
 		}
@@ -125,12 +151,23 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 		if !ok {
 			return fmt.Errorf("native skill package contains unexpected file %s", relative)
 		}
-		body, err := readPrivateSkillFile(path, 16<<10)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if (info.Mode().Perm()&0100 != 0) != executables[relative] {
+			return errors.New("native helper execution mode changed")
+		}
+		fileLimit, totalLimit := int64(16<<10), 65<<10
+		if managed {
+			fileLimit, totalLimit = managedskills.MaxFileBytes, managedskills.MaxCatalogBytes
+		}
+		body, err := readPrivateSkillFile(path, fileLimit)
 		if err != nil {
 			return err
 		}
 		total += len(body)
-		if total > 65<<10 {
+		if total > totalLimit {
 			return errors.New("native skill package exceeds its content budget")
 		}
 		digest := sha256.Sum256(body)

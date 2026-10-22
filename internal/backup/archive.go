@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"agent-host/internal/managedskills"
 	"agent-host/internal/state"
 	"filippo.io/age"
 )
@@ -190,7 +191,7 @@ func decodeArchive(path string, key *age.X25519Identity) (payload, error) {
 		if strings.HasPrefix(f.Path, "recovery/") && !sources[f.Path] {
 			return p, errors.New("unlisted recovery source")
 		}
-		if !strings.HasPrefix(f.Path, "workspace/config/") && !strings.HasPrefix(f.Path, "workspace/users/") && !strings.HasPrefix(f.Path, "workspace/datasource/plugins/local-documents/sources/") && !strings.HasPrefix(f.Path, "recovery/") {
+		if f.Path != "workspace/managed-skills/catalog.json" && !strings.HasPrefix(f.Path, "workspace/config/") && !strings.HasPrefix(f.Path, "workspace/users/") && !strings.HasPrefix(f.Path, "workspace/datasource/plugins/local-documents/sources/") && !strings.HasPrefix(f.Path, "recovery/") {
 			return p, errors.New("unexpected archive member")
 		}
 	}
@@ -253,6 +254,9 @@ func restorePayload(ctx context.Context, p payload, target string) (err error) {
 		if err = os.WriteFile(path, b, 0600); err != nil {
 			return err
 		}
+	}
+	if _, err = managedskills.Load(filepath.Join(target, "managed-skills")); err != nil {
+		return err
 	}
 	seenHomes, seenSources := map[string]bool{}, map[string]bool{}
 	for _, name := range p.manifest.Sources {

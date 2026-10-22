@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"agent-host/internal/buildinfo"
+	"agent-host/internal/managedskills"
 	"agent-host/internal/state"
 	"filippo.io/age"
 )
@@ -297,6 +298,23 @@ func collect(ctx context.Context, root string) (payload, error) {
 		if e = p.add(name, b); e != nil {
 			return p, e
 		}
+	}
+	// Authored publications are self-contained durable authority, not cache.
+	skillRoot := filepath.Join(root, "managed-skills")
+	if _, err := os.Lstat(filepath.Join(skillRoot, "catalog.json")); err == nil {
+		catalog, err := managedskills.Load(skillRoot)
+		if err != nil {
+			return p, err
+		}
+		raw, err := json.Marshal(catalog)
+		if err != nil {
+			return p, err
+		}
+		if err = p.add("workspace/managed-skills/catalog.json", raw); err != nil {
+			return p, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return p, err
 	}
 	var paths func(any)
 	paths = func(v any) {

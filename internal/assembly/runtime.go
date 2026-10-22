@@ -31,6 +31,7 @@ type Runtime struct {
 }
 
 type Configuration struct {
+	ManagedSkillsFingerprint     string `json:",omitempty"`
 	ExecutionFingerprint         string `json:",omitempty"`
 	AgentID, AudienceID          string
 	PermissionMode               string

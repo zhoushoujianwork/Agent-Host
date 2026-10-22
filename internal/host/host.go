@@ -23,6 +23,7 @@ import (
 	"agent-host/internal/harness"
 	"agent-host/internal/history"
 	"agent-host/internal/knowledge"
+	"agent-host/internal/managedskills"
 	"agent-host/internal/memory"
 	"agent-host/internal/objectmemory"
 	"agent-host/internal/state"
@@ -30,6 +31,11 @@ import (
 )
 
 type Config struct {
+	ManagedEntries        []managedskills.Entry
+	ManagedMemories       []state.Memory
+	ManagedUnready        map[string]string
+	ManagedCatalog        bool
+	ValidateManaged       func(context.Context) error
 	PreviousSessionID     string
 	PrepareFeedback       func(context.Context, state.Run, *taskfeedback.Plan) (*taskfeedback.Plan, error)
 	BindFeedback          func(context.Context, state.Run) error
@@ -510,12 +516,20 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	var result harness.Result
 	mcpServers := append([]harness.MCPServer(nil), h.Config.MCPServers...)
 	instructions := h.Config.HostInstructions
+	managedEntries := append([]managedskills.Entry(nil), h.Config.ManagedEntries...)
 	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && len(r.Projects) <= 1 && (r.ProjectID != "" || r.Source != nil && r.Source.TaskRootID != "") && r.MemoryAttribution != "unresolved" && (r.Source == nil || r.Source.ConversationType != "2") {
 		binding, err := assistance.Resolve(ctx, h.Config.ContextHome, h.Config.ContextConfig, r.ID)
 		if err != nil {
 			return h.failBeforeExecution(j, fmt.Errorf("assemble owner context: %w", err))
 		}
 		mcpServers = append(mcpServers, binding.Server(h.Config.ContextExecutable))
+		if h.Config.ManagedCatalog {
+			guide := assistance.Instructions
+			if binding.MemoryOnly {
+				guide = assistance.MemoryInstructions
+			}
+			managedEntries = append(managedEntries, managedskills.PluginUsage("host_context", binding.Tools(), guide, binding.Fingerprint))
+		}
 		if binding.MemoryOnly {
 			instructions += "\n\n" + assistance.MemoryInstructions
 		} else {
@@ -535,6 +549,9 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, fmt.Errorf("assemble conversation history: %w", err))
 		}
 		mcpServers = append(mcpServers, binding.Server(h.Config.HistoryExecutable))
+		if h.Config.ManagedCatalog {
+			managedEntries = append(managedEntries, managedskills.PluginUsage("conversation_history", history.ToolContract(), history.Instructions, binding.Fingerprint))
+		}
 		instructions += "\n\n" + history.Instructions
 		if err := j.emit(event.Event{Type: "history.assembled", Phase: "execute", Component: "assembly.history", Status: "completed", Message: "configured read-only Agent conversation history; no transcript prefetched", Data: map[string]any{"binding_fingerprint": binding.Fingerprint}}); err != nil {
 			return h.failBeforeExecution(j, err)
@@ -550,6 +567,15 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, err)
 		}
 	}
+	if h.Config.ValidateManaged != nil {
+		if err := h.Config.ValidateManaged(ctx); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
+	managedEntries, managedUnready, err := managedskills.ReadyEntries(managedEntries)
+	if err != nil {
+		return h.failBeforeExecution(j, err)
+	}
 	var skillPackage assembly.SkillPackage
 	promptMemories := selected
 	if h.Config.WorkspaceCache != "" {
@@ -557,12 +583,16 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if err != nil {
 			return h.failBeforeExecution(j, err)
 		}
-		if h.Store.FileMemoryEnabled() && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
+		if (h.Store.FileMemoryEnabled() || h.Config.ManagedCatalog) && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
 			identity := assembly.SkillIdentity{SourceIdentity: h.Config.MemorySource, AgentID: r.AgentID, AudienceID: r.AudienceID}
 			for _, p := range recallProjects(r) {
 				identity.Scopes = append(identity.Scopes, p.Scope)
 			}
-			skillPackage, err = assembly.BuildSkillPackage(h.Config.WorkspaceCache, r.ID, selected, identity, time.Now())
+			if h.Config.ManagedCatalog {
+				skillPackage, err = assembly.ManagedSkillPackage(h.Config.WorkspaceCache, r.ID, managedEntries, h.Config.ManagedMemories, identity, time.Now())
+			} else {
+				skillPackage, err = assembly.BuildSkillPackage(h.Config.WorkspaceCache, r.ID, selected, identity, time.Now())
+			}
 			if err != nil {
 				return h.failBeforeExecution(j, err)
 			}
@@ -600,7 +630,19 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return h.failBeforeExecution(j, errors.New("published memory changed before execution; a new task context is required"))
 		}
 	}
+	if h.Config.ManagedCatalog {
+		if err := j.emit(event.Event{Type: "skills.catalog.provided", Phase: "execute", Component: "assembly.skills", Status: "completed", Message: "effective catalog exposed; actual loads and business acceptance remain separate", Data: map[string]any{"manifest": skillPackage.Manifest, "unready": managedUnready}}); err != nil {
+			return h.failBeforeExecution(j, err)
+		}
+	}
 	var proposalDirectory string
+	if h.Config.ManagedCatalog && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
+		instructions += "\n\n" + assembly.NativeSkillContext(skillPackage.Manifest, selected)
+		if len(managedUnready) > 0 {
+			raw, _ := json.Marshal(managedUnready)
+			instructions += "\nEnabled Skills with unavailable dependencies (do not substitute another provider): " + string(raw)
+		}
+	}
 	if h.Config.RestrictedReadOnly {
 		mcpServers = nil
 		if h.Config.RequestApproval != nil && h.Config.ApprovalExecutable != "" {
@@ -618,12 +660,13 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		}
 		var runErr error
 		activity := newRuntimePhases(j.emit)
+		skillLoads := &skillActivity{}
 		activity.identity = execution
 		directories := append(append([]string(nil), s.AdditionalDirectories...), inputDirectories...)
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + assembly.NativeSkillContext(skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
@@ -638,6 +681,11 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 				e.Type = "tool.activity"
 			case "result":
 				e.Type = "agent.result"
+			}
+			if o.Tool != nil {
+				if err := skillLoads.observe(j.emit, skillPackage, o.Tool); err != nil {
+					return err
+				}
 			}
 			return activity.observe(e, o.Tool)
 		})

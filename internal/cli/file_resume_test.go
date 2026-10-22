@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"agent-host/internal/managedskills"
 	"agent-host/internal/state"
 )
 
@@ -166,7 +167,7 @@ func TestFileMemoryOneShotAndInteractiveResumeKeepUnchangedSkillSet(t *testing.T
 	}
 }
 
-func TestFileMemoryInteractiveResumeRefreshesChangedSkillSet(t *testing.T) {
+func TestFileMemoryInteractiveResumeRetainsFullCatalogAcrossQueries(t *testing.T) {
 	fixture, args, capture := fileResumeFixture(t)
 	if err := Run(t.Context(), append(append([]string(nil), args...), "-m", "fixture test package"), nil, io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
@@ -177,8 +178,8 @@ func TestFileMemoryInteractiveResumeRefreshesChangedSkillSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	runs := fileResumeRuns(t, fixture.home)
-	if len(runs) != 2 || runs[1].SessionID == first.SessionID || runs[1].RuntimeFingerprint == first.RuntimeFingerprint || len(runs[1].Context) != 0 {
-		t.Fatalf("changed Skill set reused old history: %+v", runs)
+	if len(runs) != 2 || runs[1].SessionID != first.SessionID || runs[1].RuntimeFingerprint != first.RuntimeFingerprint || len(runs[1].Context) != 0 {
+		t.Fatalf("unchanged complete catalog rotated history: %+v", runs)
 	}
 	raw, err := os.ReadFile(capture)
 	if err != nil {
@@ -189,7 +190,33 @@ func TestFileMemoryInteractiveResumeRefreshesChangedSkillSet(t *testing.T) {
 		t.Fatalf("native calls=%s", raw)
 	}
 	parts := strings.Split(lines[1], "|")
-	if len(parts) != 3 || parts[0] == first.NativeSessionID || parts[1] != "false" || parts[2] != "" {
-		t.Fatalf("withdrawn Skill remained in native request: %s", lines[1])
+	if len(parts) != 3 || parts[0] != first.NativeSessionID || parts[1] != "true" || parts[2] == "" {
+		t.Fatalf("complete catalog missing from continuation: %s", lines[1])
+	}
+}
+
+func TestManagedSkillDisableRotatesNativeContinuation(t *testing.T) {
+	fixture, args, _ := fileResumeFixture(t)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	skills := filepath.Join(root, "skills")
+	e := adoptedCLIEntry(t, skills)
+	args = append(args, "--skills-root", skills)
+	if err = Run(t.Context(), append(append([]string(nil), args...), "-m", "Check this ticket"), nil, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	first := fileResumeRuns(t, fixture.home)[0]
+	if _, err = managedskills.Update(skills, "disable", e.ID, "operator", e.Digest, "", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	resume := append(append([]string(nil), args...), "--resume", first.SessionID)
+	if err = Run(t.Context(), resume, strings.NewReader("Check this ticket again\n"), io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	runs := fileResumeRuns(t, fixture.home)
+	if len(runs) != 2 || runs[1].SessionID == first.SessionID || runs[1].RuntimeFingerprint == first.RuntimeFingerprint {
+		t.Fatal("disabled managed skill survived native continuation")
 	}
 }

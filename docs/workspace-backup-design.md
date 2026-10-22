@@ -55,6 +55,7 @@ external location instead. Local backups share the source disk.
 | --- | --- |
 | Current Host/channel/Agent configuration, profiles and credential files under `config/` | Binaries, build output and repository source available through Git |
 | Latest published revision of each memory or Skill, including disabled/conflicted state that controls future learning | Superseded revisions, abandoned drafts and unpublished files |
+| Managed authored Skill catalog, including pinned files, revisions and lifecycle audit | Native home-directory links and rebuildable task Skill snapshots |
 | Scope identities, source attribution and the evidence required by retained memory | Unrelated historical conversations, task logs and native sessions |
 | Retained local source snapshots and files required by those references | Rebuildable indexes, task context copies and caches |
 
