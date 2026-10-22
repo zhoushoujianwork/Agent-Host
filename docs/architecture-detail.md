@@ -1,5 +1,11 @@
 # Agent-Host implementation notes
 
+The [managed Skills contract](managed-skills-design-detail.md) adds the proposed
+agh catalog, proactive default-Agent loading and enabled-plugin usage guidance.
+Its [main design](managed-skills-design.md) owns scope and rollout. Existing
+memory publication and native Skill mounts described below remain delivered
+behavior; they do not yet implement the unified lifecycle or readiness contract.
+
 Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
 The shared ACP proposal and first Claude implementation were added on 2026-10-20;
 delivered behavior is separated from the remaining design below.

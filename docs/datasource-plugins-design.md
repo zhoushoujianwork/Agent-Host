@@ -47,5 +47,17 @@ This policy changes plugin availability. Host conversation history, learned
 memory and native conversation state retain their existing identities. DingTalk
 bot/DWS remain independent channel features.
 
+## Proposed usage guidance for enabled plugins
+
+The [managed Skills design](managed-skills-design.md) adds a usage Skill alongside
+each enabled plugin's tools. The default Agent receives its capability descriptor
+and proactively loads complete guidance before related calls, including identity
+resolution, operation semantics and result verification. Tools and guidance must
+describe the same enabled configuration; missing guidance or dependencies are
+explicit readiness failures. Disabled plugins provide neither active usage Skills
+nor tools. This is proposed work, not a claim that current source descriptions
+already implement the managed catalog. Existing Beta sharing, upstream permissions
+and per-operation authorization remain unchanged.
+
 Implementation and validation are in the [technical details](datasource-plugins-design-detail.md).
 The [configuration guide](configuration-layout.md) explains startup and directories.

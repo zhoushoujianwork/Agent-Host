@@ -3,6 +3,13 @@
 状态：2026-10-13 文件后端已实现并完成本地切换，真实 Claude 已发现并调用历史 Skill。
 存储与迁移见[文件记忆方案](file-memory-design.md)，装配细节见[详细稿](experience-skills-detail.md)。
 
+2026-10-22 target direction: [Host-managed Skills](managed-skills-design.md)
+makes Skill the final reusable form of handling procedures, with agh registration
+and proactive loading by the default Agent. This includes authored procedures
+and enabled-plugin usage guidance as distinct sources. The existing reviewed
+experience path described here remains one publication source; the unified
+catalog and loading policy are proposed, not implemented by this documentation.
+
 Issue [#1](https://github.com/zhoushoujianwork/Agent-Host/issues/1) status reviewed
 on 2026-10-20: scoped Skill publication, fresh-task mounting and withdrawal are
 implemented. The separate [learned personal preferences](person-profiles.md)
