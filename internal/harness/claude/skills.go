@@ -108,7 +108,7 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 		if managed && managedskills.SafePath(file.Path) {
 			for _, source := range manifest.Sources {
 				prefix := "skills/" + source.Name + "/"
-				if strings.HasPrefix(file.Path, prefix+"references/") || (source.Helpers && strings.HasPrefix(file.Path, prefix+"scripts/")) {
+				if file.Path == prefix+"agents/openai.yaml" || strings.HasPrefix(file.Path, prefix+"references/") || (source.Helpers && strings.HasPrefix(file.Path, prefix+"scripts/")) {
 					allowed[file.Path] = true
 				}
 			}

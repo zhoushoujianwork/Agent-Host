@@ -150,7 +150,9 @@ contract is pinned in the usage Skill's `references/contract.json`; its digest i
 `managedskills.ContractDigest(contract)` (canonical JSON), also exposed as
 `tool_contract_digest` in the catalog descriptor. Plugin settings enter only as opaque fingerprints.
 
-`SKILL.md` requires `name` and `description`. Only these and `metadata` are adopted
+`SKILL.md` requires `name` and `description`. Standard `agents/openai.yaml` is
+pinned as passive UI metadata; it does not grant tools, hooks or Host enablement.
+Only `name`, `description` and `metadata` are adopted
 from native frontmatter. References are copied completely; symlinks, executable
 dynamic context and native hooks/permission overrides fail. Existing `scripts/`
 require explicit `--helpers`; their content and owner execution bit are pinned.

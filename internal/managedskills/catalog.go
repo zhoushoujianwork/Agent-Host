@@ -141,7 +141,7 @@ func Import(source string, e Entry) (Entry, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if !SafePath(rel) || (rel != "SKILL.md" && !strings.HasPrefix(rel, "references/") && !(e.Helpers && strings.HasPrefix(rel, "scripts/"))) {
+		if !SafePath(rel) || (rel != "SKILL.md" && rel != "agents/openai.yaml" && !strings.HasPrefix(rel, "references/") && !(e.Helpers && strings.HasPrefix(rel, "scripts/"))) {
 			return fmt.Errorf("unadopted source file %s; only instructions, references and explicit helpers are supported", rel)
 		}
 		info, err := d.Info()

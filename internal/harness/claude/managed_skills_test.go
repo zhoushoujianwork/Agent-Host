@@ -30,6 +30,7 @@ func managedNativeFixture(t *testing.T) assembly.SkillPackage {
 		"references/us.md":    "United States only: profile tencent-us, data root /fixture/us/absci, verification marker US_REFERENCE_COMPLETE. Never use China settings.\n",
 		"references/china.md": "China only: profile tencent-cn, data root /fixture/china/caict, verification marker CHINA_REFERENCE_COMPLETE. Never use US settings.\n",
 	}}
+	e.Files["agents/openai.yaml"] = "interface:\n  display_name: Reviewed regional delivery\n"
 	e.Digest = e.ContentDigest()
 	usage := managedskills.PluginUsage("fixture", managedFixtureTools(), "Read only the exact selected ticket. Read the full regional procedure and reference before calling read_ticket. No searching, writes, approval or delivery.", "fixture-contract-v1")
 	p, err := assembly.ManagedSkillPackage(root, "native-acceptance", []managedskills.Entry{e, usage}, nil, assembly.SkillIdentity{SourceIdentity: "isolated-acceptance", AgentID: "default", AudienceID: "owner", Scopes: []string{"fixture"}}, time.Now())

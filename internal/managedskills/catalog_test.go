@@ -14,6 +14,12 @@ func authored(t *testing.T, id string) Entry {
 	if err := os.Mkdir(filepath.Join(root, "references"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(root, "agents"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "agents/openai.yaml"), []byte("interface:\n  display_name: Regional SFTP\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for p, b := range map[string]string{"SKILL.md": "---\nname: sftp-delivery\ndescription: Deliver SFTP in China or the US\n---\nRead references/china.md or references/us.md using the current ticket region. Reuse instance_id.\n", "references/china.md": "China: profile tencent-cn; data root cn-only; never reuse US targets.\n", "references/us.md": "US: profile tencent-us; data root us-only; never reuse China targets.\n"} {
 		if err := os.WriteFile(filepath.Join(root, p), []byte(b), 0600); err != nil {
 			t.Fatal(err)

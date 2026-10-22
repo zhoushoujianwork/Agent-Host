@@ -85,7 +85,7 @@ func renderManagedSkills(entries []managedskills.Entry, memories []state.Memory,
 			if p == "SKILL.md" {
 				continue
 			}
-			if !managedskills.SafePath(p) || (!strings.HasPrefix(p, "references/") && !(entry.Helpers && strings.HasPrefix(p, "scripts/"))) {
+			if !managedskills.SafePath(p) || (p != "agents/openai.yaml" && !strings.HasPrefix(p, "references/") && !(entry.Helpers && strings.HasPrefix(p, "scripts/"))) {
 				return m, nil, errors.New("invalid managed reference path")
 			}
 			files["skills/"+name+"/"+p] = []byte(b)
