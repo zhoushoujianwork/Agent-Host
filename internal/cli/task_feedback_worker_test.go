@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +82,58 @@ func TestFeedbackWorkerPreservesUnknownAndRetriesConfirmedFailure(t *testing.T) 
 				t.Fatal(sender.calls, items)
 			}
 		})
+	}
+}
+
+func TestFeedbackWorkerWaitsForLiveExperienceReview(t *testing.T) {
+	q, o, a := feedbackWorkerFixture(t, false)
+	items, _ := q.List(t.Context())
+	release, err := state.Acquire(items[0].Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	s, err := state.Open(items[0].Home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = s.CompleteRun(t.Context(), "run", "completed", "Service healthy", "observed-model", ""); err != nil {
+		t.Fatal(err)
+	}
+	run, err := s.Run(t.Context(), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run.MemoryStatus, run.ExperienceStatus = "unchanged", "review_pending"
+	payload, err := json.Marshal(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(items[0].Home, "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec("UPDATE runs SET memory_status=?, payload=? WHERE id=?", run.MemoryStatus, payload, run.ID); err != nil {
+		t.Fatal(err)
+	}
+	sender := &testFeedbackSender{status: "accepted"}
+	if err = dispatchTaskFeedbackAt(t.Context(), q, o, a, nil, sender, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 0 {
+		t.Fatal("feedback was delivered while the live turn was still reviewing experience")
+	}
+	e := event.Event{RunID: "run", Type: "run.finished"}
+	if err = s.AppendEvent(t.Context(), &e); err != nil {
+		t.Fatal(err)
+	}
+	if err = dispatchTaskFeedbackAt(t.Context(), q, o, a, nil, sender, time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if sender.calls != 1 {
+		t.Fatal("feedback was not delivered after the final receipt", sender.calls)
 	}
 }
 

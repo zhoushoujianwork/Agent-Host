@@ -200,7 +200,8 @@ func dispatchTaskFeedbackAt(ctx context.Context, q *taskfeedback.Queue, o option
 		}
 		// Completed native execution can precede memory processing. Wait for the
 		// final receipt, except recovered unknown/failed runs with no live turn.
-		if !finalReceipt && run.ExecutionStatus == "completed" && (run.MemoryStatus == "pending" || run.ExperienceStatus == "pending") {
+		// Saved candidates stay review_pending while the live turn compares them.
+		if !finalReceipt && run.ExecutionStatus == "completed" && (run.MemoryStatus == "pending" || run.ExperienceStatus == "pending" || run.ExperienceStatus == "review_pending") {
 			finished = false
 		}
 		if !finished && now.Sub(item.UpdatedAt) > 30*time.Second {
