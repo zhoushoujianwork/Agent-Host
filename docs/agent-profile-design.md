@@ -8,6 +8,12 @@ and group-binding editing remain planned. Existing default-Agent edits remain
 available. See [settings](settings-console.md).
 [Implementation notes](agent-profile-design-detail.md).
 
+The proposed [Platform Skills subsection](platform-skills-web-design.md) adds
+a shared management entry and a Platform Skills subview under this profile's
+Capabilities tab. The default Agent shows automatic effective-catalog discovery;
+publication, plugin configuration and shared enablement remain in the platform
+view. Existing native-user skill selections retain their current meaning.
+
 ## Goal
 
 Open an Agent and understand its whole working setup: what it is responsible for,

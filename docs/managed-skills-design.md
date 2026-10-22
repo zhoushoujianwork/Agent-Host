@@ -4,6 +4,8 @@ Status: proposed architecture direction, 2026-10-22. This document changes the
 target design, not the running service. The [technical details](managed-skills-design-detail.md)
 define assembly, lifecycle and acceptance. See the [architecture](architecture.md)
 for the delivered foundation.
+The [Platform Skills Web design](platform-skills-web-design.md) adds the shared
+Settings subsection and the Agent profile's effective-catalog view.
 
 ## Goal and usage
 

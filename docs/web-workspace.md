@@ -50,6 +50,11 @@ still require a deliberate restart.
 
 ## Temporary scope
 
+The proposed [Platform Skills Settings subsection](platform-skills-web-design.md)
+provides the Web entry for agh-managed methods, plugin usage guidance and
+default-Agent availability. It fits inside the existing Settings surface rather
+than adding another workspace module. It is not delivered by this design update.
+
 There is no workbench entry, conversation canvas, card dragging or layout
 management in the active interface. Existing browser layout data is retained for
 a later return. Old workbench links open memory; old execution bookmarks retain
