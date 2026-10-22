@@ -32,7 +32,7 @@ func bindPrivateCardTask(ctx context.Context, tx *sql.Tx, m *ChannelMessage) err
 		bind(m.ID)
 		return nil
 	}
-	if m.MessageType != "text" || strings.HasPrefix(strings.TrimSpace(m.Text), "/") {
+	if m.MessageType != "text" && m.MessageType != "richText" || strings.HasPrefix(strings.TrimSpace(m.Text), "/") {
 		return nil
 	}
 	reference := m.ReplyToID

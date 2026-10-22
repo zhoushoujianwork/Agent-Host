@@ -69,6 +69,49 @@ func quoteFrame(t *testing.T, text any) []byte {
 	return callbackPayload(t, func(value map[string]any) { value["text"] = text })
 }
 
+func TestDWSRichTextQuoteSeparatesSenderTextAndReference(t *testing.T) {
+	for _, kind := range []string{"interactiveCard", "text"} {
+		t.Run(kind, func(t *testing.T) {
+			raw := callbackPayload(t, func(m map[string]any) {
+				delete(m, "text")
+				m["msgtype"] = "richText"
+				m["content"] = map[string]any{"richText": []any{map[string]string{"text": "Read the latest comment"}}, "isReplyMsg": true,
+					"repliedMsg": map[string]any{"msgId": "exact-original-id", "msgType": kind, "senderId": "untrusted-author", "createdAt": 123,
+						"content": map[string]any{"text": "Agent-Host 回复 [agh:original]", "downloadCode": "QUOTED_CAPABILITY", "cardContent": []any{map[string]string{"elementType": "TEXT", "value": "FTP request"}}}}}
+			})
+			got, err := Parse(raw, testConfig, testNow)
+			if err != nil || got.Text != "Read the latest comment" || got.ReplyToID != "exact-original-id" || got.Quote == nil || got.Quote.MessageID != "exact-original-id" || got.Quote.MessageType != kind || len(got.Attachments) != 0 {
+				t.Fatal("DWS quote wrapper lost text/reference or imported quoted media", got, err)
+			}
+			encoded, _ := json.Marshal(got)
+			if strings.Contains(string(encoded), "QUOTED_CAPABILITY") || strings.Contains(got.Text, "FTP request") {
+				t.Fatal("quoted bytes became sender text or capabilities", string(encoded))
+			}
+		})
+	}
+}
+
+func TestDWSRichTextQuoteRejectsMalformedWrapperWithoutTextPrefix(t *testing.T) {
+	for _, content := range []string{
+		`{"richText":[{"text":"/new"}],"unexpected":"value"}`,
+		`{"richText":[{"text":"/new"}],"isReplyMsg":"true"}`,
+		`{"richText":[{"text":"/new"}],"isReplyMsg":null}`,
+		`{"richText":[{"text":"/new"}],"isReplyMsg":true,"repliedMsg":null}`,
+		`{"richText":[{"text":"/new"}],"repliedMsg":{"msgId":"unmarked"}}`,
+		`{"richText":[{"text":"/new"},{"type":"unknown"}],"isReplyMsg":true}`,
+		`{"richText":[{"text":"/new"}],"isReplyMsg":true,"isReplyMsg":false}`,
+	} {
+		got, err := Parse(callbackPayload(t, func(m map[string]any) {
+			delete(m, "text")
+			m["msgtype"] = "richText"
+			m["content"] = json.RawMessage(content)
+		}), testConfig, testNow)
+		if err != nil || got.Text != "" || got.Quote != nil || got.ReplyToID != "" || len(got.Attachments) != 0 {
+			t.Fatal("malformed wrapper admitted a command prefix", got, err)
+		}
+	}
+}
+
 func TestParsePrivateQuoteShapes(t *testing.T) {
 	for name, content := range map[string]any{
 		"text object":    map[string]any{"text": "引用原文"},

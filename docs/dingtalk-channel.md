@@ -44,6 +44,8 @@ Ticket reply titles carry a stable reference, allowing title-only reply quotes
 to select their original card. The original card and saved instance ID remain
 available even when its intake failed before execution. Older replies without
 a usable reference require the original card or link when ambiguous.
+DWS quote replies are accepted as rich-text messages and use these same exact
+card and bot-reply references.
 These isolated tasks retain execution evidence but skip automatic memory learning.
 Cards receive receipt, execution, reply and terminal reactions; platform failures
 remain explicit and uncertain sends are not retried.

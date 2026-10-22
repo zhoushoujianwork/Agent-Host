@@ -198,6 +198,7 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 	text, supported := "", false
 	var attachments []Attachment
 	var forwarded *MessageQuote
+	isReply, replied := callback.Text.IsReplyMsg, callback.Text.RepliedMsg
 	switch callback.MessageType {
 	case "text":
 		text, supported = callback.Text.Content, true
@@ -212,7 +213,9 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 		forwarded = parseQuote("", true, &card)
 		text, supported = "Forwarded interactive card", true
 	case "richText":
-		text, attachments, supported = parseRichText(callback.Content)
+		rich, ok := parseRichTextMessage(callback.Content)
+		text, attachments, supported = rich.Text, rich.Attachments, ok
+		isReply, replied = rich.IsReply, rich.Replied
 	case "picture", "file":
 		text, attachments, supported = parseStandaloneMedia(callback.MessageType, callback.Content)
 	}
@@ -229,13 +232,13 @@ func Parse(data []byte, cfg Config, now time.Time) (Message, error) {
 		message.Text, message.Attachments = text, attachments
 		// originalMsgId is not a reliable parent identifier. Bind only the
 		// explicit provider reply metadata, never quote body or author text.
-		if callback.Text.IsReplyMsg && callback.Text.RepliedMsg != nil {
-			id := callback.Text.RepliedMsg.MsgID
+		if isReply && replied != nil {
+			id := replied.MsgID
 			if strings.TrimSpace(id) != "" && strings.TrimSpace(id) == id && len(id) <= maxIDBytes && !strings.ContainsAny(id, "\x00\r\n") && id != callback.ID {
 				message.ReplyToID = id
 			}
 		}
-		message.Quote = parseQuote(callback.OriginalMsgID, callback.Text.IsReplyMsg, callback.Text.RepliedMsg)
+		message.Quote = parseQuote(callback.OriginalMsgID, isReply, replied)
 		if forwarded != nil {
 			// The callback authenticates the sender who supplied the material,
 			// not its original author. Keep the body out of sender statements

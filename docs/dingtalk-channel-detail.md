@@ -67,6 +67,15 @@ malformed fragments or duplicate keys invalidate the whole rich message; no
 text prefix is dispatched on its own. Callback-provided quoted text or summaries
 are stored separately, with missing/truncated content marked; they never cause
 automatic DWS history retrieval or quoted-media downloads.
+
+DWS `chat +messages-reply` callbacks put `isReplyMsg` and `repliedMsg` alongside
+the `richText` array inside `content`. The parser separates this observed wrapper
+before strict rich-text part validation. Reply IDs and quoted previews use the
+same attribution and capability redaction as text quotes; quoted parts cannot
+become sender text or media downloads. Unknown wrapper fields, invalid reply
+flags and malformed parts reject the whole message without retaining an
+executable prefix. Private rich-text replies use the same exact card-task and
+accepted bot-title reference binding as plain text.
 Forwarded `markdown` bodies are accepted as reference material, separately from
 the current sender's statement. Picture callbacks may contain two distinct
 download codes; the parser prefers `downloadCode` and uses `pictureDownloadCode`

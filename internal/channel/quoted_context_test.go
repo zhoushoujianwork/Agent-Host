@@ -36,6 +36,33 @@ func TestTicketReplyQuoteReusesOriginalInstanceInNativePrompt(t *testing.T) {
 	}
 }
 
+func TestDWSRichTextQuotesContinueExactTicket(t *testing.T) {
+	f := newServiceFixture(t)
+	original := f.process(t, inputCallback(t, f, "dws-original-card", "interactiveCard", "", map[string]any{"text": "FTP request https://example.test/?procInstId=exact-instance"}, nil))
+	f.process(t, inputCallback(t, f, "dws-other-card", "interactiveCard", "", map[string]any{"text": "Unrelated https://example.test/?procInstId=wrong-instance"}, nil))
+	var previous state.ChannelMessage
+	for i, kind := range []string{"interactiveCard", "text"} {
+		id, body := original.MessageID, "FTP preview"
+		if i == 1 {
+			id, body = "unreturned-bot-id", state.CardReplyTitle(previous)
+		}
+		input := inputCallback(t, f, "dws-quote-"+kind, "richText", "", map[string]any{
+			"richText": []any{map[string]string{"text": "Read comments; no writes"}}, "isReplyMsg": true,
+			"repliedMsg": map[string]any{"msgId": id, "msgType": kind, "content": map[string]string{"text": body}},
+		}, nil)
+		current := f.process(t, input)
+		if current.Status != "completed" || current.TaskRootID != original.TaskRootID || current.Text != "Read comments; no writes" || current.Input == nil || current.Input.Quote == nil {
+			t.Fatal("DWS reply lost its exact card lane", current)
+		}
+		requests := f.runner.snapshot()
+		prompt := requests[len(requests)-1].Prompt
+		if !strings.Contains(prompt, `"instance_ids":["exact-instance"]`) || strings.Contains(prompt, "wrong-instance") {
+			t.Fatal("DWS reply selected another ticket", prompt)
+		}
+		previous = current
+	}
+}
+
 func TestHistoricalForwardedMarkdownQuoteReachesFreshFollowup(t *testing.T) {
 	for _, mode := range []string{"failed recovery", "model change"} {
 		t.Run(mode, func(t *testing.T) {

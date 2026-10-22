@@ -13,6 +13,57 @@ import (
 const MaxAttachments = 4
 const maxRichTextParts = 128
 
+type richTextMessage struct {
+	Text        string
+	Attachments []Attachment
+	IsReply     bool
+	Replied     *quotedCallback
+}
+
+// DWS quote replies put reply metadata beside the richText array. Separate
+// that wrapper before strict part parsing; quoted bytes are never sender text
+// or media download capabilities. Unknown/malformed fields reject the whole
+// message rather than admitting an executable text prefix.
+func parseRichTextMessage(raw json.RawMessage) (richTextMessage, bool) {
+	var out richTextMessage
+	content, ok := contentObject(raw)
+	if !ok {
+		return out, false
+	}
+	for key := range content {
+		if key != "richText" && key != "isReplyMsg" && key != "repliedMsg" {
+			return out, false
+		}
+	}
+	if flag, exists := content["isReplyMsg"]; exists {
+		switch string(bytes.TrimSpace(flag)) {
+		case "true":
+			out.IsReply = true
+		case "false":
+		default:
+			return out, false
+		}
+	}
+	if quoted, exists := content["repliedMsg"]; exists {
+		if !out.IsReply {
+			return richTextMessage{}, false
+		}
+		if _, ok := contentObject(quoted); !ok || json.Unmarshal(quoted, &out.Replied) != nil || out.Replied == nil {
+			return richTextMessage{}, false
+		}
+	}
+	parts, err := json.Marshal(map[string]json.RawMessage{"richText": content["richText"]})
+	if err != nil {
+		return richTextMessage{}, false
+	}
+	var supported bool
+	out.Text, out.Attachments, supported = parseRichText(parts)
+	if !supported {
+		return richTextMessage{}, false
+	}
+	return out, true
+}
+
 // Attachment describes inbound media. DownloadCode is an ephemeral capability:
 // persist it only in protected capability storage and never send it to the model
 // or logs. Resolve it after claiming the durable receipt.
