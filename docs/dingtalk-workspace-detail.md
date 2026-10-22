@@ -4,12 +4,31 @@ See the [user guide and scope](dingtalk-workspace.md).
 
 ## Ticket interpretation and close-out
 
-Channel policy version 8 applies to forwarded work orders, approval cards and
+Channel policy version 9 applies to forwarded work orders, approval cards and
 their follow-ups. Bare intake is interpretation first, followed by one concrete
 handling question. An explicit choice authorizes the chosen action without
 repeating the same permission question. Performing resource work, commenting,
 approving a task and completing an entire workflow remain separate outcomes.
 This is guidance for the native tool loop, not a new Host approval state machine.
+
+`read_ticket(instance_id)` reads the pinned `oa approval detail` contract as the
+configured owner. It preserves the entire returned result and separately exposes
+`ADD_REMARK` comments (including author and original timestamp) and `RUNNING`
+tasks belonging to that owner. Missing collections are explicitly unavailable.
+No pending-list enumeration, business mutation or attachment download occurs.
+Large results use Unicode text offsets over the full JSON document, with a
+SHA-256 digest required for continuation; a changed live result rejects stale
+offsets rather than joining different ticket snapshots.
+
+Private card follow-ups use exact incoming message IDs or an accepted ticket
+reply's `Agent-Host 回复 [agh:...]` title reference. The latter is necessary
+because webhook replies do not return an outgoing message ID. References must
+match the same account, tenant, conversation, authenticated sender and Agent/
+audience partition; collisions or unresolved references never choose a recent
+ticket. A quoted card first seen by Host starts its own task; repeated exact
+references retain that root. The selected root supplies only attributed card
+material, including instance IDs decoded from nested links, even when no run
+was created at intake. Historical text supplies no execution permission.
 
 The existing `dingtalk` MCP supplies `list_services`, `list_commands`,
 `describe_command`, `execute_command` and `operation_status`; no extra plugin or
@@ -44,6 +63,17 @@ Singapore time, both workers stayed running and the workbench returned HTTP 200.
 No real comment, approval or closure was submitted by these tests. Live business
 write acceptance remains separate from the offline contract tests and read-only
 native validation.
+
+On 2026-10-22, regression checks covered failed intake retaining its instance
+link, title-only quotes selecting the original card despite a newer unrelated
+ticket, unresolved references refusing selection, and full-detail pagination
+rejecting a changed live result. A read-only check through the deployed binary
+read the originally reported FTP instance: `RUNNING`, one returned comment and
+one current owner task. No comment or approval was submitted. The independent
+local service was updated with a backup of its previous executable; Feishu and
+DingTalk emitted fresh connections at 15:26:42 and 15:26:46 Singapore time, and
+the workbench returned HTTP 200. Local deployment evidence is retained under
+`validation/ticket-reference-fix-20261022T072632Z/` in the production root.
 
 ## Official dependency
 

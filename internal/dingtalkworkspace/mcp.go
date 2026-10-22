@@ -18,6 +18,8 @@ type Service struct {
 	Run                                Runner
 }
 type Args struct {
+	InstanceID        string            `json:"instance_id,omitempty"`
+	ExpectedDigest    string            `json:"expected_content_sha256,omitempty"`
 	Service           string            `json:"service,omitempty"`
 	Query             string            `json:"query,omitempty"`
 	Offset            int               `json:"offset,omitempty"`
@@ -74,6 +76,9 @@ func (s Service) Call(ctx context.Context, name string, raw json.RawMessage) (an
 	}
 	if !configured {
 		return nil, errors.New("DingTalk workspace is not configured; owner login is required")
+	}
+	if name == "read_ticket" {
+		return s.readTicket(ctx, c, a)
 	}
 	r := Request{Config: s.Path, Fingerprint: fp}
 	if name == "operation_status" {

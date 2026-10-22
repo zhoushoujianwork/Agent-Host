@@ -16,6 +16,7 @@ type ChannelRequestContext struct {
 	Input          string        `json:"input"`
 	InputTruncated bool          `json:"input_truncated"`
 	Quote          *ChannelQuote `json:"quote,omitempty"`
+	InstanceIDs    []string      `json:"instance_ids,omitempty"`
 }
 
 // ChannelRecentRequests supplies a bounded request handoff for a fresh channel

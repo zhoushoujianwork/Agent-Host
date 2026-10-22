@@ -15,6 +15,27 @@ import (
 	"agent-host/internal/state"
 )
 
+func TestTicketReplyQuoteReusesOriginalInstanceInNativePrompt(t *testing.T) {
+	f := newServiceFixture(t)
+	original := inputCallback(t, f, "original-ticket-card", "interactiveCard", "", map[string]any{"title": "FTP request", "text": "FTP request https://example.test/?procInstId=exact-instance"}, nil)
+	first := f.process(t, original)
+	if first.TaskRootID == "" {
+		t.Fatal("card did not receive its own task")
+	}
+	other := inputCallback(t, f, "unrelated-ticket-card", "interactiveCard", "", map[string]any{"title": "Other request", "text": "Other request https://example.test/?procInstId=unrelated-instance"}, nil)
+	f.process(t, other)
+	follow := inputCallback(t, f, "quoted-ticket-reply", "text", "Read the updated comment", nil, map[string]any{"msgId": "bot-id-not-returned-by-webhook", "msgType": "text", "content": map[string]string{"text": state.CardReplyTitle(first)}})
+	current := f.process(t, follow)
+	requests := f.runner.snapshot()
+	if current.Status != "completed" || current.TaskRootID != first.TaskRootID || len(requests) != 3 {
+		t.Fatal(current, len(requests))
+	}
+	prompt := requests[2].Prompt
+	if !strings.Contains(prompt, `"instance_ids":["exact-instance"]`) || !strings.Contains(prompt, "dingtalk.read_ticket") || strings.Contains(prompt, "unrelated-instance") {
+		t.Fatal("selected ticket was lost or replaced", prompt)
+	}
+}
+
 func TestHistoricalForwardedMarkdownQuoteReachesFreshFollowup(t *testing.T) {
 	for _, mode := range []string{"failed recovery", "model change"} {
 		t.Run(mode, func(t *testing.T) {

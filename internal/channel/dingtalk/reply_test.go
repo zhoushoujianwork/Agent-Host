@@ -20,6 +20,20 @@ type closeReader struct {
 	closed bool
 }
 
+func TestReplyPreservesTicketReferenceInQuotedTitle(t *testing.T) {
+	const title = "Agent-Host 回复 [agh:0123456789abcdef]"
+	replier := Replier{Now: func() time.Time { return testNow }, HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		var payload struct{ Markdown struct{ Title string } }
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil || payload.Markdown.Title != title {
+			t.Fatal("ticket reference lost in transport", payload, err)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"errcode":0}`)), Header: make(http.Header)}, nil
+	})}}
+	if status, err := replier.Reply(t.Context(), testReplyURL, testNow.Add(time.Hour), ReplyMessage{Text: "Selected ticket result", Title: title}); err != nil || status != Accepted {
+		t.Fatal(status, err)
+	}
+}
+
 func (r *closeReader) Close() error { r.closed = true; return nil }
 
 func TestReplyRequiresExplicitBusinessAcceptance(t *testing.T) {

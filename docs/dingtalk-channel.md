@@ -40,6 +40,10 @@ Private forwarded cards each start a separate task and native session. Two
 tickets can execute in parallel within the configured worker limit. Quote the
 original card to continue its task; that task's follow-ups remain ordered.
 With multiple recent tickets, an unquoted confirmation asks which card to use.
+Ticket reply titles carry a stable reference, allowing title-only reply quotes
+to select their original card. The original card and saved instance ID remain
+available even when its intake failed before execution. Older replies without
+a usable reference require the original card or link when ambiguous.
 These isolated tasks retain execution evidence but skip automatic memory learning.
 Cards receive receipt, execution, reply and terminal reactions; platform failures
 remain explicit and uncertain sends are not retried.

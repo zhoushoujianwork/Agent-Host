@@ -23,7 +23,7 @@ import (
 // text or the previous speaker, for group addressing. The short blockquote is
 // presentation only; it does not claim a native DingTalk reply relationship.
 func replyForMessage(m state.ChannelMessage, body string) dingtalk.ReplyMessage {
-	reply := dingtalk.ReplyMessage{Text: limitReply(body)}
+	reply := dingtalk.ReplyMessage{Text: limitReply(body), Title: state.CardReplyTitle(m)}
 	if m.Channel != "dingtalk" || m.ConversationType != "2" {
 		return reply
 	}

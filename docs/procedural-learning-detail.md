@@ -14,6 +14,15 @@ The MVP adds no schema migration, configuration mode or new service. It reuses
 native extraction, the unchanged 0.80 evidence threshold, candidate publication,
 scoped retrieval, native Skills and the existing event journal.
 
+Comparison policy v6 splits pairwise memory relations into batches whose JSON
+decision states each fit the existing 48 KiB limit. Every eligible record and
+its complete claims remain included; stored decision audits are not nested in
+new model inputs. All batches are planned before evaluation and retain their
+own request/response audit. Publication requires all batches to succeed; later
+failure cannot accept earlier partial relations. An individual record that
+cannot fit with the candidate still reports an explicit limit failure without
+truncation. This fixes catalog growth exceeding one combined comparison state.
+
 - `experience.NativeExtractor.Refine` narrows one withheld draft using only its
   cited observations, in a tool-free fresh invocation with no assistant/request
   context. At most one refinement is attempted per run. A second failed gate

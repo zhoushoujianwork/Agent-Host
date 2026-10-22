@@ -187,7 +187,7 @@ func TestChannelAudiencePolicyAndAuthenticatedSenderReachNativeExecution(t *test
 			if strings.Contains(request.HostInstructions, tc.input) {
 				t.Fatal("untrusted message became a system instruction")
 			}
-			for _, required := range []string{"channel policy, version 8", "https://github.com/zhoushoujianwork/Agent-Host", "short, natural, conversational sentences suitable for chat", "Lead with the main answer and retain essential facts, actions and caveats", "2–4 short sentences or at most three compact bullets", "expand when explicitly requested or necessary for correctness"} {
+			for _, required := range []string{"channel policy, version 9", "https://github.com/zhoushoujianwork/Agent-Host", "short, natural, conversational sentences suitable for chat", "Lead with the main answer and retain essential facts, actions and caveats", "2–4 short sentences or at most three compact bullets", "expand when explicitly requested or necessary for correctness"} {
 				if !strings.Contains(request.HostInstructions, required) {
 					t.Fatalf("native execution lost chat reply guidance %q", required)
 				}

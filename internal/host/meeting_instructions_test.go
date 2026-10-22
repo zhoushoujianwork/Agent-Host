@@ -10,7 +10,7 @@ import (
 func TestMeetingInstructionsKeepTheMeetingPublicAndSendersDistinct(t *testing.T) {
 	policy := MeetingChannelInstructions("Help with the current meeting.")
 	for _, required := range []string{
-		"channel policy, version 8",
+		"channel policy, version 9",
 		"https://github.com/zhoushoujianwork/Agent-Host",
 		"public to every participant in the current Feishu meeting",
 		"authenticated senders remain different people",

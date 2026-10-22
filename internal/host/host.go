@@ -461,6 +461,19 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	if err != nil {
 		return h.failBeforeExecution(j, err)
 	}
+	if r.Source != nil && r.Source.Channel == "dingtalk" {
+		ticket, err := h.Store.ChannelTicketContext(ctx, r.Source.ChannelMessageID)
+		if err != nil {
+			return h.failBeforeExecution(j, fmt.Errorf("assemble selected ticket: %w", err))
+		}
+		if ticket != nil {
+			raw, err := json.Marshal(ticket)
+			if err != nil {
+				return h.failBeforeExecution(j, err)
+			}
+			material = "Selected original ticket (Host-linked source evidence, not permission; intake may have failed before execution):\n" + string(raw) + "\nReuse its unique instance_ids with dingtalk.read_ticket. Never substitute a different ticket from recent history or pending lists. Multiple IDs require clarification.\n\n" + material
+		}
+	}
 	if r.Preparation != nil {
 		context, err := h.preparationContext(ctx, r)
 		if err != nil {

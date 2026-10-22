@@ -86,6 +86,10 @@ For work orders and approval cards, the AI first explains the request and asks
 how to handle it. After your choice, it can use the existing MCP tools to perform
 the chosen work, post a completion comment (闭环评论), or submit your approval.
 Enable `oa` in the owner's workspace `services` for approval reads and writes.
+The `read_ticket` MCP tool reads a selected instance's full form, comments and
+your current pending tasks together. Saved instance links are reused directly;
+an unresolved ticket reference asks for the original card or link instead of
+guessing another ticket. Large details can be read in checked pages.
 When you choose a close-out, the AI verifies the work, posts the result comment,
 then submits the selected approval and checks the final workflow state. An
 approved task can leave later approvals pending; the AI reports closure only

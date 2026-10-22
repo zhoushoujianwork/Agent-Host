@@ -2,8 +2,70 @@ package state
 
 import (
 	"agent-host/internal/event"
+	"strings"
 	"testing"
 )
+
+func TestTicketReferenceRetainsFailedIntakeAndInstanceLink(t *testing.T) {
+	s, _ := testStore(t)
+	a := taskCard("failed-card")
+	a.Input.Quote.Body = "FTP request https://aflow.dingtalk.com/?pcLink=https%3A%2F%2Fexample.test%2F%3FprocInstId%3Dinstance-exact%26taskId%3Dold-task"
+	enqueueChannel(t, s, a)
+	a = claimChannel(t, s, a.Profile)
+	if err := s.FinishChannelMessage(testContext, a.ID, "failed", "routing HTTP 402"); err != nil {
+		t.Fatal(err)
+	}
+	enqueueChannel(t, s, taskCard("unrelated-card"))
+	follow := channelInput("explicit-follow")
+	follow.ConversationType, follow.Text, follow.ReplyToID = "1", "Read comments", a.MessageID
+	enqueueChannel(t, s, follow)
+	follow, err := s.ChannelMessage(testContext, follow.ID)
+	if err != nil || follow.TaskRootID != a.ID {
+		t.Fatal(follow, err)
+	}
+	got, err := s.ChannelTicketContext(testContext, follow.ID)
+	if err != nil || got == nil || got.MessageID != a.MessageID || strings.Join(got.InstanceIDs, ",") != "instance-exact" || got.Quote.Body != a.Input.Quote.Body {
+		t.Fatal("failed intake lost its exact source and instance", got, err)
+	}
+	// A forged cross-sender root must not expose card content.
+	follow.SenderID = "another-user"
+	recoveryPayload(t, s, "channel_messages", follow.ID, follow)
+	if _, err := s.ChannelTicketContext(testContext, follow.ID); err == nil {
+		t.Fatal("cross-sender ticket context allowed")
+	}
+}
+
+func TestTitleOnlyTicketReplySelectsOriginalNotLatest(t *testing.T) {
+	s, _ := testStore(t)
+	a := taskCard("title-original")
+	enqueueChannel(t, s, a)
+	a = claimChannel(t, s, a.Profile)
+	reactionReply(t, s, a, "completed", "accepted")
+	a, _ = s.ChannelMessage(testContext, a.ID)
+	enqueueChannel(t, s, taskCard("newer-unrelated"))
+	follow := channelInput("title-follow")
+	follow.ConversationType, follow.Text = "1", "Read the revised comment"
+	follow.Input = &ChannelInput{Quote: &ChannelQuote{MessageID: "unreturned-bot-id", MessageType: "text", Body: CardReplyTitle(a)}}
+	enqueueChannel(t, s, follow)
+	got, err := s.ChannelMessage(testContext, follow.ID)
+	if err != nil || got.TaskRootID != a.ID || got.AmbiguousTask {
+		t.Fatal("title selected wrong ticket", got, err)
+	}
+	follow.ID, follow.MessageID = "unresolved-title", "unresolved-title"
+	follow.Input.Quote.Body = "Agent-Host 回复"
+	enqueueChannel(t, s, follow)
+	got, err = s.ChannelMessage(testContext, follow.ID)
+	if err != nil || !got.AmbiguousTask || got.TaskRootID != "" {
+		t.Fatal("unresolved quote guessed a ticket", got, err)
+	}
+	follow.ID, follow.MessageID = "ordinary-quote", "ordinary-quote"
+	follow.Text, follow.Input.Quote.Body = "Explain this sentence", "A colleague's unrelated discussion"
+	enqueueChannel(t, s, follow)
+	got, err = s.ChannelMessage(testContext, follow.ID)
+	if err != nil || got.AmbiguousTask || got.TaskRootID != "" {
+		t.Fatal("unrelated quotation was captured by a ticket", got, err)
+	}
+}
 
 func taskCard(id string) ChannelMessage {
 	m := channelInput(id)

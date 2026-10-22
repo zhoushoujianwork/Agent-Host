@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,64 @@ import (
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/state"
 )
+
+func TestComparisonBatchesAllClaimsWithoutTruncation(t *testing.T) {
+	var existing []state.Memory
+	for i := 0; i < 5; i++ {
+		m := fixtureMemory(fmt.Sprintf("memory-%d", i), "reviewed_experience")
+		m.Text = strings.Repeat("claim", 4000) + m.ID
+		existing = append(existing, m)
+	}
+	seen := map[string]bool{}
+	f := &fakeEvaluator{fn: func(_ context.Context, input any, questions map[string]jev.Question) (jev.Response, error) {
+		if err := boundedState(input); err != nil {
+			t.Fatal(err)
+		}
+		answers := map[string]jev.Answer{}
+		for key, m := range input.(map[string]any)["existing"].(map[string]state.Memory) {
+			if seen[m.ID] || !strings.HasSuffix(m.Text, m.ID) || len(m.Text) < 20000 {
+				t.Fatal("lost or duplicated claims", m.ID)
+			}
+			seen[m.ID] = true
+			choice := "independent"
+			if m.ID == "memory-4" {
+				choice = "conflict"
+			}
+			answers[key] = answer(choice, .99)
+		}
+		return jev.Response{Model: "fixture", Answers: answers}, nil
+	}}
+	out, err := (&JevJudge{client: f}).Compare(t.Context(), fixtureCandidate(), existing)
+	if err != nil || len(seen) != 5 || f.calls < 2 || strings.Join(out.ConflictIDs, ",") != "memory-4" {
+		t.Fatal(out, err, seen, f.calls)
+	}
+	var audit decisionAudit
+	if json.Unmarshal(out.Audit, &audit) != nil || len(audit.Evaluations) != f.calls {
+		t.Fatal("batch audits missing")
+	}
+}
+
+func TestComparisonBatchFailureNeverAcceptsPartialRelations(t *testing.T) {
+	existing := []state.Memory{fixtureMemory("first", "reviewed_experience"), fixtureMemory("last", "reviewed_experience")}
+	for i := range existing {
+		existing[i].Text = strings.Repeat("x", 30000)
+	}
+	f := &fakeEvaluator{}
+	f.fn = func(_ context.Context, input any, questions map[string]jev.Question) (jev.Response, error) {
+		if f.calls == 2 {
+			return jev.Response{}, errors.New("batch failure")
+		}
+		answers := map[string]jev.Answer{}
+		for key := range questions {
+			answers[key] = answer("same", .99)
+		}
+		return jev.Response{Answers: answers}, nil
+	}
+	out, err := (&JevJudge{client: f}).Compare(t.Context(), fixtureCandidate(), existing)
+	if err == nil || f.calls != 2 || len(out.DuplicateIDs) != 0 || !strings.Contains(string(out.Audit), "batch failure") {
+		t.Fatal(out, err, f.calls)
+	}
+}
 
 type fakeEvaluator struct {
 	fn    func(context.Context, any, map[string]jev.Question) (jev.Response, error)

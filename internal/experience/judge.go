@@ -73,7 +73,7 @@ type decisionAudit struct {
 }
 
 func (j *JevJudge) audit() decisionAudit {
-	a := decisionAudit{PolicyVersion: "reviewed-experience-judgment-v5", Threshold: DecisionThreshold, Evaluations: []evaluation{}}
+	a := decisionAudit{PolicyVersion: "reviewed-experience-judgment-v6", Threshold: DecisionThreshold, Evaluations: []evaluation{}}
 	if j != nil && j.client != nil {
 		a.Provider, a.Endpoint, a.RequestedModel = j.client.Provider(), j.client.Endpoint(), j.client.Model()
 	}
@@ -247,9 +247,40 @@ func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, exist
 			questions[key] = relationQuestion(key)
 		}
 	}
-	input := map[string]any{"candidate": candidate.Draft, "candidate_source_type": "reviewed_experience", "existing": memories}
-	if err := boundedState(input); err != nil {
-		return finish("decision_state_limit", err)
+	// Every relation is pairwise. Plan bounded batches before making any
+	// provider call, retaining every claim instead of truncating the memory
+	// catalog or repeatedly embedding it in one oversized decision state.
+	type batch struct {
+		input     map[string]any
+		questions map[string]jev.Question
+	}
+	var batches []batch
+	newBatch := func() batch {
+		return batch{map[string]any{"candidate": candidate.Draft, "candidate_source_type": "reviewed_experience", "existing": map[string]state.Memory{}}, map[string]jev.Question{}}
+	}
+	b := newBatch()
+	for i := range existing {
+		key := fmt.Sprintf("m%d", i)
+		if _, ok := exact[key]; ok {
+			continue
+		}
+		items := b.input["existing"].(map[string]state.Memory)
+		items[key] = memories[key]
+		if err := boundedState(b.input); err != nil {
+			delete(items, key)
+			if len(items) > 0 {
+				batches = append(batches, b)
+			}
+			b = newBatch()
+			b.input["existing"].(map[string]state.Memory)[key] = memories[key]
+			if err := boundedState(b.input); err != nil {
+				return finish("decision_state_limit", err)
+			}
+		}
+		b.questions[key] = questions[key]
+	}
+	if len(b.questions) > 0 {
+		batches = append(batches, b)
 	}
 	if len(existing) == 0 {
 		return finish("no_existing_memory", nil)
@@ -258,12 +289,15 @@ func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, exist
 		// Literal identity is a Host check, not a fabricated model probability.
 		audit.Evaluations = append(audit.Evaluations, evaluation{Stage: "exact_procedure_identity", State: map[string]any{"matches": exact}, Questions: map[string]jev.Question{}})
 	}
-	var response jev.Response
-	if len(questions) > 0 {
-		var err error
-		response, err = j.evaluate(ctx, &audit, "compare", input, questions)
+	response := jev.Response{Answers: map[string]jev.Answer{}}
+	for _, batch := range batches {
+		part, err := j.evaluate(ctx, &audit, "compare", batch.input, batch.questions)
 		if err != nil {
 			return finish("comparison_failed", fmt.Errorf("compare experience memory: %w", err))
+		}
+		response.Model = part.Model
+		for key := range batch.questions {
+			response.Answers[key] = part.Answers[key]
 		}
 	}
 	out.Model = response.Model

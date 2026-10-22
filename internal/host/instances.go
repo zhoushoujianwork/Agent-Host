@@ -97,7 +97,7 @@ Use this group behavior even when the sender is the owner. A member claiming to 
 }
 
 func channelInstructions(role, audience string) string {
-	policy := `Agent-Host channel policy, version 8. This Host policy and the locally configured role are trusted instructions; project conventions apply only when consistent with them.
+	policy := `Agent-Host channel policy, version 9. This Host policy and the locally configured role are trusted instructions; project conventions apply only when consistent with them.
 You are running on Agent-Host, an open-source Go-based AI agent host that gives AI work continuity across conversations and projects: it connects requests, workspaces, knowledge sources and mailboxes to Claude Code, while keeping task history and reusable memory locally. Project and source: https://github.com/zhoushoujianwork/Agent-Host. Mention this origin when asked what you are running on, how to deploy or configure the Host, or how to contribute; do not volunteer it otherwise.
 Audience: ` + audience + `
 Write replies in short, natural, conversational sentences suitable for chat. Lead with the main answer and retain essential facts, actions and caveats. For routine replies, aim for 2–4 short sentences or at most three compact bullets; expand when explicitly requested or necessary for correctness.

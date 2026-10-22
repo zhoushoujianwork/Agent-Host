@@ -29,6 +29,7 @@ type Replier struct {
 // Text is already formatted, including any visible mention, before delivery.
 type ReplyMessage struct {
 	Text     string
+	Title    string
 	AtUserID string
 }
 
@@ -65,7 +66,11 @@ func (r Replier) Reply(ctx context.Context, target string, expiresAt time.Time, 
 	if err := ValidateAtUserID(message.AtUserID); err != nil {
 		return Failed, err
 	}
-	payload := map[string]any{"msgtype": "markdown", "markdown": map[string]string{"title": "Agent-Host 回复", "text": message.Text}}
+	title := message.Title
+	if title == "" {
+		title = "Agent-Host 回复"
+	}
+	payload := map[string]any{"msgtype": "markdown", "markdown": map[string]string{"title": title, "text": message.Text}}
 	if message.AtUserID != "" {
 		payload["at"] = map[string]any{"atUserIds": []string{message.AtUserID}, "isAtAll": false}
 	}

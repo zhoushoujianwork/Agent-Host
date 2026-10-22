@@ -41,6 +41,20 @@ func TestApprovalDetailLive(t *testing.T) {
 		t.Fatal("real approval read did not verify the selected instance")
 	}
 	t.Logf("Selected approval read through embedded owner MCP: status=%s; no writes", result.Result.Status)
+	raw, _ = json.Marshal(Args{InstanceID: id})
+	ticket, err := s.Call(t.Context(), "read_ticket", raw)
+	if err != nil {
+		t.Fatal("unified live ticket read failed", err)
+	}
+	read := ticket.(map[string]any)
+	if read["instance_id"] != id || read["partial"] != false {
+		t.Fatal("live ticket read did not return the complete selected document")
+	}
+	coverage := read["coverage"].(map[string]any)
+	if coverage["comments_available"] != true || coverage["tasks_available"] != true {
+		t.Fatal("live ticket comments/tasks unavailable", coverage)
+	}
+	t.Logf("Unified selected ticket: %d comments, %d current owner tasks; no writes", len(read["comments"].([]map[string]json.RawMessage)), len(read["current_tasks"].([]map[string]json.RawMessage)))
 }
 
 // Exercise the existing MCP rather than introducing another approval API.
