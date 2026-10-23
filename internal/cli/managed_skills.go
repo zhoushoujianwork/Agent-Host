@@ -25,6 +25,8 @@ import (
 
 const skillsUsage = `Managed Skills (explicit adoption; no production changes):
   agent-host skills list --root ABSOLUTE_PATH
+  agent-host skills inspect --root ABSOLUTE_PATH
+  agent-host skills inspect --root PATH --id ID --revision N --digest SHA256 --file references/region.md
   agent-host skills import --root PATH --source CANONICAL_DIR --id ID --actor OWNER --applicability TEXT --agents default --audiences owner --scopes SCOPE --provenance SOURCE
   agent-host skills review --root PATH --id ID --revision N --digest SHA256 --actor REVIEWER --note EVIDENCE
   agent-host skills publish|enable|disable|withdraw|rollback --root PATH --id ID --revision N --digest SHA256 --actor OPERATOR
@@ -43,7 +45,7 @@ func runSkills(args []string, out, errout io.Writer) error {
 	action := args[0]
 	flags := flag.NewFlagSet("skills "+action, flag.ContinueOnError)
 	flags.SetOutput(errout)
-	var root, source, id, actor, digest, note, applicability, agents, audiences, scopes, plugins, tools, provenance, expires, contracts string
+	var root, source, id, actor, digest, note, applicability, agents, audiences, scopes, plugins, tools, provenance, expires, contracts, file string
 	var revision int
 	var helpers bool
 	for name, target := range map[string]*string{"root": &root, "source": &source, "id": &id, "actor": &actor, "digest": &digest, "note": &note, "applicability": &applicability, "agents": &agents, "audiences": &audiences, "scopes": &scopes, "plugins": &plugins, "tools": &tools, "provenance": &provenance, "expires-at": &expires, "contracts": &contracts} {
@@ -51,6 +53,7 @@ func runSkills(args []string, out, errout io.Writer) error {
 	}
 	flags.IntVar(&revision, "revision", 0, "Pinned revision")
 	flags.BoolVar(&helpers, "helpers", false, "Explicitly adopt existing scripts")
+	flags.StringVar(&file, "file", "", "Read one pinned instruction or reference file")
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -62,6 +65,13 @@ func runSkills(args []string, out, errout io.Writer) error {
 	}
 	var catalog managedskills.Catalog
 	var err error
+	if action == "inspect" {
+		catalog, err = managedskills.Load(root)
+		if err != nil {
+			return err
+		}
+		return inspectManagedSkills(out, catalog, id, revision, digest, file)
+	}
 	if action == "list" {
 		catalog, err = managedskills.Load(root)
 	} else {

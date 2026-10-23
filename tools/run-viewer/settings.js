@@ -5,6 +5,7 @@ const KEEP = "__AGENT_HOST_KEEP_SECRET__";
 const SECTIONS = {
   general: ["◐", "通用", "选择你喜欢的外观，其他选项已准备好默认值。"],
   agents: ["◈", "智能体", "日常使用默认智能体，专属项目独立配置。"],
+  skills: ["◇", "平台技能", "查看纳管方法、固定版本与来源；默认 Agent 在相关任务前主动装载适用技能。"],
   models: ["⌁", "模型与连接", "选择模型。使用自定义服务时，再填写地址和密钥。"],
   channels: ["▤", "消息渠道", "连接你使用的消息工具。不需要的渠道保持关闭即可。"],
   shortcuts: ["⌘", "快捷键", "少一点点击，更快回到工作。"],
@@ -42,11 +43,13 @@ function renderNav() {
     b.onclick=()=>{if(category!==id&&mayLeave()){category=id;selected=null;dirty=false;feedback("");render();}};$("categories").append(b);
   }
 }
-function render() {
+function render(platformSelection) {
   renderNav();const matches=sectionMatches(category);
   $("section-title").textContent=matches?SECTIONS[category][1]:"没有找到设置";
   $("section-description").textContent=matches?SECTIONS[category][2]:"试试搜索外观、智能体、模型或消息渠道。";
   $("general").hidden=category!=="general"||!matches;$("shortcuts").hidden=category!=="shortcuts"||!matches;
+  $("platform-skills").hidden=category!=="skills"||!matches;
+  if(category==="skills"&&matches)window.AGHPlatformSkills.render($("platform-skills"),platformSelection);
   const files=matches?catalog.files.filter(file=>fileSection(file)===category):[];
   const choices=category==="agents"?window.AGHAgentProfiles.choices(agentProfiles).filter(p=>files.some(file=>file.id===p.file_id)):[];
   const choice=choices.find(p=>p.key===agentChoiceKey)||choices[0];
@@ -58,7 +61,7 @@ function render() {
     for(const profile of choices){const b=node("button","file-tab"+(profile.key===choice.key?" active":""),profile.default?"默认智能体":profile.name);b.type="button";b.onclick=()=>{if(profile.key!==agentChoiceKey&&mayLeave()){agentChoiceKey=profile.key;selected=null;dirty=false;feedback("");render();}};$("files").append(b);}
   }else for(const file of files){const b=node("button","file-tab"+(selected?.id===file.id?" active":""),fileTitle(file));b.type="button";b.onclick=()=>{if(file.id!==selected?.id&&mayLeave()){selected=file;draft=clone(file.value??null);dirty=false;feedback("");render();}};$("files").append(b);}
   $("files").hidden=choices.length?choices.length<2:files.length<2;
-  $("empty").hidden=!!selected||["general","shortcuts"].includes(category)||!matches;
+  $("empty").hidden=!!selected||["general","shortcuts","skills"].includes(category)||!matches;
   $("empty").textContent=category==="channels"?"还没有配置消息渠道。你仍可通过本地 CLI 使用 AGH。":"还没有可编辑的配置。请从已配置的 Host 打开工作台。";
   renderEditor();changed();
 }
@@ -153,4 +156,8 @@ $("reset").onclick=()=>{if(selected){draft=clone(selected.value);renderEditor();
 $("refresh").onclick=()=>{if(mayLeave())load();};
 $("search").oninput=()=>{if(dirty){feedback("请先保存或放弃修改，再搜索其他设置。");return;}if(!sectionMatches(category)){category=Object.keys(SECTIONS).find(sectionMatches)||"general";selected=null;}render();};
 window.addEventListener("beforeunload",event=>{if(dirty){event.preventDefault();event.returnValue="";}});
+window.AGHPlatformSkills.open=(destination,id="")=>{
+  if(!mayLeave())return;
+  category="skills";selected=null;dirty=false;$("search").value="";feedback("");render({destination,id});
+};
 load();

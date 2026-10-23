@@ -1,0 +1,14 @@
+.platform-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+.platform-controls input { flex: 1; min-width: 160px; margin: 0; }
+.platform-controls select,.platform-detail select { max-width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.platform-list { display: grid; gap: 8px; }
+.platform-row { display: grid; gap: 7px; width: 100%; padding: 15px; text-align: left; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; overflow-wrap: anywhere; }
+.platform-row:hover,.platform-row:focus-visible { border-color: var(--accent); }
+.platform-row span,.platform-row small { color: var(--muted); line-height: 1.6; }
+.platform-detail { margin-top: 24px; overflow-wrap: anywhere; }
+.platform-detail h2 { font-size: 17px; }
+.platform-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.platform-source { max-height: 480px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: var(--surface-soft); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.7 var(--mono); }
+.platform-source:empty { display: none; }
+.platform-digest { font: 10px/1.6 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.platform-audit { margin: 12px 0; }

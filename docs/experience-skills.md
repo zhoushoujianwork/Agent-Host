@@ -8,7 +8,9 @@ makes Skill the final reusable form of handling procedures, with agh registratio
 and proactive loading by the default Agent. This includes authored procedures
 and enabled-plugin usage guidance as distinct sources. The existing reviewed
 experience path described here remains one publication source; the unified
-catalog and loading policy are proposed, not implemented by this documentation.
+catalog and loading policy are implemented in source, with bounded local native
+acceptance. The [Platform Skills view](platform-skills-web-design.md) adds read-only
+inspection; automatic method merging and production adoption remain separate.
 
 Issue [#1](https://github.com/zhoushoujianwork/Agent-Host/issues/1) status reviewed
 on 2026-10-20: scoped Skill publication, fresh-task mounting and withdrawal are

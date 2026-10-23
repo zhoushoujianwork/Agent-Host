@@ -21,6 +21,9 @@ to keep the defaults. [Implementation details](settings-console-detail.md).
   Chat. Each Agent keeps its own conversation while the viewer is running.
   Overview, instructions, observed capabilities, work context and activity remain
   available for inspecting configured Agents.
+- **Platform Skills / 平台技能:** inspect authored Skill publications, review
+  history and complete pinned references for the selected runtime. The page is
+  read-only; adoption and lifecycle changes use the existing CLI.
 - **Models and connections / 模型与连接:** choose a native model and, when using
   a custom service, its address and API key. Existing keys remain hidden.
 - **Channels / 消息渠道:** enable an already configured channel and fill in its
@@ -34,11 +37,11 @@ edits. A failed check restores the previous file. Saving does not execute tasks.
 
 ## Defaults and scope
 
-Proposed addition: [Platform Skills / 平台技能](platform-skills-web-design.md)
-becomes a shared Settings category alongside Agents. It manages agh-registered
-procedures and explains enabled-plugin usage/readiness. Agent profiles show
-their effective catalogs and link to the same registry. This is planned UI;
-the current installed native-skill selector is not that platform catalog.
+[Platform Skills / 平台技能](platform-skills-web-design.md) provides the first
+read-only catalog view. Agent capabilities also show bounded historical effective
+catalogs and actual load observations, including experience and plugin entries.
+Current plugin readiness and checked Web registration/lifecycle changes remain
+planned. The installed native-skill selector keeps its separate role.
 
 Advanced edits to execution profiles, timeouts, permissions, instruction sources,
 memory policy, source connection setup, backups and CLI handoff parameters stay in

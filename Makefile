@@ -93,6 +93,8 @@ check:
 	node --test tools/run-viewer/app_test.cjs
 	python3 -B tools/run-viewer/memory_view_test.py
 	python3 -B tools/run-viewer/settings_test.py
+	python3 -B tools/run-viewer/platform_skills_test.py
+	node --test tools/run-viewer/platform-skills_test.cjs
 	python3 -B tools/run-viewer/agent_profiles_test.py
 	node --test tools/run-viewer/agent-profiles_test.cjs
 	python3 -B tools/run-viewer/chat_runtime_test.py

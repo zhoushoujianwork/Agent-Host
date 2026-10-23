@@ -11,6 +11,23 @@ window.AGHAgentProfiles = (() => {
     if(detail)c.append(el("small","",detail));return c;
   }
   function note(parent, text) {parent.append(el("p","agent-note",text));}
+  function platformView(parent, profile) {
+    const section=el("section","agent-platform-skills");section.append(el("h3","agent-section-label","平台技能"));
+    note(section,profile.platform_policy==="automatic_default"?"自动发现已启用且就绪的平台技能，处理相关任务前主动装载。具体可用范围由任务、受众、项目和工具策略决定。":"此 Agent 保留现有技能选择策略，未自动加入默认 Agent 的完整平台目录。");
+    if(profile.destination!=="unassigned"&&!profile.unsaved){const open=el("button","quiet","查看平台技能目录");open.type="button";open.onclick=()=>window.AGHPlatformSkills?.open?.(profile.destination);section.append(open);}
+    const snapshot=profile.platform_catalog;
+    if(!snapshot){note(section,"最近 20 条可关联执行中没有平台目录快照；当前可用目录和实际装载状态未知。");parent.append(section);return;}
+    note(section,`历史任务快照：${snapshot.observed_at} · 受众：${snapshot.audience_id} · 范围：${(snapshot.scopes||[]).join(", ")}。它不代表当前配置，也不证明已装载或业务成功。`);
+    const sources={authored:"手写技能",reviewed_experience:"已审核经验",plugin_usage:"插件用法"};
+    for(const skill of snapshot.sources||[]){const c=card(skill.title||skill.skill_id||skill.name,`${sources[skill.kind]||skill.kind} · v${skill.revision} · 该任务可用`,skill.applicability);
+      if(skill.kind==="authored"){const open=el("button","quiet","查看纳管版本");open.type="button";open.onclick=()=>window.AGHPlatformSkills?.open?.(profile.destination,skill.skill_id);c.append(open);}section.append(c);}
+    if(!snapshot.sources?.length)note(section,"该任务快照中的可用平台技能为空。");
+    for(const [id,reason]of Object.entries(snapshot.unready||{}))section.append(card(id,"该任务不可用",reason));
+    for(const load of snapshot.loads||[])note(section,`${load.type==="skills.load.observed"?"技能装载":"参考文件读取"} · ${load.skill_id||load.path||"未知"} · ${load.status} · ${load.at||""}`);
+    if(!snapshot.loads?.length)note(section,"该快照暂无原生装载记录；目录可用不等于已使用。");
+    if(snapshot.loads_truncated)note(section,"装载记录仅展示前 200 条，完整证据见执行记录。");
+    const link=el("a","","查看此快照的执行证据 →");link.href="/executions.html?key="+encodeURIComponent(snapshot.run_key);section.append(link);parent.append(section);
+  }
   function choices(profiles) {
     const primary=profiles.find(p=>p.destination==="web"&&p.default)||profiles.find(p=>p.default);
     const result=primary?[primary]:[];
@@ -24,7 +41,7 @@ window.AGHAgentProfiles = (() => {
     const available=profiles.filter(p=>p.file_id===file.id && !(p.destination==="cli"&&profiles.some(other=>other.file_id===p.file_id&&other.id===p.id&&other.destination==="web")));
     const web=available.find(p=>p.destination==="web");
     if(web&&editor)for(const agent of draft.agents||[]){
-      if(!available.some(p=>p.id===agent.id))available.push({...web,id:agent.id,key:`${file.id}:web:${agent.id}`,name:agent.name||agent.id,default:false,chat_selected:false,native_inventory:null,skills:[],activity:[],instructions:[],groups:[],unsaved:true});
+      if(!available.some(p=>p.id===agent.id))available.push({...web,id:agent.id,key:`${file.id}:web:${agent.id}`,name:agent.name||agent.id,default:false,chat_selected:false,native_inventory:null,platform_catalog:null,platform_policy:"existing_selection",skills:[],activity:[],instructions:[],groups:[],unsaved:true});
     }
     if(!available.length){note(container,error||"尚未取得智能体档案。可继续编辑下方已有配置。");return false;}
     if(error)note(container,error);
@@ -66,12 +83,13 @@ window.AGHAgentProfiles = (() => {
       if(!p.instructions.length)note(content,"未设置 Agent 专属指令来源；任务仍会接收 Host 和原生引擎适用的规则。");
       if(p.execution_config)content.append(card("执行引擎配置",p.execution_config,"已配置来源；模型和工具能力需结合实际运行判断。"));
     }else if(activeTab==="capabilities"){
+      platformView(content,p);
       const search=el("input","agent-search");search.type="search";search.placeholder="搜索技能、连接器或 Host 能力";search.setAttribute("aria-label",search.placeholder);content.append(search);
       const inventory=el("div","agent-inventory");content.append(inventory);
       const native=p.native_inventory;
       if(native)note(content,`最近观测：${native.observed_at} · ${native.transport}。技能列表随任务变化；历史加载不等于本轮调用或执行成功。`);
       const entries=[...(native?.skills||[]).map(name=>({type:"技能",title:name,text:"原生实际已加载（历史观测）",detail:native.observed_at})),
-        ...p.skills.filter(s=>!(native?.skills||[]).includes("agent-host:"+s.name)).map(s=>({type:"技能",title:s.name,text:`记忆技能 · 版本 ${s.revision} · ${state(s.state)}`,detail:`${s.observed_at}；装配不等于原生加载或执行成功。`})),
+        ...p.skills.filter(s=>!(native?.skills||[]).includes("agent-host:"+s.name)).map(s=>({type:"技能",title:s.name,text:`Host 技能 · 版本 ${s.revision} · ${state(s.state)}`,detail:`${s.observed_at}；装配不等于原生加载或执行成功。`})),
         ...(native?.services||[]).map(s=>({type:"知识与工具服务",title:s.name,text:state(s.status),detail:`${native.observed_at}；原生初始化观测，未验证所有检索与写入操作。`})),
         ...p.connectors.map(c=>({type:"连接器与数据源",title:c.name,text:state(c.state),detail:`${c.scope==="agent_selection"?"此智能体已选择":"默认共享"}；${c.origin}。配置不证明账号连通。`})),
         {type:"Host 能力",title:"任务路由与上下文装配",text:"由 Host 提供",detail:"结合入口、Agent 和项目配置组织执行。"},

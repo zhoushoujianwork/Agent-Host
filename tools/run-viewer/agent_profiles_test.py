@@ -89,6 +89,39 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn("private-body", json.dumps(p))
         self.assertFalse(self.result(destination="feishu")["activity"])
 
+    def test_platform_snapshot_keeps_destination_revision_and_load_evidence_separate(self):
+        self.observe("fallback")
+        run = {"id": "r1", "agent_id": "default", "audience_id": "owner", "created_at": "2026-10-23"}
+        self.db.execute("INSERT INTO runs VALUES(?,?,?)", ("r1", run["created_at"], json.dumps(run)))
+        manifest = {"version": "host-native-skills-v2", "agent_id": "default", "audience_id": "owner", "digest": "snapshot-one", "scopes": ["project:a"],
+                    "sources": [{"skill_id": "sftp", "kind": "authored", "title": "SFTP delivery", "revision": 2, "content_digest": "revision-two", "private_body": "never-expose"},
+                                {"skill_id": "plugin-dingtalk", "kind": "plugin_usage", "revision": 1}]}
+        events = [{"type": "skills.catalog.provided", "at": "2026-10-23", "data": {"manifest": manifest, "unready": {"dependent": "required plugin unavailable"}}},
+                  {"type": "skills.load.observed", "status": "completed", "data": {"snapshot_digest": "snapshot-one", "source": {"skill_id": "sftp"}, "input": {"private": "never-expose"}}},
+                  {"type": "skills.reference.observed", "status": "failed", "data": {"snapshot_digest": "snapshot-one", "file": {"path": "skills/a/references/us.md"}}},
+                  {"type": "skills.load.observed", "status": "completed", "data": {"snapshot_digest": "wrong-snapshot", "source": {"skill_id": "wrong-skill"}}}]
+        for seq, event in enumerate(events):
+            self.db.execute("INSERT INTO events VALUES(?,?,?)", ("r1", seq, json.dumps(event)))
+        self.db.commit()
+        p = self.result()
+        snapshot = p["platform_catalog"]
+        self.assertEqual(p["platform_policy"], "automatic_default")
+        self.assertEqual(self.result("ops")["platform_policy"], "existing_selection")
+        self.assertEqual(snapshot["run_key"], "dingtalk:db:r1")
+        self.assertEqual(snapshot["sources"][0]["revision"], 2)
+        self.assertEqual([e["status"] for e in snapshot["loads"]], ["completed", "failed"])
+        self.assertNotIn("never-expose", json.dumps(p))
+        self.assertNotIn("wrong-skill", json.dumps(p))
+        self.assertIsNone(self.result(destination="feishu")["platform_catalog"])
+        self.assertIsNone(self.result("ops")["platform_catalog"])
+        # A newer tool-free run with an empty manifest must not revive an older catalog.
+        self.observe("fallback", run_id="r2")
+        self.db.execute("INSERT INTO runs VALUES(?,?,?)", ("r2", "2026-10-24", json.dumps({**run, "id": "r2", "created_at": "2026-10-24"})))
+        self.db.execute("INSERT INTO events VALUES(?,?,?)", ("r2", 0, json.dumps({"type": "skills.catalog.provided", "data": {"manifest": {"version": "", "sources": None}}})))
+        self.db.commit()
+        self.assertEqual(self.result()["platform_catalog"]["sources"], [])
+        self.assertEqual(self.result()["platform_catalog"]["run_key"], "dingtalk:db:r2")
+
     def test_no_history_is_not_no_bound_groups_and_errors_remain_visible(self):
         p = self.result()
         self.assertEqual(p["groups"][0]["conversation_id"], "explicit")

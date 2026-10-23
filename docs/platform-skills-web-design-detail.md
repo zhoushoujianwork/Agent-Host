@@ -1,9 +1,9 @@
 # Platform Skills Web: interaction contract
 
 Companion to the [main page design](platform-skills-web-design.md) and
-[managed Skills contract](managed-skills-design-detail.md). All UI additions are
-proposed. Current Settings → Agents already provides native-skill selection and
-bounded capability history; it is not yet the managed platform catalog.
+[managed Skills contract](managed-skills-design-detail.md). The read-only catalog
+and historical Agent snapshot views are implemented as described below. Registration, lifecycle writes and current cross-source readiness
+remain proposed. Native-skill selection retains its separate behavior.
 
 ## Navigation and view ownership
 
@@ -102,3 +102,60 @@ and a rejected memory fixture to prove installation is not publication. Native
 acceptance must separately demonstrate proactive Skill loading, not merely cards
 appearing in the Web page. No operational approvals or credential sends are needed
 to test this UI.
+
+
+## Read-only increment delivered on 2026-10-23
+
+`skills inspect --root ABSOLUTE_PATH` validates the catalog through the same Go
+loader as execution, then returns revision metadata, audit history and file
+inventories without instruction bodies. `--id`, `--revision`, `--digest` and
+`--file` together read a complete pinned `SKILL.md` or `references/` file. Reads
+do not follow source directories, publish drafts, change selection or execute
+helpers. A changed source does not alter a pinned reference. Corruption, missing
+files and stale digests fail explicitly.
+
+`GET /api/platform-skills` selects a destination from configured Web/CLI handoff
+arguments or channel execution profiles. Client paths and arbitrary roots are
+not accepted. CLI defaults follow `--skills-root`, the file-memory marker, then
+`HOME/managed-skills`; unified channels default to `ROOT/managed-skills`. It uses
+the configured Host executable's inspection command. Missing configuration, an
+older executable without inspection support and invalid catalogs remain visible
+errors; no fallback registry or native execution is started.
+
+The authored list is complete and filterable, with explicit source coverage.
+Full files retain revision/digest binding; previews mask recognized credential
+fields, assignments, bearer tokens and private-key blocks. This is pattern-based
+redaction, not proof that arbitrary prose contains no sensitive information.
+Only explicitly adopted instruction/reference content is previewed; script and
+credential paths, tool inputs and raw private messages are not read for this view.
+
+Agent profiles reuse destination/account/Agent evidence boundaries. Within the
+latest 20 associated runs they show the newest `skills.catalog.provided` snapshot,
+including authored, reviewed-experience and plugin descriptors and unready reasons.
+Up to 200 load/reference observations from that same snapshot are shown with an
+explicit truncation indicator and a link to the execution record. Missing history
+is unknown; an empty newer tool-free snapshot does not revive an older catalog.
+The automatic policy is shown only for runtime Agent ID `default`, matching the
+execution code; a different routing default does not inherit it.
+
+Validation covers immutable complete regional reference reads, stale/corrupted
+catalog rejection, configured destination separation, no-Host/error states,
+credential masking, read-only HTTP behavior, historical snapshot identity,
+empty tool-free snapshots, escaped UI content and late-response isolation.
+`make check` includes the new CLI, Python and JavaScript checks. Local browser
+acceptance uses synthetic SFTP fixtures and a disposable viewer; it does not
+constitute production adoption, native loading or business verification.
+
+The bounded read-only code lookup used offload session
+`ebb81822-8b95-4fe7-8533-076f49f40350`: status `ok`, exit code 0, profile `cc`,
+model `claude-sonnet-5[1m]`, 24 tool calls, measured elapsed time 84.576 seconds,
+estimated worker cost USD 0.522489. References were checked locally; the worker
+made no edits. Cost is an estimate, not verified billing or total parent cost.
+
+Validation receipt: `GOFLAGS=-p=1 make check` passed on 2026-10-23, including
+Go formatting/vet/tests and all Python/JavaScript suites. An earlier full run
+hit a timeout in the existing feedback test while discovering an unrelated local
+checkout; that test passed alone and in the complete serial-package rerun. No
+tests were skipped. Browser checks confirmed catalog navigation, full US/China
+reference selection and the Agent snapshot-to-catalog link using synthetic data.
+Production was not restarted or adopted into the catalog.

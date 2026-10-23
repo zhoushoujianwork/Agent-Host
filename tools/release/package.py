@@ -32,6 +32,7 @@ REQUIRED_FILES = (
     "tools/run-viewer/settings_store.py", "tools/run-viewer/settings.html",
     "tools/run-viewer/settings.js", "tools/run-viewer/settings.css",
     "tools/run-viewer/agent_profiles.py", "tools/run-viewer/agent-profiles.js", "tools/run-viewer/agent-profiles.css",
+    "tools/run-viewer/platform_skills.py", "tools/run-viewer/platform-skills.js", "tools/run-viewer/platform-skills.css",
     "internal/knowledge/ATTRIBUTION.md", "internal/knowledge/memgov-LICENSE",
 )
 PUBLIC_DOCS = {

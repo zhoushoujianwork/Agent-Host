@@ -14,6 +14,7 @@ VIEWER_FILES = ("server.py", "memory_view.py", "index.html", "app.js", "style.cs
                 "memory.html", "memory.js", "memory.css", "settings_store.py",
                 "settings.html", "settings.js", "settings.css",
                 "agent_profiles.py", "agent-profiles.js", "agent-profiles.css",
+                "platform_skills.py", "platform-skills.js", "platform-skills.css",
                 "chat_runtime.py", "session_chat.py", "session_client.py", "markdown-parser.js", "markdown.js", "chat.js", "workspace.js", "workspace.css", "theme.js", "theme.css", "pages.css", "embedded.css", "logo.svg", "shortcuts.js", "settings-fields.js", "settings-simple.css")
 
 

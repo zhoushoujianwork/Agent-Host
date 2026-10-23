@@ -48,6 +48,24 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
    transient event-write wait. Later retrieval fixes and cancellation decoupling
    do not by themselves resolve their original causes.
 
+## Skill consolidation and integration track
+
+This is the active continuation selected on 2026-10-23.
+
+1. **Delivered:** authored adoption/review/publication, eligible experience and
+   plugin guidance in the effective catalog, proactive default-Agent loading and
+   bounded local native acceptance.
+2. **Read-only Web inspection delivered:** authored catalog/revisions/full
+   references and destination-scoped historical Agent snapshots. See the
+   [Platform Skills design](platform-skills-web-design.md). Production rollout is
+   separate from source validation.
+3. **Next:** explicit import preview and checked lifecycle actions in Settings,
+   followed by current plugin readiness and cross-source administration. Preserve
+   authored review, experience admission and plugin ownership independently.
+4. **Later:** evidence-driven method consolidation needs its own acceptance
+   rules for duplicates, corrections and regional variants. Automatic procedure
+   merging is not implemented by catalog unification or its Web view.
+
 ## Execution integration track
 
 Adopt [shared ACP execution](architecture.md#shared-acp-execution) for

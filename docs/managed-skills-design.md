@@ -5,8 +5,9 @@ read-only fixtures. Production rollout and operator adoption are separate.
 The [technical details](managed-skills-design-detail.md) define assembly, lifecycle
 and acceptance. See the [architecture](architecture.md)
 for the delivered foundation.
-The [Platform Skills Web design](platform-skills-web-design.md) adds the shared
-Settings subsection and the Agent profile's effective-catalog view.
+The [Platform Skills Web design](platform-skills-web-design.md) now provides a read-only
+Settings catalog and the Agent profile's historical effective-catalog view; Web
+registration, lifecycle changes and current readiness remain planned.
 
 ## Goal and usage
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 from settings_store import private_bytes, redact
 from chat_runtime import agent_destination
+from platform_skills import preview
 import hashlib
 
 
@@ -80,7 +81,7 @@ def configured_destinations(store, rows):
 
 def observations(catalog, destination, agent_id):
     """Use only explicitly attached state sources; never infer a production path."""
-    result = {"activity": [], "groups": [], "skills": [], "native_inventory": None, "evidence_state": "unknown"}
+    result = {"activity": [], "groups": [], "skills": [], "native_inventory": None, "platform_catalog": None, "evidence_state": "unknown"}
     sources = getattr(catalog, "catalogs", {})
     source_name = destination["channel"]
     if source_name == "web":
@@ -133,6 +134,32 @@ def observations(catalog, destination, agent_id):
                                            "workspace": run.get("workspace") or run.get("scope")})
                 if "events" not in tables:
                     continue
+                if result["platform_catalog"] is None:
+                    for payload, in conn.execute("SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type')='skills.catalog.provided' ORDER BY seq DESC", (run["id"],)):
+                        event = json.loads(payload)
+                        data = event.get("data") or {}
+                        manifest = data.get("manifest") or {}
+                        empty = not manifest.get("version") and not manifest.get("sources")
+                        if not empty and (manifest.get("agent_id") != agent_id or manifest.get("audience_id") != (run.get("audience_id") or "owner")):
+                            continue
+                        fields = ("skill_id", "name", "kind", "title", "applicability", "revision", "content_digest", "tool_contract_digest")
+                        snapshot = {"digest": manifest.get("digest"), "run_key": key,
+                                    "observed_at": event.get("at") or run.get("created_at"),
+                                    "audience_id": manifest.get("audience_id") or run.get("audience_id") or "owner", "scopes": manifest.get("scopes") or [],
+                                    "sources": [{k: s[k] for k in fields if k in s} for s in manifest.get("sources") or []],
+                                    "unready": data.get("unready") or {}, "loads": [], "coverage": "latest_snapshot_in_20_runs"}
+                        activity = list(conn.execute("SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type') IN ('skills.load.observed','skills.reference.observed') ORDER BY seq LIMIT 201", (run["id"],)))
+                        snapshot["loads_truncated"] = len(activity) > 200
+                        for raw, in activity[:200]:
+                            observed = json.loads(raw)
+                            detail = observed.get("data") or {}
+                            if detail.get("snapshot_digest") != snapshot["digest"]:
+                                continue
+                            snapshot["loads"].append({"type": observed.get("type"), "status": observed.get("status"),
+                                "at": observed.get("at"), "skill_id": (detail.get("source") or {}).get("skill_id"),
+                                "path": (detail.get("file") or {}).get("path")})
+                        result["platform_catalog"] = preview(snapshot)
+                        break
                 if result["native_inventory"] is None:
                     # Fetch initialization evidence only; tool output can dwarf
                     # the inventory and is available in the execution detail.
@@ -249,6 +276,7 @@ def profiles(store, catalog=None, web_config=None, web_agent=None):
                                "projects": agent.get("projects"),
                                "instructions": instruction_sources(store, agent),
                                "configured_skills": agent.get("native_skills"),
+                               "platform_policy": "automatic_default" if agent["id"] == "default" and destination["channel"] != "unassigned" else "existing_selection",
                                "configured_knowledge": agent.get("knowledge_sources"),
                                "groups": groups, "connectors": ([{"name": source["name"], "origin": "当前 Web 连接", "state": "configured", "scope": "agent_selection"}
                                    for source in web_options["knowledge_sources"] if agent.get("knowledge_sources") is None or source["id"] in agent["knowledge_sources"]]

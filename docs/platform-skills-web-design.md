@@ -1,9 +1,24 @@
 # Platform Skills in the Web interface
 
-Status: proposed UI, 2026-10-22. This document does not implement the page.
+Status: first read-only increment implemented on 2026-10-23. Registration,
+checked lifecycle controls and current plugin readiness remain planned.
 It adapts the [managed Skills architecture](managed-skills-design.md) to the
 existing Settings and Agent profile. [Technical details](platform-skills-web-design-detail.md)
 cover data, transitions and acceptance.
+
+## Delivered now
+
+Settings → Platform Skills inspects the explicitly selected Web/CLI or channel
+catalog. It shows authored publications, pending revisions, review history and
+complete pinned instructions/references. Agent → Capabilities shows the latest
+recorded effective catalog within 20 recent associated runs, including experience
+and plugin entries, dependency failures and observed loads. These are historical
+snapshots, not a claim about the current runtime.
+
+The page is read-only. Use the existing `skills` CLI for adoption and lifecycle
+changes. Registration previews, checked Web writes, current plugin readiness and
+complete cross-source administration remain the next increments. Automatic
+merging of learned procedures is not delivered by this inspection page.
 
 ## Entry and purpose
 
@@ -70,7 +85,7 @@ verification passed” separate. An empty activity history means no recorded
 evidence, not an unusable Skill. Secrets and full private business messages never
 appear in previews or loading history.
 
-First delivery includes catalog/list/detail, explicit registration and checked
+The complete planned delivery includes catalog/list/detail, explicit registration and checked
 procedure enablement, plugin readiness explanations, and the Agent's effective
 view. A marketplace, general code editor, automatic task execution and a new
 plugin configuration product are outside this increment.

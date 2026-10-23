@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
+from platform_skills import inspect as platform_skills
 from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -841,6 +842,15 @@ class Handler(BaseHTTPRequestHandler):
                                               getattr(self.server, "catalog", None),
                                               getattr(getattr(self.server, "chat_runtime", None), "config", None),
                                               getattr(getattr(self.server, "chat_runtime", None), "selected_agent", None)))
+            elif target.path == "/api/platform-skills":
+                query = parse_qs(target.query, keep_blank_values=True)
+                selectors = set(query) - {"destination"}
+                if any(len(values) != 1 for values in query.values()) or selectors and selectors != {"id", "revision", "digest", "file"}:
+                    self.send(400, {"error": "Invalid Skill inspection query."})
+                else:
+                    destination = query.pop("destination", [""])[0]
+                    self.send(200, platform_skills(getattr(self.server, "settings_store", None), destination,
+                                                   {key: values[0] for key, values in query.items()} or None))
             elif target.path == "/api/backup":
                 root = getattr(self.server, "backup_root", None)
                 result = {"enabled": False}
@@ -863,7 +873,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(400, {"error": "provide exactly one record key"})
                 else:
                     self.send(200, self.server.catalog.record(keys[0]))
-            elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
+            elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
