@@ -59,12 +59,15 @@ This is the active continuation selected on 2026-10-23.
    references and destination-scoped historical Agent snapshots. See the
    [Platform Skills design](platform-skills-web-design.md). Production rollout is
    separate from source validation.
-3. **Next:** explicit import preview and checked lifecycle actions in Settings,
-   followed by current plugin readiness and cross-source administration. Preserve
-   authored review, experience admission and plugin ownership independently.
-4. **Later:** evidence-driven method consolidation needs its own acceptance
-   rules for duplicates, corrections and regional variants. Automatic procedure
-   merging is not implemented by catalog unification or its Web view.
+3. **Export delivered:** a pinned authored revision can be downloaded from
+   Settings or the CLI with complete files, checksums and provenance. The platform
+   remains authoritative; export never changes publication or selection.
+4. **Next:** extend inspection/export to admitted experience and provider-bound
+   plugin guidance. Keep lifecycle ownership in the platform; manual Web import
+   and publication controls are no longer the next product workflow.
+5. **Then:** evidence-driven platform consolidation needs acceptance rules for
+   duplicates, corrections and regional variants. Preserve source-specific
+   admission and history. Automatic procedure merging remains unimplemented.
 
 ## Execution integration track
 

@@ -6,11 +6,14 @@ function setup(fetch){
     append(...items){this.children.push(...items);}
     replaceChildren(...items){this.children=items;}
     setAttribute(key,value){this.attributes[key]=value;}
+    contains(node){return this===node||this.children.some(child=>child.contains(node));}
+    click(){downloads.push({href:this.href,name:this.download});}
+    remove(){}
   }
-  const window={},context={window,document:{createElement:tag=>new Element(tag)},fetch,URLSearchParams};
+  const downloads=[],revoked=[],window={},context={window,document:{createElement:tag=>new Element(tag)},fetch,URLSearchParams,URL:{createObjectURL:()=>"blob:fixture",revokeObjectURL:url=>revoked.push(url)},setTimeout:fn=>fn()};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,"platform-skills.js"),"utf8"),context);
   const root=new Element("div"),walk=(n=root)=>[n,...n.children.flatMap(walk)];
-  return {root,walk,api:window.AGHPlatformSkills};
+  return {root,walk,downloads,revoked,api:window.AGHPlatformSkills};
 }
 const response=value=>({ok:true,json:async()=>value});
 const record={id:"sftp",enabled:true,selected:1,revisions:[{published:true,entry:{id:"sftp",name:"<img onerror=bad>",description:"SFTP delivery",revision:1,digest:"v1"},file_inventory:[{path:"SKILL.md",bytes:10},{path:"references/us.md",bytes:100}]}]};
@@ -59,4 +62,29 @@ test("pending and withdrawn revisions do not masquerade as the enabled publicati
   assert.equal(h.api.lifecycle(record,{published:true,withdrawn:true,entry:{revision:1}}),"已撤回");
   assert.equal(h.api.matches(record,"delivery","enabled"),true);
   assert.equal(h.api.matches(record,"delivery","disabled"),false);
+});
+test("export binds the selected revision and downloads only a successful ZIP response",async()=>{
+  const calls=[];let failed=false;
+  const h=setup(async url=>{
+    calls.push(url);
+    if(url.includes("/export?"))return failed?{ok:false,json:async()=>({error:"stale revision"})}:{ok:true,headers:{get:()=>"application/zip"},blob:async()=>({})};
+    return response(url.includes("file=")?{path:"SKILL.md",content:"full source",complete:true}:catalog);
+  });
+  await h.api.render(h.root,{id:"sftp",destination:"web"});
+  const button=h.walk().find(n=>n.textContent==="导出版本 1（ZIP）");await button.onclick();
+  assert.ok(calls.includes("/api/platform-skills/export?destination=web&id=sftp&revision=1&digest=v1"));
+  assert.deepEqual(h.downloads,[{href:"blob:fixture",name:"platform-skill-v1.zip"}]);
+  assert.deepEqual(h.revoked,["blob:fixture"]);
+  failed=true;await button.onclick();
+  assert.equal(h.downloads.length,1);assert.equal(button.disabled,false);
+  assert.ok(h.walk().some(n=>n.textContent==="stale revision"));
+});
+test("leaving the selected Skill during export does not download an obsolete response",async()=>{
+  let finish;
+  const h=setup(async url=>url.includes("/export?")?new Promise(resolve=>{finish=resolve;}):response(url.includes("file=")?{path:"SKILL.md",content:"full source",complete:true}:catalog));
+  await h.api.render(h.root,{id:"sftp"});
+  const pending=h.walk().find(n=>n.textContent==="导出版本 1（ZIP）").onclick();
+  await h.api.render(h.root,{id:""});
+  finish({ok:true,headers:{get:()=>"application/zip"},blob:async()=>({})});await pending;
+  assert.equal(h.downloads.length,0);
 });

@@ -1,108 +1,96 @@
 # Platform Skills Web: interaction contract
 
 Companion to the [main page design](platform-skills-web-design.md) and
-[managed Skills contract](managed-skills-design-detail.md). The read-only catalog
-and historical Agent snapshot views are implemented as described below. Registration, lifecycle writes and current cross-source readiness
-remain proposed. Native-skill selection retains its separate behavior.
+[managed Skills contract](managed-skills-design-detail.md).
 
-## Navigation and view ownership
+## Platform ownership and navigation
 
-Add a Settings category, `平台技能`, beside `智能体`. Retain the existing modal
-close/save behavior, appearance and shared configuration selection. The selected
-Host/runtime must remain visible; a standalone preview has no live registry and
-cannot claim to save platform changes. Web/CLI and channel destinations remain
-distinct, even if their default Agents have similar names.
+Settings → Platform Skills exposes inspection and export. Agent-Host owns the
+Skill lifecycle through the source's existing admission and versioning rules.
+Manual import/review/publish buttons are not the main product workflow. Existing
+CLI commands remain maintenance tools, with their current authorization checks.
+Automatic cross-procedure consolidation is still planned; platform ownership
+does not imply that arbitrary generated content is already admitted.
 
-Platform Skills owns registry and publication operations. Agent → Capabilities
-adds a platform-Skill subview with effective availability, selection-policy origin
-and links to the same stable Skill detail. Keep installed native-user Skills and
-historical memory mounts distinguishable during migration. Do not reinterpret
-the existing `native_skills` custom-selection field as a platform-policy override.
+Keep the selected configured runtime visible. Web/CLI and channel destinations
+remain distinct. Agent → Capabilities links to the shared catalog and shows
+historical effective snapshots. It does not reinterpret native Skills selection
+or silently enroll other Agents into the runtime `default` Agent's policy.
 
-Default Agent copy: “自动发现已启用且就绪的平台技能，处理相关任务前主动装载。”
-Show inherited catalog availability without a checkbox for every platform Skill.
-For another Agent, display the actual policy or unknown state; this UI proposal
-does not silently enroll every Agent or change existing datasource-sharing rules.
+## Pinned export implemented on 2026-10-23
 
-## List and detail information
+`skills export --root ABSOLUTE_PATH --id ID --revision N --digest SHA256`
+writes a ZIP to stdout. The caller can redirect it to a chosen local file. The
+command requires all revision selectors and uses the integrity-checked catalog
+loader. It never rereads source directories, updates the catalog, changes
+selection, installs Skills or runs helpers. Drafts and historical revisions can
+be exported for inspection; their actual state remains explicit in the manifest.
 
-Default to managed entries. Awaiting-registration candidates stay in a separate
-tab. Search by name/purpose; filter by source and state. Use stable IDs rather
-than names for routing and selection. Counts come from the complete filtered
-query, with paging and coverage; partial results cannot claim catalog completeness.
+The archive contains:
 
-Each row shows title/purpose, source kind, effective revision, platform enablement,
-readiness reason and default-Agent availability. Keep the common row compact:
-for example “已启用 · 缺少插件” is more useful than one misleading “已启用” badge.
-Show loading evidence and timestamps in detail rather than mixing them with
-configuration status. Missing evidence is unknown, not a fabricated zero.
+- `skill/SKILL.md` and all pinned `references/` files;
+- adopted `agents/openai.yaml` and explicitly adopted `scripts/`, when present;
+- `manifest.json` with format `agent-host-skill-export-v1`, catalog digest,
+  revision metadata, original content digest, per-file byte counts/SHA-256,
+  provenance, review, publication/withdrawal state, selected revision, enablement
+  and audit entries for the exported revision.
 
-| Detail section | Information and actions |
-| --- | --- |
-| Description / 使用说明 | Purpose, applicability, full `SKILL.md`, reference tree and dependency requirements; region variants remain distinct. |
-| Version and source / 版本与来源 | Stable ID, source, owner, review outcome, current/pending revision, validated changes and explicit publication actions. |
-| Loading history / 装载记录 | Agent and actual execution destination, timestamp, catalog/version snapshot, observed Skill/reference reads, tool activity and links to authorized run evidence. |
+The `skill/` directory is the portable instruction tree. The manifest is a
+snapshot receipt, not authority to publish on another Host or evidence that a
+business operation succeeded. External tool/plugin dependencies remain declared
+requirements; export does not embed credentials from runtime configuration or
+bundle plugin implementations. Original private content already in the adopted
+files or provenance is preserved, and the download copy explicitly says so.
+Preview redaction must not silently rewrite the exported procedure or its digest.
 
-Reference reading must support complete content with explicit paging and revision
-binding. A shortened preview is labeled and offers full reading; never imply a
-truncated procedure is complete. Apply existing content/path authorization and
-secret redaction. Do not display credential files, tokens or private-message
-bodies as operational “examples.” Scope runtime evidence to the viewer's access.
+Archive paths are clean relative paths under `skill/` with the adoption allowlist.
+Files retain exact bytes; file order is stable for reproducible exports of an
+unchanged catalog. Files have private modes, with owner-execute only for adopted
+executable helpers. Size budgets apply before output; stale digests, missing
+revisions, corrupt catalogs and unsafe paths produce no archive.
 
-## Registration and version changes
+`GET /api/platform-skills/export` requires exactly `destination`, `id`, `revision`
+and `digest`, once each and nonempty. The destination must exist in server
+configuration. The backend invokes the configured binary, validates the returned
+archive manifest against the requested revision, and serves an attachment with
+`application/zip` and `Cache-Control: no-store`. Invalid requests, unknown
+runtimes, old binaries and failed exports remain errors without raw subprocess
+diagnostics. The UI downloads only a successful ZIP response and ignores a
+response if the user has left the selected version.
 
-Discover candidates only from explicitly configured installed catalogs or local
-sources. Scan is read-only. Import previews files, source identity, conflicts,
-dependencies and validation findings before explicit registration/publication.
-Source changes create a pending revision; they do not replace active content.
-An operator can compare and publish an eligible revision or retain the active one.
+## Source coverage and next implementation
 
-Experience-derived entries display their actual memory review. A rejected
-experience links to its reason and evidence; there is no “force enable” button
-that changes it into an admitted procedure. Operator-authored registration uses
-its own explicit review path and never claims that experience review passed.
+Authored catalog revisions have a complete pinned file tree and are exportable
+now. Experience publication continues to belong to the memory store; plugin
+instructions continue to belong to their provider. Neither historical event
+metadata nor an unrelated native directory is an acceptable fallback export.
 
-Checked writes supply the expected catalog/revision and reject concurrent edits.
-On conflicts, refresh and preserve the user's draft; on an unknown write result,
-read the registry before offering another attempt. Platform actions preserve
-immutable publication and audit history; no deletion of original execution evidence.
+Next, read admitted experience from its authoritative publication with explicit
+Agent/audience/scope and revision binding. Then derive plugin exports from the
+same instruction/tool snapshot used for execution. Each source must retain its
+own provenance and admission state. Exporting a rejected candidate must never
+masquerade as an admitted procedure or grant a force-enable path.
 
-## Plugin and Agent behavior
+Method consolidation should produce a new platform-owned revision after its
+source-specific admission checks. Retain source evidence, prior revisions and
+regional conditions. Conflicts and unsupported automatic merges need explicit
+outcomes, not silent replacement or a new manual registration queue.
 
-Provider-owned usage instructions and tools share a plugin/configuration snapshot.
-Ready enabled plugins appear in the effective catalog. Disabled plugins remain
-visible as unavailable administration records, but expose no active instructions
-or tools to execution. An enabled plugin can be unready due to authentication,
-missing guidance or incompatible tools; show the actual reason and configuration
-link. Never silently enable a plugin to satisfy a procedure dependency.
+## Export validation
 
-Disabling a procedure previews its affected Agent catalog entries. Disabling a
-plugin previews its usage Skill and dependent procedures. Route plugin changes
-to the supported shared configuration path; if configuration is file-only, show
-that limitation rather than inventing a save control. Plugin enablement does not
-grant approval, infrastructure mutation or outgoing-message authorization.
+Tests cover complete US/China references after the original directory disappears,
+exact private content and adopted-helper preservation, manifest checksums and
+attribution, draft versus active state, deterministic archives, stale/corrupt
+rejection, unsafe paths, unchanged catalog bytes, configured HTTP destinations,
+attachment/no-cache headers, error handling and stale UI download suppression.
+An isolated compiled-CLI → HTTP check verified the ZIP attachment, both regional
+references, every file checksum and unchanged catalog bytes. Browser acceptance
+confirmed the version export button and completed-download feedback using the
+same synthetic fixture. Production was not updated or restarted.
 
-After a save, distinguish desired configuration, effective runtime revision and
-last observed loaded revision. Explain whether the next turn will rotate native
-context or an explicit service restart is required. Existing active runs retain
-their recorded snapshots; saving never stops, replays or launches business work.
-
-## Acceptance and rollout
-
-First ship the managed list/detail and full references, then checked registration
-and procedure lifecycle actions, then plugin readiness and Agent effective-view
-integration using the same registry. Surface unsupported backend actions honestly;
-do not build a client-only parallel registry or simulate successful mutations.
-
-Verify navigation and Chat preservation, no-Host/empty/partial/error states,
-read-only evidence access, source-version conflicts, enable/disable on continuation,
-plugin dependency propagation, and visibility in the actual selected Agent/runtime.
-Use China and US SFTP fixtures to prove correct reference selection and full reads,
-and a rejected memory fixture to prove installation is not publication. Native
-acceptance must separately demonstrate proactive Skill loading, not merely cards
-appearing in the Web page. No operational approvals or credential sends are needed
-to test this UI.
-
+Export validation receipt (2026-10-23): `GOFLAGS=-p=1 make check` passed,
+including Go formatting/vet/tests and the Python/JavaScript suites. No tests
+were skipped.
 
 ## Read-only increment delivered on 2026-10-23
 

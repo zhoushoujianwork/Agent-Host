@@ -6,8 +6,10 @@ The [technical details](managed-skills-design-detail.md) define assembly, lifecy
 and acceptance. See the [architecture](architecture.md)
 for the delivered foundation.
 The [Platform Skills Web design](platform-skills-web-design.md) now provides a read-only
-Settings catalog and the Agent profile's historical effective-catalog view; Web
-registration, lifecycle changes and current readiness remain planned.
+Settings catalog, pinned authored-Skill export and the Agent profile's historical
+effective-catalog view. The platform owns lifecycle management; the Web page
+focuses on inspecting and exporting its results. Cross-source export and current
+readiness remain planned.
 
 ## Goal and usage
 
@@ -26,6 +28,12 @@ For example, one SFTP delivery Skill covers the common workflow and selects the
 China or US reference from the actual ticket. It retains separate environment
 settings, validation and delivery steps. A later task reuses the method while
 freshly resolving the customer, resource IDs, accounts and allowed changes.
+
+The platform manages admission, publication and selection. Users can inspect
+and export a version without manually registering or assigning every learned
+Skill. Export is an independent snapshot; changes to the copy do not update the
+platform. Automatic consolidation of related methods remains a separate planned
+capability, with evidence and source-specific admission preserved.
 
 ## Core design
 
@@ -59,8 +67,10 @@ freshly resolving the customer, resource IDs, accounts and allowed changes.
    adapters supply usage Skills bound to their actual public tool definitions.
    Configuration changes participate in readiness and session compatibility.
 
-Use `skills import` for authored adoption and `chat --skills-root` to select the
-managed store. Native profiles keep their existing mounts during adoption. See
+Use `skills export` for an exact pinned authored-Skill snapshot. Existing
+`skills import` remains an explicit adoption/maintenance tool; `chat --skills-root`
+selects the managed store. Native profiles keep their existing mounts during
+adoption. See
 the [operator commands and validation](managed-skills-design-detail.md#implemented-storage-and-operator-commands).
 This increment does not add a public plugin SDK, marketplace, execution engine
 or automatic execution of generated scripts.

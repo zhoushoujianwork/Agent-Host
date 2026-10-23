@@ -37,7 +37,7 @@ window.AGHPlatformSkills = (() => {
     const filter=el("select","");filter.setAttribute("aria-label","技能启用状态");
     for(const [value,label]of [["","全部状态"],["enabled","已启用"],["disabled","未启用"]]){const option=el("option","",label);option.value=value;filter.append(option);}controls.append(filter);container.append(controls);
     if(data.error){container.append(el("p","notice",data.error));return;}
-    container.append(el("p","help-note",`目录：${data.destination.root}`),el("p","notice","当前展示手写技能的纳管版本。经验与插件技能见智能体的历史快照；当前任务就绪状态尚未检查。导入、审核和启停请使用 CLI。"));
+    container.append(el("p","help-note",`目录：${data.destination.root}`),el("p","notice","技能由平台管理，此处查看并导出固定版本。当前展示手写技能的纳管版本；经验与插件技能见智能体的历史快照，当前任务就绪状态尚未检查。"));
     const count=el("p","help-note"),list=el("div","platform-list"),detail=el("section","platform-detail");detail.setAttribute("aria-label","技能详情");container.append(count,list,detail);
     let fileGeneration=0;
     function show(record){
@@ -51,6 +51,22 @@ window.AGHPlatformSkills = (() => {
         const entry=revision.entry;fileGeneration++;body.replaceChildren();
         body.append(el("p","",entry.description),el("p","help-note",`ID：${entry.id} · 来源：手写技能 · 所有者：${entry.owner}`),el("p","help-note",`适用条件：${entry.applicability}`),el("p","help-note",`Agent：${(entry.agents||[]).join(", ")} · 受众：${(entry.audiences||[]).join(", ")} · 项目范围：${(entry.scopes||[]).join(", ")}`));
         body.append(el("p","help-note",`依赖插件：${(entry.required_plugins||[]).join(", ")||"无声明"} · 工具：${(entry.required_tools||[]).join(", ")||"无声明"}`),el("p","help-note",`审核：${revision.reviewer||"未审核"}${revision.review_note?" · "+revision.review_note:""}`),el("p","help-note",`来源：${entry.canonical_ref} · ${(entry.provenance||[]).join("; ")}`),el("p","platform-digest",`固定版本摘要：${entry.digest}`));
+        const download=el("button","quiet",`导出版本 ${entry.revision}（ZIP）`),exportStatus=el("p","help-note","包含完整原文、引用文件和来源记录，可能含私有信息。导出副本不会更改平台版本或启用状态。");
+        download.type="button";
+        const exportQuery={destination,id:record.id,revision:String(entry.revision),digest:entry.digest};
+        download.onclick=async()=>{
+          download.disabled=true;exportStatus.textContent="正在导出固定版本…";
+          try{
+            const response=await fetch("/api/platform-skills/export?"+new URLSearchParams(exportQuery),{cache:"no-store"});
+            if(!response.ok){const result=await response.json();throw Error(result.error||"导出失败，请刷新目录。");}
+            if(response.headers.get("Content-Type")!=="application/zip")throw Error("导出格式不受支持。");
+            const blob=await response.blob();
+            if(token!==generation||!container.contains(download))return;
+            const url=URL.createObjectURL(blob),link=el("a","");link.href=url;link.download=`platform-skill-v${entry.revision}.zip`;body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+            exportStatus.textContent=`版本 ${entry.revision} 已生成下载；平台版本与启用状态未改变。`;
+          }catch(error){exportStatus.textContent=error.message;}finally{download.disabled=false;}
+        };
+        body.append(download,exportStatus);
         const files=el("div","platform-files"),fileStatus=el("p","help-note"),content=el("pre","platform-source");content.setAttribute("tabindex","0");body.append(files,fileStatus,content);
         async function read(path){
           const fileToken=++fileGeneration;fileStatus.textContent="正在读取固定版本…";content.textContent="";

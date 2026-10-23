@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
-from platform_skills import inspect as platform_skills
+from platform_skills import export_skill, inspect as platform_skills
 from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -779,7 +779,7 @@ class MultiCatalog:
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send(self, status, data, content_type="application/json; charset=utf-8"):
+    def send(self, status, data, content_type="application/json; charset=utf-8", *, attachment=None):
         is_json = isinstance(data, dict)
         body = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode() if is_json else data
         compress = False
@@ -798,6 +798,8 @@ class Handler(BaseHTTPRequestHandler):
             body = gzip.compress(body, compresslevel=1, mtime=0)
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        if attachment:
+            self.send_header("Content-Disposition", 'attachment; filename="' + attachment + '"')
         if is_json:
             self.send_header("Vary", "Accept-Encoding")
         if compress:
@@ -842,6 +844,15 @@ class Handler(BaseHTTPRequestHandler):
                                               getattr(self.server, "catalog", None),
                                               getattr(getattr(self.server, "chat_runtime", None), "config", None),
                                               getattr(getattr(self.server, "chat_runtime", None), "selected_agent", None)))
+            elif target.path == "/api/platform-skills/export":
+                query = parse_qs(target.query, keep_blank_values=True)
+                if set(query) != {"destination", "id", "revision", "digest"} or any(len(values) != 1 or not values[0] for values in query.values()):
+                    self.send(400, {"error": "Export requires destination, id, revision and digest."})
+                else:
+                    destination = query.pop("destination")[0]
+                    data = export_skill(getattr(self.server, "settings_store", None), destination,
+                                        {key: values[0] for key, values in query.items()})
+                    self.send(200, data, "application/zip", attachment="platform-skill.zip")
             elif target.path == "/api/platform-skills":
                 query = parse_qs(target.query, keep_blank_values=True)
                 selectors = set(query) - {"destination"}

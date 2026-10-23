@@ -1,11 +1,43 @@
 """Read-only views of explicitly configured, integrity-checked Skill catalogs."""
 
+import io
 import json
 from pathlib import Path
 import re
 import subprocess
+import zipfile
 
 from settings_store import private_bytes, redact
+
+
+def export_skill(store, destination, selectors):
+    """Download the exact pinned source; preview redaction does not rewrite exports."""
+    if not destination or set(selectors) != {"id", "revision", "digest"} or not all(selectors.values()):
+        raise ValueError("Export requires destination, id, revision and digest.")
+    selected = next((d for d in destinations(store) if d["id"] == destination), None)
+    if selected is None:
+        raise KeyError("Unknown configured Skill destination.")
+    if selected.get("error"):
+        raise ValueError(selected["error"])
+    args = [str(store.binary), "skills", "export", "--root", selected["root"]]
+    args += ["--" + key + "=" + str(value) for key, value in selectors.items()]
+    try:
+        completed = subprocess.run(args, capture_output=True, timeout=15, check=False)
+        if completed.returncode:
+            raise ValueError("CLI export failed")
+        # Verify the response contract before returning a downloadable artifact.
+        with zipfile.ZipFile(io.BytesIO(completed.stdout)) as archive:
+            info = archive.getinfo("manifest.json")
+            if info.file_size > 32 << 20:
+                raise ValueError("Export manifest exceeds budget")
+            manifest = json.loads(archive.read(info))
+        entry = manifest["revision"]["entry"]
+        if (manifest["format"] != "agent-host-skill-export-v1" or entry["id"] != selectors["id"] or
+                entry["digest"] != selectors["digest"] or str(entry["revision"]) != str(selectors["revision"])):
+            raise ValueError("Export revision mismatch")
+        return completed.stdout
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError, zipfile.BadZipFile):
+        raise ValueError("Cannot export the pinned Skill. Refresh the catalog and check integrity and CLI compatibility.") from None
 
 
 def preview(value):

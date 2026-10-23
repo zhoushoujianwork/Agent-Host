@@ -23,10 +23,11 @@ import (
 	"agent-host/internal/state"
 )
 
-const skillsUsage = `Managed Skills (explicit adoption; no production changes):
+const skillsUsage = `Platform-managed Skills (inspection, export and maintenance):
   agent-host skills list --root ABSOLUTE_PATH
   agent-host skills inspect --root ABSOLUTE_PATH
   agent-host skills inspect --root PATH --id ID --revision N --digest SHA256 --file references/region.md
+  agent-host skills export --root PATH --id ID --revision N --digest SHA256 > skill.zip
   agent-host skills import --root PATH --source CANONICAL_DIR --id ID --actor OWNER --applicability TEXT --agents default --audiences owner --scopes SCOPE --provenance SOURCE
   agent-host skills review --root PATH --id ID --revision N --digest SHA256 --actor REVIEWER --note EVIDENCE
   agent-host skills publish|enable|disable|withdraw|rollback --root PATH --id ID --revision N --digest SHA256 --actor OPERATOR
@@ -35,6 +36,7 @@ Dependencies: --plugins comma-separated-mounted-names --tools comma-separated-na
 Optional --contracts JSON maps mounted plugin names to expected contract digests.
 Chat/channels use --skills-root PATH; default is HOME/managed-skills.
 Experience publication retains its existing memory review path. Import never changes it.
+Export writes an exact, unredacted ZIP snapshot to stdout; it does not change publication.
 `
 
 func runSkills(args []string, out, errout io.Writer) error {
@@ -65,10 +67,16 @@ func runSkills(args []string, out, errout io.Writer) error {
 	}
 	var catalog managedskills.Catalog
 	var err error
-	if action == "inspect" {
+	if action == "inspect" || action == "export" {
 		catalog, err = managedskills.Load(root)
 		if err != nil {
 			return err
+		}
+		if action == "export" {
+			if file != "" {
+				return errors.New("export includes the whole pinned Skill; --file is only for inspection")
+			}
+			return exportManagedSkill(out, catalog, id, revision, digest)
 		}
 		return inspectManagedSkills(out, catalog, id, revision, digest, file)
 	}

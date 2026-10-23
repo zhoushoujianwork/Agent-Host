@@ -1,17 +1,19 @@
 """Check explicit destinations, private previews and read-only HTTP behavior."""
 
+import io
 import json
 from pathlib import Path
 import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
+import zipfile
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import server
-from platform_skills import cli_root, destinations, inspect, preview
+from platform_skills import cli_root, destinations, export_skill, inspect, preview
 from settings_store import SettingsStore
 
 
@@ -110,6 +112,32 @@ class PlatformSkillsTests(unittest.TestCase):
         self.assertNotIn("complete", result)
         self.assertNotIn("wrong revision", json.dumps(result))
 
+    def export_fixture(self, digest="fixed"):
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("manifest.json", json.dumps({"format": "agent-host-skill-export-v1", "revision": {"entry": {"id": "sftp", "revision": 2, "digest": digest}}}))
+            archive.writestr("skill/SKILL.md", "password=synthetic-export-fixture")
+        return output.getvalue()
+
+    def test_export_preserves_bytes_and_requires_an_explicit_pinned_destination(self):
+        selectors = {"id": "sftp", "revision": "2", "digest": "fixed"}
+        package = self.export_fixture()
+        with patch("platform_skills.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=package)) as run:
+            self.assertEqual(export_skill(self.store, "web", selectors), package)
+            self.assertEqual(run.call_args.args[0], ["/bin/true", "skills", "export", "--root", str(self.root / "cli-state/managed-skills"), "--id=sftp", "--revision=2", "--digest=fixed"])
+        with self.assertRaises(KeyError):
+            export_skill(self.store, "unknown", selectors)
+        with self.assertRaises(ValueError):
+            export_skill(self.store, "", selectors)
+        with self.assertRaises(ValueError):
+            export_skill(self.store, "web", {**selectors, "root": "/unconfigured"})
+        for result in [SimpleNamespace(returncode=0, stdout=self.export_fixture("wrong")),
+                       SimpleNamespace(returncode=0, stdout=b"not a ZIP"),
+                       SimpleNamespace(returncode=1, stderr=b"private-error-secret")]:
+            with patch("platform_skills.subprocess.run", return_value=result), self.assertRaises(ValueError) as error:
+                export_skill(self.store, "web", selectors)
+            self.assertNotIn("private-error-secret", str(error.exception))
+
     def test_http_rejects_mutations_unknown_destinations_and_arbitrary_roots(self):
         http = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         http.settings_store = self.store
@@ -118,6 +146,18 @@ class PlatformSkillsTests(unittest.TestCase):
         thread.start()
         self.addCleanup(http.shutdown)
         base = "http://127.0.0.1:" + str(http.server_port)
+        query = "?destination=web&id=sftp&revision=2&digest=fixed"
+        package = self.export_fixture()
+        with patch("platform_skills.subprocess.run", return_value=SimpleNamespace(returncode=0, stdout=package)):
+            with urlopen(base + "/api/platform-skills/export" + query) as response:
+                self.assertEqual(response.headers["Content-Type"], "application/zip")
+                self.assertIn("attachment", response.headers["Content-Disposition"])
+                self.assertEqual(response.headers["Cache-Control"], "no-store")
+                self.assertEqual(response.read(), package)
+        for suffix in ["", query + "&root=/tmp", query + "&id=duplicate", query.replace("destination=web&", "")]:
+            with self.assertRaises(HTTPError) as error:
+                urlopen(base + "/api/platform-skills/export" + suffix)
+            self.assertEqual(error.exception.code, 400)
         for suffix, status in [("?root=/tmp", 400), ("?file=SKILL.md", 400), ("?destination=web&destination=cli", 400), ("?destination=unknown", 404)]:
             with self.assertRaises(HTTPError) as error:
                 urlopen(base + "/api/platform-skills" + suffix)
