@@ -44,6 +44,11 @@ The current design decision is to build an independent Go host with explicit
 adapter boundaries. Add extension points when a working integration needs
 them. DSH remains a candidate for future evaluation rather than a dependency.
 
+The [2026-10-23 runtime plugin research](dsh-runtime-plugin-research.md) examines
+a separate direction: a main Agent authors and activates a new plugin during a
+task. It distinguishes documented DSH mechanisms from unvalidated task benefits,
+and compares candidate use cases with ordinary generated scripts and tools.
+
 ## Jev as a decision component
 
 Jev is worth evaluating for bounded choices inside our structured memory design:
