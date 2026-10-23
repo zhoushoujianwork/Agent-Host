@@ -264,6 +264,13 @@ Durable feature tasks, owned worktrees and authorized PR delivery remain a
 separate [engineering proposal](development-workflow.md). See
 [current priorities](release-follow-up.md) for delivery order.
 
+[Persistent engineering missions](engineering-missions.md) are a further
+proposal for README-driven repository stewardship and bounded engineering
+research. Host would own durable objectives and scheduling, reuse ClawFlow for
+VCS operations, and dispatch work through the shared native execution boundary.
+No resident engineering scheduler or managed mission is implemented by that
+design.
+
 Keep concrete integrations behind private adapters. A public plugin SDK,
 marketplace, custom Host model/tool loop and transparent migration of native
 conversations between engines are outside the current implementation.

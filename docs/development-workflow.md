@@ -8,6 +8,10 @@ durable business development task or PR/MR lifecycle.
 See the [implementation notes](development-workflow-detail.md) for boundaries,
 recovery and validation.
 
+The proposed [persistent engineering missions](engineering-missions.md) build
+on this lifecycle for README-driven repository stewardship and bounded research
+across runs. They add objective ownership and wakeups, not a second PR workflow.
+
 The [engineering records](development-projects.md) retain shared project records
 and execution receipts under `.agent-host/projects/`, with no manual enablement.
 Managed clones/new projects and multi-run feature progress are proposed next.
