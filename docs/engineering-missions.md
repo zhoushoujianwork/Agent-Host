@@ -1,174 +1,104 @@
-# Persistent engineering missions
+# ClawFlow 常驻工程托管与 agh 执行接入
 
-Status: **proposal for evaluation**, researched on 2026-10-23. No mission,
-automation, GitHub write or EDA operation was enabled by this investigation.
-The [research and implementation notes](engineering-missions-detail.md) contain
-source revisions, evidence, recovery rules and acceptance scenarios.
+状态：**架构提案，待评估**。2026-10-23 根据用户反馈调整：常驻工程任务在
+ClawFlow 中实现；agh 保持统一入口、执行接入和通用上下文能力。本文取代上一版
+“Host 主导 Mission”的建议；不表示已经完成集成或开启托管。
+[调研证据与接口设计](engineering-missions-detail.md)。
 
-## Recommendation
+## 核心判断
 
-Add an **engineering mission (工程托管任务)** to Agent-Host: a durable objective
-that keeps selecting and completing useful work across runs, restarts and days.
-The user sets direction, scope and authority once; the mission handles routine
-research, implementation, validation and follow-up within those bounds.
+建议采用这个分工。ClawFlow 已经积累了 Pilot、Issue 流转、worktree 和 PR 跟进能力，
+常驻工程研究和迭代属于它的业务范围。agh 提供统一的执行网关，让 ClawFlow 可以使用
+同一套执行引擎接入、会话续接、证据记录和消息返回能力。
 
-Agent-Host should own the mission and scheduling; GitHub should hold the shared
-issues, PRs and review discussion; ClawFlow should supply VCS operations and
-reusable engineering procedures; the native harness should execute each bounded
-assignment. Reuse Host's shared execution boundary, starting with Claude ACP.
+**ClawFlow 决定做什么、何时做、何时算完成；agh 负责把一次执行可靠地送达引擎，
+并返回事实。** agh 可以管理运行槽位和会话互斥，但不再维护一套工程优先级和迭代计划。
 
-**The persistent part is the responsibility and its records.** Each model run
-has a finite question, evidence requirement and stopping condition. When there
-is nothing actionable, the mission sleeps without spending model tokens.
+## 目标架构
 
-## What the investigation found
-
-| Component | Already present | What this proposal adds |
-| --- | --- | --- |
-| Agent-Host | Project discovery, native execution and continuation, run evidence, memory/Skills, result delivery | Durable objectives, wakeups, owned engineering work and evidence-based acceptance |
-| ClawFlow | Label-driven operators, issue decomposition, worktrees, project Pilot wakeups, PR/merge handling and run records | A narrow integration with one scheduling owner; do not run two autonomous managers on the same repository |
-| easyeda-agent | README workflows, detailed acceptance rules, offline solver cases and CI | A reconciled work queue connecting those promises to actual evidence and unresolved issues |
-
-The local ClawFlow `eda` project already contains easyeda-agent. Both its Pilot
-automation and repository execution are disabled. GitHub currently has six open
-issues and no open PRs. Local `dev`, remote `dev` and remote `main` have different
-revisions; enrollment must choose the intended baseline rather than assuming the
-default branch contains the latest development. These are dated observations,
-not ongoing health claims.
-
-## How the user would use it
-
-An example instruction, **not an activation performed by this proposal**:
-
-> Manage easyeda-agent against its README and linked design/acceptance documents.
-> Start with offline solver reliability. Investigate existing issues, implement
-> bounded fixes, run the required checks, and open/update PRs. Use the agreed
-> managed-branch workflow based on dev. Ask me about product direction, changes
-> to acceptance rules, live EDA access and merges. Keep working on other eligible
-> tasks while one item is waiting.
-
-The same mechanism supports three scopes:
-
-| Scope | Work performed | Completion |
-| --- | --- | --- |
-| One issue | Reproduce, investigate, fix, verify and follow the PR | Its actual acceptance conditions are met |
-| Engineering research | Compare hypotheses and experiments against fixed cases | An accepted conclusion, including a supported negative result; unresolved blockers remain waiting |
-| Repository stewardship (项目持续托管) | Maintain priorities, address defects and propose the next useful increment | Continues until paused/retired; individual milestones still finish |
-
-The workbench shows the objective, current work, evidence, PR, resource use,
-next wake condition and decisions needed. Normal conversation can change
-priority, pause, resume or narrow scope. Notify on useful results, failures and
-needed decisions; an optional scheduled digest can summarize progress.
-
-## README-driven development
-
-Use the README as the product entry point, then follow its links to the actual
-design, implementation and acceptance documents. Build a small **capability
-ledger (能力台账)**: each promise links to its source revision, implementation,
-tests, known limits and issue/PR.
-
-For example, “complete a PCB” becomes separate claims about connectivity,
-geometry, DRC, save/reload and manufacturing output. A successful offline test
-does not certify the real EDA workflow. README examples do not automatically
-authorize operation on an open board or publication of a release.
-
-On a source change, update only affected claims and work. Existing issues take
-priority over creating duplicates. Conflicting or old evidence is retained with
-its version. The mission must not improve its completion rate by weakening
-tests, editing away requirements or declaring its own output accepted.
-
-## Architecture and operating loop
+下图是目标分工；ClawFlow ↔ agh 的结构化接入仍待实现。
 
 ```mermaid
-flowchart TD
-    U[Owner: objective, scope and standing authority] --> M
-    S[README and linked specs / GitHub issues, PRs and checks] --> O[Observe changes]
-    O --> M[Host mission coordinator: priorities, budget and durable state]
-    M --> T[Bounded research or development task]
-    T --> H[Existing Host execution boundary / Claude ACP]
-    H --> W[Owned workspace and permitted tools]
-    W --> V[Checks, diff review and acceptance evidence]
-    V --> M
-    M --> C[ClawFlow VCS adapter]
-    C <--> G[GitHub issues, PRs and review]
-    G --> O
-    M --> R[Progress and decisions for the owner]
-    V --> K[Eligible knowledge and Skills]
+flowchart TB
+    U["用户"] --> CH["钉钉 / 飞书 / Web / CLI"]
+    U --> CW["ClawFlow 工作台"]
+    CH <--> IN["agh 统一入口<br/>身份、业务路由、消息返回"]
+    IN <-->|"托管请求、优先级、决策、进度"| M
+    CW <--> M
+    DOC["README / 设计文档 / 验收标准"] --> M
+    GH["GitHub<br/>Issue / PR / Review / CI"] <--> M
+
+    subgraph CF["ClawFlow：工程托管与业务调度"]
+        M["Mission / Pilot<br/>目标、能力台账、任务拆解"]
+        M --> S["调度与恢复<br/>依赖、预算、唤醒、工作区"]
+        S --> J["有界执行任务<br/>研究 / 实现 / 验证"]
+        V["验收与交付<br/>检查证据、更新 Issue / PR"] --> M
+    end
+
+    J -->|"提交 / 查询 / 取消 / 显式续接"| EX
+    EX -->|"run_id、事件、产物、错误与用量"| V
+
+    subgraph AH["agh：通用执行网关"]
+        EX["执行入口<br/>请求去重、执行记录、会话绑定"]
+        CT["授权上下文 / 记忆 / Skills"] --> EX
+        EX <--> AD["执行引擎适配层 / ACP"]
+    end
+
+    AD <--> CL["Claude Code<br/>已有 ACP 接入基础"]
+    AD -.-> OT["Codex / 其他引擎<br/>待接入"]
 ```
 
-Each wake observes changes, reconciles unfinished actions, chooses the highest
-value eligible task, reserves resources, executes one bounded step, checks the
-evidence, and records the next action or wait condition. The coordinator handles
-business state; it does not replace the native harness's model/tool loop.
+图中的两个 agh 入口属于同一个产品的不同职责，不要求部署两个服务。
+用户请求经业务路由进入 ClawFlow；ClawFlow 发来的执行请求直接进入执行层，
+不能再次被路由成一个新 Mission。
 
-Research uses the same lifecycle: question → baseline → experiment → independent
-check → conclusion. For algorithm work, compare under the same input, budget
-and verifier, including counterexamples. A failed hypothesis is useful progress
-when it removes an option with reproducible evidence.
+## 职责边界
 
-## Important choices
+| 内容 | ClawFlow | agh |
+| --- | --- | --- |
+| 长期目标与 README 驱动 | 解析目标，维护能力缺口、里程碑和任务 | 提供必要的授权上下文 |
+| 调度 | 决定下一项工作、依赖、周期、优先级和任务预算 | 按资源容量接收执行，管理会话互斥 |
+| 工程状态 | 持久保存 Mission、Issue、worktree、PR 和验收状态 | 保存一次 Run 的执行状态、原始事件和会话引用 |
+| 工作目录 | 创建、拥有和回收任务工作区 | 校验并使用传入的工作区，不另建工程任务 |
+| 失败恢复 | 查询原执行和外部事实，决定是否继续或重试 | 报告运行、失败、中止或未知状态；不自行重做任务 |
+| 对外动作 | 管理 Issue / PR、合并与发布授权和执行 | 把进度、结果、待决策事项送回正确用户 |
+| 知识 | 保存项目结论与验收依据 | 按需保存可复用记忆和 Skills；不能替代工程状态 |
 
-| Choice | Recommendation |
-| --- | --- |
-| Scheduling owner | Agent-Host for managed missions. Leave ClawFlow Pilot/operators off for that repository. Reuse individual CLI/API operations and adapt useful Skills. |
-| Autonomy | Approve a bounded charter once. Routine work inside it proceeds automatically; scope, authority or acceptance changes return to the owner. |
-| Delivery | First deliver verified local changes and authorized draft PRs. Merging requires the agreed owner decision; publishing a release is separate. |
-| Concurrency | Start with one active work item per mission. Later add independent offline work; keep one writer per worktree and one owner per EDA window. |
-| Cost | Persist run/time/action limits and a mission spending ceiling where metering supports it. Report unknown monetary cost honestly. |
-| Recovery | Reconcile the worktree, process and remote operation before resuming. A timeout is not permission to repeat a write. |
-| Waiting | No repeated model calls for unchanged blockers. Wake on changed evidence, a dependency, available environment or owner response. |
+原生执行引擎仍然拥有自己的模型/工具循环和原生会话。
+“Run 执行结束”“工程验收通过”“PR 合并”“通知送达”保持独立结果。
 
-ClawFlow-only automation is the fastest route if issue-to-PR service is the
-entire goal. However, building both a ClawFlow Pilot and a Host manager would
-duplicate decisions and complicate recovery. The recommended Host route costs
-more initial development but matches this project's native execution, memory
-and cross-channel architecture. The detail document records the reuse boundary.
+## 一次托管如何运转
 
-## First pilot: easyeda-agent
+例如用户说：“接管 easyeda-agent，按 README 推进离线求解器质量，完成验证后提交 PR。”
 
-Start with [#273](https://github.com/zhoushoujianwork/easyeda-agent/issues/273),
-the schematic-layout search-budget problem. It supplies frozen offline inputs
-and explicitly forbids weakening geometry or connectivity constraints. First
-reproduce on the chosen current `dev` revision; the issue's historical failure
-does not prove that revision still fails.
+1. agh 识别用户和目标服务，将请求及其授权来源交给 ClawFlow。
+2. ClawFlow 建立 Mission，关联 README、已有 Issue 和验收规则，选择当前能推进的一项。
+3. ClawFlow 准备工作区，把目标、输入、检查要求和本次限制提交给 agh。
+4. agh 调用配置的原生引擎，流式返回工具活动、结果、产物和实际执行状态。
+5. ClawFlow 核对改动与检查证据，推进原 Issue / PR，或安排下一次研究实验。
+6. 有实际结果或需要决策时，通过 agh 返回用户；没有新条件时由 ClawFlow 保持等待。
 
-The first milestone should produce a reproducible baseline, one bounded
-improvement or supported research conclusion, regression evidence and, when
-authorized, a PR. It should also survive a Host restart without duplicating work.
-This tests research and development continuity without depending on a live board.
+研究任务可以得出“方案不可行”或“仍缺证据”，无需强行产出代码。
+README 是需求入口，具体设计和验收仍需跟随其链接；任务不能通过降低验收标准来宣称完成。
 
-Then extend to typed-action work such as
-[#284 manufacturing export](https://github.com/zhoushoujianwork/easyeda-agent/issues/284),
-with a separate live EDA check. Keep
-[#55 page rename](https://github.com/zhoushoujianwork/easyeda-agent/issues/55)
-open until its actual live result is established: its `agent-implemented` label
-already demonstrates why “a patch exists” and “the issue is solved” differ.
+## 第一版范围
 
-easyeda-agent currently defaults to direct development on `dev`. Adopting task
-branches/worktrees and PR delivery is an explicit pilot decision, scoped to
-managed work. Existing layout confirmation and release-version approval remain
-part of its workflow. Blocked live work must not occupy the offline queue.
+先在 ClawFlow 增加一个 **agh 执行后端**，把已有 operator 的一次执行接到 agh。
+沿用已有 Pilot/调度链路，再逐步补齐长期目标、版本化证据和业务验收。
+不要把整个 `clawflow run` 丢给 agh 执行，否则内部仍可能自行启动 Claude，无法形成统一执行路径。
 
-## Implementation order and evaluation
+实施顺序：
 
-1. **Mission continuity:** durable objective, source snapshots, one bounded
-   read-only research task, finite wakeups, budgets, pause and restart recovery.
-2. **Local engineering:** implement the existing development-workflow proposal's
-   task/worktree/check foundation; complete the offline #273 pilot locally.
-3. **GitHub follow-up:** authorize and reconcile issue/PR writes, CI and review
-   changes; prove recovery after an uncertain publication result.
-4. **Live engineering:** add an explicitly bound EDA environment and its actual
-   acceptance checks. Consider limited automatic merging only after the earlier
-   stages have evidence and a separately agreed policy.
+1. **单次执行接通**：ClawFlow 提交一个只读任务，能够查询、收取事件、取消并取得最终结果。
+2. **持久跟进**：ClawFlow 关联任务与 agh Run；任一侧重启后能查回原执行，不重复启动。
+3. **离线工程试点**：用 easyeda-agent [#273](https://github.com/zhoushoujianwork/easyeda-agent/issues/273)
+   验证研究、修复、检查和获授权的 PR 交付。
+4. **持续迭代与现场验收**：补齐 README 能力台账、依赖唤醒，再接入明确授权的 EDA 环境。
 
-Judge the pilot by accepted outcomes per owner intervention, reproducibility,
-time/cost per accepted result and reliable recovery. Also measure duplicate work,
-false completion claims and unnecessary wakeups. PR count and model activity
-alone are not success metrics.
+保持现有直接执行后端可供显式选择，切换后端不能自动重放任务。
+第一版只做同机、一个仓库、一个执行任务；多机调度和更多引擎等最小闭环验证后再扩展。
 
-The main decisions for evaluation are **Host as the scheduling owner**, the
-**offline #273 pilot**, and **bounded automatic development with PR delivery**.
-Precise internal schemas can be settled during implementation. This proposal
-does not claim that unattended managed execution is already available: Host's
-current broad execution profile needs a verified restricted environment before
-the proposed publication and workspace boundaries can be enforced.
+agh 的现有 ACP、执行记录和消息交付可以复用，但面向 ClawFlow 的持久异步接口、
+请求去重、跨系统恢复和受限执行环境仍需实现并验证。工作区路径和提示词本身不能保证隔离。
+
+本次仅调整设计；ClawFlow 的代码、配置和自动化未变更。

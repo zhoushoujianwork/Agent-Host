@@ -1,6 +1,7 @@
 # Persistent engineering missions: research and implementation notes
 
-Status: proposed, 2026-10-23. The [main proposal](engineering-missions.md) owns
+Status: revised proposal, 2026-10-23: ClawFlow owns engineering missions; agh
+provides entry and execution services. The [main proposal](engineering-missions.md) owns
 scope and product decisions. These notes explain evidence and implementation
 boundaries; names below are design sketches, not existing configuration or CLI.
 
@@ -36,7 +37,7 @@ of either target system was performed.
 | `internal/state/store.go:400`, `:751` | Runs begin with unverified acceptance; interrupted runs are reconciled as unknown without automatic execution replay. This is not a feature acceptance controller. |
 | `internal/taskfeedback/queue.go:203`, `:225`, `:260` | Claim/Finish/Recover provide a useful notification delivery pattern. They do not schedule engineering tasks. |
 | [Project records](development-projects.md) | Shared registry and project identity already exist; `tasks/<run-id>` currently exports attempt receipts, not durable business tasks. |
-| [Development detail](development-workflow-detail.md) | Worktree ownership, revision-bound checks, publication intents and head-specific merge are already designed. Extend this proposal rather than creating a competing lifecycle. |
+| [Development detail](development-workflow-detail.md) | Worktree ownership, revision-bound checks, publication intents and head-specific merge are already designed. Reuse its lifecycle invariants in ClawFlow; its original Host-owned coordinator is superseded for ClawFlow-managed work. |
 
 Focused source searches and the architecture agree that a mission scheduler and
 durable engineering coordinator are not delivered. Existing service polling,
@@ -63,8 +64,8 @@ Source references below are relative to the inspected ClawFlow checkout; the
 
 The installed CLI and local source differ, so negotiate actual command/JSON
 capabilities at onboarding. Skills are reusable methods, not drop-in permission
-contracts. Adapt the implementation Skill's push/PR steps to Host publication
-ownership; do not mount the current autonomous operator unchanged into a
+contracts. Adapt the implementation Skill's push/PR steps to ClawFlow-controlled publication
+authority; do not mount the current autonomous operator unchanged into a
 read-only or local-only mission.
 
 Historical ClawFlow issues provide relevant incident classes, without proving
@@ -103,231 +104,224 @@ lane. They do **not** validate #273's schematic solver. Select targeted
 schematic regression checks for #273 and the repository's relevant Go checks;
 determine exact commands after locating its implementation.
 
-## 2. Integration decision
+## 2. Revised integration decision
 
-| Option | Advantage | Limitation | Decision |
+The user's revised direction places persistent engineering management in
+ClawFlow. This supersedes the earlier Host-owned Mission recommendation.
+ClawFlow owns product goals and engineering scheduling; agh supplies unified
+intake, execution, scoped context and delivery. Existing Host capabilities remain;
+this proposal does not remove or relocate their delivered implementations.
+
+| Component | Authoritative state and decisions |
+| --- | --- |
+| ClawFlow | Mission, capability claims, priorities, dependencies, budgets, worktree ownership, issue/PR mapping, verification and acceptance |
+| agh | Authenticated intake/delivery, accepted execution requests, run lifecycle, event history, native session binding and observed usage |
+| Native harness | Model/tool loop, native conversation and supported tool/permission behavior |
+| GitHub | Actual repository, issue, PR, review and CI state; ClawFlow reconciles observations against its task state |
+
+Use the existing ClawFlow Pilot/operator scheduling path and extend it with
+mission continuity. Do not add a second independent scheduler alongside Pilot.
+Within agh, capacity admission and one-owner-per-native-session locking are
+execution mechanics, not business priority or backlog management.
+
+The two directions are explicit:
+
+- User intake: channel → agh business connector → ClawFlow mission operations.
+- Execution: ClawFlow operator → agh execution gateway → native harness.
+
+An execution request bypasses business-intent routing. It cannot create another
+ClawFlow mission or recursively invoke a full ClawFlow scheduling pass. General
+agh conversations outside managed engineering keep their existing behavior.
+ClawFlow's own UI can submit decisions directly without requiring an IM round trip.
+
+## 3. Small execution-backend contract
+
+First implement an agh backend in ClawFlow's existing native-execution seam.
+Inspect the exact call boundary during implementation: operators and Pilot both
+currently invoke native execution, so both need the selected backend eventually.
+Start with one operator, then route Pilot planning runs through the same contract.
+This is not a request to invoke all of `clawflow run` inside an agh native session.
+
+Proposed operations are submit, inspect, stream events, cancel and explicit
+continuation. These names describe requirements, not delivered API endpoints.
+Use a narrow authenticated local interface to an explicitly configured agh runtime;
+a Unix socket is a reasonable first transport. Do not reuse private channel state
+by writing its database, infer a runtime from cwd, or scrape rendered chat text.
+An existing private control socket is not proof that this contract is available.
+
+Submission includes:
+
+- Caller identity and source authorization reference, owner/audience and result destination.
+- Stable ClawFlow mission/task identifiers and a unique execution-attempt key.
+- Bound repository, prepared absolute workspace and expected base/candidate identity.
+- Bounded assignment, acceptance-input references, allowed actions/tools and artifact location.
+- Selected Agent/execution profile, supported resource limits and optional compatible continuation reference.
+
+agh responds with a durable run ID and request fingerprint before work can be
+considered accepted. Re-submitting the same key and identical payload returns the
+same run; a different payload with that key is rejected. A new attempt requires a
+new key chosen by ClawFlow after reconciliation. Lost responses are resolved by
+querying the original key, not by generating a new one.
+
+Events have a run ID, ordered sequence/cursor and event type. Results include
+execution status, exit/error information, artifact references and hashes,
+observed workspace revision, native continuation reference and usage coverage.
+Keep model output separate from observed command/Git/provider evidence. Reuse
+agh event types where possible; do not invent a full second engine protocol.
+Missing artifacts or unsupported limits are explicit capability errors.
+
+Poll/stream from a stored cursor first; callback delivery is optional later.
+Repeated event delivery is harmless after consumer deduplication. Execution
+completion is not evidence of successful notification, acceptance or merge.
+Do not label a canceled request stopped until process termination is observed.
+
+## 4. State, continuity and recovery
+
+ClawFlow persists its own mission state in its existing project/data ownership
+area with a transactional update mechanism selected during implementation. agh
+keeps execution records in its configured runtime. Link the two with task,
+attempt and run identifiers; do not copy native transcripts into a second
+canonical mission history. Existing agh project receipts remain per-run records.
+
+ClawFlow's mission binds the objective, source revisions, adopted repository
+rules, owner grants, budget and next wake condition. Each work item retains
+acceptance requirements, dependencies, workspace, experiments and PR evidence.
+Finite issue/research missions complete when accepted; repository stewardship
+can remain idle until new work appears.
+
+| Failure | Recovery owner and behavior |
+| --- | --- |
+| ClawFlow restarts while agh executes | ClawFlow queries its saved run ID/key and resumes event consumption; no replacement writer |
+| agh accepted submission but response was lost | ClawFlow queries/re-submits the identical key; agh returns the same run |
+| agh restarts with uncertain native execution | agh reports unknown until process state is reconciled; ClawFlow waits or investigates before deciding continuation |
+| Model run fails or reaches a limit | agh records partial evidence; ClawFlow decides a new experiment, retry or blocker |
+| PR/EDA write times out | ClawFlow reconciles the external target; agh must not blindly replay the business action |
+| Native context is incompatible | agh rejects continuation; ClawFlow can explicitly request a new session using saved evidence |
+| User pauses a mission | ClawFlow stops dispatch; stopping active work additionally calls cancel and waits for acknowledged termination |
+
+ClawFlow owns one writer/worktree lease and exclusive EDA resource binding. agh
+owns native-session/run concurrency. These locks protect different resources.
+Lease expiry alone is insufficient to start a new writer while the old process
+might still run. Start with one machine and reconcile complete process trees;
+do not advertise local lockfiles as distributed exclusion.
+
+ClawFlow records intent before publication or external mutation. Provider APIs
+are not exactly-once transactions with local storage. Persist branch/head/target
+and operation markers, then reconcile uncertain outcomes before retrying.
+Changing execution backend never silently replays prior work or switches provider.
+
+## 5. README-driven planning, permissions and knowledge
+
+ClawFlow reads README and linked design/acceptance documents into a small
+capability ledger: claim, source revision, implementation evidence, validation,
+known limits and linked issues/PRs. Source changes invalidate only affected plans.
+Search existing issues before creating new work; do not turn every README
+sentence into an implementation task or invent requirements to keep the agent busy.
+
+Research follows question → fixed baseline → bounded experiment → independent
+verification → conclusion. Preserve negative results, input hashes, code/verifier
+versions, resource limits and counterexamples. A supported negative result may
+satisfy a research task; an unresolved blocker is waiting, not accepted completion.
+
+ClawFlow decides business acceptance against recorded criteria. A separate
+verification run may use agh, but the implementing worker cannot rewrite the
+accepted criteria. A successful run, closed issue or `agent-implemented` label
+does not establish acceptance. Parent milestones require integration evidence,
+not merely closed sub-issues. Use non-closing PR references for partial fixes.
+
+ClawFlow owns standing engineering authority and its revision. agh validates the
+caller and enforces the effective intersection of requested capabilities, its
+execution profile and native/environment controls. User identity and audience
+must survive the channel → ClawFlow → execution round trip. Source documents,
+comments, bot labels and memory cannot manufacture authority. Owner responses
+bind to the concrete task/decision/revision; arbitrary chat cannot grant scope.
+
+Keep publisher credentials with ClawFlow-controlled operations, outside coding
+workers. Before unattended editing, validate workspace and credential isolation,
+cancellation and forbidden-operation behavior. Current agh bypassPermissions
+behavior is not proof of those boundaries. A disposable offline environment is
+a candidate implementation; actual ACP bridge compatibility remains a feasibility
+gate. Unsupported restrictions block that profile, without provider fallback.
+
+ClawFlow supplies project-specific context; agh may add authorized shared Skills
+and reusable knowledge. Mission state and acceptance stay in ClawFlow even when
+knowledge is persisted through agh. Private channel history is not automatically
+shared with project runs. Memory persistence failure does not erase a completed
+run or change accepted engineering evidence.
+
+## 6. Scheduling, cost and the easyeda pilot
+
+ClawFlow alone observes README/repository changes, issues, PR reviews, CI,
+dependency completion, owner decisions and available environments. Persist and
+coalesce wakeups. Idle checks should not consume model calls when nothing
+material changed. Prefer existing review fixes and blocked-dependency resolution
+over continually creating more work. Keep a bounded review backlog.
+
+For a same-machine pilot use modest conditional polling if no webhook endpoint
+exists. Later verify webhook signatures and deduplicate deliveries, with periodic
+reconciliation for missed events. GitHub documents both
+[REST polling guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
+and [webhook handling](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks).
+These are ClawFlow concerns, not an agh engineering timer.
+
+ClawFlow reserves mission budgets before dispatch. agh enforces supported
+per-run limits and returns measured usage plus unknown fields. Monetary ceilings
+are only hard when the selected provider/harness supports enforcement or reliable
+reservation bounds; otherwise expose that limit and use time/run/action bounds.
+Distinguish budget exhaustion, provider refusal, timeout and genuine execution
+failure. Do not claim exact cost from estimates or replay on a weaker provider.
+
+First pilot: easyeda-agent #273. Pin the chosen current dev baseline and reproduce
+the frozen schematic inputs. Use schematic-specific checks; PCB solver tests do
+not certify this issue. Compare a bounded search change under equal resource
+budgets and an unchanged verifier. If current code already fixes it, collect
+closure evidence instead of manufacturing a patch. Search exhaustion does not
+prove mathematical infeasibility.
+
+ClawFlow prepares the task workspace, agh runs research/implementation/checks,
+and ClawFlow reconciles evidence and handles authorized PR delivery. Its managed
+branch policy must be explicitly adopted for this pilot because easyeda-agent
+normally develops directly on dev. Preserve local-only changes and never confuse
+remote main, remote dev and the newer local checkout.
+
+Live EDA comes later: exact host/window/project/document binding, one writer,
+typed actions, explicit save/reload/fresh readback, and current layout confirmation
+before full-board routing. No GUI/JS engineering bypass for missing actions.
+A lost connection blocks live work while eligible offline tasks can proceed.
+Release publication and physical board acceptance remain separate decisions.
+
+## 7. Delivery increments and verification
+
+| Increment | ClawFlow change | agh change | Acceptance |
 | --- | --- | --- | --- |
-| Enable ClawFlow Pilot/operators alone | Shortest route to an existing issue-to-PR loop | Separate execution, context and recovery path from Host; native boundaries still need acceptance | Valid alternative if standalone ClawFlow service is the goal |
-| Host invokes whole `clawflow run` loops | Reuses most pipeline code | Imports nested planning, writeback, merge, provider and process policies; command success is not each Pilot/task's success | Not the first managed-mode integration |
-| Host mission + narrow ClawFlow VCS adapter + Host native execution | One task owner, common evidence and native sessions | Requires mission/workspace lifecycle development | Recommended |
+| Single read-only run | Add explicit agh execution backend for one operator | Authenticated submit/inspect/event/cancel boundary over existing execution | Correct identity/workspace; final receipt; cancellation; explicit errors |
+| Persistent follow-up | Task/attempt/run mapping, durable checkpoints and restart reconciliation | Durable request deduplication and resumable event access | Either process can restart without duplicate execution |
+| Offline mission | Mission/capability ledger, research loop, prepared worktree and evidence-based acceptance | Verified managed execution profile and scoped context | #273 baseline/result, preserved checkout, relevant tests, bounded cost |
+| GitHub and live work | Authorized PR/review handling, source changes, EDA resource scheduling | Delivery integration and required engine/tool capabilities | No stale-head acceptance, no blind retry, correct live evidence |
 
-Disable automatic Pilot/operator execution for an enrolled managed repository,
-after checking in-flight runs. Keep ClawFlow manual/read-only tools available.
-Disabling a schedule alone does not stop an already running writer: enroll only
-after it is reconciled. Import existing issue/PR links as observations, not
-retroactive acceptance or authority. Do not adopt an unowned worktree blindly.
+Keep the existing direct native backend explicitly selectable during migration.
+One attempt selects one backend and retains that identity. Do not disable Pilot
+as recommended in the previous architecture: extend its existing scheduling
+ownership. Prevent old and new paths from concurrently running the same task.
 
-ClawFlow remains the preferred issue/PR tool where its contracts suffice. Add a
-small internal adapter for missing SHA/check/review data or extend its JSON
-surface. No public plugin SDK, general workflow language or provider rewrite is
-needed for the first repository. Merge support follows later and must use an
-expected-head operation such as the one documented by
-[GitHub CLI](https://cli.github.com/manual/gh_pr_merge); a preflight check alone
-does not prevent a head-change race.
+The first API is private and local, not a public plugin framework or distributed
+worker platform. Do not require all future engines before proving one Claude
+path. Engine model/tool loops stay native; agh remains a general execution
+service and ClawFlow retains the engineering product UI and policies.
 
-## 3. Mission state and source authority
+Test duplicate submissions, changed payload with reused key, lost acceptance
+response, partial event stream, process-tree cancellation, both-side restart,
+unknown external write, expired live writer lease, changed source criteria,
+failed check, budget exhaustion and incompatible continuation. Then conduct a
+separately authorized real repository pilot. Passing the documentation repository
+checks does not establish this proposed integration.
 
-Suggested objects, to refine during implementation:
-
-| Object | Minimum responsibility |
-| --- | --- |
-| Mission | Objective, owner/audience, stable project/repository, charter revision, mode, budgets, status and next wake condition |
-| Capability claim | Source commit/section, intended behavior, evidence and limits, linked work items |
-| Work item | Question/change, acceptance criteria, dependencies, allowed resources, issue link, phase and blocker |
-| Attempt | Existing Host run reference, native session/configuration, workspace, inputs and result evidence |
-| Operation | Durable intent, target identity, idempotency/reconciliation key and observed receipt |
-| Decision | Authenticated owner decision and affected mission/task/revision; keep separate from retrieved discussion |
-
-Use one authoritative shared coordinator store under the chosen Host root,
-extending the project runtime schema as appropriate. Separate new mission/work
-item tables and readable exports from existing `tasks/<run-id>` receipts; do not
-reinterpret or overwrite those receipts. Original channel evidence stays in its
-own state home. Views in Web/GitHub are projections, not additional schedulers.
-
-Mission lifecycle: draft → active ↔ paused → completed/retired. Finite issue or
-research missions complete on acceptance; repository stewardship remains active
-but can be idle. Work items move through ready, researching/implementing,
-validating, awaiting review and accepted. Use explicit blockers for dependencies,
-environment, owner decisions, exhausted budget and uncertain external results.
-
-README and linked specifications supply product intent. Applicable repository
-instructions supply development conventions. Host grants bind allowed actions.
-Store their separate origins; no repository text, bot label, issue comment or
-memory can mint new authority. A verified owner response can update the charter
-through an authenticated decision path; an arbitrary `ready-for-agent` label
-cannot. Repository grants explicitly adopted by the owner remain reusable.
-
-Separate these facts: native execution completed; checks passed for a revision;
-business acceptance established; PR merged; result delivered; memory published.
-An issue closed as duplicate or not planned does not count as accepted work.
-Likewise, all sub-issues being closed does not establish a parent milestone's
-acceptance; reconcile each child's disposition and the parent's integration checks.
-Avoid `Fixes #N` auto-close wording until the PR satisfies that issue's full
-acceptance scope; partial fixes use a non-closing reference.
-
-On conflicting source changes, invalidate affected plans/evidence, explain the
-conflict and continue unrelated eligible work. Implementation may suggest a
-requirement change, but cannot silently approve its own proposal. Keep a
-versioned acceptance baseline and verifier outside the worker's ability to
-replace the accepted baseline without review.
-
-## 4. Wakeups, work selection and recovery
-
-Initial deployment is one host with durable local storage. A service loop
-observes source revisions, issue/review/check changes, run completion, dependency
-completion, owner decisions and due experiment steps. Persist wake events before
-dispatch and coalesce duplicates per mission. Do not launch a model to decide
-whether an unchanged blocked item is still blocked.
-
-Use bounded polling for a local pilot without a public endpoint; prefer webhooks
-when available. GitHub recommends webhook delivery over frequent polling and
-conditional requests when polling is necessary. A later webhook listener should
-verify signatures, queue quickly and deduplicate delivery IDs; retain periodic
-reconciliation for missing events. See [REST guidance](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)
-and [webhook guidance](https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks).
-
-Each dispatch:
-
-1. Reconcile active processes, local Git changes and pending external operations.
-2. Refresh changed sources and invalidate stale acceptance/plan inputs.
-3. Select an eligible item by explicit user priority, blocking impact and
-   readiness; prefer existing review fixes and bounded deliverables over new work.
-4. Reserve budget and a writer/resource lease transactionally.
-5. Assemble the cited charter, task, applicable Skills and evidence; invoke the
-   existing harness once with bounded scope.
-6. Verify actual outputs, persist the result and schedule its next condition.
-
-Start with one active item, a small review queue and a bounded candidate backlog.
-Suggested pilot tuning: 30-minute source reconciliation when idle, immediate
-local completion wakes, one new candidate per planning wake, and at most two PRs
-waiting for review. These are proposed controls, not measured optimum values or
-an automation configured by this document.
-
-Use leases for the mission, task writer and exclusive external environments.
-Each lease has an owner and generation so stale workers cannot publish accepted
-results. Generation checks alone cannot stop filesystem writes: confirm the old
-process tree has stopped before granting a replacement writer. Cross-machine
-execution is deferred; do not advertise a local lockfile as a distributed lock.
-
-Record intent before push, PR creation, comment or EDA action. External APIs do
-not become exactly-once merely because Host has a transaction. After timeout,
-query by recorded repository/branch/head/marker and compare the intended result;
-do not blindly retry. If outcome remains unknown, block that operation while
-preserving the work and evidence. Reconcile self-generated events without
-starting a new planning loop for every status comment.
-
-Pause stops new dispatch. A separate stop request cancels owned work, waits for
-termination and reconciles possible partial effects; it does not roll back
-unknown external writes or delete worktrees. Resume restores mission records,
-then either resumes a compatible native session or starts a fresh one with
-verified context. Session loss must not lose the objective or repeat a mutation.
-
-## 5. Execution, authority and environment boundaries
-
-Reuse [managed development](development-workflow-detail.md) for worktree
-preparation, repository locks, checks bound to the tested tree and PR identity.
-Keep one task/branch/worktree/PR through revisions. A changed candidate, base,
-verifier or relevant environment invalidates its affected validation. Worktrees
-share Git data and are not OS sandboxes; see [Git worktrees](https://git-scm.com/docs/git-worktree).
-
-Before unattended edits, prove a native/environment profile can enforce its
-allowed workspace, tools, credentials and network capabilities. A concrete
-offline profile should use a disposable worker environment with the task
-checkout writable, unrelated Host homes inaccessible, no ambient publishing or
-EDA credentials, and only the network needed for model/dependency access.
-Publisher credentials remain in the Host-side adapter. Verify this with attempted
-out-of-scope writes/publication and cancellation tests. Prompt wording and an
-ACP session mode are insufficient proof. If the selected ACP bridge cannot meet
-these controls, block editing and report it; do not silently fall back to a
-different provider or uncontrolled execution.
-
-The current channel `bypassPermissions` behavior must not be presented as this
-restricted managed profile. Prototype continuity with a controlled read-only
-fixture first. The actual ACP/process isolation capability is an implementation
-feasibility gate, not something this research has demonstrated.
-
-The proposed charter separately grants local edits, issue updates, push/PR,
-merge, live EDA use and release publication. Once approved, routine in-scope
-actions do not ask again. Only authentic new requirements/decisions change
-scope. Default pilot delivery stops at the agreed review point. Future low-risk
-auto-merge needs explicit standing authority, branch protection, current-head
-checks and independent review; passing tests alone is not permission.
-
-For easyeda-agent:
-
-- Explicitly adopt managed branches from the selected `dev` baseline; its current
-  direct-dev convention otherwise remains applicable. Do not automatically merge
-  local-only development into the pilot base or treat `main` as current `dev`.
-- Bind a real EDA capability to the exact authorized host/window/project/document
-  and tool versions. Keep one writer per window, including human activity. A lost
-  connection moves the item to waiting-environment, not success or automatic replay.
-- Follow its typed CLI/actions and real save → reload → fresh readback rules.
-  No GUI editing or arbitrary JS fallback for a missing engineering operation.
-- Respect current layout confirmation before full-board routing. A request for
-  general repository management does not waive that version-specific decision.
-- Separate offline tests, connector tests, live EDA acceptance and physical
-  board validation. Software checks cannot certify fabrication or power-on.
-- Release approval remains specific to the proposed version and its required
-  evidence; repository maintenance authority does not publish a release.
-
-## 6. Research and cost control
-
-Each experiment records question, hypothesis, baseline/candidate revision,
-input hashes, environment, random seeds where relevant, fixed resource budget,
-metrics, verifier, output artifacts and conclusion. Preserve unsuccessful runs.
-Use held-out cases and an independently executed checker to reduce overfitting.
-Do not let the candidate algorithm redefine the validity rules used to score it.
-
-For #273, first check whether current code still reproduces the frozen failure.
-If it does, investigate a bounded pruning/ordering change under the same candidate
-and time budget. Compare feasible output rate, elapsed time, search steps and
-validity. A counterexample or evidence that a proposed fix breaks constraints is
-a valid research result. Exhausting finite search proves only that budget was
-exhausted. If current code already resolves it, gather closure evidence rather
-than forcing a new patch.
-
-Each run has time, tool/action and experiment limits. A proposed pilot default
-is two failed repair attempts on unchanged inputs before changing hypothesis or
-surfacing a blocker. Continuing requires new evidence or a distinct justified
-experiment; merely restating the prompt is not progress. A healthy idle mission
-can remain active without doing model work.
-
-Reserve mission budget before dispatch and settle observed usage afterward.
-Track model, tool/compute and environment costs separately. Hard monetary caps
-require provider/harness enforcement or reliable reservation bounds; when that
-is unavailable, report the limitation and enforce observable time/run/action
-limits. Do not claim an exact dollar ceiling based on post-run estimates.
-Preserve partial results on limits and distinguish exhausted task budget,
-provider billing refusal, timeout and execution failure. Do not automatically
-replay on another provider.
-
-## 7. Incremental implementation and acceptance
-
-Keep the coordinator private to Host, initially in a small mission package
-alongside the proposed development coordinator. Reuse routing, assembly,
-projectruntime, state, harness and taskfeedback. Do not create a custom tool loop.
-The workbench can initially use a simple mission list and detail view with existing
-run links; a new visual workflow builder is unnecessary.
-
-| Stage | Required proof before advancing |
-| --- | --- |
-| Read-only continuity | Objective and accepted scope survive restart; source changes wake once; unchanged blocked state makes no model call; pause works |
-| Local offline work | Verified execution boundary; original checkout preserved; one writer; targeted test evidence matches the candidate; negative research results retained |
-| GitHub delivery | Explicit grants; existing issues reused; one PR per task; uncertain creates reconciled; new head invalidates checks; no unauthorized merge |
-| Live EDA | Exact environment binding, exclusive access, required layout decision, typed operations and save/reload/fresh evidence |
-
-Minimum failure scenarios: duplicate trigger; process dies after commit; PR
-created but receipt lost; lease expires while worker is alive; owner edits source
-requirements; checks fail after conflict repair; no budget; read API unavailable;
-EDA disconnect after partial write; issue closed without acceptance; incompatible
-native session; publisher rejects an obsolete head. Test controllable failures
-locally, then perform a separately authorized GitHub pilot. A documentation check
-or passing Host test suite does not demonstrate these proposed capabilities.
-
-Measure accepted results, owner interventions, reproducibility, reopen/rejection
-rate, useful research conclusions, time/cost, idle wakes and duplicate external
-writes. Do not set throughput promises before observing the pilot. Compare the
-same class of work against the current manually driven workflow.
+The earlier Host development-workflow proposal remains useful for invariants
+(worktree identity, checked revision, operation receipts and current-head merge),
+but ClawFlow owns those policies for managed missions. Host should not implement
+an additional PR or feature controller for the same work. ClawFlow's current
+expected-head merge interface gap from section 1 still needs resolution before
+that guarantee is advertised; see [GitHub CLI merge](https://cli.github.com/manual/gh_pr_merge).
 
 ## 8. Investigation provenance
 

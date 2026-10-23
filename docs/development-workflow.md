@@ -8,9 +8,11 @@ durable business development task or PR/MR lifecycle.
 See the [implementation notes](development-workflow-detail.md) for boundaries,
 recovery and validation.
 
-The proposed [persistent engineering missions](engineering-missions.md) build
-on this lifecycle for README-driven repository stewardship and bounded research
-across runs. They add objective ownership and wakeups, not a second PR workflow.
+For [ClawFlow-managed engineering missions](engineering-missions.md), the
+2026-10-23 direction supersedes this proposal's Host-owned engineering coordinator:
+ClawFlow owns tasks, worktrees, PRs and acceptance; Host provides execution and
+channel access. The lifecycle invariants below remain design reference material,
+not a requirement to build a second controller in Host.
 
 The [engineering records](development-projects.md) retain shared project records
 and execution receipts under `.agent-host/projects/`, with no manual enablement.

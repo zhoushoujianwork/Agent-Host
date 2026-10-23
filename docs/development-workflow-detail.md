@@ -6,6 +6,11 @@ and PR/MR delivery remain proposed. The [main proposal](development-workflow.md)
 owns scope and user-facing decisions; these notes keep future delivery boundaries
 separate from the current [registry implementation](development-projects-detail.md).
 
+For [ClawFlow-managed missions](engineering-missions.md), the revised direction
+places feature/worktree/PR ownership in ClawFlow. The Host coordinator proposed
+below is superseded for that scope; reuse its identity, validation and recovery
+invariants in the ClawFlow implementation. Host retains the execution boundary.
+
 ## Current foundation and missing behavior
 
 Current source checks on 2026-10-14 establish these extension points:
