@@ -198,7 +198,30 @@ restart, select the Session again from durable execution records. Closing a pane
 does not stop execution. Stop cancels the viewer's child; for channel continuation,
 closing the socket cancels the owning service's request context. The service
 accepts up to four Web continuation requests at once, and each selected Web
-context sends one at a time. Historical channel executions are read-only in Chat.
+context sends one at a time. Completed historical executions remain read-only.
+
+Active attached CLI/channel runs participate in the same 350 ms Chat polling
+as Web turns. Each refresh reads committed events from the owning state database;
+text and tool activity appear as the harness emits them. Execution details poll
+every second while executing (five seconds when idle), without overlapping polls.
+Output cannot appear before the native tool/harness emits it.
+
+Every new Host run publishes an owner-private `.run-control-<run-id>.json`
+capability in its canonical state home. It identifies a loopback-only ephemeral
+HTTP endpoint and a random per-run token. `POST /stop` with `X-Run-Token` cancels
+only that run's context; it does not signal the shared service or a guessed PID.
+The capability disappears when the run exits. Stale capabilities cannot authorize
+another run, even if the operating system reuses the port. The viewer reads only
+validated private regular files for runs in the selected session, never exposes
+tokens to the browser, and retains its existing origin/mutation-token checks.
+Browser stop requests also carry the selected context to reject stale selections.
+
+Accepted cancellation displays `stopping`; only persisted completion evidence
+establishes the final result. Execution and memory outcomes remain separate.
+Unavailable or older control endpoints report an explicit limitation/failure;
+they never trigger replay or service-wide termination. Existing processes need
+to finish or be restarted through their original entry before they gain control.
+Closing the viewer does not cancel externally started attached runs.
 
 `session_chat_test.py`, the Chat/browser tests, Host takeover tests and CLI service
 control tests cover history, exact fork parents, repeated continuation, duplicate

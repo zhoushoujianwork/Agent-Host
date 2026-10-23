@@ -77,6 +77,23 @@ test("stop remains pending until the Host snapshot confirms process exit",async(
   assert.equal(h.el("send-chat").disabled,true);assert.equal(h.el("new-chat").disabled,false);
 });
 
+test("attached live runs expose stop, update output and bind stop to the selected context",async()=>{
+  const h=await setup();
+  h.snapshot={...h.snapshot,context_id:"attached",active_id:"history-a",active_ids:["history-a"],needs_new:true,
+    turns:[{id:"history-a",status:"running",read_only:true,can_stop:true,text:"first",output:[]}]};
+  await h.poll();
+  assert.equal(h.el("stop-chat").hidden,false);
+  assert.equal(h.el("chat-messages").children[0].children[9].hidden,false);
+  h.snapshot.turns[0].text="first second";await h.poll();
+  const turn=h.el("chat-messages").children[0];
+  assert.equal(turn.children[2].children[0].children[1].children[0].children[0].textContent,"first second");
+  await h.el("stop-chat").onclick();
+  assert.deepEqual(JSON.parse(h.calls.find(c=>c.url==="/api/chat/stop").body),{turn_id:"history-a",context_id:"attached"});
+  h.snapshot.turns[0].can_stop=false;await h.poll();
+  assert.equal(h.el("stop-chat").hidden,true);
+  assert.equal(turn.children[9].hidden,true);
+});
+
 test("overlapping room messages keep send available and stop the selected original message",async()=>{
   const h=await setup();
   h.snapshot.active_id="a";h.snapshot.active_ids=["a","b"];h.snapshot.max_concurrent=4;

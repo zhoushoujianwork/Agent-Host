@@ -358,6 +358,13 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		return r, err
 	}
 	j := &journal{h: h, run: r, start: time.Now()}
+	ctx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	closeControl, err := startRunControl(h.Store.Home(), r.ID, cancelRun)
+	if err != nil {
+		return h.failBeforeExecution(j, fmt.Errorf("start run control: %w", err))
+	}
+	defer closeControl()
 	if channelMessageID != "" {
 		stored, readErr := h.Store.Run(ctx, r.ID)
 		if readErr != nil {
@@ -748,7 +755,11 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 func (h *Host) failBeforeExecution(j *journal, cause error) (state.Run, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := h.Store.CompleteRun(ctx, j.run.ID, "failed", "", "", cause.Error()); err != nil {
+	status := "failed"
+	if errors.Is(cause, context.Canceled) {
+		status = "canceled"
+	}
+	if err := h.Store.CompleteRun(ctx, j.run.ID, status, "", "", cause.Error()); err != nil {
 		return j.run, errors.Join(cause, err)
 	}
 	return h.receipt(j, cause)

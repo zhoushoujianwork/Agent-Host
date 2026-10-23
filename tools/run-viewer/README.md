@@ -9,7 +9,9 @@ the configured CLI destination and displays incremental answers and native Claud
 
 Status: local execution inspection and owner memory management are implemented.
 Memory actions use the running Host; Chat owns a separate configured CLI process
-and can request its cancellation.
+and can request its cancellation. Attached active CLI/channel sessions also
+synchronize output and offer Stop when their owning Host exposes run control;
+stopping one run leaves other executions running.
 Chat displays execution and memory processing separately. A successful reply
 remains completed if memory processing fails; the recorded memory error appears
 below its status. Older saved messages recover these outcomes from their exact

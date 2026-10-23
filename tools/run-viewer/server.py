@@ -931,8 +931,8 @@ class Handler(BaseHTTPRequestHandler):
                 elif route == "/api/chat/agent" and set(value) == {"agent_id"} and isinstance(value["agent_id"], str):
                     chat.select(value["agent_id"])
                     self.send(200, {"status": "agent_selected"})
-                elif route == "/api/chat/stop" and set(value) == {"turn_id"} and isinstance(value["turn_id"], str):
-                    chat.stop(value["turn_id"])
+                elif route == "/api/chat/stop" and set(value) in ({"turn_id"}, {"turn_id", "context_id"}) and isinstance(value["turn_id"], str) and ("context_id" not in value or isinstance(value["context_id"], str)):
+                    chat.stop(value["turn_id"], **({"context_id": value["context_id"]} if "context_id" in value else {}))
                     self.send(200, {"status": "stop_requested"})
                 elif route == "/api/chat/new" and not value:
                     chat.reset()

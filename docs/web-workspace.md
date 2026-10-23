@@ -12,6 +12,8 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Click a Session heading or a message in execution records to open its history
   in the right Chat panel and continue from its native context. CLI, DingTalk
   and Feishu sessions retain their original Agent, project, model and audience.
+  Active sessions synchronize reply text and tool activity automatically and
+  expose **Stop execution** when the owning Host provides run control.
   Web replies stay in Web; later messages in the same channel room can inherit
   the completed Web turn. Busy, unavailable or incompatible contexts show an
   explicit error instead of silently starting over.
@@ -32,7 +34,9 @@ disabled. [Implementation notes](web-workspace-detail.md).
   [concurrent CLI tasks](cli-concurrency.md). Nothing is automatically retried.
 - Drafts save locally. The composer grows with the draft and shows its character
   count. Clear can be undone until the next edit. Escape collapses Chat.
-- Stop requests cancellation of the active Host execution and waits for its exit.
+- Stop requests cancellation of the selected Host execution and waits for its
+  recorded outcome. Other concurrent executions continue. Older running Hosts
+  without run control remain observable and must be stopped at their original entry.
   Partial text and native output remain visible. After failure or interruption, choose
   New conversation before sending again; no task is automatically replayed.
 - Chat reconnects to the current viewer conversation after refresh. New conversation

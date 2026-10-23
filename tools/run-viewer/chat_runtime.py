@@ -233,8 +233,11 @@ class AgentChatRuntime:
             if self.current:
                 self.current.reset()
 
-    def stop(self, turn_id):
+    def stop(self, turn_id, context_id=None):
         with self.lock:
+            snapshot = self.snapshot()
+            if context_id is not None and context_id != snapshot.get("context_id", snapshot.get("room_id")):
+                raise ChatConflict("当前会话已变化，请刷新后再中止。")
             if self.current:
                 self.current.stop(turn_id)
 
@@ -406,8 +409,10 @@ class ChatRuntime:
             self.native_messages = {}
             self.needs_new = False
 
-    def stop(self, turn_id):
+    def stop(self, turn_id, context_id=None):
         with self.lock:
+            if context_id is not None and context_id != self.room_id:
+                raise ChatConflict("当前会话已变化，请刷新后再中止。")
             turn = next((t for t in self.turns if t["id"] == turn_id), None)
             if turn is None:
                 raise KeyError("execution not found")

@@ -659,6 +659,10 @@ $("source-filter").addEventListener("change", changeEntry);
 $("refresh").addEventListener("click", refresh);
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {state.tab = button.dataset.tab; renderRecord();}));
 $("close-dialog").addEventListener("click", () => $("phase-dialog").close());
-setInterval(() => {if ($("auto-refresh").checked && !document.hidden) refresh();}, 5000);
+async function pollRecords() {
+  if ($("auto-refresh").checked && !document.hidden) await refresh();
+  const active = state.record?.run?.execution_status === "running";
+  setTimeout(pollRecords, active ? 1000 : 5000);
+}
 document.addEventListener("visibilitychange", () => {if (!document.hidden && $("auto-refresh").checked) refresh();});
-refresh();
+refresh().finally(() => setTimeout(pollRecords, 1000));

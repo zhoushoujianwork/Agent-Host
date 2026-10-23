@@ -32,6 +32,9 @@ type Store struct {
 	files                 *fileMemory
 }
 
+// Home is the canonical state directory shared by all partitions of this store.
+func (s *Store) Home() string { return s.home }
+
 const schemaV1 = `
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY, payload BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id), scope TEXT NOT NULL, created_at TEXT NOT NULL, execution_status TEXT NOT NULL, memory_status TEXT NOT NULL, payload BLOB NOT NULL);

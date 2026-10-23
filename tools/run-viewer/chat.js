@@ -18,9 +18,9 @@
     const busy = pending || selecting > 0 || Boolean(state.active_id);
     el("send-chat").hidden = false;
     el("send-chat").disabled = pending || selecting > 0 || selectionFailed || (state.active_ids || (state.active_id ? [state.active_id] : [])).length >= (state.max_concurrent || 4) || !state.enabled || state.needs_new || !el("draft").value.trim();
-    el("stop-chat").hidden = (state.active_ids || (state.active_id ? [state.active_id] : [])).length !== 1;
     const active = state.turns.find(t => t.id === state.active_id);
-    el("stop-chat").disabled = pending || active?.status === "stopping";
+    el("stop-chat").hidden = (state.active_ids || (state.active_id ? [state.active_id] : [])).length !== 1 || Boolean(active?.read_only && !active.can_stop);
+    el("stop-chat").disabled = pending || selecting > 0 || selectionFailed || active?.status === "stopping";
     el("stop-chat").textContent = active?.status === "stopping" ? "正在中止…" : "■ 中止执行";
     el("new-chat").disabled = busy;
     el("chat-agent").disabled = busy || !state.enabled || (state.agents || []).length < 2;
@@ -160,8 +160,8 @@
       item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("\n\n");
       item.answerActions.hidden = !item.reply;
       item.copyAnswer.disabled = active;
-      item.stop.hidden = !active || turn.read_only;
-      item.stop.disabled = pending || turn.status === "stopping";
+      item.stop.hidden = !active || Boolean(turn.read_only && !turn.can_stop);
+      item.stop.disabled = pending || selecting > 0 || selectionFailed || turn.status === "stopping";
       item.root.dataset.status = turn.status;
       const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
       item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[executionStatus] || executionStatus}`;
@@ -264,9 +264,9 @@
   });
   document.addEventListener("agh:draft-change",controls);
   async function stopTurn(turnId) {
-    if (!turnId || pending) return;
+    if (!turnId || pending || selecting > 0 || selectionFailed) return;
     pending = true; controls();
-    try { await action("/api/chat/stop",{turn_id:turnId}); el("chat-state").textContent = "已请求中止，等待执行退出。"; await refresh(); }
+    try { await action("/api/chat/stop",{turn_id:turnId,context_id:state.context_id || state.room_id}); el("chat-state").textContent = "已请求中止，等待执行退出。"; await refresh(); }
     catch (error) { el("chat-state").textContent = error.message; }
     finally { pending = false; controls(); }
   };

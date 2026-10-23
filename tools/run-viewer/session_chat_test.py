@@ -14,12 +14,13 @@ from urllib.error import HTTPError
 
 from chat_runtime import AgentChatRuntime, ChatConflict
 from server import Catalog, Handler, ThreadingHTTPServer
+import run_control
 
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="agh-session-")
-        self.home = Path(self.temp.name)
+        self.home = Path(self.temp.name).resolve()
         self.source = Catalog(self.home, None, all_chats=True)
         self.chat = AgentChatRuntime(None)
         conn = sqlite3.connect(self.home / "state.db")
@@ -105,6 +106,67 @@ class SessionTests(unittest.TestCase):
             self.assertEqual(self.chat.snapshot()["selected_session"], "web-s2")
         finally:
             server.shutdown(); server.server_close(); thread.join()
+
+    def test_attached_live_output_and_scoped_stop_wait_for_durable_outcome(self):
+        received = []
+        class Control(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append((self.path, self.headers.get("X-Run-Token")))
+                self.send_response(200); self.end_headers()
+                self.wfile.write(json.dumps({"run_id":"r0", "status":"stopping"}).encode())
+            def log_message(self, *args): pass
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Control)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        capability = self.home / ".run-control-r0.json"
+        capability.write_text(json.dumps({"version":1,"run_id":"r0","port":server.server_port,"token":"a"*64}))
+        capability.chmod(0o600)
+        def update(status, events):
+            with sqlite3.connect(self.home / "state.db") as conn:
+                run = json.loads(conn.execute("SELECT payload FROM runs WHERE id='r0'").fetchone()[0])
+                run["execution_status"], run["output"] = status, ""
+                conn.execute("UPDATE runs SET payload=? WHERE id='r0'", (json.dumps(run),))
+                for index, event in events:
+                    conn.execute("INSERT INTO events VALUES('r0',?,?)", (index,json.dumps(event)))
+        try:
+            update("running", [(1,{"type":"text.delta","phase":"execute","delta":"first"})])
+            self.chat.attach(self.source, "db:r0")
+            snapshot = self.chat.snapshot()
+            context = snapshot["context_id"]
+            self.assertEqual(snapshot["active_ids"], ["history-r0"])
+            self.assertTrue(snapshot["turns"][0]["can_stop"])
+            self.assertEqual(snapshot["turns"][0]["text"], "first")
+            update("running", [(2,{"type":"text.delta","phase":"execute","delta":" second"})])
+            self.assertEqual(self.chat.snapshot()["turns"][0]["text"], "first second")
+            self.assertEqual(self.chat.snapshot()["turns"][0]["text"], "first second")
+            with self.assertRaises(ChatConflict): self.chat.stop("history-r0", context_id="another-context")
+            with self.assertRaises(KeyError): self.chat.stop("history-r1", context_id=context)
+            self.assertEqual(received, [])
+            self.chat.stop("history-r0", context_id=context)
+            self.assertEqual(received, [("/stop", "a"*64)])
+            self.assertEqual(self.chat.snapshot()["turns"][0]["status"], "stopping")
+            self.assertEqual(self.chat.snapshot()["turns"][0]["execution_status"], "running")
+            update("canceled", [(3,{"type":"run.finished","phase":"receipt","status":"canceled","data":{"execution_status":"canceled","memory_status":"skipped"}})])
+            snapshot = self.chat.snapshot()
+            self.assertIsNone(snapshot["active_id"])
+            self.assertEqual(snapshot["turns"][0]["status"], "canceled")
+            self.assertFalse(snapshot["turns"][0]["can_stop"])
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
+    def test_stop_capability_rejects_wrong_run_public_files_and_symlinks(self):
+        path = self.home / ".run-control-r0.json"
+        value = {"version":1,"run_id":"r0","port":12345,"token":"a"*64}
+        path.write_text(json.dumps(value)); path.chmod(0o600)
+        self.assertTrue(run_control.available(self.home, "r0"))
+        path.chmod(0o644)
+        self.assertFalse(run_control.available(self.home, "r0"))
+        path.chmod(0o600)
+        value["run_id"] = "r1"
+        path.write_text(json.dumps(value))
+        self.assertFalse(run_control.available(self.home, "r0"))
+        path.unlink(); path.symlink_to(self.home / "state.db")
+        self.assertFalse(run_control.available(self.home, "r0"))
+        self.assertFalse(run_control.available(self.home, "../r0"))
 
 
 if __name__ == "__main__": unittest.main()
