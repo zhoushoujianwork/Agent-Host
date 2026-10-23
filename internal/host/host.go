@@ -707,6 +707,9 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		}
 	}
 	errText := result.Error
+	if result.Status == "canceled" && context.Cause(ctx) != nil && context.Cause(ctx) != ctx.Err() {
+		err = errors.Join(err, context.Cause(ctx))
+	}
 	if err != nil && result.Status != "completed" {
 		errText = err.Error()
 	}

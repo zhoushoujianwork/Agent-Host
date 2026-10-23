@@ -107,6 +107,8 @@ Options (place before positional IDs/queries):
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
   --timeout DURATION    Per-turn deadline including memory (default 1h)
+  --caller-pid PID      Chat only: also cancel when this supervising process exits
+  --detach              Chat only: allow caller exit; does not background execution
 
 Credentials: TYPESAFE_API_KEY for typesafe; JEV_API_KEY for custom.
 Claude uses its native authentication/configuration. Channel tools depend on the
@@ -182,6 +184,8 @@ type options struct {
 	noTools                                                                            bool
 	undoRestore                                                                        bool
 	oneShot                                                                            bool
+	detach                                                                             bool
+	callerPID                                                                          int
 	timeout                                                                            time.Duration
 }
 
@@ -198,6 +202,8 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	if name == "chat" {
+		fs.BoolVar(&o.detach, "detach", false, "Continue after the caller exits (does not background the command)")
+		fs.IntVar(&o.callerPID, "caller-pid", 0, "Also cancel when this supervising caller process exits")
 		fs.BoolVar(&o.feedbackOtherUsersOnly, "feedback-other-users-only", false, "Keep requester feedback local; notify only other verified users")
 		fs.BoolVar(&o.debugNonOwner, "debug-non-owner", false, "Simulate a non-owner with restricted read tools and no channel approval transport")
 		fs.StringVar(&o.requestFor, "request-for", "", "Verified user ID whose demand this task fulfills")
@@ -402,6 +408,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 }
 
 func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer) (runErr error) {
+	parentPID := os.Getppid()
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		_, err := io.WriteString(out, usage)
 		return err
@@ -497,6 +504,19 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 			return nil
 		}
 		return err
+	}
+	if command == "chat" {
+		var stop context.CancelFunc
+		ctx, stop, err = chatCallerContext(ctx, parentPID, o.callerPID, o.detach)
+		if err != nil {
+			return err
+		}
+		defer stop()
+		defer func() {
+			if cause := context.Cause(ctx); cause != nil && !errors.Is(cause, context.Canceled) && runErr != nil {
+				runErr = errors.Join(runErr, cause)
+			}
+		}()
 	}
 	if command == "chat" || command == "memory candidates" {
 		if len(pos) != 0 {

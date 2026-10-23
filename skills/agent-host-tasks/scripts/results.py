@@ -110,6 +110,7 @@ def event_result(directory, receipt):
         "elapsed_ms": receipt.get("elapsed_ms"), "cost_usd": None,
         "warnings": [], "usage": native_usage([])[0],
         "feedback": None, "notifications": [],
+        "caller": receipt.get("caller"),
     }
     if receipt.get("requested_session_id"):
         result["requested_session_id"] = receipt["requested_session_id"]

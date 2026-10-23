@@ -75,9 +75,9 @@ def configured_command(path):
             known = {row[0] for row in connection.execute("SELECT id FROM projects")}
         if not set(projects) <= known:
             raise ValueError("Agent catalog references projects unavailable in CLI state")
-    reserved = ("--m", "--message", "--resume", "--project", "--format")
+    reserved = ("--m", "--message", "--resume", "--project", "--format", "--caller-pid", "--detach")
     if any(a.startswith("-") and "--" + a.lstrip("-").split("=", 1)[0] in reserved for a in args):
-        raise ValueError("saved args must not include a task, session or project override")
+        raise ValueError("saved args must not include task, session, project, format or caller lifetime overrides")
     managed = private_json(config["environment_file"])
     if not managed.keys() <= PROVIDER_KEYS or not all(isinstance(v, str) and v.strip() == v and v and not any(c in v for c in "\x00\r\n") for v in managed.values()):
         raise ValueError("invalid managed provider environment")
@@ -86,8 +86,10 @@ def configured_command(path):
     return [binary, "chat", *args], cwd, env
 
 
-def run_result(command, cwd, env, config, output_dir, base_command, feedback_args=None):
+def run_result(command, cwd, env, config, output_dir, base_command, feedback_args=None, caller=None):
     directory, receipt = new_receipt(config, base_command, cwd, output_dir)
+    receipt["caller"] = caller
+    save_json(directory / "launch.json", receipt)
     if feedback_args:
         receipt["feedback_args"] = feedback_args
         save_json(directory / "launch.json", receipt)
@@ -127,9 +129,13 @@ def run_result(command, cwd, env, config, output_dir, base_command, feedback_arg
 
 
 def main(argv=None):
+    parent_pid = os.getppid()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path.home() / ".config/agent-host/task-handoff.json")
     parser.add_argument("--check", action="store_true")
+    ownership = parser.add_mutually_exclusive_group()
+    ownership.add_argument("--caller-pid", type=int, help="supervising caller PID (default: launcher's parent)")
+    ownership.add_argument("--detach", action="store_true", help="allow execution to outlive its caller; does not background it")
     parser.add_argument("--request-for", help="verified user ID whose demand this task fulfills")
     parser.add_argument("--notify-to", help="verified user ID to receive completion feedback")
     parser.add_argument("--notify-channel", choices=("dingtalk", "feishu"))
@@ -141,6 +147,10 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, help="new private evidence directory for result mode")
     parser.add_argument("--format", choices=("text", "json", "result"), default="json")
     options = parser.parse_args(argv)
+    if options.caller_pid is not None and (options.caller_pid <= 1 or options.caller_pid == os.getpid()):
+        parser.error("--caller-pid must identify another process (>1)")
+    if (options.caller_pid is not None or options.detach) and (options.inspect or options.check):
+        parser.error("caller lifetime options require task execution")
     feedback_args = {flag: getattr(options, flag[2:].replace("-", "_")) for flag in FEEDBACK_FLAGS
                      if getattr(options, flag[2:].replace("-", "_")) is not None}
     if any(not value or value.strip() != value or any(c in value for c in "\x00\r\n") for value in feedback_args.values()):
@@ -185,13 +195,16 @@ def main(argv=None):
             if not options.resume:
                 raise HandoffError("No observed session to continue; inspect the launch failure first.")
         base_command = command.copy()
+        caller = {"policy": "detached" if options.detach else "cancel_on_exit",
+                  "pid": None if options.detach else options.caller_pid or parent_pid}
+        command += ["--detach"] if options.detach else ["--caller-pid", str(caller["pid"])]
         for flag, value in feedback_args.items():
             command += [flag, value]
         command += ["--format", "json" if options.format == "result" else options.format, "-m", options.message]
         if options.resume:
             command += ["--resume", options.resume]
         if options.format == "result":
-            return run_result(command, cwd, env, options.config.absolute(), options.output_dir, base_command, feedback_args)
+            return run_result(command, cwd, env, options.config.absolute(), options.output_dir, base_command, feedback_args, caller)
         result = subprocess.run(command, cwd=cwd, env=env, check=False)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
     except HandoffError as error:

@@ -106,6 +106,29 @@ home ownership; a conflict with those owners remains an explicit blocker. Do
 not delete locks or create a fresh home to evade ownership. See
 [concurrency behavior](../../../docs/cli-concurrency.md).
 
+## Caller lifetime
+
+Every execution mode cancels when the launcher's caller exits. Host independently
+watches its direct parent, so killing the launcher also cancels the native run.
+The default caller is the launcher's initial parent PID. If that is a persistent
+wrapper, supply the verified supervising process with `--caller-pid PID`.
+`--detach` disables caller monitoring for an explicitly independent task; it
+does not background the launcher or disable deadlines and explicit cancellation.
+These flags are mutually exclusive, apply only to execution, and cannot be
+saved in destination `args`. Each continuation chooses its own policy; detached
+execution is never implicitly inherited from a previous receipt.
+
+The `caller` field in launch receipts and inspected results records the policy
+and selected PID. A caller that cannot be verified prevents execution. Once a
+run is active, caller loss or an unverifiable identity follows normal context
+cancellation and records its cause in Host. No caller process is signaled and
+no task is automatically retried. A killed launcher may leave its exit unknown
+even though Host has recorded cancellation; preserve those separate outcomes.
+
+This monitors processes, not conversation tabs inside an alive shared app.
+Already orphaned local jobs and remote daemon jobs require separate stop controls;
+keep tool jobs owned and joinable. Inspect partial effects before continuation.
+
 ## Direct CLI
 
 Resolve `agent-host` from the configured executable or PATH. When installed as

@@ -41,6 +41,15 @@ one JSON result to stdout when the process exits. Run long tasks with the
 caller's supported background execution and collect the actual process exit.
 Inspection reads existing records; continuation starts a new execution turn.
 
+Execution is bound to the calling process by default: caller or launcher exit
+cancels the run and preserves its partial evidence. If a persistent wrapper sits
+between this launcher and the actual supervising process, pass its verified PID
+with `--caller-pid PID`. Use `--detach` only when the user intends work to continue
+independently after caller exit; it does not background the command. Do not
+infer conversation closure from an alive shared application process. Avoid
+orphaning tool jobs: background work must remain owned and joinable so normal
+cancellation can stop it. Remote daemons need their own explicit stop controls.
+
 The external agent writes the brief from the user's conversation; the user does
 not fill out a form. Include objective/target, necessary context, allowed actions
 and exclusions, observable completion checks, and the requested report. Carry

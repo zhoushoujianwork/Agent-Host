@@ -51,6 +51,31 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(args[args.index("-m") + 1], message)
         self.assertEqual(args[-2:], ["--resume", "session-1"])
         self.assertNotIn("shell", run.call_args.kwargs)
+        self.assertEqual(args[args.index("--caller-pid") + 1], str(os.getppid()))
+
+    def test_caller_policy_is_recorded_and_detach_is_not_inherited_on_resume(self):
+        self.fake_host()
+        directory = self.root / "detached"
+        _, result = self.result_launch(directory, "--detach")
+        self.assertEqual(result["caller"], {"policy": "detached", "pid": None})
+        self.assertEqual(CHAT.inspect_receipt(directory, CHAT.private_json)["caller"], result["caller"])
+        _, continued = self.result_launch(self.root / "continued", "--resume-from", str(directory))
+        self.assertEqual(continued["caller"], {"policy": "cancel_on_exit", "pid": os.getppid()})
+        calls = [call for call in self.calls() if call[0] == "chat"]
+        self.assertIn("--detach", calls[0])
+        self.assertNotIn("--caller-pid", calls[0])
+        self.assertNotIn("--detach", calls[1])
+        self.assertEqual(calls[1][calls[1].index("--caller-pid") + 1], str(os.getppid()))
+
+    def test_explicit_caller_and_invalid_lifetime_options(self):
+        self.fake_host()
+        _, result = self.result_launch(self.root / "explicit", "--caller-pid", str(os.getppid()))
+        self.assertEqual(result["caller"]["pid"], os.getppid())
+        for flags in (["--caller-pid", "1"], ["--caller-pid", str(os.getpid())],
+                      ["--caller-pid", "-2"], ["--detach", "--caller-pid", "42"],
+                      ["--detach", "--check"], ["--caller-pid", "42", "--inspect", "/unused"]):
+            with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                CHAT.main(["--config", str(self.config), *flags])
 
     def test_managed_environment_replaces_inherited_credentials(self):
         with patch.dict(os.environ, {"ANTHROPIC_AUTH_TOKEN": "wrong", "CLAUDE_CODE_OAUTH_TOKEN": "wrong", "CLAUDECODE": "1", "PATH": "/kept"}):
@@ -315,7 +340,8 @@ sys.exit(config.get("exit_code", 0))
 
     def test_saved_task_or_duplicate_destination_overrides_are_rejected(self):
         original = self.value["args"].copy()
-        for override in (["-m", "unexpected"], ["--message=unexpected"], ["-format", "text"], ["--home=/other"]):
+        for override in (["-m", "unexpected"], ["--message=unexpected"], ["-format", "text"], ["--home=/other"],
+                         ["--detach"], ["--caller-pid=42"]):
             self.value["args"] = original + override
             self.save()
             with contextlib.redirect_stderr(io.StringIO()), patch.object(CHAT.subprocess, "run") as run:

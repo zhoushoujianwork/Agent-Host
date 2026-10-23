@@ -78,6 +78,43 @@ remain explicit; do not create another home, switch providers or replay work.
 Cancellation uses existing process controls; a durable cancellation service is
 outside this scope.
 
+## Caller lifetime implementation
+
+CLI `chat` binds its context to its initial parent process unless `--detach` is
+explicit. Parent reparenting cancels the context within roughly one second. The
+configured launcher passes its own caller as `--caller-pid`, so both the launcher
+and the process that invoked it are monitored. A caller behind a persistent
+wrapper can supply an explicit supervising PID instead. Channel service entry
+points are unaffected, and closing a Web tab does not close its server process.
+
+The additional caller is pinned to the observed PID and process start time from
+`/bin/ps`. A missing/zombie process, changed start identity, or failed bounded
+probe cancels execution; an unverifiable caller at startup prevents dispatch.
+The direct parent uses the parent relationship, which does not mistake PID reuse
+for continuity. Start-time resolution follows the OS `ps` output; this is process
+liveness, not a conversation heartbeat. Watching an alive wrapper alone cannot
+detect a conversation closing inside it.
+
+Caller loss uses context cancellation, retains its cause in the canceled Run,
+and invokes existing native process-tree cancellation. It does not signal the
+caller or select other tasks by command text. Already reparented background jobs
+and remote daemons are outside that owned tree. Local archives and other partial
+effects remain untouched. No automatic replay or resume occurs.
+
+The launcher saves `caller: {policy, pid}` in its launch receipt and result;
+read-only inspection exposes it without executing work. Destination comparison
+excludes these per-launch values. Continuation defaults back to caller-bound
+execution rather than inheriting an earlier `--detach`. If the launcher itself
+is killed, Host can still persist cancellation, but the launch exit remains
+unobserved until independently established; inspection does not invent an exit.
+
+Regression coverage re-executes real processes, exits and SIGKILLs their parent,
+kills an explicit caller without reaping it, and verifies canceled Run evidence,
+skipped memory, child-process termination and unrelated-process survival. An
+explicit detached worker survives parent loss and finishes normally. Launcher
+tests cover policy receipts, raw/result forwarding, continuation and invalid
+flag combinations. These use isolated fixtures, not production tasks.
+
 ## Data structure sketch
 
 These boundary shapes are expressed in Go for readability; the implementation

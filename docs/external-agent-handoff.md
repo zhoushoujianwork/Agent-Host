@@ -125,3 +125,20 @@ checks the saved destination and continues the observed session.
 Existing raw CLI modes remain available. An unobserved process exit blocks
 receipt-based continuation until the caller investigates the original process
 and any partial effects; there is no automatic retry.
+
+## Caller lifetime
+
+Handoffs now cancel automatically when their calling process exits. Host also
+watches the launcher itself, including an abrupt launcher termination. It records
+the run as canceled through the normal cancellation path and retains partial
+evidence. Losing the caller never starts a replacement run.
+
+Use `--caller-pid PID` when a persistent wrapper separates the launcher from the
+actual supervising process. Use `--detach` only for work explicitly intended to
+continue after the caller exits; it does not put the command in the background.
+Each continuation chooses its own lifetime policy.
+
+Closing a conversation tab is detectable only if its supervising process exits.
+Web and channel services keep their own lifetimes. Cancellation stops owned
+native descendants; already orphaned jobs and remote daemon jobs require their
+own stop controls. Partial effects must still be inspected before continuation.
