@@ -1,5 +1,53 @@
 # Runtime implementation and migration details
 
+## Reliability observation: 2026-10-25
+
+The bounded review covered 2026-10-23 14:19 UTC through 2026-10-25 14:19 UTC.
+DingTalk had two runs, both completed with memory unchanged; Feishu had no runs
+in that window. Extending to the latest 20 recorded runs showed 19 completed
+and one unknown for DingTalk, and 19 completed and one failed for Feishu.
+The older DingTalk unknown outcome retained its ACP stream EOF evidence; it was
+not replayed or relabeled. The last 20 finished CLI runs contained 16 completed
+and four canceled outcomes. These execution counts do not establish business
+acceptance or general reliability.
+
+The recorded channel service PID was dead, and the source LaunchAgent was
+absent and unregistered. The exact shutdown cause was not established: an older
+supervisor log is not evidence of the most recent process exit. The temporary
+foreground observation setup therefore had no service manager to restore it.
+
+The full `make check` passed, including Go formatting, vet and tests plus the
+Python and JavaScript suites. The checkout binary was rebuilt as
+`0.2.0-observation-7bb6abc`. Rebuilding changed the runtime fingerprint, so the
+first attempt to continue the read-only review session failed before creating
+a run. Its exit status and evidence were retained; recovery uses a new session
+in the same configured daily-task Agent and CLI workspace.
+
+The source LaunchAgent installer passed preflight but exited 1 after its
+60-second readiness deadline. Fresh stderr showed the Feishu subscriber exiting,
+which stopped both channel workers. Inspection found an orphaned subscriber
+wrapper (PID/process group 43792, parent PID 1) and its child 43793, started on
+October 24, still holding the configured Feishu app's subscription lock. The
+current user, configured profile, command, checkout working directory and open
+app lock matched before SIGTERM was sent to that process group. Both processes
+exited; no lock file was deleted, subscription lock bypassed or business task
+manually replayed.
+
+The already registered LaunchAgent then recovered automatically. Feishu emitted
+fresh readiness at 14:30:20 UTC and DingTalk at 14:30:24 UTC. Supervisor PID 7733
+remained stable through 14:31:08 UTC, and `/` and `/settings.html` on port 8765
+returned HTTP 200. Login startup and restart-on-failure now use the existing
+source service definition. A full reboot and deliberate forced-crash recovery
+were not exercised. The independent installation bundle was not replaced.
+
+Private evidence retains the initial failed installer separately from the
+verified recovery: `validation/runtime-recovery-20261025-verified.json` under the
+live data root contains the binary hash, timestamps, PIDs and checks. Historical
+log errors alone did not justify changing project configuration; recovery needed
+no account, provider or channel configuration changes. Existing uncommitted
+viewer edits remain local and were not included in the source push; the
+source-based service uses the checkout's current viewer assets.
+
 ## Independent runtime relocation
 
 The [main guide](service-install.md#separate-production-from-development) defines

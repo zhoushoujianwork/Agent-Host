@@ -44,14 +44,25 @@ only builds the development checkout. The [migration details](service-install-de
 describe preservation, verification and recovery. The source-bound setup below
 remains available for new installations.
 
-### Temporary source-checkout observation
+### Source-checkout observation
 
 On 2026-10-19, local automatic startup was removed to observe the current source
-build against the existing data. Start it from this checkout with:
+build against the existing data. On 2026-10-25, source-checkout automatic startup
+was restored after the foreground Host stopped and left an orphaned Feishu
+subscriber holding its app lock. Both channels and the workbench were verified
+after recovery; see the [reliability observation](service-install-detail.md#reliability-observation-2026-10-25).
+
+The active LaunchAgent runs this checkout's binary and viewer against the existing
+data root. To apply a validated source build and restart that service, use:
 
 ```sh
-make run
+make build
+python3 -B -m tools.service.autostart install --config-dir "$HOME/.local/share/agent-host/config"
 ```
+
+For deliberate foreground observation, first remove this source LaunchAgent with
+`python3 -B -m tools.service.autostart uninstall --config-dir "$HOME/.local/share/agent-host/config"`,
+then use `make run`. Avoid running a second supervisor for the same identities.
 
 The executable and viewer come from the checkout; configuration and live data
 remain in `~/.local/share/agent-host/`. `make run` resolves the existing
@@ -83,10 +94,10 @@ targets and the CLI database backup.
 
 The production migration receipt remains as historical installation provenance.
 `make install` still selects that independent bundle and is not the command for
-restarting this temporary setup. Before restoring its automatic startup, stop
-the foreground runtime and verify that the independent binary supports the
-current database schema. Keep only one supervisor connected to these channel
-identities.
+restarting this source-based setup. Before switching back to the independent
+bundle, remove the source LaunchAgent and verify that the independent binary
+supports the current database schema. Keep only one supervisor connected to
+these channel identities.
 
 ### Runtime artifact cleanup
 
