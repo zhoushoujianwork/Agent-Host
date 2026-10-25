@@ -7,11 +7,15 @@ import (
 	"os/signal"
 	"syscall"
 
+	"agent-host/internal/channel/feishumeeting"
 	"agent-host/internal/cli"
 	"agent-host/internal/dingtalkworkspace"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == feishumeeting.EntryWorkerFlag {
+		os.Exit(feishumeeting.EntryWorker(os.Args[2:]))
+	}
 	if len(os.Args) == 2 && os.Args[1] == dingtalkworkspace.WorkerFlag {
 		code, err := dingtalkworkspace.Worker(os.Stdin)
 		if err != nil {

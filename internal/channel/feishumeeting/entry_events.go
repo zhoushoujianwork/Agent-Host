@@ -6,9 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -71,11 +71,11 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 	}
 	processCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	cmd := exec.CommandContext(processCtx, binary, "--profile", r.Config.Profile, "event", "+subscribe", "--as", "bot", "--event-types", entryTypes)
-	cmd.WaitDelay = 2 * time.Second
-	if err := bindCLIProcessGroup(cmd); err != nil {
-		return err
+	cmd, releaseOwner, err := entryCommand(processCtx, binary, "--profile", r.Config.Profile, "event", "+subscribe", "--as", "bot", "--event-types", entryTypes)
+	if err != nil {
+		return errors.New("Feishu event subscriber supervisor could not be prepared")
 	}
+	defer releaseOwner()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return errors.New("Feishu event subscriber input could not be prepared")
@@ -119,13 +119,12 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 	go read(stdout, false, entryMaxLine)
 	go read(stderr, true, 32*1024)
 	go func() { readers.Wait(); close(lines) }()
-	// The npm executable is a wrapper around the actual subscription process.
-	// Kill its whole group before Wait, on cancellation and every other exit,
-	// so descendants release the app lock even if the wrapper has already exited.
-	// Close our read ends as well to keep inherited pipes from blocking cleanup.
+	// The independent worker stops its subscriber group when ownership is
+	// released, including abrupt Host death. Closing read ends also prevents
+	// inherited output pipes from blocking cleanup after handler failure.
 	defer func() {
 		cancel()
-		stopCLIProcessGroup(cmd)
+		releaseOwner()
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderr.Close()
@@ -136,6 +135,7 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 		return errors.New("Feishu entry startup observation failed")
 	}
 	connected := false
+	exitDetail := ""
 	ready := func() error {
 		if connected {
 			return nil
@@ -152,7 +152,10 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 			return ctx.Err()
 		case line, ok := <-lines:
 			if !ok {
-				return errors.New("Feishu event subscriber stopped; entry delivery is no longer available")
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return fmt.Errorf("Feishu event subscriber stopped%s; check subscriber ownership, app lock and authentication; entry delivery is no longer available", exitDetail)
 			}
 			if line.err != nil {
 				return line.err
@@ -162,6 +165,10 @@ func (r EntryReceiver) Run(ctx context.Context, handle func(context.Context, Ent
 				// SDK Start finishes. Only SDK v3.7.2's exact prefix is evidence.
 				log := strings.TrimSpace(string(line.text))
 				switch {
+				case strings.HasPrefix(log, entryExitPrefix):
+					if code, err := strconv.Atoi(strings.TrimPrefix(log, entryExitPrefix)); err == nil && code >= 0 && code <= 255 {
+						exitDetail = fmt.Sprintf(" (exit %d)", code)
+					}
 				case strings.HasPrefix(log, "[SDK Info] connected to "):
 					if err := ready(); err != nil {
 						return err

@@ -49,6 +49,11 @@ conversations. Meeting questions still use polling, normally every five seconds.
 The existing native Claude harness executes tasks; credentials remain in the
 selected CLI profile.
 
+The event subscriber now has a separate lifetime supervisor. If its Host process
+exits abruptly, the supervisor stops the subscriber and releases its app lock so
+the service can reconnect. Existing orphaned processes still require ownership
+verification before cleanup. See [failure handling](feishu-channel-detail.md#subscriber-lifetime).
+
 ## Configure and start
 
 Enable the app's bot capability, publish the IM permissions and subscribe to

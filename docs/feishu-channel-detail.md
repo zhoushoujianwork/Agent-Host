@@ -46,6 +46,36 @@ does not export application secrets or create an additional SDK connection.
 The pinned [official subscription source](https://github.com/larksuite/cli/blob/v1.0.96/shortcuts/event/subscribe.go)
 defines this raw-event command and its app-level lock.
 
+## Subscriber lifetime
+
+The private `--feishu-entry-worker` subprocess owns the subscriber's Unix process
+group. Host passes a separate lifetime pipe on fd 3 and retains its only writer.
+The worker validates its initial parent and pipe, then forwards the subscriber's
+stdin/stdout/stderr without transforming event frames. EOF on the lifetime pipe
+cancels and reaps the subscriber group, including when Host receives SIGKILL.
+The pipe is not forwarded to the subscriber; no PID lookup, process adoption,
+lock deletion, `--force`, automatic task replay or provider fallback is involved.
+
+Normal cancellation, handler failure and wrapper exit also stop that owned group.
+The worker emits only a numeric terminal exit marker; the Host error includes
+that code and suggests checking ownership, the app lock and authentication.
+Other raw CLI diagnostics remain private and are not copied into public errors.
+
+The regression first reproduced a lock-holding child surviving Host SIGKILL.
+With supervision, the same test verifies kernel-lock release, successful fresh
+subscription against that lock and survival of an unrelated process. Fixtures
+also cover invalid worker ownership, normal cancellation, wrapper exit, handler
+failure, unmodified event ordering and sanitized failure diagnostics.
+Validation on 2026-10-25: `make check` passed, and the 22 focused receiver/worker
+tests passed with Go's race detector. Abrupt termination uses isolated fixtures,
+not deliberate termination of a production channel.
+
+This protection applies to the event subscriber and descendants remaining in
+its process group. It does not reclaim pre-existing orphans, protect against
+simultaneous forced termination of both Host and its lifetime supervisor, or
+make platform event delivery exactly-once. Channel failure isolation and
+continuous service-health evaluation remain separate work.
+
 ## Platform configuration
 
 Publish application/bot grants for the enabled paths, then enable

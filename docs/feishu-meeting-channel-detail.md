@@ -122,10 +122,12 @@ handling failures stop the listener explicitly; the SDK acknowledges upstream
 before Host persistence, so delivery across process crashes is not exactly-once.
 
 CLI execution currently requires Unix process-group supervision. Each wrapper
-and its descendants share a dedicated process group, which the host terminates
-on cancellation or exit so a surviving native subscriber cannot retain the
-same-app lock. Other platforms fail explicitly rather than supervising only the
-wrapper.
+and its descendants share a dedicated process group, terminated on cancellation
+or exit. The long-lived event subscriber additionally has a separate
+[lifetime supervisor](feishu-channel-detail.md#subscriber-lifetime), so abrupt
+Host death also releases its same-app lock. Short-lived REST calls retain their
+existing Host-owned cancellation path. Other platforms fail explicitly rather
+than supervising only the wrapper.
 
 ### Meeting invitation and end
 

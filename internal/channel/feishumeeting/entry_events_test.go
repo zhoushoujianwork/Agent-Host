@@ -356,7 +356,7 @@ func TestEntryReceiverRejectsOversizedMalformedAndFailedStreams(t *testing.T) {
 		"SDK error":                 "printf '%s\\n' '[SDK Error] private-secret-value' >&2\nread ignored",
 		"passive wrong app":         "printf '%s\\n' " + entryShellQuote(strings.Replace(passive, `"app_id":"cli_test"`, `"app_id":"cli_other"`, 1)) + "\nread ignored",
 		"passive malformed payload": "printf '%s\\n' " + entryShellQuote(strings.Replace(passive, `"event":{}`, `"event":null`, 1)) + "\nread ignored",
-		"exit failure":              "exit 71",
+		"exit failure":              "printf '%s\\n' 'private-secret-value' >&2\nexit 71",
 	} {
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -364,6 +364,9 @@ func TestEntryReceiverRejectsOversizedMalformedAndFailedStreams(t *testing.T) {
 			err := (EntryReceiver{Config: fixtureConfig(), Binary: entryScript(t, script)}).Run(ctx, func(context.Context, EntryEvent) error { t.Fatal("invalid stream emitted an event"); return nil }, func(string, string) error { return nil })
 			if err == nil || errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "secret-value") {
 				t.Fatalf("stream failure not safely surfaced: %v", err)
+			}
+			if name == "exit failure" && (!strings.Contains(err.Error(), "exit 71") || !strings.Contains(err.Error(), "app lock")) {
+				t.Fatalf("subscriber exit lost actionable sanitized diagnostics: %v", err)
 			}
 		})
 	}

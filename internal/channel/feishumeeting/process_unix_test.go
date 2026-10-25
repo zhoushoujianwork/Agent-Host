@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -14,6 +15,82 @@ import (
 	"testing"
 	"time"
 )
+
+func TestEntryReceiverOwnerDeathReleasesSubscriptionLock(t *testing.T) {
+	if os.Getenv("AGENT_HOST_ENTRY_OWNER_HELPER") == "1" {
+		err := (EntryReceiver{Config: fixtureConfig(), Binary: os.Getenv("AGENT_HOST_ENTRY_OWNER_BINARY")}).Run(context.Background(), func(context.Context, EntryEvent) error { return nil }, func(string, string) error { return nil })
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(74)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	lockPath, pidPath := filepath.Join(root, "subscriber.lock"), filepath.Join(root, "subscriber.pid")
+	binary := entryScript(t, "AGENT_HOST_ENTRY_LOCK_HELPER=1 AGENT_HOST_ENTRY_TEST_LOCK="+entryShellQuote(lockPath)+" AGENT_HOST_ENTRY_TEST_PID="+entryShellQuote(pidPath)+" "+entryShellQuote(executable)+" -test.run='^TestEntrySubscriberLockHelper$' &\nwait")
+	owner := exec.Command(executable, "-test.run=^TestEntryReceiverOwnerDeathReleasesSubscriptionLock$")
+	owner.Env = append(os.Environ(), "AGENT_HOST_ENTRY_OWNER_HELPER=1", "AGENT_HOST_ENTRY_OWNER_BINARY="+binary)
+	if err := owner.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Process.Kill(); _ = owner.Wait() })
+	deadline := time.Now().Add(5 * time.Second)
+	var childPID int
+	for time.Now().Before(deadline) {
+		raw, _ := os.ReadFile(pidPath)
+		childPID, _ = strconv.Atoi(string(raw))
+		if childPID > 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if childPID <= 1 {
+		t.Fatal("subscriber did not acquire its lock")
+	}
+	t.Cleanup(func() { _ = syscall.Kill(childPID, syscall.SIGKILL) })
+	lock, err := os.OpenFile(lockPath, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		t.Fatal("subscriber lock was not held before Host termination")
+	}
+	unrelated := exec.Command("/bin/sleep", "30")
+	if err := unrelated.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unrelated.Process.Kill(); _ = unrelated.Wait() })
+	if err := owner.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_ = owner.Wait()
+	deadline = time.Now().Add(4 * time.Second)
+	for syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("subscriber survived abrupt Host death and retained the app lock")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	if err := unrelated.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatal("unrelated process was stopped", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	ready := false
+	err = (EntryReceiver{Config: fixtureConfig(), Binary: binary}).Run(ctx, func(context.Context, EntryEvent) error { return nil }, func(kind, _ string) error {
+		if kind == "connected" {
+			ready = true
+			cancel()
+		}
+		return nil
+	})
+	if !ready || !errors.Is(err, context.Canceled) {
+		t.Fatalf("replacement subscriber did not recover: ready=%v err=%v", ready, err)
+	}
+}
 
 // This test binary acts as the wrapper's long-lived subscriber child. Holding
 // an OS lock models the official CLI's app lock; readiness follows acquisition.
@@ -137,6 +214,10 @@ func TestEntryReceiverStopsWrapperDescendantAndReleasesLockForReload(t *testing.
 			child += " " + entryShellQuote(executable) + " -test.run='^TestEntrySubscriberLockHelper$' &\n"
 			if outcome != "wrapper exit" {
 				child += "wait\n"
+			} else {
+				// Exit only after the test has observed the child holding its
+				// lock. The worker can otherwise reap it before it even starts.
+				child += "while [ ! -f " + entryShellQuote(filepath.Join(root, "exit-wrapper")) + " ]; do sleep 0.01; done\n"
 			}
 			binary := entryScript(t, child)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -192,6 +273,11 @@ func TestEntryReceiverStopsWrapperDescendantAndReleasesLockForReload(t *testing.
 			if outcome == "cancel" {
 				cancel()
 			}
+			if outcome == "wrapper exit" {
+				if err := os.WriteFile(filepath.Join(root, "exit-wrapper"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			unblock()
 			select {
 			case err := <-done:
@@ -212,6 +298,11 @@ func TestEntryReceiverStopsWrapperDescendantAndReleasesLockForReload(t *testing.
 			}
 			if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
 				t.Fatal(err)
+			}
+			if outcome == "wrapper exit" {
+				if err := os.Remove(filepath.Join(root, "exit-wrapper")); err != nil {
+					t.Fatal(err)
+				}
 			}
 			// Reload the same wrapper against the same OS lock. A real second
 			// subscriber must reach readiness, not just pass a marker-file check.

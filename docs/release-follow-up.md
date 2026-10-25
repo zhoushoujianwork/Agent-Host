@@ -44,6 +44,9 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
 3. **Daily reliability and memory usefulness.** Observe sustained use, including
    fresh-session reuse, corrected procedures, disabling and failures. Preserve
    bounded evidence; general accuracy, scale and production latency are unmeasured.
+   The 2026-10-25 [subscriber lifetime fix](feishu-channel-detail.md#subscriber-lifetime)
+   adds abrupt-Host-death lock-release coverage. Channel failure isolation,
+   continuous readiness checks and enforced operational handoff remain open.
 4. **Open diagnoses.** Investigate the historical Jev admission mismatch and
    transient event-write wait. Later retrieval fixes and cancellation decoupling
    do not by themselves resolve their original causes.
