@@ -13,6 +13,7 @@ import (
 
 	"agent-host/internal/channel"
 	"agent-host/internal/state"
+	feishulib "github.com/zhoushoujianwork/Agent-Host/plugins/feishu"
 )
 
 type Receiver struct {
@@ -30,39 +31,7 @@ type progress struct {
 	Seen    map[string]bool `json:"seen"`
 }
 
-type page struct {
-	Meeting struct {
-		ID string `json:"id"`
-	} `json:"meeting"`
-	Identity struct {
-		ID string `json:"id"`
-	} `json:"identity"`
-	Events  json.RawMessage `json:"events"`
-	Cursor  string          `json:"page_token"`
-	HasMore bool            `json:"has_more"`
-}
-
-type meetingEvent struct {
-	ID      string `json:"event_id"`
-	Type    string `json:"event_type"`
-	Payload struct {
-		Items   []json.RawMessage `json:"chat_received_items"`
-		Meeting struct {
-			ID string `json:"id"`
-		} `json:"meeting"`
-	} `json:"payload"`
-}
-
-type chatItem struct {
-	Content     string          `json:"content"`
-	MessageType json.RawMessage `json:"message_type"`
-	SendTime    json.RawMessage `json:"send_time"`
-	Operator    struct {
-		ID              string          `json:"id"`
-		UserType        json.RawMessage `json:"user_type"`
-		ParticipantType string          `json:"participant_type"`
-	} `json:"operator"`
-}
+type chatItem = feishulib.ChatItem
 
 // Run polls only. handle must finish durable ingestion, never native execution.
 // Each process start baselines currently available history, including downtime.
@@ -81,53 +50,30 @@ func (r Receiver) Run(ctx context.Context, handle func(context.Context, channel.
 	if wait == nil {
 		wait = waitForPoll
 	}
+	client, err := meetingClient(r.Config, r.Client)
+	if err != nil {
+		return err
+	}
 	baseline := true
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		args := append(r.Config.arguments("+meeting-events"), "--page-all", "--format", "json")
-		if p.Cursor != "" {
-			args = append(args, "--page-token", p.Cursor)
+		current, err := client.PollEvents(ctx, r.Config.MeetingID, p.Cursor)
+		if err != nil {
+			return err
 		}
-		out, runErr := selectedClient(r.Client).Run(ctx, args...)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if runErr != nil {
-			return errors.New("Feishu event polling failed; progress was not advanced")
-		}
-		e, err := decodeEnvelope(out)
-		if err != nil || !*e.OK {
-			return errors.New("Feishu event polling was not confirmed; progress was not advanced")
-		}
-		var current page
-		if json.Unmarshal(e.Data, &current) != nil || current.Meeting.ID != "" && current.Meeting.ID != r.Config.MeetingID || current.Identity.ID != r.Config.BotOpenID || len(current.Events) == 0 {
-			return errors.New("Feishu event response has invalid meeting, bot identity, or events")
-		}
-		if len(current.Cursor) > 8192 || strings.ContainsRune(current.Cursor, '\x00') || current.HasMore && (current.Cursor == "" || current.Cursor == p.Cursor) {
-			return errors.New("Feishu event pagination did not provide a valid advancing cursor")
-		}
-		var events []meetingEvent
-		if json.Unmarshal(current.Events, &events) != nil {
-			return errors.New("Feishu events are malformed")
-		}
-		// CLI meeting metadata is derived from event payloads, so it may be
-		// absent when the payload omits it. The command fixes the meeting; every supplied
-		// page/event identity must still agree before any receipt is delivered.
-		for _, event := range events {
-			if event.ID == "" || len(event.ID) > 256 || strings.ContainsRune(event.ID, '\x00') {
-				return errors.New("Feishu event ID is missing or invalid")
-			}
-			if event.Payload.Meeting.ID != "" && event.Payload.Meeting.ID != r.Config.MeetingID {
-				return errors.New("Feishu event belongs to a different meeting")
-			}
-		}
-		for _, event := range events {
+		for _, event := range current.Events {
 			if event.Type != "chat_received" {
 				continue
 			}
-			for index, raw := range event.Payload.Items {
+			var payload struct {
+				Items []json.RawMessage `json:"chat_received_items"`
+			}
+			if len(event.Payload) > 0 && json.Unmarshal(event.Payload, &payload) != nil {
+				return errors.New("Feishu chat payload is malformed")
+			}
+			for index, raw := range payload.Items {
 				key := r.Config.MeetingID + ":" + event.ID + ":" + strconv.Itoa(index)
 				if p.Seen[key] {
 					continue
@@ -205,17 +151,7 @@ func (r Receiver) question(item chatItem) (string, bool) {
 func scalar(raw json.RawMessage, value string) bool {
 	return string(raw) == value || string(raw) == strconv.Quote(value)
 }
-func sourceTime(raw json.RawMessage) time.Time {
-	value := strings.Trim(string(raw), "\"")
-	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
-		return parsed.UTC()
-	}
-	ms, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || ms <= 0 {
-		return time.Time{}
-	}
-	return time.UnixMilli(ms).UTC()
-}
+func sourceTime(raw json.RawMessage) time.Time { return feishulib.SourceTime(raw) }
 
 func waitForPoll(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)

@@ -15,7 +15,7 @@ ROOT_FILES = {
     ".gitignore", ".gitattributes", "AGENTS.md", "README.md", "README-detail.md", "Makefile",
     "go.mod", "go.sum", "LICENSE", "NOTICE",
 }
-ROOT_DIRECTORIES = {".github", "cmd", "internal", "docs", "evals", "examples", "experiments", "tools"}
+ROOT_DIRECTORIES = {".github", "cmd", "internal", "plugins", "docs", "evals", "examples", "experiments", "tools"}
 PRIVATE_RUNNERS = {f"experiments/{name}/run.py" for name in ("jev", "mvp", "experience")}
 RUNTIME_DIRECTORIES = {".agent-host", "production", "logs", "credentials", ".cache", ".claude"}
 RUNTIME_NAMES = {".env", "credentials.json", "cookies.json", "auth.json", "tokens.json", "environment.json", "settings.local.json", "dingtalk.secret"}

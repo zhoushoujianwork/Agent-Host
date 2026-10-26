@@ -69,6 +69,8 @@ class PublicExportTests(unittest.TestCase):
             }]}),
             "internal/harness/auth.go": "package harness\n// Native authentication source is public.\n",
             "internal/harness/auth_test.go": "package harness\n",
+            "plugins/feishu/go.mod": "module example.invalid/feishu\n\ngo 1.26.0\n",
+            "plugins/feishu/client.go": "package feishu\n",
             "config/component-environment.example.json": '{"ANTHROPIC_BASE_URL": "https://example.invalid"}\n',
             "experiments/history/dws_platform.py": "# Public platform adapter fixture.\n",
             "experiments/history/dws_platform_test.py": "# Public offline platform regression.\n",
@@ -83,6 +85,7 @@ class PublicExportTests(unittest.TestCase):
             "experiments/mvp/run.py", "experiments/experience/run.py",
             ".agent-host/state.db", "tools/logs/service.ndjson", "config/environment.json",
             "config/dingtalk.secret", "tools/cache/credentials.json",
+            "plugins/feishu/credentials.json", "plugins/feishu/.cache/session.json",
         ]
         for name in hidden:
             files[name] = f"{platform_id} https://{private_host} PRIVATE-RUNTIME-FIXTURE\n"
@@ -107,7 +110,7 @@ class PublicExportTests(unittest.TestCase):
         self.assertFalse((output / ".git").exists())
         for name in hidden:
             self.assertFalse((output / name).exists(), name)
-        for name in ["Makefile", "internal/harness/auth.go", "config/component-environment.example.json", "experiments/history/dws_platform.py", "experiments/history/dws_platform_test.py", "tools/run-viewer/fixtures/public.json", "examples/public_example.py"]:
+        for name in ["Makefile", "internal/harness/auth.go", "plugins/feishu/go.mod", "plugins/feishu/client.go", "config/component-environment.example.json", "experiments/history/dws_platform.py", "experiments/history/dws_platform_test.py", "tools/run-viewer/fixtures/public.json", "examples/public_example.py"]:
             self.assertEqual((output / name).read_bytes(), (source / name).read_bytes(), name)
         for path in output.rglob("*"):
             if path.is_file():

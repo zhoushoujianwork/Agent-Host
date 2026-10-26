@@ -16,6 +16,12 @@ below of ignored ordinary IM apply when `im_chat` is disabled.
 | `internal/state` | Source-linked receipts, deduplication, queue/recovery and provider-specific feedback policy |
 | Native Claude harness | Existing model/tool execution loop and native conversation |
 
+The protocol calls and bounded CLI request transport now live in the independent
+[`plugins/feishu`](../plugins/feishu/README.md) Go module. This internal package
+retains policy, durable cursor/entry state and subscription supervision. See the
+[library contract](plugin-libraries-detail.md) for external consumers and the
+remaining audio protocol blocker.
+
 ## Configuration and runtime
 
 The [fixed-meeting example](../config/channel-feishu-meeting.example.json) and

@@ -2,18 +2,18 @@ package feishumeeting
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"unicode/utf8"
 
 	"agent-host/internal/state"
+	feishulib "github.com/zhoushoujianwork/Agent-Host/plugins/feishu"
 )
 
 const (
-	Accepted = "accepted"
-	Failed   = "failed"
-	Unknown  = "unknown"
+	Accepted = feishulib.Accepted
+	Failed   = feishulib.Failed
+	Unknown  = feishulib.Unknown
 )
 
 type Replier struct {
@@ -37,36 +37,10 @@ func (r Replier) ReplyText(ctx context.Context, target state.ChannelReplyTarget,
 	if err := ctx.Err(); err != nil {
 		return Failed, err
 	}
-	args := append(r.Config.arguments("+meeting-message-send"), "--msg-type", "text", "--text", "[AI] "+text, "--uuid", target.UUID, "--format", "json")
-	out, runErr := selectedClient(r.Client).Run(ctx, args...)
-	if runErr != nil && !out.Started {
-		return Failed, errors.New("Feishu reply command did not start")
-	}
-	e, err := decodeEnvelope(out)
+	client, err := meetingClient(r.Config, r.Client)
 	if err != nil {
-		return Unknown, errors.New("Feishu reply delivery is unconfirmed; do not resend automatically")
+		return Failed, err
 	}
-	if !*e.OK {
-		// Only explicit local/auth rejection establishes that the write failed.
-		// Network and unclassified server errors retain an unknown outcome.
-		switch e.Error.Type {
-		case "validation", "auth", "authorization", "permission":
-			return Failed, errors.New("Feishu rejected reply validation or authorization")
-		}
-		return Unknown, errors.New("Feishu did not confirm reply delivery; do not resend automatically")
-	}
-	if runErr != nil {
-		return Unknown, errors.New("Feishu reply delivery is unconfirmed; do not resend automatically")
-	}
-	var ack map[string]json.RawMessage
-	if json.Unmarshal(e.Data, &ack) != nil || ack == nil {
-		return Unknown, errors.New("Feishu reply acknowledgement is invalid")
-	}
-	if raw, ok := ack["uuid"]; ok {
-		var uuid string
-		if json.Unmarshal(raw, &uuid) != nil || uuid != target.UUID {
-			return Unknown, errors.New("Feishu reply acknowledgement UUID does not match")
-		}
-	}
-	return Accepted, nil
+	result, err := client.SendText(ctx, target.ID, target.UUID, "[AI] "+text)
+	return result.Outcome, err
 }

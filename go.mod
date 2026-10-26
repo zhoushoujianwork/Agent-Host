@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.2-beta.1
+	github.com/zhoushoujianwork/Agent-Host/plugins/feishu v0.0.0
 	modernc.org/sqlite v1.60.1
 )
 
@@ -68,3 +69,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+replace github.com/zhoushoujianwork/Agent-Host/plugins/feishu => ./plugins/feishu

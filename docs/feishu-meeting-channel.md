@@ -98,6 +98,12 @@ shutdown. Saved questions, runs and delivery outcomes remain local evidence.
 
 ## Voice follow-up
 
+Meeting control, polling and text delivery now use the
+[reusable Feishu library](plugin-libraries.md). Other applications can import it
+without starting Host. `agent-host feishu probe --config PATH` verifies that the
+local CLI profile selects the configured app before a trial; it does not prove
+platform permissions or audio readiness.
+
 This implements TAT text entry and conversation. Voice still requires Feishu's
 enabled bidirectional audio channel and protocol, a streaming voice model or
 speech-recognition/synthesis pipeline, and turn/interruption handling. Adding a

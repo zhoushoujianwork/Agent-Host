@@ -79,7 +79,3 @@ func (c Config) scope() string {
 	digest := sha256.Sum256(b)
 	return hex.EncodeToString(digest[:])
 }
-
-func (c Config) arguments(command string) []string {
-	return []string{"--profile", c.Profile, "vc", command, "--as", "bot", "--meeting-id", c.MeetingID}
-}

@@ -1,109 +1,12 @@
 package feishumeeting
 
-import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"errors"
-	"io"
-	"os/exec"
-	"time"
-)
+import feishulib "github.com/zhoushoujianwork/Agent-Host/plugins/feishu"
 
-const maxResponseBytes = 4 << 20
+// Host and external consumers use the same bounded CLI transport.
+type Output = feishulib.Output
+type Client = feishulib.Transport
+type CLIClient = feishulib.CLITransport
 
-// Output is private transport evidence; callers must not log either stream.
-type Output struct {
-	Stdout, Stderr []byte
-	Started        bool
-}
-
-type Client interface {
-	Run(context.Context, ...string) (Output, error)
-}
-
-type CLIClient struct{ Binary string }
-
-func (c CLIClient) Run(ctx context.Context, args ...string) (Output, error) {
-	binary := c.Binary
-	if binary == "" {
-		binary = "lark-cli"
-	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.WaitDelay = 2 * time.Second
-	if err := bindCLIProcessGroup(cmd); err != nil {
-		return Output{}, err
-	}
-	stdout, stderr := limitedBuffer{limit: maxResponseBytes}, limitedBuffer{limit: 64 << 10}
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Start()
-	if err != nil {
-		return Output{}, errors.New("lark-cli could not start")
-	}
-	defer stopCLIProcessGroup(cmd)
-	err = cmd.Wait()
-	output := Output{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), Started: true}
-	if stdout.overflow || stderr.overflow {
-		return output, errors.New("lark-cli output exceeded its limit")
-	}
-	if ctx.Err() != nil {
-		return output, ctx.Err()
-	}
-	if err != nil {
-		return output, errors.New("lark-cli exited unsuccessfully")
-	}
-	return output, nil
-}
-
-type limitedBuffer struct {
-	bytes.Buffer
-	limit    int
-	overflow bool
-}
-
-func (b *limitedBuffer) Write(p []byte) (int, error) {
-	n := len(p)
-	remaining := b.limit - b.Len()
-	if len(p) > remaining {
-		b.overflow = true
-		p = p[:remaining]
-	}
-	_, _ = b.Buffer.Write(p)
-	return n, nil
-}
-
-type envelope struct {
-	OK    *bool           `json:"ok"`
-	Data  json.RawMessage `json:"data"`
-	Error struct {
-		Type    string `json:"type"`
-		Subtype string `json:"subtype"`
-	} `json:"error"`
-}
-
-func decodeEnvelope(out Output) (envelope, error) {
-	for _, raw := range [][]byte{out.Stdout, out.Stderr} {
-		var e envelope
-		if len(raw) == 0 || len(raw) > maxResponseBytes {
-			continue
-		}
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		if decoder.Decode(&e) != nil || e.OK == nil {
-			continue
-		}
-		if decoder.Decode(new(any)) != io.EOF {
-			continue
-		}
-		return e, nil
-	}
-	return envelope{}, errors.New("lark-cli returned no valid result envelope")
-}
-
-func selectedClient(c Client) Client {
-	if c != nil {
-		return c
-	}
-	return CLIClient{}
+func meetingClient(c Config, transport Client) (*feishulib.MeetingClient, error) {
+	return feishulib.NewMeetingClient(feishulib.Config{Profile: c.Profile, AppID: c.AppID, BotOpenID: c.BotOpenID}, transport)
 }

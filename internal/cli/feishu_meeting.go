@@ -24,15 +24,18 @@ import (
 	"agent-host/internal/state"
 	"agent-host/internal/taskfeedback"
 	"agent-host/internal/terminal"
+	feishulib "github.com/zhoushoujianwork/Agent-Host/plugins/feishu"
 )
 
 const feishuMeetingUsage = `Feishu private/group and meeting text through an existing lark-cli profile.
 
   agent-host feishu check --config PATH [execution options]
+  agent-host feishu probe --config PATH
   agent-host feishu serve --config PATH [execution options]
   agent-host feishu status [--home PATH]
 
   agent-host feishu-meeting check --config PATH [execution options]
+  agent-host feishu-meeting probe --config PATH
   agent-host feishu-meeting serve --config PATH [execution options]
   agent-host feishu-meeting status [--home PATH]
 
@@ -59,6 +62,9 @@ Execution options are shared with dingtalk: --home, --workspace, --claude,
 --knowledge-config, --jev-provider, --jev-endpoint, --jev-model, --timeout,
 --max-concurrent-conversations and --format text|json.
 check is local only: no connection, native invocation or host state creation.
+probe invokes lark-cli whoami to verify the profile/app identity and local bot
+credential availability. It creates no Host state and does not prove platform
+permissions, bot Open ID, membership or realtime audio access.
 serve continuously polls until stopped; it owns its state home.
 Use a separate state home and native profile for meeting trials.
 This channel implements text only; it does not receive or transmit audio.
@@ -130,8 +136,8 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		return err
 	}
 	command := args[0]
-	if command != "serve" && command != "check" && command != "status" {
-		return errors.New("feishu-meeting requires serve, check or status")
+	if command != "serve" && command != "check" && command != "probe" && command != "status" {
+		return errors.New("feishu-meeting requires serve, check, probe or status")
 	}
 	o, positional, err := parse("feishu-meeting "+command, args[1:], errout)
 	if errors.Is(err, flag.ErrHelp) {
@@ -169,6 +175,19 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	cfg, err := loadFeishuMeetingConfig(o.feishuConfig)
 	if err != nil {
 		return err
+	}
+	if command == "probe" {
+		client, err := feishulib.NewMeetingClient(feishulib.Config{Profile: cfg.Profile, AppID: cfg.AppID, BotOpenID: cfg.BotOpenID}, nil)
+		if err != nil {
+			return err
+		}
+		if err := client.CheckIdentity(ctx); err != nil {
+			return err
+		}
+		return json.NewEncoder(out).Encode(map[string]any{
+			"status": "profile_identity_verified", "platform_verified": false,
+			"bot_open_id_verified": false, "voice_supported": false,
+		})
 	}
 	agents, err := loadAgents(o.agentsConfig)
 	if err != nil {

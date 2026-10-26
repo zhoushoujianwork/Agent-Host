@@ -274,6 +274,9 @@ native execution and result delivery. A private ClawFlow-to-Host execution
 contract remains to be implemented; Host does not add a competing engineering
 mission or PR controller. This revises the earlier Host-owned mission proposal.
 
-Keep concrete integrations behind private adapters. A public plugin SDK,
-marketplace, custom Host model/tool loop and transparent migration of native
-conversations between engines are outside the current implementation.
+Reusable provider integrations follow the [plugin library boundary](plugin-libraries.md).
+The Feishu meeting control/text library is an independent Go module used by Host
+and intended for GTMGoPlay; application policy and persistence stay in their
+own adapters. Meeting audio remains blocked on its verified protocol and target
+app setup. A generic plugin loader/marketplace, custom Host model/tool loop and
+transparent migration of native conversations remain outside this increment.

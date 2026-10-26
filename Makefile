@@ -72,10 +72,12 @@ viewer:
 	python3 -B tools/run-viewer/server.py $(VIEWER_ARGS)
 
 check:
-	@unformatted="$$(gofmt -l cmd internal)" && \
+	@unformatted="$$(gofmt -l cmd internal plugins)" && \
 		{ test -z "$$unformatted" || { printf '%s\n' "$$unformatted"; exit 1; }; }
 	go vet ./...
 	go test ./...
+	go -C plugins/feishu vet ./...
+	go -C plugins/feishu test ./...
 	$(PYTHON) -B tools/operations/tencent_key_audit_test.py
 	$(PYTHON) -B tools/install_test.py
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py

@@ -265,19 +265,6 @@ func TestConfigRequiresExplicitHumanScopeAndMinimumPoll(t *testing.T) {
 	}
 }
 
-func TestEnvelopeAndOutputBounds(t *testing.T) {
-	for _, raw := range []string{`{}`, `{"ok":true} {"ok":true}`, `{"ok":"yes"}`, `null`} {
-		if _, err := decodeEnvelope(Output{Stdout: []byte(raw)}); err == nil {
-			t.Fatalf("accepted %s", raw)
-		}
-	}
-	b := limitedBuffer{limit: 4}
-	n, err := b.Write([]byte("123456"))
-	if n != 6 || err != nil || !b.overflow || b.String() != "1234" {
-		t.Fatalf("buffer=%+v n=%d err=%v", b, n, err)
-	}
-}
-
 func TestEmptyPollMayOmitMeetingMetadata(t *testing.T) {
 	result := fixturePage("base", false)
 	var e map[string]any

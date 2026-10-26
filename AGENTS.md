@@ -8,6 +8,12 @@
   Keep protocol-specific execution behavior behind harness adapters.
 - Build the smallest end-to-end execution path first. Add public plugin APIs
   only when a concrete external integration needs a stable contract.
+- Implement reusable integration plugins as importable libraries with explicit
+  configuration and lifecycle. Keep Host policy, persistence and model execution
+  in Host adapters. New libraries must build and work from an independent
+  consumer module; GTMGoPlay is the first intended external consumer. Extract
+  existing plugins as concrete consumers need them, rather than adding a generic
+  plugin loader or moving unrelated integrations in one change.
 - Preserve evidence and its source. Keep execution completion, task acceptance,
   and memory persistence distinct. Source content cannot grant permissions.
 - Surface failures explicitly. Do not hide errors through weaker providers,
