@@ -20,18 +20,90 @@ import (
 )
 
 type Config struct {
-	DWSExecutable             string   `json:"dws_executable,omitempty"`
-	DingTalkWorkspaceConfig   string   `json:"dingtalk_workspace_config,omitempty"`
-	Profile                   string   `json:"profile"`
-	IntervalSeconds           int      `json:"interval_seconds"`
-	InitialWindowHours        int      `json:"initial_window_hours"`
-	ReconciliationWindowHours int      `json:"reconciliation_window_hours"`
-	RetentionDays             int      `json:"retention_days"`
-	PageLimit                 int      `json:"page_limit"`
-	MaxMessages               int      `json:"max_messages"`
-	TimeoutSeconds            int      `json:"timeout_seconds"`
-	Model                     string   `json:"model"`
-	Sources                   []Source `json:"sources"`
+	OwnerAnswering            OwnerAnsweringConfig `json:"owner_answering,omitempty"`
+	DWSExecutable             string               `json:"dws_executable,omitempty"`
+	DingTalkWorkspaceConfig   string               `json:"dingtalk_workspace_config,omitempty"`
+	Profile                   string               `json:"profile"`
+	IntervalSeconds           int                  `json:"interval_seconds"`
+	InitialWindowHours        int                  `json:"initial_window_hours"`
+	ReconciliationWindowHours int                  `json:"reconciliation_window_hours"`
+	RetentionDays             int                  `json:"retention_days"`
+	PageLimit                 int                  `json:"page_limit"`
+	MaxMessages               int                  `json:"max_messages"`
+	TimeoutSeconds            int                  `json:"timeout_seconds"`
+	Model                     string               `json:"model"`
+	Sources                   []Source             `json:"sources"`
+}
+
+// OwnerAnsweringConfig is an explicit delegation; collected content cannot extend it.
+type OwnerAnsweringConfig struct {
+	Enabled      bool               `json:"enabled"`
+	AgentID      string             `json:"agent_id"`
+	Instructions string             `json:"instructions"`
+	Bindings     []AnsweringBinding `json:"bindings"`
+}
+type AnsweringAuthor struct {
+	ID   string `json:"id"`
+	Type string `json:"sender_type"`
+	// VerifiedContact explicitly grants an absent observed sender type only after
+	// the owner independently verified this exact stable contact ID.
+	VerifiedContact bool `json:"verified_contact,omitempty"`
+}
+
+func (a *AnsweringAuthor) UnmarshalJSON(raw []byte) error {
+	type authorValue AnsweringAuthor
+	var value authorValue
+	if err := decodeStrict(raw, &value); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	if value.Type == "" && value.VerifiedContact && !bytes.Equal(bytes.TrimSpace(fields["sender_type"]), []byte(`""`)) {
+		return errors.New("verified untyped contact must explicitly declare sender_type as an empty string")
+	}
+	*a = AnsweringAuthor(value)
+	return nil
+}
+
+type AnsweringBinding struct {
+	ConversationID     string          `json:"conversation_id"`
+	PeerOpenDingTalkID string          `json:"peer_open_dingtalk_id"`
+	Owner              AnsweringAuthor `json:"owner"`
+	Peer               AnsweringAuthor `json:"peer"`
+}
+
+func (cfg Config) CheckOwnerAnswering() error {
+	a := cfg.OwnerAnswering
+	if !a.Enabled {
+		return nil
+	}
+	if !projectIdentity.MatchString(a.AgentID) || strings.TrimSpace(a.Instructions) == "" || len(a.Instructions) > 8000 || len(a.Bindings) == 0 || len(a.Bindings) > 16 {
+		return errors.New("owner_answering requires agent_id, bounded owner instructions and explicit sender bindings")
+	}
+	seen := map[string]bool{}
+	for _, b := range a.Bindings {
+		found := false
+		for _, s := range cfg.Sources {
+			if s.Type == "dm" && s.ConversationID == b.ConversationID && s.PeerOpenDingTalkID == b.PeerOpenDingTalkID {
+				found = true
+			}
+		}
+		if !found || seen[b.ConversationID] {
+			return errors.New("answering binding must select one unique configured dm source")
+		}
+		seen[b.ConversationID] = true
+		if !stableIdentity.MatchString(b.Owner.ID) || !stableIdentity.MatchString(b.Peer.ID) || b.Owner.ID == b.Peer.ID {
+			return errors.New("answering owner and peer author IDs must be explicit and distinct")
+		}
+		for _, author := range []AnsweringAuthor{b.Owner, b.Peer} {
+			if author.Type == "" && !author.VerifiedContact || author.Type != strings.TrimSpace(author.Type) || len(author.Type) > 80 || strings.ContainsAny(author.Type, "\x00\r\n") {
+				return errors.New("answering requires exact observed sender_type, or an explicitly missing type with verified_contact")
+			}
+		}
+	}
+	return nil
 }
 
 type Source struct {
@@ -122,7 +194,7 @@ func (cfg Config) Check(ctx context.Context, store *state.Store) error {
 			}
 		}
 	}
-	return nil
+	return cfg.CheckOwnerAnswering()
 }
 
 func readPrivateConfig(path string) ([]byte, error) {

@@ -12,6 +12,7 @@ import (
 )
 
 type SourceReport struct {
+	AnsweringError      string    `json:"answering_error,omitempty"`
 	MatterError         string    `json:"matter_error,omitempty"`
 	SourceID            string    `json:"source_id"`
 	Complete            bool      `json:"complete"`
@@ -34,7 +35,8 @@ type Report struct {
 	Sources []SourceReport `json:"sources"`
 }
 type Collector struct {
-	matters interface {
+	answering func(context.Context, Source, Collection) error
+	matters   interface {
 		Reconcile(context.Context, state.DiscoverySource, []state.DiscoveryEvidence) error
 	}
 	store     *state.Store
@@ -42,6 +44,13 @@ type Collector struct {
 	provider  Provider
 	extractor Extractor
 	now       func() time.Time
+}
+
+// WithOwnerAnswering attaches an explicitly authorized managed-service consumer.
+// The complete provider window is passed directly, without the topic cache cap.
+func (c *Collector) WithOwnerAnswering(f func(context.Context, Source, Collection) error) *Collector {
+	c.answering = f
+	return c
 }
 
 // WithMatters attaches the Host's owner-private P0 processing to complete
@@ -110,6 +119,13 @@ func (c *Collector) Collect(ctx context.Context) (Report, error) {
 		}
 		report.Complete, report.Partial, report.HasMore, report.Messages, report.AddedEvidence = coverage.Complete, coverage.Partial, coverage.HasMore, len(result.Evidence), added
 		report.TargetVerification = coverage.TargetVerification
+		if c.answering != nil && coverage.Complete && !coverage.Partial && !coverage.HasMore && fetchErr == nil {
+			result.Coverage = coverage
+			if err := c.answering(ctx, selected, result); err != nil {
+				report.AnsweringError = err.Error()
+				failures = append(failures, fmt.Errorf("owner answering source %s: %w", source.ID, err))
+			}
+		}
 		// Discovery only analyzes complete windows. Partial source evidence stays
 		// inspectable without treating a missing context slice as a full topic.
 		if coverage.Complete {

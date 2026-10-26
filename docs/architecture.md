@@ -257,10 +257,12 @@ interactions, then connect a second engine. Channel delivery limits and
 existing authorization policy remain explicit. The current print backend stays
 available during this controlled migration; it is not the long-term-only interface.
 
-A separate proposed product increment is [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md):
-answer supported routine questions addressed to the owner, wait silently on
-incomplete or complex requests, and learn from owner conversations. Start with
-selected private chats and visibly marked AI replies. It is not implemented.
+[Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md) has a disabled-by-default
+source implementation for selected personal DingTalk chats. It handles supported
+requests with the configured Agent's capabilities, marks AI replies, and privately
+asks the owner about blocked requests while remaining silent to the peer.
+Production activation and live acceptance are pending. Account-wide new-contact
+discovery and learning from owner conversations remain proposed.
 
 Owner-only execution and approval remain suspended; multi-user acceptance gaps remain open.
 Durable feature tasks, owned worktrees and authorized PR delivery remain a

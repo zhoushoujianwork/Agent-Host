@@ -45,7 +45,7 @@ func TestRoomMigrationAllowsReadOnlyPreflightWithoutCreatingRoomTables(t *testin
 	if saved, err := upgraded.Run(t.Context(), prior.ID); err != nil || saved.Input != prior.Input {
 		t.Fatal("migration lost existing evidence", saved, err)
 	}
-	if err = legacy.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 16 {
+	if err = legacy.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal("owner did not migrate", version, err)
 	}
 }

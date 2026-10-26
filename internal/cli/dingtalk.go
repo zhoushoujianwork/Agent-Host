@@ -382,16 +382,23 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		if err != nil {
 			return err
 		}
-		collector, err = composeDiscovery(ctx, store, config, o.binary)
+		collector, err = composeDiscoveryCollector(ctx, store, config, o.binary)
 		if err != nil {
 			return err
+		}
+		answering, err := composeOwnerAnswering(ctx, store, config, o, agents, cfg, service, client, sink)
+		if err != nil {
+			return err
+		}
+		if answering != nil {
+			collector.WithOwnerAnswering(answering.Consume)
 		}
 	}
 	return serveChannelWithDiscovery(ctx, dingtalk.Receiver{Config: cfg}, service, observe, collector, sink)
 }
 
 // Discovery shares the Host writer but has its own lifecycle and failure state.
-// It never turns observed chat messages into channel requests or replies.
+// Automatic replies require the separate explicit owner_answering delegation.
 func serveChannelWithDiscovery(ctx context.Context, receiver channelReceiver, service *channel.Service, observe func(string, string) error, collector *discovery.Collector, sink event.Sink) error {
 	if collector == nil {
 		return serveChannel(ctx, receiver, service, observe)

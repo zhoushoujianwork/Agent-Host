@@ -47,9 +47,12 @@ type AgentSelection struct {
 // Service owns durable channel intake and automatic project dispatch.
 // Inbound text cannot invent directories or change the routing policy.
 type Service struct {
-	StartFeedback  func(context.Context) (func(), error)
-	OwnerID        string
-	ApprovalSender ApprovalSender
+	// OwnerPrivateCommand handles explicit Host clarification references before
+	// ordinary dispatch. Admission is authenticated and owner-private only.
+	OwnerPrivateCommand func(context.Context, state.ChannelMessage) (bool, string, error)
+	StartFeedback       func(context.Context) (func(), error)
+	OwnerID             string
+	ApprovalSender      ApprovalSender
 	// Empty Channel preserves the existing DingTalk adapter and receipt shape.
 	Channel            string
 	DisableReactions   bool
@@ -381,7 +384,12 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 			// A normal reply can carry quote material. Match only the current
 			// authenticated text, never the quoted body, before native dispatch.
 			if m.MessageType == "text" {
-				handled, reply, runErr = s.approvalReply(turnCtx, m)
+				if s.OwnerPrivateCommand != nil && s.OwnerID != "" && m.SenderID == s.OwnerID && m.ConversationType == "1" && m.AudienceID == state.OwnerAudienceID {
+					handled, reply, runErr = s.OwnerPrivateCommand(turnCtx, m)
+				}
+				if !handled && runErr == nil {
+					handled, reply, runErr = s.approvalReply(turnCtx, m)
+				}
 			}
 			if !handled && runErr == nil && m.Input == nil {
 				handled, reply, runErr = s.conversationCommand(turnCtx, m)

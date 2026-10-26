@@ -1,246 +1,185 @@
 # Owner Answering Beta: technical notes
 
-Companion to the [main design](owner-answering-beta.md), which owns scope and
-rollout choices. Proposed only; no automatic owner-answering service is delivered.
-Keep exact schemas, command names and tuning values for implementation.
+Companion to the [main design](owner-answering-beta.md), which owns scope.
+The selected-personal-DM path is implemented in source, disabled by default and
+not live-accepted. Account-wide discovery, automatic learning, groups and a
+question workbench UI remain proposed. This document does not activate a service.
 
-## Existing foundation and gaps
+## Implemented path
 
-| Foundation | Reuse and limitation |
-| --- | --- |
-| `internal/discovery` | Selected-source polling, message revisions, coverage/checkpoints and immutable evidence. It does not discover and monitor every account conversation. |
-| `internal/assistance` | Matter reconciliation, pinned citations and stale-revision rejection. Current preparation is owner-selected and does not authorize automatic replies. |
-| `internal/dingtalkworkspace` | Pinned owner identity, bounded personal-history reads, personal sending, operation ledger and platform-status queries. A saved send operation is not yet a tracked question or delegation policy. |
-| Bot notifications and task feedback | Verified-user private bot delivery and queued task-result receipts exist. Blocked-question escalation and owner-clarification correlation are not implemented. |
-| File memory and experience | Publication, source attribution, correction and exclusion. Conversation-derived solutions need their own evidence path; never manufacture a successful Host run. |
-| Channel authorization | Authenticated sender and execution separation. A peer's question must not become an owner-privileged native task. |
+- `internal/discovery` invokes the opt-in consumer only after saving a complete
+  attributed provider window. The answering consumer receives that window directly,
+  independently of topic/matter extraction and its cache limits.
+- `internal/owneranswering` owns intake watermark, classifier, execution claims,
+  latest-history checks, peer delivery and private escalation. It never implements
+  a tool/model loop. Classification uses an isolated tool-free native invocation.
+- `internal/cli/owner_answering.go` composes the selected Agent through existing
+  Host assembly. It preserves the source project, Agent project allowlist,
+  knowledge/plugin and Skill selection. It selects a dedicated audience and native
+  profile and creates a fresh session for every question execution. Owner USER.md,
+  owner bot/CLI sessions, personal-assistance/history mounts and ordinary result
+  feedback are omitted. Native instructions reserve chat delivery for Host.
+- In-scope handling uses the Agent's existing authorized capabilities and owner
+  instructions. The existing Agent channel profile selects `bypassPermissions`;
+  this slice does not introduce a narrower native capability profile. The
+  configured Agent capability selection still applies;
+  scope instructions and the classifier are not a new OS sandbox. Tool output is
+  validated from one terminal marked answer/blocked JSON outcome; earlier narrated
+  progress stays in the original run evidence. Execution failure or invalid final
+  results escalate. Subsequent learning errors are separate question warnings and
+  do not turn an otherwise valid successful execution into a handling failure.
 
-The pinned integration does not expose personal event subscriptions. Its current
-history decoder retains sender/thread/quote information, but group @owner targeting
-needs capability verification and may require adapter work. The documented event
-contract excludes the owner's own sent messages; incoming events alone cannot
-establish human takeover or supply owner solutions. Verify this against the actual
-provider during implementation. Polling remains required for two-way reconciliation.
+## Configuration and commands
 
-Personal task reads are currently bounded to 24 hours and 1–20 messages. The
-collector has its own configured pagination and coverage ledger. Current discovery
-configuration allows 1–16 explicit sources, requires registered project mappings,
-and enforces a polling interval of at least 30 seconds (`internal/discovery/config.go`).
-An owner-wide or faster service therefore needs deliberate configuration and
-scheduling work, including rate-limit acceptance. Do not implement
-an account-wide service by repeatedly pretending a partial single page is complete.
-Source links: [DWS integration](dingtalk-workspace-detail.md),
-[selected-source intake](knowledge-sources-detail.md#dws-observation-and-episode-intake),
-[current matters](personal-assistant-detail.md#p0-implementation).
+Add this **synthetic** block to an otherwise valid private discovery JSON file:
 
-## Two independent loops
+```json
+{
+  "owner_answering": {
+    "enabled": true,
+    "agent_id": "operations",
+    "instructions": "Handle requests about the configured test service using this Agent's existing authorized Skills/tools. Escalate missing details, unsupported operations or requests outside that service. Never send chat messages yourself.",
+    "bindings": [
+      {
+        "conversation_id": "fixture-dm",
+        "peer_open_dingtalk_id": "fixture-peer-open",
+        "owner": { "id": "fixture-owner-open", "sender_type": "", "verified_contact": true },
+        "peer": { "id": "fixture-peer-open", "sender_type": "", "verified_contact": true }
+      }
+    ]
+  }
+}
+```
 
-**Online answering:** acquire evidence → update a question → classify intent and
-completeness → retrieve permitted answer entries → draft → validate → recheck
-latest conversation → claim and send → reconcile delivery.
+The discovery file must also select exactly that DM source and its registered
+project, specify `profile` as the configured bot owner's `corpId:userId`, and
+set `dingtalk_workspace_config` to an embedded owner workspace with `chat` enabled.
+Existing collection limits remain: 1–16 explicit sources, polling at least every
+30 seconds, bounded pages/messages and registered non-default project mappings.
+The selected Agent must permit the source project. Omission or `enabled:false`
+disables answering. Standalone `agent-host discovery check|collect|serve` rejects
+enabled answering; only the DingTalk channel service wires the consumer through
+its existing `--discovery-config PATH` option. No extra listener/provider is added.
 
-An unmatched, incomplete or unhandleable request branches into private bot
-escalation to the verified owner, with no outgoing peer message. Correlated owner
-clarification updates the question revision and returns to evaluation; it does
-not skip support, recipient, permission, takeover or delivery checks. Greetings
-and nonrequests end at classification without either delivery path.
+Bindings are owner-verified activation prerequisites. Observe the exact author
+IDs and sender types in the selected provider history; do not infer them from
+names or assume that a personal open ID equals a staff ID. IDs must be distinct,
+and targets must match selected DM sources. A nonempty configured type must match
+exactly. For history that omits `senderType`, first independently verify each
+human's stable contact ID against contact lookup and the selected history. Then
+explicitly set `sender_type:""` and `verified_contact:true` for that author, as in
+the synthetic example. Omitting the configuration field or setting it to null
+does not grant this exception. An explicit conflicting provider type still blocks
+work. Display names and “not the owner” are never identity evidence. Nonempty
+attributed human text with absent `messageType` reaches classification; forwarded
+and automation/unknown identities remain excluded. Unknown identities/types are retained as explicit
+`blocked_identity` source reasons, without execution or a guessed recipient.
+Source content cannot create or extend a binding. A changed discovery policy
+stops further work until restart; reactivation with a changed policy starts a new
+current-time watermark. Existing unresolved work remains linked and cannot gain a
+fresh execution/reply slot through a policy change. Disabling configuration is
+checked before effects/sends. Each evaluation, including lock wait and owner
+clarification, uses discovery `timeout_seconds`. Cancellation retains a waiting
+owner outcome through a separate bounded finish context and prevents peer send.
+Notification/finalization contexts are independently bounded to 20 seconds.
 
-**Offline learning:** reconcile both authors' messages → form source-linked
-problem episodes → extract style and solution candidates independently → compare
-existing knowledge → publish eligible knowledge under Host policy → promote a
-version into the automatic answer set after beta review.
+Owner clarification uses the private bot conversation:
 
-The online loop must not wait for learning. Learned corrections can invalidate
-pending drafts, but learning jobs do not send messages. Independent queues and
-bounded work budgets keep history imports from delaying owner bot requests.
-Reuse native tool-free analysis and narrow read capabilities; Host remains the
-business coordinator rather than implementing another model/tool loop.
+```text
+/answer QUESTION_ID.REVISION clarification text
+/dismiss QUESTION_ID.REVISION
+```
 
-## Coverage, targeting and question identity
+The notification supplies the exact reference. Only authenticated configured-owner
+private messages in the same bot account/tenant and owner audience reach this
+callback, before ordinary native dispatch. Other text remains normal bot work.
+Unknown, stale, closed or malformed references produce an owner-only explanation;
+no recency or quoted source text substitutes for an explicit current reference.
+Clarification increments the revision and reevaluates support/scope and history.
+Before any tool attempt it can resume normal handling. After tools were attempted,
+it uses a separate isolated tool-free draft with the saved handler outcome, original
+run evidence and explicit owner answer; it cannot rerun Handle or resume its native
+session. Unsupported drafts remain private. A pending/unknown/attempted peer send
+cannot be replayed by clarification. Dismissing an in-flight delivery cannot recall
+it; read-only reconciliation continues and no replacement send is created.
 
-- Bind every source to the exact authorized owner account and conversation.
-  Stable provider identity and revision deduplicate overlapping polls/events.
-- New direct-chat requests to the owner may be candidates. Greetings, receipts,
-  advertisements, FYI messages, forwarded questions and the owner's own messages
-  are not automatically requests to answer. A question need not contain “?”.
-- Exclude the configured bot and known automation conversations to avoid loops.
-  Preserve bot-request routing; do not answer the same platform message twice
-  through bot and owner paths. Cross-path deduplication needs stable IDs, not text.
-- After the private pilot, group eligibility requires a verified owner mention,
-  direct reply or unambiguous owner-directed continuation. Ordinary group traffic
-  stays ineligible. Group identity and addressing must pass live acceptance first.
-- Group related fragments using thread/reply identity and supported topic context.
-  Use a short configurable settling period; a pause in typing does not establish
-  completeness. Interleaved questions retain different identities.
-- Each question retains its triggering messages, latest evidence revision,
-  analysis basis, answer-set version, recipient and delegation revision.
-- New information invalidates unsent drafts. Edits/deletions invalidate affected
-  evidence when reported by the provider; do not claim unobserved deletion coverage.
-- Startup/import establishes a live-activation watermark. Older questions are
-  learning/evaluation data. Downtime backlog requires fresh revalidation and a
-  bounded relevance window, rather than a flood of delayed answers.
+The configured handler backend is preserved, including ACP. Its final output is:
 
-“All questions” is a coverage goal. Beta reports selected conversations, gaps and
-freshness honestly. Account-wide discovery, event durability, encrypted payloads
-and rate limits require provider-specific acceptance before expanding coverage.
-Automatic intake must not depend on manual forwarding to agh. Detecting questions
-from newly contacting peers across the account requires source discovery/event
-integration that is not delivered by the current selected-source collector.
-The main document leaves incoming bot-DM inclusion open; until resolved, preserve
-ordinary bot routing and keep escalation replies out of personal-question intake.
+```text
+<agh-owner-answering-outcome>
+{"outcome":"answer","text":"Supported answer","reason":"","clarification":""}
+</agh-owner-answering-outcome>
+```
 
-## Answer and permission boundary
+Markers occupy their own lines. Parse exactly one terminal block with strict JSON
+fields; earlier commentary is permitted, but missing/multiple/malformed blocks or
+trailing non-whitespace are rejected. `outcome` is `answer` or `blocked`. No ACP
+JSONSchema request or backend fallback is introduced. Classifier and clarification
+drafting are explicitly separate isolated tool-free native tasks.
 
-These boundaries describe the existing proposed answer-only beta. They do not
-settle the main document's open decision about authorized tools/Skills execution.
-Implementing that expansion requires explicit execution scope and acceptance;
-neither incoming peer text nor an owner clarification silently enables tools.
+## Durable state and delivery
 
-Delegation is an owner-controlled policy: enabled conversations, answer topics,
-recipient grants, effective time and send limits. Its version binds each decision.
-A model cannot create or extend it. Disabling it revokes pending send eligibility.
+State migration 16 → 17 adds `owner_answering` records with compare-and-save
+revisions. It preserves existing runs and channel state. Source records retain
+the policy fingerprint, activation/current watermark, active question link and
+identity blocker. Watermark, active link and question revision commit atomically
+before classification or tool execution.
+Question records retain exact attributed evidence, question/revision, source,
+execution claim/run ID, clarification, state, answer and separate delivery receipts.
+These are execution/control records, not a second memory store.
 
-The answer set is a reviewed projection of versioned memory or approved source
-answers, with pinned revisions and reply policy. Reuse the file-memory foundation;
-do not create a second independent knowledge store. Keep episode evidence and
-question/delivery state separate from that reusable knowledge.
+First activation records now before polling; historical imports never trigger
+handling. A question ID is anchored to the first new provider message. Subsequent
+peer details merge into that same outstanding question/revision without resetting
+the execution claim or creating another send slot. Only after a truly terminal
+question may a later message start a new question. Pending/unknown delivery remains
+active across restarts and expanded overlapping polls. The
+classifier ignores greetings/nonrequests, handles complete in-scope requests and
+asks the owner about unsupported, incomplete or ambiguous multi-question bursts.
+Unrelated requests mixed into an outstanding question require owner clarification;
+more advanced topic-aware splitting remains proposed.
 
-Project-associated lessons retain their project scope. Projectless personal
-questions require an explicit owner-private scope with tested recipient grants;
-the default execution workspace must not become a global memory bucket. This
-scope integration is implementation work, not an existing P0 guarantee.
+The execution claim is saved before Host/tool execution. Restart converts an
+interrupted execution or unsent completed draft into waiting-for-owner, without
+rerunning tools. A pending unclaimed question can be reconsidered. Failure never
+becomes a peer placeholder/progress reply.
+Message membership is retained independently of the source cursor, so overlapping
+or changed collection bursts cannot package an already assigned message as a new
+execution. Unresolved prior effects in the conversation block further automatic
+tool attempts. Authenticated owner clarification may finish via tool-free drafting.
 
-A draft can use the current authorized conversation and a recipient-permitted
-answer set. General owner-private memory and other chats are not exposed to the
-responder merely because DWS runs under the owner's account. Knowledge reused
-across chats needs explicit publication into an appropriately shareable answer.
+Before tools and again immediately before peer delivery, fetch fresh complete
+two-way history through the current decision time. Missing/partial history,
+unbound authors, changed/omitted peer evidence, or policy/target drift block the
+answer. Observed owner activity cancels automatic peer delivery. Known saved AI
+message IDs are exempt from takeover only in their bound conversation. History
+read and personal send are not transactional; a manual owner send can race after
+the final read. Live acceptance must measure this remaining collision window.
 
-An answer entry retains its source revision, applicability conditions, required
-question details, intended recipients, validity/expiry and excluded situations.
-Owner statements can support a factual FAQ; procedures additionally retain whether
-steps were merely suggested, reported successful, or directly observed. One old
-solution is insufficient evidence for a new environment or incident.
+Peer replies use `dingtalkworkspace.Service.send_message`, a stable `oa-QUESTION`
+operation ID, original conversation target and visible AI marker. Preserve the
+official platform AI marking. Personal transport receipts remain accepted,
+provider-pending, failed or unknown; acceptance does not prove recipient reading
+or question resolution. An `openTaskId` remains provider-pending, even when the
+send command itself reports successful completion. Each complete collection cycle
+can read `get_send_status` for the active task, including after restart. Only
+provider `SUCCESS` with a real message ID confirms delivery and grants AI echo
+suppression. Original operation and latest status receipts remain separate; task
+and returned conversation IDs are checked. Failed/unknown status stays visible,
+never triggers a new send, and unknown status can only be reconciled read-only.
 
-The first answer set contains stable links, definitions and low-risk documented
-instructions. Requests involving approvals, spending, access changes, production
-operations, sensitive personal matters or promises stay for the owner. “Simple”
-means the supported answer requires no such judgment or action, not a short prompt.
+Blocked handling reserves one private bot escalation before transport. It goes
+only to the verified configured owner and includes peer identity, a bounded cited
+source excerpt, reason, needed clarification and exact command reference. The full
+source remains in the question record. Repeated polls/unchanged waiting questions
+do not notify again. Peer and escalation claims/receipts stay independent.
+Notification failure remains a failed/unknown private receipt; the peer stays
+silent. Restart converts reserved delivery into unknown, without replay. This
+slice does not automatically retry failed notifications either. Follow-up details
+and unchanged blockers retain the prior escalation receipt instead of renotifying;
+stale owner references receive the current exact reference privately.
 
-Use a dedicated responder profile and native-session partition for the authorized
-conversation. Never resume the owner's ordinary bot/CLI session or another peer's
-session: earlier private context can survive even when the current prompt is filtered.
-The responder receives no generic shell, business-write or unrestricted DWS tools.
-Host alone can issue one constrained send to the bound recipient with the validated
-content. The permission to answer a question does not delegate the owner's other
-capabilities. Incoming messages and retrieved documents remain untrusted content.
-
-An answer uses the selected style but retains AI identity. Preserve the official
-platform marking, and add the owner's chosen short visible marker. Do not claim
-“I checked” without an actual check or “I will do it” for an owner commitment.
-
-## Silent waiting and owner takeover
-
-Proposed states express behavior, not a final database schema:
-
-| State | Meaning and allowed next step |
-| --- | --- |
-| Collecting | Wait for a message burst and complete relevant coverage. |
-| Analyzing | Evaluate one evidence/policy revision; newer input supersedes it. |
-| Waiting for details | No peer message; persist a private escalation obligation and reconsider on relevant new evidence. |
-| Waiting for owner | No peer message; privately request clarification and retain reasons/draft. Correlated clarification or material new evidence resumes evaluation. |
-| Ready to send | Eligible draft, subject to final latest-history/policy checks. |
-| Sending / pending | One reserved operation; inspect its platform status. |
-| Replied | Delivered reply linked to the question; follow-ups update the episode. |
-| Human handled / closed | Cancel outstanding automation; no timed reopening. |
-| Delivery unknown | Suppress further sends for this question until reconciled. |
-
-Any observed owner-authored message cancels pending replies in that conversation
-for the pilot, even if topic association is uncertain. Distinguish Host-generated
-owner-account messages by saved operation/message IDs. Other owner-account
-messages cause takeover conservatively; do not assume they are human teaching
-examples if they may come from another automation.
-
-A separate clearly new question may be eligible after the conversation settles.
-A peer request for human attention or an explicit owner pause persists for the
-current question; a timer cannot override it. The owner can dismiss, take over,
-resume or edit a private draft. Required blocked-request escalation replaces the
-previous optional-notification policy; unrelated routine review remains optional.
-
-## Private escalation and clarification
-
-Persist question state and its escalation obligation together. Bind each item to
-the exact owner account, verified private bot recipient, source channel/account,
-conversation, peer identity, question ID and evidence revision. Never choose the
-original peer as the escalation recipient or resolve the owner from a display name.
-Notify through the application bot, separately from personal DWS peer replies.
-Include the sender's display name and stable identity, the attributed source
-question or bounded excerpt with source reference, why handling is blocked, and
-one concise request for the missing information or decision. Do not include
-unrelated private history. Retain the complete authorized source privately.
-
-Use a durable escalation slot keyed by owner and question with a blocking-reason
-fingerprint and associated question revision. Repeated polls, message redelivery,
-unchanged analysis and restart reuse that slot and never create another send.
-A new evidence revision alone is not a reason to notify again: only a material
-change in the blocker or information needed may create a new escalation revision.
-Keep the two delivery ledgers separate so an owner notification cannot be mistaken
-for a peer answer. Reserve the notification attempt before sending and retain its
-content digest, provider receipt and accepted/failed/unknown outcome. Provider
-acceptance does not prove owner reading or question resolution.
-
-Definite notification failure remains visible as an undelivered escalation in the
-owner workbench; it never causes a peer placeholder or progress message. Allow only
-bounded retries of confirmed failures under an explicit retry policy. Unknown or
-interrupted attempts require reconciliation before any retry; do not issue a fresh
-slot to bypass uncertainty. After restart, recover pending obligations and inspect
-reserved attempts instead of replaying sends. Missing owner binding or bot access
-blocks escalation visibly and leaves the peer silent.
-
-Give each escalation a durable question/revision reference. Match an owner response
-using a verified quote/reply identity or explicit reference within the same bound
-private bot account, conversation and authenticated owner identity. Plain text or
-recency alone cannot select among pending questions. An ambiguous, stale or
-unmatched response stays private; ask the owner to select the question or confirm
-the current revision. Never guess an association or forward it to a peer.
-
-A valid clarification is additional attributed evidence: increment the question
-revision, invalidate any old draft and evaluate the latest conversation, answer
-support, shareability, delegation and send state again. Owner-private clarification
-is not automatically recipient-shareable or an approved reusable answer. An owner
-response in the escalation bot conversation is distinct from takeover in the
-original peer conversation. Takeover, dismissal or pause prevents automatic peer
-sends; clarification alone cannot reopen a human-handled question without explicit
-owner release. Recheck for takeover before sending even after valid clarification.
-
-## Sending, recovery and the unavoidable race
-
-Before reserving a send, obtain fresh two-way history through the decision point.
-If coverage is incomplete, stale or unavailable, retain a wait reason. Check
-owner activity, newer peer messages, revoked answers and prior sends again.
-Revalidate delegation and question revision atomically when reserving the local
-send operation. Serialize sends per owner conversation.
-
-Use a stable operation identity derived from owner, conversation, question and
-reply slot, binding content to its digest. Retrying the same analysis must not
-produce a new send key. Corrected drafts may replace an unsent slot; a reserved,
-pending or unknown send cannot be bypassed with a new key. Use the existing
-workspace ledger and official idempotency key; retain async task and message IDs.
-The current send API has no validated reply-to field: initial private replies use
-the conversation target and retain their question linkage locally. Do not invent
-platform threading support; group rollout must validate addressing separately.
-
-DingTalk history reads and manual owner sending are not one transaction. The
-owner can send after the final read but before AI delivery. Minimize that interval,
-use observed takeover cancellation where available, measure collisions in the
-pilot, and never promise absolute exclusion. If a collision is observed, stop
-further automation for the episode and expose it privately; do not automatically
-recall or send an apology message without an applicable policy.
-
-Provider acceptance, confirmed delivery, recipient reading and question resolution
-are different outcomes. Unknown delivery is inspected without automatic replay.
-Global pause cancels unsent work; it cannot undo an already dispatched message.
-
-## Learning, freshness and feedback
+## Proposed learning, freshness and feedback
 
 Separate style candidates from factual/procedural knowledge. Style is scoped by
 language, audience and context; repeated examples and explicit owner corrections
@@ -268,6 +207,15 @@ supported. The owner can inspect and withdraw learned style and solution entries
 
 ## Rollout and tests
 
+Focused headless checks use `go test ./internal/owneranswering ./internal/discovery
+./internal/state` and the `TestOwnerAnswering*` / `TestOwnerPrivateCommand*` cases
+in `internal/cli` and `internal/channel`. The composed Host tool test requires the
+existing localhost run-control listener; sandbox denial of that listener is a
+validation limitation, not permission to bypass it. Supervisor runs `make check`.
+These fixture checks do not establish real sender bindings, owner delegation,
+native tool success or DingTalk delivery. The following are rollout acceptance
+requirements, including future learning; they are not claims of deployed controls.
+
 1. **Capability probe:** selected test contact, verified owner/recipient IDs,
    inbound and outbound history, latest-window completeness, real AI marking,
    personal send/status/readback correlation, private bot notification acceptance
@@ -279,9 +227,9 @@ supported. The owner can inspect and withdraw learned style and solution entries
 3. **Shadow pilot:** no external sends. Owner labels intended answer/wait/ignore,
    proposed answer/escalation quality, missing details and potential disclosure. Validate
    takeover timing against live two-way history. Unlabeled decisions remain unknown.
-4. **Restricted live pilot:** activate selected chats and reviewed answer entries,
-   deduplicated private owner escalations, a low configurable volume cap and a
-   global pause control. Expand only after
+4. **Restricted live pilot:** activate selected chats and reviewed handling scope,
+   deduplicated private owner escalations and operational volume monitoring.
+   Disable the configuration to pause further effects. Expand only after
    reviewing the acceptance report; do not optimize reply count at the cost of errors.
 
 Mandatory cases: fragmented question then update; owner replies during analysis
@@ -302,8 +250,9 @@ valid clarification triggers fresh evaluation rather than verbatim forwarding;
 owner takeover during clarification prevents peer delivery; owner-private content
 is not automatically disclosed. Verify automatic selected-DM intake without manual
 forwarding and report unseen new contacts as coverage gaps, not successful intake.
-If bot DMs or tools/Skills are selected later, add their distinct routing and
-execution-authorization acceptance cases before implementation is accepted.
+Tools/Skills are included in the selected scope; their actual permissions and
+effect evidence need live acceptance. If bot-DM intake is added later, add its
+distinct routing cases before that expansion is accepted.
 
 Report auto-answer precision (correct sends / reviewed sends), eligible-question
 coverage, useful silent waits, missed safe answers, owner corrections, duplicate

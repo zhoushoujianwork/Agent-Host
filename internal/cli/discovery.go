@@ -87,6 +87,9 @@ func runDiscovery(ctx context.Context, args []string, out, errout io.Writer) (ru
 		if err := config.Check(ctx, nil); err != nil {
 			return err
 		}
+		if config.OwnerAnswering.Enabled {
+			return errors.New("owner_answering is supported only by the DingTalk channel service, not standalone discovery")
+		}
 	}
 	encoder := json.NewEncoder(out)
 	if command == "check" {
@@ -203,6 +206,14 @@ func discoveryCycleStatus(report discovery.Report, cycleErr error) map[string]an
 }
 
 func composeDiscovery(ctx context.Context, store *state.Store, config discovery.Config, binary string) (*discovery.Collector, error) {
+	if config.OwnerAnswering.Enabled {
+		return nil, errors.New("owner_answering requires the managed DingTalk channel consumer")
+	}
+	return composeDiscoveryCollector(ctx, store, config, binary)
+}
+
+// Only the DingTalk channel may attach the explicitly delegated answering consumer.
+func composeDiscoveryCollector(ctx context.Context, store *state.Store, config discovery.Config, binary string) (*discovery.Collector, error) {
 	if err := config.Check(ctx, store); err != nil {
 		return nil, err
 	}

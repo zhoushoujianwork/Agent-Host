@@ -178,7 +178,7 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 	}
 	if readOnly {
 		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
-		compatibleMemory := memoryInspection && (version == 14 || version == 15)
+		compatibleMemory := memoryInspection && (version == 14 || version == 15 || version == 16)
 		if version != SchemaVersion && !compatibleProjects && !compatibleMemory {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
@@ -294,6 +294,11 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 			}
 			if version < 16 {
 				if _, err := tx.Exec(schemaRoomsV16); err != nil {
+					return err
+				}
+			}
+			if version < 17 {
+				if _, err := tx.Exec(schemaOwnerAnsweringV17); err != nil {
 					return err
 				}
 			}

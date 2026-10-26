@@ -349,6 +349,8 @@ class CatalogTests(unittest.TestCase):
         conn.execute("INSERT INTO channel_reactions VALUES(1,'message-1','synthetic-private-provider-reaction-id')")
         conn.execute("CREATE TABLE discovery_fixture(payload TEXT)")
         conn.execute("INSERT INTO discovery_fixture VALUES('synthetic-private-discovery-cache')")
+        conn.execute("CREATE TABLE owner_answering(key TEXT PRIMARY KEY,revision INTEGER,payload BLOB)")
+        conn.execute("INSERT INTO owner_answering VALUES('question:fixture',1,'synthetic-private-owner-question')")
         conn.execute("INSERT INTO candidates VALUES('candidate-1','first',?)",
                      (json.dumps({"id": "candidate-1", "status": "pending"}),))
         conn.commit()
@@ -358,7 +360,7 @@ class CatalogTests(unittest.TestCase):
         conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'default'")
         conn.execute("ALTER TABLE memories ADD COLUMN audience_id TEXT NOT NULL DEFAULT 'owner'")
         conn.commit()
-        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14):
+        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17):
             with self.subTest(version=version):
                 conn.execute(f"PRAGMA user_version={version}")
                 before = hashlib.sha256((self.home / "state.db").read_bytes()).hexdigest()
@@ -368,7 +370,8 @@ class CatalogTests(unittest.TestCase):
                 self.assertEqual(detail["run"]["source"], run["source"])
                 self.assertEqual(detail["candidates"][0]["id"], "candidate-1")
                 for private in ("synthetic-private-reply-capability", "synthetic-private-input-capability",
-                                "synthetic-private-discovery-cache", "synthetic-private-provider-reaction-id"):
+                                "synthetic-private-discovery-cache", "synthetic-private-provider-reaction-id",
+                                "synthetic-private-owner-question"):
                     self.assertNotIn(private, json.dumps(index))
                     self.assertNotIn(private, json.dumps(detail))
                 self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], version)
