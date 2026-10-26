@@ -68,7 +68,17 @@ chosen target and ACP delivery status. This diagram records the retained print b
 reach Host, and Host runs Claude's print/stream-JSON adapter. New Web chats
 launch a separately configured Host CLI. Selecting an existing channel Session
 uses the owning worker's private control socket; Host forks its exact completed
-native context and preserves the original room and audience.
+native context and preserves the original room and audience. Room snapshots retain
+bounded attributed conversation text across runtime/model changes only within the
+same Agent/audience, room epoch, scope, primary project, workspace, full project
+identity/scope/workspace set and additional directories. Completed results require
+a final journal seal available by message arrival. Native parent selection and
+explicit takeover keep exact runtime/model compatibility. Durable continuation
+metadata explains text-only history; current execution capabilities apply and
+historical text grants no authority. Preview-only quoted bot messages remain
+unresolved because DingTalk webhook acceptance supplies no mapped outgoing ID;
+ambiguous references require clarification. See the
+[context discontinuity diagnosis and source correction](session-context-diagnosis-2026-10-26.md).
 
 ```mermaid
 flowchart TD

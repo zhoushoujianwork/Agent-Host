@@ -24,7 +24,7 @@ Different Host/native session IDs per room turn are normal for the fork design.
 
 ## Cause and limits
 
-`internal/state/rooms.go` filters earlier room turns through
+At diagnosis time, `internal/state/rooms.go` filtered earlier room turns through
 `sameRecoveryRuntime` before adding their text or choosing a native parent.
 `internal/state/channel_recovery.go` requires exact fingerprint equality.
 The 18:37 task therefore could not contribute context to either later request.
@@ -43,17 +43,49 @@ not the complete historical configuration inputs. The exact setting responsible
 for this change was not established and must not be guessed from service restarts.
 Recipient identity resolution is a separate issue from the missing task context.
 
-## Correction direction
+## Source correction (2026-10-26)
 
-Preserve exact runtime checks for native continuation. Add explicit evidence for
-why context was excluded, and resolve quoted outbound replies to their originating
-run within the same authenticated account/conversation/Agent/audience. If a
-runtime change prevents native continuation, an explicitly selected prior result
-can be supplied as attributed text after current access checks. Never resume an
-incompatible native session or silently select an unrelated recent task.
+The source now separates readable room history from native continuation.
+Bounded, attributed text and completed results survive runtime fingerprint and
+model changes within the same Agent/audience, room epoch, scope, primary project,
+workspace, full project identity/scope/workspace set and additional directories.
+Results must have completed and received their final journal seal by the incoming
+request's arrival. Current capabilities govern new execution; history grants no
+permissions and does not assert equality of historical tool/native settings.
 
-This diagnostic made no production changes, replayed no task and sent no message.
-It identifies the cause; the context-continuity correction is not implemented here.
+Native parents and explicit takeovers still require exact runtime/model
+compatibility. Durable `native_continuation` and entry `text_only_reason` explain
+the selection without exposing content excluded by scope. A compatible older
+completed parent can still be selected while text from other eligible turns
+remains available.
+
+The current DingTalk session-webhook adapter receives an acceptance status
+(`errcode:0`), not an outgoing message ID usable for a durable quote-to-run map.
+The separate notification `processQueryKey` is not established as a quoted
+message ID. Preview-only quotes therefore remain unresolved. The prompt preserves
+the quote ID and supplies eligible historical results as evidence; ambiguous
+references require clarification rather than guessing a result or replaying work.
+
+Focused fixture tests cover the completed-A / canceled-B / quoted-followup-B
+pattern, model changes, compatible older parents, scope isolation and arrival
+sealing. This is a source fix, not production deployment or live channel acceptance.
+No production changes, task replays or messages were made during this correction.
+
+Supervisor acceptance additionally used a private SQLite backup of the original
+production records. Constructing an isolated room snapshot at the original
+request's arrival retained the completed service-check result as attributed text
+(`history=9`) with no native parent. No harness, transport or original request
+was invoked.
+
+Supervisor `make check` passed vet and the changed state/Host/channel packages,
+but its full Go run failed existing CLI fixture startup/overlap time bounds under
+load. An isolated rerun of `TestChatCallerLifecycle`,
+`TestIndependentCLIProcessesExecuteConcurrently` and
+`TestCLIWorkbenchObservesOfficialChatAfterStartup` passed (96.404 seconds).
+All remaining 31 plugin/Python/Node check commands passed separately. The initial
+single `make check` invocation is not claimed as passing. Deployment uses the
+committed artifact and retains a runtime-local receipt after connection checks;
+historical failed requests are not automatically replayed.
 
 ## Delegated inspection
 
@@ -63,3 +95,11 @@ BLOCKED with exit 0 after 28 calls and 124.306 seconds; estimated worker cost
 USD 0.706034 (not verified billing). Its production reads were denied by its tool
 policy. The supervisor independently retrieved the target records through the
 local read-only viewer API and SQLite `mode=ro` and verified the code boundary.
+
+Implementation used session `01a177ee-8ed4-7252-929d-8c72972e24d6`, profile
+`codex-gpt-6.1-sol-medium-fast`, model `gpt-6.1-sol`. The feasibility probe exited
+0 after 8 calls and 89.216 seconds (API-baseline estimate USD 0.284960). The
+implementation exited 0 after 17 calls and 311.601 seconds (estimate USD
+0.6307168). These are worker estimates, not verified billing or total parent
+cost. State tests passed in the worker; Host/channel execution checks encountered
+its local-socket sandbox restriction and required supervisor validation.

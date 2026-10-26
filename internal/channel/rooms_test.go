@@ -90,3 +90,44 @@ func TestRoomWorkersOverlapMembersAndKeepRepliesLinked(t *testing.T) {
 		})
 	}
 }
+
+func TestRoomChannelHistorySurvivesRuntimeDiscontinuity(t *testing.T) {
+	f := newServiceFixture(t)
+	f.host.Runner = &forkServiceRunner{f.runner}
+	f.host.Config.RuntimeFingerprint = "A"
+	calls := 0
+	f.runner.run = func(_ context.Context, req harness.Request) (harness.Result, error) {
+		calls++
+		status, output := "completed", "service healthy: evidence-314159"
+		if calls == 2 {
+			status, output = "canceled", ""
+		}
+		return harness.Result{Status: status, Text: output, NativeSessionID: req.NativeSessionID, Model: req.Model}, nil
+	}
+	first := f.process(t, f.message(t, "service-check", "check service", "text", "owner-room"))
+	if first.Status != "completed" {
+		seed, err := f.service.Store.Run(t.Context(), first.RunID)
+		t.Fatalf("seed did not complete: status=%s run_error=%s read_error=%v", first.Status, seed.Error, err)
+	}
+	f.host.Config.RuntimeFingerprint = "B"
+	f.process(t, f.message(t, "hi", "hi-only-request", "text", "owner-room"))
+	quote := f.message(t, "forward", "send the result to the colleague", "text", "owner-room")
+	quote.ReplyToID = "unknown-bot-message"
+	followup := f.process(t, quote)
+	run, err := f.service.Store.Run(t.Context(), followup.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Room == nil || run.Room.ParentSessionID != "" || run.Room.ForkFromNativeSessionID != "" || run.Room.ReplyToID != quote.ReplyToID || len(run.Room.History) != 2 {
+		t.Fatalf("invalid channel context: %+v", run.Room)
+	}
+	entry := run.Room.History[0]
+	if entry.RunID != first.RunID || entry.SenderID != first.SenderID || entry.Status != "completed" || entry.Reply != "service healthy: evidence-314159" || entry.TextOnlyReason != "runtime_or_model_changed" {
+		t.Fatalf("lost channel history: %+v", entry)
+	}
+	requests := f.runner.snapshot()
+	got := requests[len(requests)-1]
+	if got.Resume || got.ForkFromNativeSessionID != "" || !strings.Contains(got.Prompt, entry.Reply) || !strings.Contains(got.Prompt, "ask if ambiguous") {
+		t.Fatalf("invalid harness context: %+v", got)
+	}
+}

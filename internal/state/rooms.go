@@ -42,9 +42,12 @@ type RoomTurn struct {
 	ParentSessionID         string      `json:"parent_session_id,omitempty"`
 	History                 []RoomEntry `json:"history,omitempty"`
 	InheritedRequestIDs     []string    `json:"inherited_request_ids,omitempty"`
+	NativeContinuation      string      `json:"native_continuation,omitempty"`
 }
 
 type RoomEntry struct {
+	// TextOnlyReason explains native incompatibility without changing text authority.
+	TextOnlyReason string `json:"text_only_reason,omitempty"`
 	RequestID      string `json:"request_id"`
 	SenderID       string `json:"sender_id"`
 	SenderName     string `json:"sender_name,omitempty"`
@@ -134,7 +137,7 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 		if session.Room != nil {
 			return errors.New("session already belongs to a room request")
 		}
-		turn := &RoomTurn{RoomID: roomID, RoomInput: input}
+		turn := &RoomTurn{RoomID: roomID, RoomInput: input, NativeContinuation: "no_compatible_completed_parent"}
 		if input.ContinueFrom != "" {
 			parent, err := s.readSession(ctx, tx, input.ContinueFrom)
 			if err != nil {
@@ -191,12 +194,16 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			if previous.Room.ReceivedAt.After(input.ReceivedAt) {
 				continue
 			}
-			// Project/runtime authority stays exact. Topics and senders do not
-			// select a branch or broaden the authorized context.
-			if previous.Scope != session.Scope || previous.Model != session.Model || !sameRecoveryRuntime(previous, session) {
+			// Text stays within the exact conversation and project/directory scope.
+			// Native execution compatibility is a separate, stricter decision.
+			if !sameRoomTextScope(previous, session) {
 				continue
 			}
 			entry := RoomEntry{RequestID: previous.Room.RequestID, SenderID: previous.Room.SenderID, SenderName: previous.Room.SenderName, Input: previous.Room.Text, ReplyToID: previous.Room.ReplyToID, RunID: p.run, Status: "starting"}
+			nativeCompatible := sameRecoveryRuntime(previous, session)
+			if !nativeCompatible {
+				entry.TextOnlyReason = "runtime_or_model_changed"
+			}
 			if p.run != "" {
 				r, err := s.readRun(ctx, tx, p.run)
 				if err != nil {
@@ -208,10 +215,19 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 				} else if r.ExecutionStatus == "completed" && r.CompletedAt == nil {
 					entry.Status = "unknown"
 				} else if r.ExecutionStatus == "completed" {
-					entry.Reply, entry.ReplyTruncated = recoveryText(r.Output, 8000)
-					if turn.ParentSessionID == "" {
-						turn.ParentSessionID = previous.ID
-						turn.ForkFromNativeSessionID = previous.NativeSessionID
+					available, err := roomResultAvailable(ctx, tx, r.ID, input.ReceivedAt)
+					if err != nil {
+						return err
+					}
+					if !available {
+						entry.Status = "unknown"
+					} else {
+						entry.Reply, entry.ReplyTruncated = recoveryText(r.Output, 8000)
+						if turn.ParentSessionID == "" && nativeCompatible && previous.NativeSessionID != "" {
+							turn.NativeContinuation = "compatible_completed_parent"
+							turn.ParentSessionID = previous.ID
+							turn.ForkFromNativeSessionID = previous.NativeSessionID
+						}
 					}
 				}
 			}
@@ -223,6 +239,7 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			if err != nil {
 				return err
 			}
+			turn.NativeContinuation = "explicit_takeover"
 			turn.ParentSessionID, turn.ForkFromNativeSessionID = parent.ID, parent.NativeSessionID
 		}
 		if turn.ParentSessionID != "" {
@@ -287,4 +304,32 @@ func linkRoomRun(ctx context.Context, tx *sql.Tx, session Session, run *Run) err
 	}
 	run.Room = session.Room
 	return nil
+}
+
+// Execution permissions and native settings do not erase readable conversation
+// evidence. This predicate grants no tool authority and cannot select a native parent.
+func sameRoomTextScope(a, b Session) bool {
+	return samePartition(a.AgentID, a.AudienceID, b.AgentID, b.AudienceID) &&
+		a.Scope == b.Scope && a.ProjectID == b.ProjectID && a.WorkingDirectory() == b.WorkingDirectory() &&
+		sameProjectRefs(a.Projects, b.Projects) && sameDirectories(a.AdditionalDirectories, b.AdditionalDirectories)
+}
+
+// A completed payload may precede its final journal seal. Do not expose a
+// result that was still finalizing when this input arrived.
+func roomResultAvailable(ctx context.Context, tx *sql.Tx, runID string, receivedAt time.Time) (bool, error) {
+	var payload []byte
+	err := tx.QueryRowContext(ctx, "SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type')='run.finished' ORDER BY seq LIMIT 1", runID).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var seal struct {
+		At time.Time `json:"at"`
+	}
+	if err := json.Unmarshal(payload, &seal); err != nil {
+		return false, err
+	}
+	return !seal.At.IsZero() && !seal.At.After(receivedAt), nil
 }

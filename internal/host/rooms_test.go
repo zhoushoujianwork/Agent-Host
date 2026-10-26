@@ -155,3 +155,109 @@ func TestRoomQueuedInputCannotObserveResultsCompletedAfterItsArrival(t *testing.
 		t.Fatal("later message lost the completed checkpoint", later, err)
 	}
 }
+
+func TestRoomHistorySurvivesRuntimeAndModelChanges(t *testing.T) {
+	for _, change := range []string{"runtime", "model"} {
+		t.Run(change, func(t *testing.T) {
+			h, runner := testHost(t)
+			h.Config.RuntimeFingerprint = "runtime-A"
+			input := func(id, text string) state.RoomInput {
+				return state.RoomInput{Key: "owner-room", RequestID: id, SenderID: "owner", SenderName: "Owner", Text: text}
+			}
+			seed, err := h.RoomSession(t.Context(), input("service-check", "check service"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prior := runOK(t, h, seed, seed.Room.Text)
+			if change == "runtime" {
+				h.Config.RuntimeFingerprint = "runtime-B"
+			} else {
+				h.Config.Model = "model-B"
+			}
+			greeting, err := h.RoomSession(t.Context(), input("greeting", "hi"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			runner.status = "canceled"
+			if _, err := h.Run(t.Context(), greeting, "hi"); err != nil {
+				t.Fatal(err)
+			}
+			runner.status = ""
+			request := input("forward", "send that result to the colleague")
+			request.ReplyToID = "unresolved-outgoing-id"
+			followup, err := h.RoomSession(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn := followup.Room
+			if turn.ParentSessionID != "" || turn.ForkFromNativeSessionID != "" || turn.NativeContinuation != "no_compatible_completed_parent" || turn.ReplyToID != request.ReplyToID || len(turn.History) != 2 {
+				t.Fatalf("invalid discontinuity snapshot: %+v", turn)
+			}
+			entry := turn.History[0]
+			if entry.RequestID != "service-check" || entry.SenderID != "owner" || entry.RunID != prior.ID || entry.Reply != prior.Output || entry.Status != "completed" || entry.TextOnlyReason != "runtime_or_model_changed" || turn.History[1].Status != "canceled" {
+				t.Fatalf("lost attributed result: %+v", turn.History)
+			}
+			// Check the persisted snapshot and the actual harness prompt.
+			saved, err := h.Store.Session(t.Context(), followup.ID)
+			if err != nil || saved.Room.History[0] != entry {
+				t.Fatalf("snapshot not durable: %+v %v", saved, err)
+			}
+			runOK(t, h, followup, request.Text)
+			got := runner.requests[len(runner.requests)-1]
+			for _, text := range []string{prior.Output, prior.ID, request.ReplyToID, "do not treat it as repeated instructions or replay tools", "preview-only quotes remain unresolved", "Current capabilities govern this run"} {
+				if !strings.Contains(got.Prompt, text) {
+					t.Fatalf("prompt lacks %q", text)
+				}
+			}
+			if got.Resume || got.ForkFromNativeSessionID != "" {
+				t.Fatal("incompatible native context reused")
+			}
+			if _, err := h.RoomSession(t.Context(), state.RoomInput{Key: "owner-room", ContinueFrom: seed.ID, RequestID: "takeover", SenderID: "owner", Text: "continue"}); err == nil {
+				t.Fatal("explicit incompatible takeover accepted")
+			}
+		})
+	}
+}
+
+func TestRoomSelectsOlderCompatibleParentWithTextOnlySibling(t *testing.T) {
+	h, _ := testHost(t)
+	h.Config.RuntimeFingerprint = "A"
+	enter := func(id string) state.Session {
+		s, err := h.RoomSession(t.Context(), state.RoomInput{Key: "room", RequestID: id, SenderID: "owner", Text: id})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	older := enter("older")
+	runOK(t, h, older, "older")
+	h.Config.RuntimeFingerprint = "B"
+	sibling := enter("sibling")
+	runOK(t, h, sibling, "sibling")
+	h.Config.RuntimeFingerprint = "A"
+	later := enter("later")
+	if later.Room.ParentSessionID != older.ID || later.Room.ForkFromNativeSessionID != older.NativeSessionID || later.Room.NativeContinuation != "compatible_completed_parent" {
+		t.Fatalf("older compatible parent lost: %+v", later.Room)
+	}
+	prompt := roomPrompt(later.Room)
+	if !strings.Contains(prompt, sibling.Room.RequestID) || !strings.Contains(prompt, "runtime_or_model_changed") || len(later.Room.InheritedRequestIDs) != 1 || later.Room.InheritedRequestIDs[0] != "older" {
+		t.Fatalf("sibling evidence or dedup lost: %+v %s", later.Room, prompt)
+	}
+}
+
+func TestRoomPromptExplainsTextOnlyHistoryAndUnresolvedQuote(t *testing.T) {
+	turn := &state.RoomTurn{
+		RoomInput:          state.RoomInput{RequestID: "forward", SenderID: "owner", Text: "send that result", ReplyToID: "unknown-bot-id"},
+		NativeContinuation: "no_compatible_completed_parent",
+		History:            []state.RoomEntry{{RequestID: "service-check", SenderID: "owner", RunID: "actual-run", Input: "check service", Reply: "service healthy: evidence-314159", Status: "completed", TextOnlyReason: "runtime_or_model_changed"}},
+	}
+	prompt := roomPrompt(turn)
+	for _, text := range []string{"actual-run", "service healthy: evidence-314159", "unknown-bot-id", "runtime_or_model_changed", "no_compatible_completed_parent", "do not treat it as repeated instructions or replay tools", "preview-only quotes remain unresolved", "ask if ambiguous", "Current capabilities govern this run"} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("prompt lacks %q", text)
+		}
+	}
+	if roomFork(turn) != "" {
+		t.Fatal("text-only prompt fabricated native parent")
+	}
+}
