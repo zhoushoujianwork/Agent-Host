@@ -16,6 +16,18 @@ GTMGoPlay can import the library when it adds a Feishu meeting entry. Its Rooms
 component will continue to own training context, conversation turns, ASR/TTS and
 business records. The library supplies the Feishu connection operations.
 
+## Speech component
+
+The [speech library](../plugins/speech/README.md) is an independent Go module
+with provider-neutral streaming interfaces and explicit Doubao adapters. It
+supports PCM16/16kHz mono ASR and legacy PCM16/24kHz mono TTS with bounded
+parsing and cancellation. The application owns the Agent/model response between
+recognition and synthesis, audio conversion and turn policy.
+
+Local protocol tests and an independent-consumer fixture cover this first slice.
+It has no live provider acceptance, Feishu audio transport, VAD or automatic
+barge-in. No Host or GTM application integration is included.
+
 ## Voice status and next steps
 
 **Realtime meeting audio is not implemented.** The supplied meeting manual's
@@ -24,11 +36,11 @@ checked for this increment did not supply the referenced realtime endpoint and
 audio wire contract. No guessed endpoint or synthetic success stands in for
 real audio acceptance.
 
-The next slice needs the target app's configured credential profile and the
-official audio connection/protocol documentation. Then implement the audio
-transport inside this library, verify a fixed spoken sentence in a test meeting,
-and add speech input/replies and interruption. Keep the first test confined to
-an explicitly selected meeting.
+The next slice needs the official audio connection/protocol documentation. The
+local Feishu profile is configured; verify its app identity and voice access for
+the selected test meeting. Then implement the Feishu audio transport, bridge it
+to the speech library and the application's Agent, and verify spoken input,
+a fixed spoken reply and interruption in that meeting.
 
 ## Library ownership
 

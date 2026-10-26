@@ -128,3 +128,76 @@ estimates only; they exclude supervising work and are not verified billing.
 | Localization with exact filenames | ok / exit 0; compatibility findings inspected | cc / claude-sonnet-5[1m] | 8 | 40.418 s | 0.228504 | `2df861b2-636c-49ab-b4d3-5ee1ed4521f6` |
 | Subprocess regression tests | ok / exit 0; report BLOCKED on reproduced output-limit bug; test exit 1 | codex / gpt-6.1-sol | 11 | 136.739 s | unavailable | `01a17609-86df-7940-b857-e1117b4661e5` |
 | Bounded-buffer fix | ok / exit 0; worker race tests exit 0 | codex / gpt-6.1-sol | 6 | 45.483 s | unavailable | `01a17609-86df-7940-b857-e1117b4661e5` |
+
+## Phase-one speech library
+
+`plugins/speech` is the independent module
+`github.com/zhoushoujianwork/Agent-Host/plugins/speech`. The root package contains
+provider-neutral ASR/TTS contracts only. Its `doubao` subpackage pins
+`github.com/coder/websocket v1.8.15`, matching the read-only GTM protocol sources.
+It imports no Host/GTM internals and owns no model or conversation loop.
+
+ASR validates PCM16/16kHz mono before connecting, frames sample-aligned input in
+at most 12800-byte chunks, and separates explicit input completion from immediate
+cancellation. Definite utterance events do not finish a stream: only the
+provider-final frame does. TTS accepts once-submitted text (at most 10000 UTF-8
+bytes) on legacy `/api/v1/tts/ws_binary`, with explicit app/token/cluster and
+voice. Output streams as PCM16/24kHz mono; newer bidirectional TTS and collected
+MP3 are outside this slice.
+
+Legacy TTS ACK and sequence framing follows the
+[official interface](https://docs.volcengine.com/docs/DoubaoVoice/Websocketinterface?lang=zh)
+and [provider-hosted sample](https://developer.volcengine.com/articles/7500048059624554515).
+Header-only flags0 ACKs are ignored; the earlier eight-byte zero-length ACK is
+also accepted. Audio flags1 requires a positive signed sequence, while flags2/3
+requires a negative sequence before the length. ASR input-completion flags2
+remains size-only. Literal-byte regressions exercise ACK and flags2 final audio
+through streaming TTS. Completion with no audio is an explicit error.
+
+The shared parser bounds message/decompressed payloads to 1 MiB, with an 8 MiB
+total TTS output limit. Channels are bounded; cancellation releases socket I/O,
+queued writes and output backpressure. Zero connect timeout means 10 seconds,
+including the initial write. Failures are terminal, with remote message text
+and credential-bearing dial diagnostics omitted; there is no retry or replay.
+
+Local `httptest.Server` WebSocket fixtures use `net.Pipe` to avoid loopback bind
+permissions. They exercise framing, completion, streaming, cancellation,
+validation, truncation, malformed frames and decompression/output limits. A
+separate temporary Go module imports the public API with a local replacement
+and the offline module cache. `Makefile` includes speech vet/tests; the
+[compile-checked turn example](../plugins/speech/example/turn.go) keeps the
+Agent/model callback between ASR and TTS. The example aggregates nonempty
+definite segments in order, replaces identified revisions, deduplicates exact
+text without identity and rejects partial-only input. Its tests cover
+aggregation, errors, cancellation and playback. It is educational caller-owned
+turn policy, not a core orchestration API. The independent-consumer subprocess
+uses a quoted replacement path and a context timeout. See the
+[README](../plugins/speech/README.md) for formats, limits and caller responsibilities.
+
+This increment provides no live speech acceptance, Feishu audio transport,
+automatic barge-in, VAD or complete meeting integration. Host and GTM runtime
+configuration, credentials and existing speech implementations are unchanged.
+
+### Speech implementation receipts
+
+Both worker runs used profile `codex-gpt-6.1-sol-medium-fast`, model
+`gpt-6.1-sol`, session `01a17624-2f3d-77e0-8402-fb896c4c8cb2`.
+Worker cost estimates are unavailable; elapsed time is measured and excludes
+supervising work. Reports were checked against the actual code and tests.
+
+| Run | Status / exit | Tool calls | Elapsed | Estimated worker USD |
+| --- | --- | ---: | ---: | --- |
+| Initial implementation | ok / 0 | 23 | 471.248 s | unavailable |
+| Review corrections and regressions | ok / 0 | 8 | 186.325 s | unavailable |
+
+Independent review corrected legacy TTS ACK/sequence handling, rejected empty
+synthesis, and made the example aggregate definite transcript segments before
+calling the Agent. Module race tests passed after those corrections, including
+the independent consumer and example behavior checks. No live provider or
+meeting calls, production restart, or GTM application changes were performed.
+
+Final supervising validation passed: `go -C plugins/speech test -race ./...`,
+`GOFLAGS=-p=1 make check` (Go vet/tests, both plugin modules and the repository's
+headless Python/JavaScript suites), staged whitespace review and local document
+link checks. Package compilation was serialized to avoid contention; no test
+was skipped or replaced. Desktop and live-provider acceptance remain pending.
