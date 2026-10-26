@@ -17,12 +17,16 @@ function setup(records) {
 }
 const row=(id,fields={})=>({key:id,id,input:id,source:{id:"cli:db",kind:"database",name:"CLI"},agent_id:"daily",audience_id:"owner",created_at:`2026-10-21T00:00:0${id}Z`,execution_status:"completed",...fields});
 
-test("room groups include forks, order intake rather than completion, and sort sessions by recent activity",()=>{
+test("room groups include forks, order newest intake first, and sort sessions by recent activity",()=>{
   const h=setup([row("3",{room_id:"a",session_id:"fork-3"}),row("1",{room_id:"a",session_id:"fork-1"}),row("2",{room_id:"b"})]);
   const groups=h.groups();
-  assert.deepEqual(groups.map(g=>g.rows.map(r=>r.id)),[["1","3"],["2"]]);
+  assert.deepEqual(groups.map(g=>g.rows.map(r=>r.id)),[["3","1"],["2"]]);
   h.state.index.records=[row("1",{room_id:"a",received_at:"2026-10-21T08:00:00+08:00"}),row("2",{room_id:"a",received_at:"2026-10-20T23:59:59Z"})];
-  assert.deepEqual(h.groups()[0].rows.map(r=>r.id),["2","1"]);
+  assert.deepEqual(h.groups()[0].rows.map(r=>r.id),["1","2"]);
+  h.state.index.records=[row("3",{room_id:"a",received_at:"2026-10-20T23:59:59Z"}),
+    row("1",{room_id:"a",received_at:"0001-01-01T00:00:00Z",created_at:"2026-10-21T00:00:00Z"}),
+    row("2",{room_id:"a",created_at:"2026-10-21T00:00:00Z"})];
+  assert.deepEqual(h.groups()[0].rows.map(r=>r.id),["2","1","3"]);
 });
 test("source, Agent, audience and reset room boundaries never merge",()=>{
   const h=setup([row("1",{room_id:"room:old"}),row("2",{room_id:"room:new"}),
@@ -40,10 +44,15 @@ test("selected conversation opens, shows numbered messages and sender, and retai
   h.state.key="2";h.$("record-list").scrollTop=40;h.renderList();
   const group=h.$("record-list").children[0];
   assert.equal(group.open,true);assert.equal(h.$("record-list").scrollTop,40);
-  assert.match(group.children[1].children[0].children[0].textContent,/^1\./);
-  assert.equal(group.children[1].children[2].textContent,"Alice");
-  group.children[2].listeners.click();assert.deepEqual(h.selected,["2"]);
-  group.children[0].listeners.click();assert.deepEqual(h.selected,["2","2"]);
+  assert.match(group.children[1].children[0].children[0].textContent,/^2\./);
+  assert.match(group.children[2].children[0].children[0].textContent,/^1\./);
+  assert.equal(group.children[1].children[2].textContent,"Bob");
+  assert.equal(group.children[0].children[0].textContent,"2");
+  assert.match(group.children[0].children[2].textContent,/倒序，最新在前/);
+  assert.match(h.$("record-count").title,/接收时间倒序/);
+  assert.equal(group.children[1]["aria-pressed"],"true");
+  group.children[2].listeners.click();assert.deepEqual(h.selected,["1"]);
+  group.children[0].listeners.click();assert.deepEqual(h.selected,["1","2"]);
   group.open=false;group.listeners.toggle();h.renderList();assert.equal(h.$("record-list").children[0].open,false);
   h.$("search").value="alice";h.renderList();
   assert.equal(h.$("record-list").children[0].children.length,3);

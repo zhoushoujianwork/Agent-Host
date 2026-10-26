@@ -9,6 +9,7 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Explore the memory graph, source evidence, memory library and review queue.
 - Inspect execution records, tool evidence and separate execution, acceptance
   and memory outcomes.
+  Sessions and their messages appear newest first; headings preview the latest request, while message numbers retain chronological order within loaded records.
 - Click a Session heading or a message in execution records to open its history
   in the right Chat panel and continue from its native context. CLI, DingTalk
   and Feishu sessions retain their original Agent, project, model and audience.

@@ -302,8 +302,8 @@ function sessionGroups(rows) {
     if (!groups.has(key)) groups.set(key,{key,id,kind,rows:[]});
     groups.get(key).rows.push(row);
   }
-  for (const group of groups.values()) group.rows.sort(compare);
-  return [...groups.values()].sort((a,b) => compare(b.rows.at(-1),a.rows.at(-1)));
+  for (const group of groups.values()) group.rows.sort((a,b) => compare(b,a));
+  return [...groups.values()].sort((a,b) => compare(b.rows[0],a.rows[0]));
 }
 function renderList() {
   if (!state.index) return;
@@ -313,7 +313,7 @@ function renderList() {
     .filter(group => group.rows.some(row => [row.input,row.id,row.project_id,row.project_name,json(row.projects || []),row.workspace,row.scope,
       row.room_id,row.session_id,row.native_session_id,row.sender_id,row.sender_name,row.agent_id,row.audience_id,row.source.name,row.label,runLabels[row.label]].join(" ").toLowerCase().includes(query)));
   $("record-count").textContent = `${groups.length} 个会话 · ${groups.reduce((n,g) => n + g.rows.length,0)} 条`;
-  $("record-count").title = `本机数据库 ${state.index.database_count} 条，每个来源最多加载最近 ${state.index.database_limit} 条；会话内按接收时间正序，序号仅针对已加载记录。搜索命中会话时保留已加载上下文。`;
+  $("record-count").title = `本机数据库 ${state.index.database_count} 条，每个来源最多加载最近 ${state.index.database_limit} 条；会话内按接收时间倒序，最新消息在前，序号仅针对已加载记录。搜索命中会话时保留已加载上下文。`;
   const list = $("record-list");
   const scroll = list.scrollTop;
   list.replaceChildren();
@@ -324,17 +324,17 @@ function renderList() {
     section.open = Boolean(query) || (expandedSessions.get(group.key) ?? (selected || !state.key && group === groups[0]));
     section.addEventListener("toggle",() => expandedSessions.set(group.key,section.open));
     const heading = dom("summary","record-session-heading");
-    heading.addEventListener("click", () => select(group.rows.at(-1).key));
+    heading.addEventListener("click", () => select(group.rows[0].key));
     const sessionLabel = short(group.id) + (group.kind === "room" && group.id.includes(":") ? ":" + short(group.id.split(":").at(-1)) : "");
     heading.append(dom("strong","record-session-title",group.rows[0].input || "未记录请求正文"),
       dom("span","record-session-meta",`${group.rows[0].source.name} · Agent ${group.rows[0].agent_id || "default"} · ${group.rows[0].audience_id && group.rows[0].audience_id !== "owner" ? "群聊" : "私聊"} · ${group.rows.length} 条`),
-      dom("span","record-session-meta",`${group.kind === "run" ? "独立记录" : "会话 " + sessionLabel} · 按消息时间正序`));
+      dom("span","record-session-meta",`${group.kind === "run" ? "独立记录" : "会话 " + sessionLabel} · 按消息时间倒序，最新在前`));
     section.append(heading);
     for (const [index,row] of group.rows.entries()) {
       const button = dom("button", `record ${row.key === state.key ? "selected" : ""}`);
       button.setAttribute("aria-pressed", String(row.key === state.key));
       const top = dom("div", "record-top");
-      top.append(dom("span", "", `${index + 1}. ${row.source.kind === "report" ? "归档" : "本机"} · ${short(row.id)}`), badge(row.execution_status));
+      top.append(dom("span", "", `${group.rows.length - index}. ${row.source.kind === "report" ? "归档" : "本机"} · ${short(row.id)}`), badge(row.execution_status));
       button.append(top, dom("div", "record-title", runLabels[row.label] || row.input || "未记录请求正文"));
       button.append(dom("div", "record-bottom", row.sender_name || (row.sender_id === "local-owner" ? "本地用户" : row.sender_id) || "提问人未记录"));
       const bottom = dom("div", "record-bottom");
