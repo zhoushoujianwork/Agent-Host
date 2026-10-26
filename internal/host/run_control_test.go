@@ -1,11 +1,14 @@
 package host
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 	"time"
 
@@ -100,5 +103,99 @@ func TestRunControlCancelsOnlySelectedExecutionAndPersistsReceipt(t *testing.T) 
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("sibling did not finish")
+	}
+}
+
+// The Web viewer is a Python consumer of the Go-created capability. This uses
+// the real startRunControl endpoint and the real viewer module, with isolated
+// fixture contexts only; no task or harness is started.
+func TestRunControlCapabilityIsUsableByWebViewerModule(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal("the Web viewer run-control check requires python3:", err)
+	}
+	home, err := filepath.EvalSymlinks(t.TempDir()) // the viewer rejects symlinked paths
+	if err != nil {
+		t.Fatal(err)
+	}
+	viewer, err := filepath.Abs(filepath.Join("..", "..", "tools", "run-viewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type fixture struct {
+		id    string
+		ctx   context.Context
+		close func()
+	}
+	start := func() fixture {
+		ctx, cancel := context.WithCancel(t.Context())
+		id := ID()
+		closeControl, err := startRunControl(home, id, cancel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { closeControl(); cancel() })
+		return fixture{id: id, ctx: ctx, close: closeControl}
+	}
+	target, sibling := start(), start()
+	// Lock the producer shape that the viewer must accept, without printing it.
+	var capability struct{ Token string }
+	raw, err := os.ReadFile(filepath.Join(home, ".run-control-"+target.id+".json"))
+	if err != nil || json.Unmarshal(raw, &capability) != nil {
+		t.Fatal("capability is unreadable", err)
+	}
+	uuid4 := `[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}`
+	if !regexp.MustCompile("^(?:" + uuid4 + "){2}$").MatchString(capability.Token) {
+		t.Fatal("Host token is not two canonical UUIDv4 values")
+	}
+	script := "import json, sys\n" +
+		"from pathlib import Path\n" +
+		"sys.path.insert(0, sys.argv[1])\n" +
+		"import run_control\n" +
+		"home, run_id, action = Path(sys.argv[2]), sys.argv[3], sys.argv[4]\n" +
+		"result = {'available': run_control.available(home, run_id)}\n" +
+		"if action == 'stop':\n" +
+		"    run_control.stop(home, run_id)\n" +
+		"    result['stopped'] = True\n" +
+		"print(json.dumps(result))\n"
+	call := func(id, action string) map[string]bool {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), python, "-B", "-c", script, viewer, home, id, action)
+		out, err := cmd.Output()
+		if err != nil {
+			var stderr []byte
+			if exit, ok := err.(*exec.ExitError); ok {
+				stderr = exit.Stderr
+			}
+			t.Fatalf("viewer %s failed: %v\n%s", action, err, stderr)
+		}
+		var result map[string]bool
+		if err := json.Unmarshal(out, &result); err != nil {
+			t.Fatal("unexpected viewer output:", err)
+		}
+		return result
+	}
+	if !call(target.id, "check")["available"] || !call(sibling.id, "check")["available"] {
+		t.Fatal("viewer rejected a Go-created capability")
+	}
+	if got := call(target.id, "stop"); !got["available"] || !got["stopped"] {
+		t.Fatalf("viewer stop was not confirmed: %v", got)
+	}
+	select {
+	case <-target.ctx.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("stop did not cancel the selected fixture")
+	}
+	select {
+	case <-sibling.ctx.Done():
+		t.Fatal("stop canceled a sibling fixture")
+	default:
+	}
+	target.close()
+	if call(target.id, "check")["available"] {
+		t.Fatal("viewer accepted a capability after the run ended")
+	}
+	if !call(sibling.id, "check")["available"] {
+		t.Fatal("sibling capability was removed")
 	}
 }

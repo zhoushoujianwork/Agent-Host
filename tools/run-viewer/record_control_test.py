@@ -51,6 +51,31 @@ class RecordControlTests(unittest.TestCase):
         path.chmod(0o600)
         return path
 
+    def test_capability_token_shapes_accept_hex_and_host_double_uuid_only(self):
+        first, second = "0123abcd-4567-4def-8abc-0123456789ab", "fedc9876-5432-4abc-bcde-f01234567890"
+        # Hyphen-free UUID text is also 64 lowercase hex characters, so it is valid by the hex contract.
+        valid = ["a" * 64, "0123456789abcdef" * 4, first + second, first.replace("-", "") + second.replace("-", "")]
+        invalid = ["", "a" * 63, "a" * 65, "A" * 64, "g" * 64, " " + "a" * 63, "a" * 64 + "\n", "a" * 64 + " ",
+                   first, first + second + "a", first[:-1] + second,
+                   first.upper() + second, first + second.upper(),
+                   first.replace("-4def-", "-3def-") + second,        # not version 4
+                   first + second.replace("-4abc-", "-5abc-"),
+                   first.replace("-8abc-", "-cabc-") + second,        # not RFC variant
+                   first + second.replace("-bcde-", "-7cde-"),
+                   " " + first + second, first + second + "\n", first + " " + second, first + "-" + second,
+                   first + first[:30] + "\n", 1234, None, ["a" * 64]]
+        path = self.root / "cli" / ".run-control-same.json"
+        for token in valid + invalid:
+            path.write_text(json.dumps({"version":1,"run_id":"same","port":12345,"token":token}))
+            path.chmod(0o600)
+            self.assertEqual(run_control.available(self.root / "cli", "same"), token in valid, repr(type(token)))
+        # The accepted token is sent unchanged.
+        path.write_text(json.dumps({"version":1,"run_id":"same","port":12345,"token":first + second})); path.chmod(0o600)
+        self.assertEqual(run_control.capability(self.root / "cli", "same")["token"], first + second)
+        # Shape compatibility does not bypass the private-file checks.
+        path.chmod(0o644)
+        self.assertFalse(run_control.available(self.root / "cli", "same"))
+
     def test_exact_multi_source_resolution_and_scope_authorization_before_control(self):
         self.capability("cli")
         self.capability("feishu")

@@ -6,6 +6,13 @@ import re
 
 from settings_store import private_bytes
 
+# Accepted token shapes, matched exactly and sent to Host unchanged:
+# - 64 lowercase hex characters (the documented contract), or
+# - two concatenated canonical lowercase UUIDv4 strings with the RFC 4122
+#   variant, which is what Host's ID() currently produces (244 random bits).
+_UUID4 = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+TOKEN_SHAPE = re.compile(r"[a-f0-9]{64}|(?:" + _UUID4 + r"){2}")
+
 
 def capability(home, run_id):
     if not isinstance(run_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", run_id):
@@ -13,7 +20,7 @@ def capability(home, run_id):
     value = json.loads(private_bytes(home / (".run-control-" + run_id + ".json"), max_bytes=4096))
     if (not isinstance(value, dict) or value.get("version") != 1 or value.get("run_id") != run_id
             or type(value.get("port")) is not int or not 0 < value["port"] < 65536
-            or not isinstance(value.get("token"), str) or not re.fullmatch(r"[a-f0-9]{64}", value["token"])):
+            or not isinstance(value.get("token"), str) or not TOKEN_SHAPE.fullmatch(value["token"])):
         raise ValueError("Invalid run control capability")
     return value
 

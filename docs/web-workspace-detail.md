@@ -214,6 +214,12 @@ The capability disappears when the run exits. Stale capabilities cannot authoriz
 another run, even if the operating system reuses the port. The viewer reads only
 validated private regular files for runs in the selected session, never exposes
 tokens to the browser, and retains its existing origin/mutation-token checks.
+The viewer accepts exactly two token shapes and sends the token unchanged: 64
+lowercase hex characters, or the current Host token, two concatenated canonical
+lowercase UUIDv4 strings with the RFC variant (244 random bits). Any other
+string, whitespace, uppercase, version or variant is rejected. A Go integration
+test drives the viewer module against a Go-created capability and an isolated
+endpoint, and checks that only the selected fixture context is canceled.
 Browser stop requests also carry the selected context to reject stale selections.
 
 Accepted cancellation displays `stopping`; only persisted completion evidence
