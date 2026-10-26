@@ -259,3 +259,38 @@ error on every verification. Lock replacement, unsafe permissions and symlink
 paths still invalidate or reject the snapshot. A shared publication lock remains
 held throughout projection, and genuine source changes during Host verification
 remain visible failures rather than falling back to legacy memory rows.
+
+## Direct execution record controls
+
+`GET /api/record?key=...` adds `control: {active, can_stop, reason}` and the
+existing owner `mutation_token`. A database record is active until `run.finished`
+when its execution status is starting/running/stopping or a valid per-run
+capability remains, including memory finalization. Archives and finished records
+cannot be controlled. Capability tokens, ports and file paths remain server-side.
+Availability checks validate the capability file; they do not probe its endpoint.
+
+`POST /api/record/stop` accepts exactly `{key: string}` (1–256 characters) under
+the existing loopback Host, same-Origin, `X-Host-Action`, JSON content type and
+8 KiB body limit. `record_control.py` first reads the record through its catalog
+scope checks, then resolves a qualified key to the owning child catalog and
+state home. Each request rechecks the persisted record and calls the existing
+per-run `run_control.stop`; it does not change Chat selection or signal a service.
+The response is `{key, run_id, status: "stopping"}`. Finished or unsupported runs
+and unconfirmed capability/network cancellation return an explicit conflict.
+An acknowledgement does not establish a canceled execution or completed memory
+processing; the journal's final receipt remains authoritative.
+
+The record header keeps pending, acknowledged and error state per catalog key.
+While a request is pending, another cancellation cannot be submitted from this
+page. A selection change cannot retarget it or transfer its state to another run.
+Acknowledged cancellation remains disabled through refreshes until `run.finished`.
+Failed requests show an error and are never retried automatically. View live
+explicitly emits the existing session-selection event in the workspace; from a
+standalone page it navigates to `/#executions?key=...`. Polling never attaches
+Chat. Active records refresh every second, idle records every five seconds,
+subject to auto-refresh and visibility.
+
+`record_control_test.py` covers catalog isolation, fresh scope/status checks,
+capability receipts and HTTP guards using temporary state and mocked transport.
+`execution-control_test.cjs` covers visibility, pending and acknowledgement state,
+selection races, error isolation and live navigation without desktop input.

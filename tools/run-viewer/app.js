@@ -1,6 +1,6 @@
 "use strict";
 
-// Presentation consumes the host journal; it never executes or reviews a task.
+// Presentation consumes the Host journal and requests scoped run cancellation.
 const $ = (id) => document.getElementById(id);
 const array = (value) => Array.isArray(value) ? value : [];
 const json = (value) => JSON.stringify(value, null, 2);
@@ -54,6 +54,53 @@ const phaseNames = {
 };
 const runLabels = {repair: "首次修复", resume: "原生会话续接", reuse: "经验召回与复用", after_invalidation: "失效后召回验证"};
 const state = {index: null, key: null, record: null, tab: "overview", phase: "all", native: false, busy: false, generation: 0};
+
+// Cancellation is keyed by immutable catalog key, never the shared Chat selection.
+const recordStops = new Map();
+let recordStopPending = false;
+function renderRecordControls() {
+  const record = state.record;
+  const finished = record?.events?.some(event => event.type === "run.finished");
+  if (finished) recordStops.delete(state.key);
+  const stop = recordStops.get(state.key);
+  const active = Boolean(record && !record.snapshot && !finished && (record.control?.active || stop?.pending || stop?.stopping));
+  $("record-actions").hidden = !active;
+  $("view-live").hidden = !active;
+  $("stop-record").hidden = !active;
+  $("stop-record").disabled = !active || !record.control?.can_stop || !record.mutation_token || recordStopPending || Boolean(stop?.stopping);
+  $("stop-record").textContent = stop?.pending ? "正在请求中止…" : stop?.stopping ? "正在中止…" : "■ 中止执行";
+  $("record-control-state").textContent = stop?.error || (stop?.stopping ? "已请求中止，等待原执行的最终回执。" : stop?.pending ? "正在请求中止所选执行…" : record?.control?.reason || "");
+}
+function viewLiveRecord() {
+  if (!state.record || $("view-live").hidden) return;
+  if (window.parent !== window) {
+    window.parent.document.dispatchEvent(new CustomEvent("agh:session-select", {detail:{key:state.key}}));
+  } else {
+    location.href = `/#executions?key=${encodeURIComponent(state.key)}`;
+  }
+}
+async function stopRecord() {
+  if (recordStopPending || $("stop-record").disabled) return;
+  const key = state.key, generation = state.generation;
+  const runId = state.record.run.id, token = state.record.mutation_token;
+  recordStopPending = true;
+  recordStops.set(key, {pending:true});
+  renderRecordControls();
+  try {
+    const response = await fetch("/api/record/stop", {method:"POST", headers:{"Content-Type":"application/json", "X-Host-Action":token}, body:JSON.stringify({key})});
+    const result = await response.json();
+    if (!response.ok) throw Error(result.error || "无法确认中止请求，请刷新执行记录。");
+    if (result.key !== key || result.run_id !== runId || result.status !== "stopping") throw Error("中止回执不匹配，请刷新执行记录确认。");
+    recordStops.set(key, {stopping:true});
+  } catch (error) {
+    recordStops.set(key, {error:error.message});
+  } finally {
+    recordStopPending = false;
+    // Re-read only the initiating selection; controls always derive from the current key.
+    if (state.key === key && state.generation === generation) await refresh();
+    renderRecordControls();
+  }
+}
 
 function card(title, subtitle = "") {
   const node = dom("article", "card");
@@ -357,6 +404,7 @@ function renderRecord() {
   const record = state.record;
   if (!record) return;
   $("content").hidden = false;
+  renderRecordControls();
   const run = record.run;
   const toolList = tools(record);
   const actual = [run.model, ...record.events.filter((e) => e.phase === "execute" && ["agent.result", "text.delta", "agent.started"].includes(e.type)).map(e => e.model).reverse()].find(model => model && model !== "default");
@@ -656,12 +704,14 @@ function rawPanel(panel, record) {
 
 $("search").addEventListener("input", renderList);
 $("source-filter").addEventListener("change", changeEntry);
+$("view-live").addEventListener("click", viewLiveRecord);
+$("stop-record").addEventListener("click", stopRecord);
 $("refresh").addEventListener("click", refresh);
 document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {state.tab = button.dataset.tab; renderRecord();}));
 $("close-dialog").addEventListener("click", () => $("phase-dialog").close());
 async function pollRecords() {
   if ($("auto-refresh").checked && !document.hidden) await refresh();
-  const active = state.record?.run?.execution_status === "running";
+  const active = state.record?.control?.active ?? (state.record?.run?.execution_status === "running");
   setTimeout(pollRecords, active ? 1000 : 5000);
 }
 document.addEventListener("visibilitychange", () => {if (!document.hidden && $("auto-refresh").checked) refresh();});

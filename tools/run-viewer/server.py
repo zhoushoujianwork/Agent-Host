@@ -20,6 +20,8 @@ import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
+import record_control
+
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
@@ -883,7 +885,9 @@ class Handler(BaseHTTPRequestHandler):
                 if len(keys) != 1:
                     self.send(400, {"error": "provide exactly one record key"})
                 else:
-                    self.send(200, self.server.catalog.record(keys[0]))
+                    result = record_control.record(self.server.catalog, keys[0])
+                    result["mutation_token"] = getattr(self.server, "mutation_token", None)
+                    self.send(200, result)
             elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
@@ -898,7 +902,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         token = getattr(self.server, "mutation_token", None)
         route = urlsplit(self.path).path
-        if route not in {"/api/memory-action", "/api/settings", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent", "/api/chat/session"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
+        if route not in {"/api/memory-action", "/api/settings", "/api/record/stop", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent", "/api/chat/session"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -912,6 +916,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("provide a bounded JSON action")
             self.connection.settimeout(10)
             value = decode(self.rfile.read(length))
+            if route == "/api/record/stop":
+                if not isinstance(value, dict) or set(value) != {"key"} or not isinstance(value["key"], str) or not 0 < len(value["key"]) <= 256:
+                    raise ValueError("provide exactly one bounded record key")
+                self.send(200, record_control.stop(self.server.catalog, value["key"]))
+                return
             if route.startswith("/api/chat"):
                 chat = getattr(self.server, "chat_runtime", None)
                 if chat is None:
@@ -949,7 +958,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("invalid memory action")
             status, result = self.server.catalog.action(value["key"], value["action"], value["note"], value["revision"])
             self.send(status, result)
-        except (Conflict, ChatConflict) as error:
+        except (Conflict, ChatConflict, record_control.RecordControlConflict) as error:
             self.send(409, {"error": str(error)})
         except KeyError:
             self.send(404, {"error": "Settings file is outside this console." if route == "/api/settings" else "record outside the selected source or scope"})

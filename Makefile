@@ -94,7 +94,8 @@ check:
 	python3 -B tools/release/package_test.py
 	python3 -B tools/release/export_public_test.py
 	python3 -B tools/run-viewer/server_test.py
-	node --test tools/run-viewer/app_test.cjs
+	python3 -B tools/run-viewer/record_control_test.py
+	node --test tools/run-viewer/app_test.cjs tools/run-viewer/execution-control_test.cjs
 	python3 -B tools/run-viewer/memory_view_test.py
 	python3 -B tools/run-viewer/settings_test.py
 	python3 -B tools/run-viewer/platform_skills_test.py

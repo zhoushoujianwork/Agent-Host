@@ -35,6 +35,14 @@ disabled. [Implementation notes](web-workspace-detail.md).
   [concurrent CLI tasks](cli-concurrency.md). Nothing is automatically retried.
 - Drafts save locally. The composer grows with the draft and shows its character
   count. Clear can be undone until the next edit. Escape collapses Chat.
+- A running execution's record header offers **View live** and **Stop execution**.
+  Records refresh every second while the selected execution is active, otherwise
+  every five seconds, when auto-refresh is enabled and the page is visible.
+  View live opens the original session in Chat, including from a standalone
+  record page. Stop targets that exact record without changing the Chat selection.
+  Its pending state remains until the Host records a final outcome. Unavailable
+  run control is explained beside the disabled button; completed records and
+  archives have no live actions.
 - Stop requests cancellation of the selected Host execution and waits for its
   recorded outcome. Other concurrent executions continue. Older running Hosts
   without run control remain observable and must be stopped at their original entry.

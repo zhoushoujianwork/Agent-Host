@@ -25,13 +25,13 @@
 
   <main>
     <header class="topbar"><span>工作空间 <span class="slash">/</span> 执行记录</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label></header>
-    <section class="page-intro"><div class="page-kicker">EXECUTION JOURNAL</div><h1>从请求，到每一步行动。</h1><p>回看执行过程、工具证据与记忆流转。执行完成、业务验收与记忆保存分别记录。</p><div class="journal-controls"><span id="sync-state" role="status">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 每 5 秒刷新</label><button id="refresh" class="button quiet">↻ 刷新记录</button></div></section>
+    <section class="page-intro"><div class="page-kicker">EXECUTION JOURNAL</div><h1>从请求，到每一步行动。</h1><p>回看执行过程、工具证据与记忆流转。执行完成、业务验收与记忆保存分别记录。</p><div class="journal-controls"><span id="sync-state" role="status">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 自动刷新 · 执行中 1 秒 / 其他 5 秒</label><button id="refresh" class="button quiet">↻ 刷新记录</button></div></section>
     <div id="error" class="error-banner" role="alert" hidden></div>
     <div id="backup-status" class="snapshot-note" aria-live="polite" hidden></div>
     <div id="source-status" class="snapshot-note" aria-live="polite"></div>
     <div id="empty" class="empty" hidden><span>◇</span><h1>还没有执行记录</h1><p>Check the source status above and confirm Chat uses the same state home.</p></div>
     <div id="content" hidden>
-      <div class="page-heading"><div><div class="eyebrow">EXECUTION TRACE</div><h1 id="run-title">执行详情</h1><div class="run-meta"><span id="run-id"></span><span id="run-time"></span><span id="source-badge"></span></div></div><div id="overall-status"></div></div>
+      <div class="page-heading"><div><div class="eyebrow">EXECUTION TRACE</div><h1 id="run-title">执行详情</h1><div class="run-meta"><span id="run-id"></span><span id="run-time"></span><span id="source-badge"></span></div></div><div><div id="overall-status"></div><div id="record-actions" hidden><button id="view-live" type="button" class="button quiet">查看实时执行</button> <button id="stop-record" type="button" class="button quiet">■ 中止执行</button><p id="record-control-state" role="status" aria-live="polite"></p></div></div></div>
       <div id="snapshot-note" class="snapshot-note" hidden></div>
       <div class="metrics" id="metrics"></div>
       <div class="tabs" role="tablist" aria-label="记录详情"><button class="tab active" data-tab="overview" role="tab" aria-selected="true">核心过程</button><button class="tab" data-tab="events" role="tab" aria-selected="false">阶段事件</button><button class="tab" data-tab="tools" role="tab" aria-selected="false">工具证据</button><button class="tab" data-tab="decisions" role="tab" aria-selected="false">模型判断</button><button class="tab" data-tab="memory" role="tab" aria-selected="false">记忆流转</button><button class="tab" data-tab="raw" role="tab" aria-selected="false">原始记录</button></div>
