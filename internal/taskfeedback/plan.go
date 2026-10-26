@@ -169,9 +169,7 @@ func (r Resolver) Resolve(ctx context.Context, req Request) Plan {
 		return p
 	}
 	if p.NotifyTo == p.Requester && req.Origin == nil && req.NotifyTo == "" && req.RequestFor == "" && req.Channel == "" {
-		if u, ok := r.user(p.NotifyTo); !ok || len(u.Accounts) == 0 {
-			return p
-		}
+		return p
 	}
 	u, ok := r.user(p.NotifyTo)
 	if !ok {

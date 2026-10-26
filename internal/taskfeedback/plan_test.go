@@ -92,10 +92,39 @@ func TestSemanticRecipientRequiresConfidenceAndUniqueName(t *testing.T) {
 	if p := r.Resolve(t.Context(), req); p.Mode != "needs_recipient" || p.Reason != "demand_owner_name_ambiguous" {
 		t.Fatal(p)
 	}
-	r = fixtureResolver("self")
-	r.Users = append(r.Users, User{ID: "owner", NotifyChannel: "feishu", Accounts: []Account{{Channel: "feishu", AccountID: "app", TenantID: "tenant", SenderID: "ou_owner"}}})
-	if p := r.Resolve(t.Context(), Request{Text: "Check my service", Requester: "owner", Interpret: true}); p.Mode != "notify" || p.NotifyTo != "owner" {
-		t.Fatal("configured CLI requester lost default notification", p)
+}
+
+func TestCLIConfiguredSelfFeedbackRequiresExplicitOverride(t *testing.T) {
+	accounts := []Account{
+		{Channel: "feishu", AccountID: "app", TenantID: "tenant", SenderID: "ou_owner"},
+		{Channel: "dingtalk", AccountID: "bot", TenantID: "corp", SenderID: "owner"},
+	}
+	for _, count := range []int{1, 2} {
+		t.Run(fmt.Sprintf("accounts_%d", count), func(t *testing.T) {
+			r := fixtureResolver("self")
+			r.Users = append(r.Users, User{ID: "owner", NotifyChannel: "feishu", Accounts: accounts[:count]})
+			for _, interpret := range []bool{false, true} {
+				p := r.Resolve(t.Context(), Request{Text: "Check my service", Requester: "owner", Interpret: interpret})
+				if p.Mode != "terminal" || p.Target != nil || p.NotifyTo != "owner" || p.RequestFor != "owner" {
+					t.Fatal("ordinary CLI self feedback escaped terminal", p)
+				}
+			}
+			for _, req := range []Request{
+				{Requester: "owner", NotifyTo: "owner"},
+				{Requester: "owner", Channel: "feishu"},
+				{Requester: "owner", RequestFor: "owner"},
+			} {
+				p := r.Resolve(t.Context(), req)
+				if p.Mode != "notify" || p.Target == nil || *p.Target != accounts[0] {
+					t.Fatal("explicit CLI self feedback override lost delivery", p)
+				}
+			}
+			origin := &Origin{Account: accounts[0], MessageID: "original"}
+			p := r.Resolve(t.Context(), Request{Requester: "owner", Origin: origin, Interpret: true})
+			if p.Mode != "origin" || p.Target == nil || *p.Target != accounts[0] || p.Origin != origin {
+				t.Fatal("channel self feedback lost original destination", p)
+			}
+		})
 	}
 }
 

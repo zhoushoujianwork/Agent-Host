@@ -15,7 +15,7 @@ worker. Names need verified account bindings in `config/users.json`.
 | A member mentions agh in a group | That member; reply in the original conversation. |
 | The owner asks to handle another person's issue | Resolve the named person through verified account bindings; notify that person and retain the original reply. |
 | CLI includes ownership or recipient arguments | Use the explicit user IDs and validate their configured accounts. |
-| CLI omits those arguments | Interpret the current request like an owner handoff; otherwise retain terminal feedback. |
+| CLI omits those arguments | Interpret the current request like an owner handoff; self-owned work retains terminal feedback even with configured chat accounts. |
 | Owner submits through Web Chat | Reply in Web only for the owner's own work; notify only a resolved other recipient. |
 | A name or destination is ambiguous | Continue independently executable work; record that notification needs a recipient and explain the gap. |
 

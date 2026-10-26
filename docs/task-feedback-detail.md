@@ -40,8 +40,9 @@ agent-host notifications resolve NOTIFICATION_ID --config-dir /ROOT/config \
 Replace illustrative paths/IDs with configured values. `--request-for` identifies
 demand ownership; `--notify-to` optionally chooses a different verified recipient.
 `--feedback-config-dir` supplies the unified directory when no Agent catalog is
-selected. A configured local requester account receives automatic CLI feedback;
-otherwise ordinary self-owned CLI work retains terminal output. A new request
+selected. Ordinary self-owned CLI work retains terminal output even when the
+requester has configured chat accounts. Explicit ownership, recipient or channel
+arguments retain their notification behavior. A new request
 is attributed independently; an explicitly recognized continuation retains its
 prior recipient and revalidates the account binding.
 
