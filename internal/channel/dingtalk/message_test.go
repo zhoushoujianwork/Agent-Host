@@ -249,6 +249,39 @@ func TestParsePlainRichTextEnforcesTextByteLimitAndAudience(t *testing.T) {
 	}
 }
 
+func TestParseRichTextLinksPreserveTextAndImage(t *testing.T) {
+	const target = "http://portal.patsnap.info/resource/k8s/flink"
+	for _, kind := range []string{"", "text", "link"} {
+		t.Run("type="+kind, func(t *testing.T) {
+			link := map[string]string{"text": "Flink cluster", "url": target}
+			if kind != "" {
+				link["type"] = kind
+			}
+			message, err := Parse(callbackPayload(t, func(m map[string]any) {
+				m["msgtype"] = "richText"
+				m["content"] = map[string]any{"richText": []any{
+					map[string]string{"type": "picture", "downloadCode": "image-code"},
+					map[string]string{"type": "text", "text": " Check "},
+					link,
+					map[string]string{"text": " please."},
+				}}
+			}), testConfig, testNow)
+			if err != nil || message.Text != "[图片 1] Check Flink cluster ("+target+") please." || len(message.Attachments) != 1 || message.Attachments[0].DownloadCode != "image-code" {
+				t.Fatalf("mixed link input lost text or image: %+v %v", message, err)
+			}
+		})
+	}
+	for _, label := range []string{"", target} {
+		message, err := Parse(callbackPayload(t, func(m map[string]any) {
+			m["msgtype"] = "richText"
+			m["content"] = map[string]any{"richText": []any{map[string]string{"text": label, "url": target}}}
+		}), testConfig, testNow)
+		if err != nil || message.Text != target {
+			t.Fatalf("URL label duplicated or lost: %+v %v", message, err)
+		}
+	}
+}
+
 func TestParseMixedOrMalformedRichTextRetainsNoPartialText(t *testing.T) {
 	text := map[string]string{"text": "/new"}
 	for _, tc := range []struct {
@@ -268,9 +301,20 @@ func TestParseMixedOrMalformedRichTextRetainsNoPartialText(t *testing.T) {
 		{"null text", map[string]any{"richText": []any{text, map[string]any{"text": nil}}}},
 		{"numeric text", map[string]any{"richText": []any{text, map[string]any{"text": 1}}}},
 		{"unsupported media part", map[string]any{"richText": []any{text, map[string]string{"type": "audio", "downloadCode": "private-media"}}}},
-		{"link part", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https://example.com"}}}},
+		{"empty link", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": ""}}}},
+		{"nonstring link", map[string]any{"richText": []any{text, map[string]any{"text": "link", "url": 42}}}},
+		{"relative link", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "/relative"}}}},
+		{"hostless link", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https:///path"}}}},
+		{"unsupported link scheme", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "javascript:alert(1)"}}}},
+		{"malformed link", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https://example.com/%zz"}}}},
+		{"link whitespace", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https://example.com/a b"}}}},
+		{"link control", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https://example.com/\nnext"}}}},
+		{"unknown link attribute", map[string]any{"richText": []any{text, map[string]string{"text": "link", "url": "https://example.com", "extra": "value"}}}},
+		{"typed link missing URL", map[string]any{"richText": []any{text, map[string]string{"type": "link", "text": "link"}}}},
+		{"link missing label", map[string]any{"richText": []any{text, map[string]string{"url": "https://example.com"}}}},
 		{"unknown part attribute", map[string]any{"richText": []any{text, map[string]any{"text": "other", "extra": true}}}},
-		{"typed text", map[string]any{"richText": []any{map[string]string{"text": "/new", "type": "text"}}}},
+		{"unknown typed text attribute", map[string]any{"richText": []any{map[string]string{"text": "/new", "type": "text", "extra": "value"}}}},
+		{"duplicate link URL", json.RawMessage(`{"richText":[{"text":"/new"},{"text":"link","url":"https://example.com","url":"https://other.example.com"}]}`)},
 		{"duplicate richText field", json.RawMessage(`{"richText":[{"type":"picture"}],"richText":[{"text":"/new"}]}`)},
 		{"duplicate fragment text field", json.RawMessage(`{"richText":[{"text":{"url":"https://example.com"},"text":"/new"}]}`)},
 		{"duplicate plain fragment field", json.RawMessage(`{"richText":[{"text":"/new","text":"/new"}]}`)},

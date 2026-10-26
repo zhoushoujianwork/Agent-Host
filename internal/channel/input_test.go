@@ -319,10 +319,11 @@ func TestChannelMixedRichTextPreservesTextAndNativeImage(t *testing.T) {
 		map[string]string{"text": "Explain "},
 		map[string]string{"type": "picture", "downloadCode": "ORIGINAL_IMAGE_SECRET", "pictureDownloadCode": "PREVIEW_IMAGE_SECRET"},
 		map[string]string{"text": " and this error."},
+		map[string]string{"text": " Flink", "url": "http://portal.patsnap.info/resource/k8s/flink"},
 	}, "owner-dm")
 	m := f.process(t, input)
 	requests := f.runner.snapshot()
-	if m.Status != "completed" || m.ReplyStatus != "accepted" || m.Text != "Explain [图片 1] and this error." || len(requests) != 1 || len(requests[0].Images) != 1 || string(requests[0].Images[0].Data) != string(data) || requests[0].Images[0].MediaType != "image/png" {
+	if m.Status != "completed" || m.ReplyStatus != "accepted" || m.Text != "Explain [图片 1] and this error. Flink (http://portal.patsnap.info/resource/k8s/flink)" || len(requests) != 1 || len(requests[0].Images) != 1 || string(requests[0].Images[0].Data) != string(data) || requests[0].Images[0].MediaType != "image/png" {
 		t.Fatalf("mixed rich text lost its text or native image: %+v", m)
 	}
 	if len(d.calls) != 1 || d.calls[0].DownloadCode != "ORIGINAL_IMAGE_SECRET" || strings.Contains(requests[0].Prompt, "SECRET") {

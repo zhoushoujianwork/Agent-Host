@@ -44,8 +44,11 @@ There is no checkout lock, worktree creation or multi-agent coordination.
 
 The existing identity and size checks still apply. The parser accepts ordinary
 text, forwarded `markdown`/`interactiveCard`, standalone `picture`/`file`, and supported ordered
-`richText` parts: text, pictures and files. Rich text retains textual order with attachment
-placeholders. Unsupported attributes, unknown part types and malformed or
+`richText` parts: text, HTTP(S) links, pictures and files. Rich text retains textual
+order with attachment placeholders. Links preserve both label and target without
+fetching the target; supported fragment shapes are described in the
+[DingTalk parser contract](dingtalk-channel-detail.md).
+Unsupported attributes, unknown part types and malformed or
 duplicate keys reject the whole input; an executable text prefix is never
 dispatched on its own.
 

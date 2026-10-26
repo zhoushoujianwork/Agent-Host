@@ -10,8 +10,9 @@ runtime. Current connection and message-delivery evidence is recorded in the
 
 Send a private message to an application bot in DingTalk, run it through
 the existing Claude and memory loop, and receive the final answer in the same
-conversation. Text, pictures, files and supported mixed `richText` messages are
-accepted. Each message may carry up to four attachments, with a 5 MiB limit per
+conversation. Text, pictures, files and mixed `richText` messages containing
+text, images, files and HTTP(S) links are accepted. Each message may carry up to
+four attachments, with a 5 MiB limit per
 image and 20 MiB per file. Quoted text or a chat-record summary comes only from
 the callback; missing history or quoted media is not fetched automatically.
 Unsupported fragment types or attributes reject the whole message. The channel

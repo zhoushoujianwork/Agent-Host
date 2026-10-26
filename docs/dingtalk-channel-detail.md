@@ -58,11 +58,16 @@ acknowledgements.
 
 The parser bounds the frame to 1 MiB, text to 16 KiB, and individual identities
 and reply URLs. Plain text is preserved exactly. Supported `richText` callbacks
-contain ordered text, picture and file parts; text is concatenated without extra
-separators and media retains a placeholder plus source-linked metadata. The
+contain ordered text, HTTP(S) link, picture and file parts; text is concatenated
+without extra separators and media retains a placeholder plus source-linked metadata. The
 original message type stays in the receipt. Standalone `picture` and `file`
 callbacks are also accepted. At most four attachments are accepted per message,
-with 5 MiB per image and 20 MiB per file. Unsupported links, unknown attributes,
+with 5 MiB per image and 20 MiB per file. Text parts accept `{text}` or
+`{text,url}`, optionally with `type: "text"`; `type: "link"` requires both
+`text` and `url`. Link targets must be absolute HTTP(S) URLs with a host and no
+whitespace or control characters. Links retain their label and target as
+`label (URL)`, or just the URL when the label is empty or identical. Parsing
+does not fetch links. Unsupported link shapes or schemes, unknown attributes,
 malformed fragments or duplicate keys invalidate the whole rich message; no
 text prefix is dispatched on its own. Callback-provided quoted text or summaries
 are stored separately, with missing/truncated content marked; they never cause

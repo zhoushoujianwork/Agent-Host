@@ -466,12 +466,17 @@ func TestDingTalkServiceLegacyRejectedRichTextRedeliveryDoesNotReplay(t *testing
 func TestDingTalkServiceMixedRichTextFailsWithoutExecutingCommandPrefix(t *testing.T) {
 	for _, extra := range []map[string]string{
 		{"type": "audio", "downloadCode": "private-media"},
-		{"text": "link", "url": "https://example.com"},
+		{"text": "link", "url": "https://example.com", "extra": "attribute"},
 		{"text": "unknown", "extra": "attribute"},
 	} {
 		t.Run(extra["type"]+extra["text"], func(t *testing.T) {
 			f := newProjectFixture(t)
-			input := f.richTextMessage(t, "mixed", []any{map[string]string{"text": "/project alpha"}, extra}, "owner-dm")
+			input := f.richTextMessage(t, "mixed", []any{
+				map[string]string{"text": "/project alpha"},
+				map[string]string{"type": "picture", "downloadCode": "private-image"},
+				map[string]string{"text": "link", "url": "https://example.com"},
+				extra,
+			}, "owner-dm")
 			m := f.process(t, input)
 			if m.Status != "failed" || m.MessageType != "richText" || m.Text != "" || m.RunID != "" || m.SessionID != "" || m.ReplyStatus != "accepted" || !strings.Contains(m.ReplyText, "内容格式暂不支持") || len(m.Reactions) != 0 || len(f.runner.snapshot()) != 0 {
 				t.Fatalf("mixed richText executed a partial command: %+v", m)

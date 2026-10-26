@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -101,10 +102,21 @@ func parseRichText(raw json.RawMessage) (string, []Attachment, bool) {
 		}
 		if _, typed := part["type"]; typed {
 			kind, ok := contentString(part["type"])
-			if !ok || kind != "picture" && kind != "file" {
+			if !ok {
 				return "", nil, false
 			}
 			delete(part, "type")
+			if kind == "text" || kind == "link" {
+				piece, ok := richTextPart(part, kind == "link")
+				if !ok {
+					return "", nil, false
+				}
+				text.WriteString(piece)
+				continue
+			}
+			if kind != "picture" && kind != "file" {
+				return "", nil, false
+			}
 			piece, attachment, ok := mediaPart(kind, part, len(attachments)+1)
 			if !ok || len(attachments) == MaxAttachments {
 				return "", nil, false
@@ -113,13 +125,41 @@ func parseRichText(raw json.RawMessage) (string, []Attachment, bool) {
 			attachments = append(attachments, attachment)
 			continue
 		}
-		piece, ok := contentString(part["text"])
-		if !ok || len(part) != 1 {
+		piece, ok := richTextPart(part, false)
+		if !ok {
 			return "", nil, false
 		}
 		text.WriteString(piece)
 	}
 	return text.String(), attachments, true
+}
+
+func richTextPart(part map[string]json.RawMessage, requireURL bool) (string, bool) {
+	for key := range part {
+		if key != "text" && key != "url" {
+			return "", false
+		}
+	}
+	label, ok := contentString(part["text"])
+	if !ok {
+		return "", false
+	}
+	rawURL, exists := part["url"]
+	if !exists {
+		return label, !requireURL
+	}
+	target, ok := contentString(rawURL)
+	if !ok || strings.IndexFunc(target, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
+		return "", false
+	}
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
+	}
+	if label == "" || label == target {
+		return target, true
+	}
+	return label + " (" + target + ")", true
 }
 
 func parseStandaloneMedia(kind string, raw json.RawMessage) (string, []Attachment, bool) {
