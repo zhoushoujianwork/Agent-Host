@@ -11,6 +11,7 @@ Keep exact schemas, command names and tuning values for implementation.
 | `internal/discovery` | Selected-source polling, message revisions, coverage/checkpoints and immutable evidence. It does not discover and monitor every account conversation. |
 | `internal/assistance` | Matter reconciliation, pinned citations and stale-revision rejection. Current preparation is owner-selected and does not authorize automatic replies. |
 | `internal/dingtalkworkspace` | Pinned owner identity, bounded personal-history reads, personal sending, operation ledger and platform-status queries. A saved send operation is not yet a tracked question or delegation policy. |
+| Bot notifications and task feedback | Verified-user private bot delivery and queued task-result receipts exist. Blocked-question escalation and owner-clarification correlation are not implemented. |
 | File memory and experience | Publication, source attribution, correction and exclusion. Conversation-derived solutions need their own evidence path; never manufacture a successful Host run. |
 | Channel authorization | Authenticated sender and execution separation. A peer's question must not become an owner-privileged native task. |
 
@@ -37,6 +38,12 @@ Source links: [DWS integration](dingtalk-workspace-detail.md),
 **Online answering:** acquire evidence → update a question → classify intent and
 completeness → retrieve permitted answer entries → draft → validate → recheck
 latest conversation → claim and send → reconcile delivery.
+
+An unmatched, incomplete or unhandleable request branches into private bot
+escalation to the verified owner, with no outgoing peer message. Correlated owner
+clarification updates the question revision and returns to evaluation; it does
+not skip support, recipient, permission, takeover or delivery checks. Greetings
+and nonrequests end at classification without either delivery path.
 
 **Offline learning:** reconcile both authors' messages → form source-linked
 problem episodes → extract style and solution candidates independently → compare
@@ -76,8 +83,18 @@ business coordinator rather than implementing another model/tool loop.
 “All questions” is a coverage goal. Beta reports selected conversations, gaps and
 freshness honestly. Account-wide discovery, event durability, encrypted payloads
 and rate limits require provider-specific acceptance before expanding coverage.
+Automatic intake must not depend on manual forwarding to agh. Detecting questions
+from newly contacting peers across the account requires source discovery/event
+integration that is not delivered by the current selected-source collector.
+The main document leaves incoming bot-DM inclusion open; until resolved, preserve
+ordinary bot routing and keep escalation replies out of personal-question intake.
 
 ## Answer and permission boundary
+
+These boundaries describe the existing proposed answer-only beta. They do not
+settle the main document's open decision about authorized tools/Skills execution.
+Implementing that expansion requires explicit execution scope and acceptance;
+neither incoming peer text nor an owner clarification silently enables tools.
 
 Delegation is an owner-controlled policy: enabled conversations, answer topics,
 recipient grants, effective time and send limits. Its version binds each decision.
@@ -129,8 +146,8 @@ Proposed states express behavior, not a final database schema:
 | --- | --- |
 | Collecting | Wait for a message burst and complete relevant coverage. |
 | Analyzing | Evaluate one evidence/policy revision; newer input supersedes it. |
-| Waiting for details | No outgoing message; reconsider on relevant new evidence. |
-| Waiting for owner | Retain private reasons/draft; only material new information or explicit owner release can reopen evaluation. |
+| Waiting for details | No peer message; persist a private escalation obligation and reconsider on relevant new evidence. |
+| Waiting for owner | No peer message; privately request clarification and retain reasons/draft. Correlated clarification or material new evidence resumes evaluation. |
 | Ready to send | Eligible draft, subject to final latest-history/policy checks. |
 | Sending / pending | One reserved operation; inspect its platform status. |
 | Replied | Delivered reply linked to the question; follow-ups update the episode. |
@@ -146,7 +163,54 @@ examples if they may come from another automation.
 A separate clearly new question may be eligible after the conversation settles.
 A peer request for human attention or an explicit owner pause persists for the
 current question; a timer cannot override it. The owner can dismiss, take over,
-resume or edit a private draft without forcing routine review notifications.
+resume or edit a private draft. Required blocked-request escalation replaces the
+previous optional-notification policy; unrelated routine review remains optional.
+
+## Private escalation and clarification
+
+Persist question state and its escalation obligation together. Bind each item to
+the exact owner account, verified private bot recipient, source channel/account,
+conversation, peer identity, question ID and evidence revision. Never choose the
+original peer as the escalation recipient or resolve the owner from a display name.
+Notify through the application bot, separately from personal DWS peer replies.
+Include the sender's display name and stable identity, the attributed source
+question or bounded excerpt with source reference, why handling is blocked, and
+one concise request for the missing information or decision. Do not include
+unrelated private history. Retain the complete authorized source privately.
+
+Use a durable escalation slot keyed by owner and question with a blocking-reason
+fingerprint and associated question revision. Repeated polls, message redelivery,
+unchanged analysis and restart reuse that slot and never create another send.
+A new evidence revision alone is not a reason to notify again: only a material
+change in the blocker or information needed may create a new escalation revision.
+Keep the two delivery ledgers separate so an owner notification cannot be mistaken
+for a peer answer. Reserve the notification attempt before sending and retain its
+content digest, provider receipt and accepted/failed/unknown outcome. Provider
+acceptance does not prove owner reading or question resolution.
+
+Definite notification failure remains visible as an undelivered escalation in the
+owner workbench; it never causes a peer placeholder or progress message. Allow only
+bounded retries of confirmed failures under an explicit retry policy. Unknown or
+interrupted attempts require reconciliation before any retry; do not issue a fresh
+slot to bypass uncertainty. After restart, recover pending obligations and inspect
+reserved attempts instead of replaying sends. Missing owner binding or bot access
+blocks escalation visibly and leaves the peer silent.
+
+Give each escalation a durable question/revision reference. Match an owner response
+using a verified quote/reply identity or explicit reference within the same bound
+private bot account, conversation and authenticated owner identity. Plain text or
+recency alone cannot select among pending questions. An ambiguous, stale or
+unmatched response stays private; ask the owner to select the question or confirm
+the current revision. Never guess an association or forward it to a peer.
+
+A valid clarification is additional attributed evidence: increment the question
+revision, invalidate any old draft and evaluate the latest conversation, answer
+support, shareability, delegation and send state again. Owner-private clarification
+is not automatically recipient-shareable or an approved reusable answer. An owner
+response in the escalation bot conversation is distinct from takeover in the
+original peer conversation. Takeover, dismissal or pause prevents automatic peer
+sends; clarification alone cannot reopen a human-handled question without explicit
+owner release. Recheck for takeover before sending even after valid clarification.
 
 ## Sending, recovery and the unavoidable race
 
@@ -206,16 +270,18 @@ supported. The owner can inspect and withdraw learned style and solution entries
 
 1. **Capability probe:** selected test contact, verified owner/recipient IDs,
    inbound and outbound history, latest-window completeness, real AI marking,
-   send/status/readback correlation. Validate auth loss and rate-limit behavior.
+   personal send/status/readback correlation, private bot notification acceptance
+   and owner reply correlation. Validate auth loss and rate-limit behavior.
 2. **Historical replay:** use temporal splits and held-out conversations. At each
    replay point expose only earlier evidence and the then-valid answer versions.
    Later owner answers are evaluation labels, not retrieval input. Include complex,
    incomplete and non-question messages as well as easy FAQs.
 3. **Shadow pilot:** no external sends. Owner labels intended answer/wait/ignore,
-   proposed answer quality, missing details and potential disclosure. Validate
+   proposed answer/escalation quality, missing details and potential disclosure. Validate
    takeover timing against live two-way history. Unlabeled decisions remain unknown.
 4. **Restricted live pilot:** activate selected chats and reviewed answer entries,
-   with a low configurable volume cap and a global pause control. Expand only after
+   deduplicated private owner escalations, a low configurable volume cap and a
+   global pause control. Expand only after
    reviewing the acceptance report; do not optimize reply count at the cost of errors.
 
 Mandatory cases: fragmented question then update; owner replies during analysis
@@ -225,9 +291,24 @@ prompt injection; missing/partial history; restart at send reservation; async
 failure/unknown outcome; policy withdrawal; corrected solution; multiple questions;
 peer asks for a human; old backlog after restart; AI output re-entering learning.
 
+Escalation cases: unmatched/incomplete/unhandleable request produces zero peer
+messages and one private owner escalation containing sender, source, reason and
+clarification request; greetings/nonrequests produce neither; repeated polls and
+unchanged revisions do not renotify; material blocker updates are versioned;
+missing owner binding fails closed; bot failure/unknown acceptance leaves the peer
+silent; restart before/after notification reservation avoids replay; concurrent
+questions and ambiguous/stale/wrong-account replies cannot cross-associate;
+valid clarification triggers fresh evaluation rather than verbatim forwarding;
+owner takeover during clarification prevents peer delivery; owner-private content
+is not automatically disclosed. Verify automatic selected-DM intake without manual
+forwarding and report unseen new contacts as coverage gaps, not successful intake.
+If bot DMs or tools/Skills are selected later, add their distinct routing and
+execution-authorization acceptance cases before implementation is accepted.
+
 Report auto-answer precision (correct sends / reviewed sends), eligible-question
 coverage, useful silent waits, missed safe answers, owner corrections, duplicate
-or collision rate, latency and analysis cost. Keep denominators, sample sizes,
+or collision rate, escalation delivery/duplication, clarification association and
+usefulness, coverage gaps, latency and analysis cost. Keep denominators, sample sizes,
 unlabeled cases and collection gaps. Proposed promotion target: at least 99%
 correctness across at least 100 reviewed auto-answer candidates covering the
 enabled topics, with all critical boundary tests passing and zero critical
