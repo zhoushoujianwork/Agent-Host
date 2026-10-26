@@ -43,6 +43,9 @@ type Receipt struct {
 	StatusRaw  json.RawMessage `json:"status_raw,omitempty"`
 }
 type Question struct {
+	// OwnerActivity records actual bound outgoing messages, not viewing/read
+	// receipts or a claim that the owner resolved the underlying problem.
+	OwnerActivity  []OwnerActivity           `json:"owner_activity,omitempty"`
 	ID             string                    `json:"id"`
 	Generation     int                       `json:"generation"`
 	Policy         string                    `json:"policy"`
@@ -63,13 +66,26 @@ type Question struct {
 	Escalation     Receipt                   `json:"escalation"`
 }
 
+type OwnerActivity struct {
+	MessageID  string    `json:"message_id"`
+	EvidenceID string    `json:"evidence_id"`
+	At         time.Time `json:"at"`
+	Type       string    `json:"type"`
+}
+
+type messageObservation struct {
+	MessageID string `json:"message_id"`
+	Digest    string `json:"digest"`
+}
+
 func (q Question) Reference() string { return q.ID + "." + strconv.Itoa(q.Generation) }
 
 type sourceState struct {
-	Policy  string    `json:"policy"`
-	Through time.Time `json:"through"`
-	Blocked string    `json:"blocked,omitempty"`
-	Active  string    `json:"active_question,omitempty"`
+	ActivationBaseline time.Time `json:"activation_baseline"`
+	Policy             string    `json:"policy"`
+	Through            time.Time `json:"through"`
+	Blocked            string    `json:"blocked,omitempty"`
+	Active             string    `json:"active_question,omitempty"`
 }
 type Coordinator struct {
 	Store     *state.Store
@@ -210,7 +226,14 @@ func (c *Coordinator) Activate(ctx context.Context) error {
 		if st.Policy != c.policy() {
 			st.Policy = c.policy()
 			st.Through = c.now()
+			st.ActivationBaseline = st.Through
 			st.Blocked = ""
+		}
+		if st.ActivationBaseline.IsZero() {
+			st.ActivationBaseline = st.Through
+			if st.ActivationBaseline.IsZero() {
+				st.ActivationBaseline = c.now()
+			}
 		}
 		// Preserve unresolved effects across policy changes; never create a fresh
 		// reply slot merely because the configured policy changed.
@@ -243,13 +266,24 @@ func terminal(q Question) bool {
 	return false
 }
 
-func (c *Coordinator) intake(ctx context.Context, sr *state.OwnerAnsweringRecord, st sourceState, qr *state.OwnerAnsweringRecord, q *Question) error {
+func (c *Coordinator) intake(ctx context.Context, sr *state.OwnerAnsweringRecord, st sourceState, qr *state.OwnerAnsweringRecord, q *Question, observations ...*state.OwnerAnsweringRecord) error {
 	sr.Payload, _ = json.Marshal(st)
-	if q == nil {
-		return c.Store.CompareAndSaveOwnerAnswering(ctx, sr)
+	records := []*state.OwnerAnsweringRecord{sr}
+	if q != nil {
+		qr.Payload, _ = json.Marshal(q)
+		records = append(records, qr)
 	}
-	qr.Payload, _ = json.Marshal(q)
-	return c.Store.CompareAndSaveOwnerAnsweringBatch(ctx, sr, qr)
+	records = append(records, observations...)
+	return c.Store.CompareAndSaveOwnerAnsweringBatch(ctx, records...)
+}
+
+func recordOwnerActivity(q *Question, e state.DiscoveryEvidence) {
+	for _, prior := range q.OwnerActivity {
+		if prior.EvidenceID == e.ID {
+			return
+		}
+	}
+	q.OwnerActivity = append(q.OwnerActivity, OwnerActivity{MessageID: e.MessageID, EvidenceID: e.ID, At: e.CreatedAt, Type: "outgoing_message"})
 }
 
 func author(e state.DiscoveryEvidence, a discovery.AnsweringAuthor) bool {
@@ -298,6 +332,9 @@ func (c *Coordinator) Consume(ctx context.Context, s discovery.Source, col disco
 	if st.Policy != c.policy() {
 		return errors.New("answering policy changed; reactivate before intake")
 	}
+	if st.ActivationBaseline.IsZero() {
+		st.ActivationBaseline = st.Through
+	}
 	var q *Question
 	var qr state.OwnerAnsweringRecord
 	if st.Active != "" {
@@ -345,11 +382,29 @@ func (c *Coordinator) Consume(ctx context.Context, s discovery.Source, col disco
 		}
 	}
 	var peers, owners []state.DiscoveryEvidence
+	var observations []*state.OwnerAnsweringRecord
+	seenWindow := map[string]bool{}
 	for _, e := range col.Evidence {
 		_, activeMessage := existing[e.MessageID]
-		if e.CreatedAt.Before(st.Through) && !activeMessage {
+		if e.CreatedAt.Before(st.ActivationBaseline) && !activeMessage {
 			continue
 		}
+		key := "message:" + hash([]string{s.Attribution(c.Config).ID, e.MessageID})
+		if seenWindow[key] {
+			return errors.New("duplicate provider message in intake window")
+		}
+		seenWindow[key] = true
+		observation, readErr := c.Store.OwnerAnsweringRecord(ctx, key)
+		if readErr != nil && !errors.Is(readErr, sql.ErrNoRows) {
+			return readErr
+		}
+		var prior messageObservation
+		if len(observation.Payload) > 0 {
+			if err = json.Unmarshal(observation.Payload, &prior); err != nil {
+				return err
+			}
+		}
+		unchanged := prior.MessageID == e.MessageID && prior.Digest == e.Digest
 		reason := ""
 		if !c.attributed(s, e) {
 			reason = "blocked_identity: invalid source attribution"
@@ -372,8 +427,15 @@ func (c *Coordinator) Consume(ctx context.Context, s discovery.Source, col disco
 			}
 			return errors.New(reason)
 		}
+		if !unchanged {
+			observation.Payload, _ = json.Marshal(messageObservation{MessageID: e.MessageID, Digest: e.Digest})
+			observations = append(observations, &observation)
+		}
 		if author(e, b.Owner) {
 			owners = append(owners, e)
+			continue
+		}
+		if unchanged {
 			continue
 		}
 		if (e.MessageType == "" || e.MessageType == "text") && strings.TrimSpace(e.Text) != "" && (len(e.Forwarded) == 0 || string(e.Forwarded) == "null" || string(e.Forwarded) == "false") {
@@ -437,8 +499,14 @@ func (c *Coordinator) Consume(ctx context.Context, s discovery.Source, col disco
 		}
 		if len(q.Evidence) > 0 {
 			first := q.Evidence[0].CreatedAt
+			for _, e := range q.Evidence {
+				if e.CreatedAt.Before(first) {
+					first = e.CreatedAt
+				}
+			}
 			for _, e := range owners {
 				if !e.CreatedAt.Before(first) {
+					recordOwnerActivity(q, e)
 					q.OwnerTakeover = true
 					q.Answer = ""
 					if q.Peer.Status == "" {
@@ -455,7 +523,7 @@ func (c *Coordinator) Consume(ctx context.Context, s discovery.Source, col disco
 	}
 	// Watermark, active link and complete question revision commit together
 	// BEFORE classification or consequential tools.
-	if err = c.intake(ctx, &sr, st, &qr, q); err != nil {
+	if err = c.intake(ctx, &sr, st, &qr, q, observations...); err != nil {
 		return err
 	}
 	if q == nil {
@@ -568,7 +636,7 @@ func (c *Coordinator) evaluate(ctx context.Context, r *state.OwnerAnsweringRecor
 	if q.OwnerTakeover {
 		return c.cancelOrWait(ctx, r, q, errors.New("owner takeover observed"))
 	}
-	if err := c.fresh(ctx, *q); err != nil {
+	if err := c.fresh(ctx, q); err != nil {
 		return c.cancelOrWait(ctx, r, q, err)
 	}
 	if q.Attempted && !draftOnly {
@@ -658,7 +726,7 @@ func (c *Coordinator) deliver(ctx context.Context, r *state.OwnerAnsweringRecord
 	if q.Peer.Status != "" {
 		return c.wait(ctx, r, q, "Peer delivery already attempted; no new slot is allowed.", "Inspect the existing delivery receipt.")
 	}
-	if err := c.fresh(ctx, *q); err != nil {
+	if err := c.fresh(ctx, q); err != nil {
 		return c.cancelOrWait(ctx, r, q, err)
 	}
 	if err := c.valid(ctx); err != nil {
@@ -810,7 +878,7 @@ func bounded(text string, n int) string {
 	return text[:n] + "…"
 }
 
-func (c *Coordinator) fresh(ctx context.Context, q Question) error {
+func (c *Coordinator) fresh(ctx context.Context, q *Question) error {
 	if len(q.Evidence) == 0 {
 		return errors.New("question evidence is unavailable")
 	}
@@ -858,6 +926,7 @@ func (c *Coordinator) fresh(ctx context.Context, q Question) error {
 			continue
 		}
 		if author(e, b.Owner) {
+			recordOwnerActivity(q, e)
 			return errors.New("owner takeover observed")
 		}
 		if !author(e, b.Peer) {

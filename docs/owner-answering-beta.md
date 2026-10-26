@@ -51,6 +51,11 @@ private owner clarification; a correlated response resumes evaluation against th
 latest evidence and permissions. Owner takeover cancels pending peer replies.
 One outstanding question per conversation retains subsequent peer details. New
 message bursts cannot bypass interrupted work or a pending/unknown delivery.
+Host observation/handling and owner activity are independent. An incoming message
+is eligible even if already read. Read receipts or owner viewing never mean agh
+processed it or that the owner took over. An actual owner outgoing message is
+recorded as manual activity and stops automatic replies; it does not prove the
+problem was resolved or manufacture an agh execution/delivery result.
 
 The owner selected **personal DingTalk DMs first, including existing authorized
 Skills/tools**. Every automatic handling attempt must:
@@ -96,8 +101,10 @@ ID. Unknown identities or conflicting types block work. See the [configuration e
 commands](owner-answering-beta-detail.md#configuration-and-commands).
 
 Only the DingTalk channel service wires this consumer; standalone discovery rejects
-enabled answering. First activation establishes a current-time watermark, so old
-imports never trigger replies. Bot DMs remain ordinary bot work; they are not new
+enabled answering. Activation pins a fixed historical boundary; durable message
+observations deduplicate later collection windows. Previously unseen messages after
+that boundary remain eligible even when returned late behind the moving collection
+watermark. Bot DMs remain ordinary bot work; they are not new
 automatic personal questions. New contacts require explicit source/binding setup.
 
 ## Delivery order

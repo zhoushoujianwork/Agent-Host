@@ -1,5 +1,23 @@
 # Owner answering: implementation and diagnostic evidence
 
+## Independent observation follow-up
+
+The subsequent correction records durable per-message observations separately
+from the moving collection watermark. A fixed activation baseline excludes old
+imports while late unseen messages remain eligible. Owner outgoing activity is
+retained separately from agh execution and delivery; viewing/read receipts never
+imply agh completion or manual takeover. Focused tests passed (58 cases), and the
+supervisor's complete `make check` passed after this correction. Production
+activation remains pending.
+
+The implementation worker resumed session
+`01a17717-f55c-7131-a402-aec32cb89759`, profile
+`codex-gpt-6.1-sol-medium-fast`, model `gpt-6.1-sol`: COMPLETE / exit 0,
+22 calls, 180.523 seconds, API-baseline estimated worker USD 2.0275672
+(not verified billing). The separate
+[session-context diagnosis](session-context-diagnosis-2026-10-26.md) records the
+user-reported execution's missing context and its remaining correction.
+
 This report accompanies the [feature guide](owner-answering-beta.md). Source
 implementation checks and production behavior are separate. The new automatic
 intake path has not been activated in production by this work.

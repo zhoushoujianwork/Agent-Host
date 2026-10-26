@@ -121,15 +121,22 @@ drafting are explicitly separate isolated tool-free native tasks.
 
 State migration 16 → 17 adds `owner_answering` records with compare-and-save
 revisions. It preserves existing runs and channel state. Source records retain
-the policy fingerprint, activation/current watermark, active question link and
-identity blocker. Watermark, active link and question revision commit atomically
-before classification or tool execution.
+the policy fingerprint, fixed `activation_baseline`, moving collection `through`,
+active question link and identity blocker. Existing records without a baseline
+migrate conservatively to their old `through` boundary. A new activation policy
+pins its boundary at now; normal polling never moves that baseline. Stable source
+and provider-message IDs key per-message digest observation records in the existing
+KV table. Source, observations and question revision commit atomically before
+classification or tool execution; no schema change is needed for these fields.
 Question records retain exact attributed evidence, question/revision, source,
 execution claim/run ID, clarification, state, answer and separate delivery receipts.
 These are execution/control records, not a second memory store.
 
 First activation records now before polling; historical imports never trigger
-handling. A question ID is anchored to the first new provider message. Subsequent
+handling. The moving `through` cursor never suppresses a previously unseen message:
+late messages after the fixed baseline are intaken once, even when their creation
+time is older than `through`. Existing assigned-message anti-replay remains in
+place. A question ID is anchored to the first new provider message. Subsequent
 peer details merge into that same outstanding question/revision without resetting
 the execution claim or creating another send slot. Only after a truly terminal
 question may a later message start a new question. Pending/unknown delivery remains
@@ -155,6 +162,19 @@ answer. Observed owner activity cancels automatic peer delivery. Known saved AI
 message IDs are exempt from takeover only in their bound conversation. History
 read and personal send are not transactional; a manual owner send can race after
 the final read. Live acceptance must measure this remaining collision window.
+
+Host processing and owner activity have independent evidence. `Attempted`, `RunID`,
+`HandlerOutcome` and `Peer` describe actual agh execution/delivery only. The
+question's `owner_activity` records the provider message/evidence IDs, source time
+and `outgoing_message` type for bound owner-authored messages. No entry means
+activity is unknown, not proof the owner has not seen or handled the question.
+Actual outgoing owner messages set takeover but never fabricate an agh attempt,
+run, handled result or send; observed activity also does not establish resolution.
+Owner activity discovered by intake or the final fresh-history check retains this
+evidence while preserving any existing agh run outcome. Previously observed owner
+messages are still considered for takeover in relevant two-way history. No
+read/unread, read-receipt or viewing metadata filters participate in intake,
+deduplication, handling completion or takeover decisions.
 
 Peer replies use `dingtalkworkspace.Service.send_message`, a stable `oa-QUESTION`
 operation ID, original conversation target and visible AI marker. Preserve the
