@@ -34,6 +34,9 @@ func (s *Store) PrepareRecoveredChannelReply(ctx context.Context, id, runID, tex
 		if err != nil {
 			return err
 		}
+		if m.ReplyKind == "recovery_notice" {
+			return nil
+		}
 		r, err := s.readRun(ctx, tx, runID)
 		if err != nil {
 			return err

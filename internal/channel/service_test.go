@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"agent-host/internal/channel/dingtalk"
+	"agent-host/internal/event"
 	"agent-host/internal/harness"
 	"agent-host/internal/host"
 	"agent-host/internal/memory"
@@ -535,6 +536,9 @@ func TestDingTalkServiceRestartRunsOnlyQueuedInput(t *testing.T) {
 	if err := f.service.Store.CreateChannelRun(context.Background(), run, running.ID); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.service.Store.AppendEvent(context.Background(), &event.Event{RunID: run.ID, SessionID: session.ID, Type: "tool.started", Message: "fixture partial execution"}); err != nil {
+		t.Fatal(err)
+	}
 	queued := f.message(t, "queued", "Execute after restart.", "text", "queued-dm")
 	f.receive(t, queued)
 	if err := f.service.Store.Close(); err != nil {
@@ -567,6 +571,23 @@ func TestDingTalkServiceRestartRunsOnlyQueuedInput(t *testing.T) {
 	run, err = restarted.Run(context.Background(), run.ID)
 	if err != nil || run.ExecutionStatus != "unknown" || len(f.runner.snapshot()) != 1 || len(f.replier.snapshot()) != 1 {
 		t.Fatalf("restart replayed or lost uncertainty: %+v %v", run, err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := f.service.deliverRecoveryNotices(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if err := restarted.RecoverChannels(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, id := range []string{claimed.MessageID, running.MessageID} {
+		got := f.receipt(t, id)
+		if got.Status != "unknown" || got.ReplyKind != "recovery_notice" || got.ReplyStatus != "accepted" || !strings.Contains(got.ReplyText, "未自动重放") {
+			t.Fatalf("missing independent recovery evidence: %+v", got)
+		}
+	}
+	if len(f.replier.snapshot()) != 3 || len(f.runner.snapshot()) != 1 {
+		t.Fatal("recovery replayed delivery or execution")
 	}
 	newMessage := f.process(t, f.message(t, "after-interruption", "New task after the interruption.", "text", "running-dm"))
 	if newMessage.Status != "completed" || newMessage.SessionID == session.ID || len(f.runner.snapshot()) != 2 || f.runner.snapshot()[1].Resume || !strings.Contains(newMessage.ReplyText, "本条消息") {

@@ -27,3 +27,11 @@ This change does not add automatic acceptance, detached background jobs or
 automatic task replay. Source validation and production rollout are separate.
 See the [implementation details](reply-closeout-detail.md) and the
 [architecture](architecture.md).
+
+Newly recovered claimed channel messages receive a labeled interruption notice
+through the original destination when no reply has been attempted. It says the
+outcome is unknown and work was not replayed; it asks the recipient to verify
+possible effects before submitting new work. Delivery acceptance never resolves
+execution uncertainty. Existing historical unknown messages are not backfilled.
+Operators can inspect `reply_kind=recovery_notice` and the independent
+`reply_status`, `reply_text`, and `reply_error` on the channel receipt.

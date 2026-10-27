@@ -74,3 +74,26 @@ answer delivery. Operators must review the retained source before choosing any
 future bounded selection policy. Chunking, summarization and automatic retries
 are not implemented. Historical records are not rewritten; production replay
 and deployment require separate action.
+
+## Interrupted channel intake
+
+`RecoverChannels` enrolls a recovery notice only while changing a claimed
+message to unknown with an untouched pending reply. Service startup drains these
+notices before normal feedback starts, filtering by original channel, bot account
+and profile. The existing persisted API target or webhook capability supplies the
+original destination; configuration changes cannot select a replacement. An
+expired webhook produces a recorded failure without a send. Historical unknown
+records are never enrolled by this change.
+
+`reply_kind=recovery_notice` distinguishes this communication from an Agent
+answer. The exact transport body is committed in `reply_text` with `sending`
+before transport; `reply_status` and `reply_error` independently record acceptance,
+failure or uncertainty. Interrupted sends become unknown on restart. Neither
+failed nor ambiguous notices are automatically retried, and generic task feedback
+cannot retry these receipts. Execution status, run evidence and memory outcomes
+are unchanged. Operators inspect channel receipts and `channel.recovery_notice`
+events; this is not a new execution or evidence-resolution API.
+
+Isolated tests cover restart before run creation, after a recorded partial tool
+event, repeated recovery, delivery failure/uncertainty and a crash during delivery.
+No production restart or historical notification is part of this implementation.

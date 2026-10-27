@@ -191,6 +191,9 @@ func (s *Service) Work(ctx context.Context) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
+	if err := s.deliverRecoveryNotices(ctx); err != nil {
+		return err
+	}
 	if s.StartFeedback != nil {
 		stop, err := s.StartFeedback(ctx)
 		if err != nil {
