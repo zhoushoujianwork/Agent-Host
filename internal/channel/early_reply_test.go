@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/experience"
+	"agent-host/internal/harness"
 	"agent-host/internal/memory"
 	"agent-host/internal/state"
 )
@@ -117,5 +119,34 @@ func TestCancelCloseoutAfterEarlyReplyPreservesDelivery(t *testing.T) {
 	run := f.run(t, after)
 	if after.Status != "completed" || after.ReplyStatus != "accepted" || after.ReplyText != before.ReplyText || run.ExecutionStatus != "completed" || run.MemoryStatus != "failed" || len(f.replier.snapshot()) != 1 || len(f.runner.snapshot()) != 1 {
 		t.Fatalf("canceled closeout changed native execution or delivery: message=%+v run=%+v", after, run)
+	}
+}
+
+func TestExperienceSourceOverflowPreservesChannelDelivery(t *testing.T) {
+	for _, outcome := range []string{"accepted", "failed", "unknown"} {
+		t.Run(outcome, func(t *testing.T) {
+			f := newServiceFixture(t)
+			f.host.Runner = phaseToolRunner{paired: true}
+			f.host.Config.ToolsDisabled = false
+			f.host.Judge = &phaseJudge{}
+			f.host.Extractor = phaseExtractor(func(ctx context.Context, run state.Run, evidence []state.ToolEvidence, emit func(harness.Observation) error) (experience.Extraction, error) {
+				run.Output = strings.Repeat("x", experience.MaxSourceBytes)
+				return experience.NewExtractor(f.host.Runner, "fixture").Extract(ctx, run, evidence, emit)
+			})
+			f.replier.reply = func(context.Context, replyCall) (string, error) {
+				if outcome == "accepted" {
+					return outcome, nil
+				}
+				return outcome, errors.New("fixture delivery " + outcome)
+			}
+			m := f.process(t, f.message(t, "overflow", "Explain this project.", "text", "overflow-dm"))
+			run := f.run(t, m)
+			if m.Status != "completed" || m.ReplyStatus != outcome || run.ExecutionStatus != "completed" || run.ExperienceStatus != "failed" || run.MemoryStatus != "unchanged" || !strings.Contains(run.ExperienceError, "entire payload unprocessed") {
+				t.Fatalf("overflow confused stage outcomes: message=%+v run=%+v", m, run)
+			}
+			if len(f.replier.snapshot()) != 1 {
+				t.Fatal("overflow resent answer")
+			}
+		})
 	}
 }

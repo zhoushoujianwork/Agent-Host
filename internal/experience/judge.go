@@ -63,6 +63,7 @@ type evaluation struct {
 }
 
 type decisionAudit struct {
+	Limit          *LimitError  `json:"limit,omitempty"`
 	PolicyVersion  string       `json:"policy_version"`
 	Provider       string       `json:"provider"`
 	Endpoint       string       `json:"endpoint"`
@@ -98,7 +99,7 @@ func boundedState(input any) error {
 		return fmt.Errorf("encode experience decision state: %w", err)
 	}
 	if len(b) > MaxDecisionBytes {
-		return fmt.Errorf("experience decision state exceeds %d bytes; no truncation performed", MaxDecisionBytes)
+		return payloadLimit("decision state", len(b), MaxDecisionBytes)
 	}
 	return nil
 }
@@ -111,6 +112,7 @@ func (j *JevJudge) Assess(ctx context.Context, draft state.ExperienceDraft, evid
 	audit := j.audit()
 	finish := func(reason string, err error) (Assessment, error) {
 		audit.Reason = reason
+		errors.As(err, &audit.Limit)
 		b, encodeErr := json.Marshal(audit)
 		if encodeErr != nil {
 			return out, fmt.Errorf("encode experience assessment audit: %w", encodeErr)
@@ -198,6 +200,7 @@ func (j *JevJudge) Compare(ctx context.Context, candidate state.Candidate, exist
 	audit := j.audit()
 	finish := func(reason string, err error) (Relations, error) {
 		audit.Reason = reason
+		errors.As(err, &audit.Limit)
 		b, encodeErr := json.Marshal(audit)
 		if encodeErr != nil {
 			return out, fmt.Errorf("encode experience comparison audit: %w", encodeErr)
