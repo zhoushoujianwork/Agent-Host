@@ -219,6 +219,14 @@ func (h *Host) experienceFailure(j *journal, cause error) error {
 	if err != nil {
 		return errors.Join(cause, err)
 	}
+	var limit *experience.LimitError
+	if errors.As(cause, &limit) {
+		cause = errors.Join(cause, j.emit(event.Event{
+			Type: "experience.blocked", Phase: "closeout", Component: "host", Status: "failed",
+			Message: limit.Error(),
+			Data:    map[string]any{"run_id": r.ID, "limit": limit, "source": "retained_run_and_tool_evidence", "native_replayed": false, "retry": "explicit_post_processing_only"},
+		}))
+	}
 	if r.ExperienceStatus == "pending" || r.ExperienceStatus == "failed" {
 		return errors.Join(cause, h.Store.ExperienceFailure(ctx, r.ID, cause.Error()))
 	}

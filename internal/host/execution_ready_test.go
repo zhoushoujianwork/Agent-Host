@@ -2,10 +2,16 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
+	"agent-host/internal/decision/jev"
 	"agent-host/internal/experience"
 	"agent-host/internal/harness"
 	"agent-host/internal/memory"
@@ -178,4 +184,92 @@ func TestExecutionReadyEventExposesOutputWithoutHandler(t *testing.T) {
 	if i < 0 || run.Events[i].Data["output"] != "answer" || run.Events[i].Data["handler"] != false {
 		t.Fatalf("observers need the final output even with no handler: %+v", run.Events)
 	}
+}
+
+// Overflow is a post-processing failure, even when an answer has already left.
+func TestExperienceOverflowKeepsCompletedExecutionAndRetryNeverReplays(t *testing.T) {
+	for _, stage := range []string{"source", "decision state", "ordinary"} {
+		t.Run(stage, func(t *testing.T) {
+			h, runner, _ := experienceHost(t)
+			if stage != "ordinary" {
+				size := experience.MaxDecisionBytes
+				if stage == "source" {
+					size = experience.MaxSourceBytes
+				}
+				h.Runner = oversizedEvidenceRunner{runner, size}
+			}
+			if stage == "source" {
+				h.Extractor = experience.NewExtractor(runner, "fixture")
+			} else if stage == "decision state" {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					t.Error("oversized decision reached provider")
+					w.WriteHeader(http.StatusInternalServerError)
+				}))
+				defer server.Close()
+				client, err := jev.NewCustom("fixture-key", "fixture", server.URL)
+				if err != nil {
+					t.Fatal(err)
+				}
+				h.Judge = experience.NewJudge(client)
+			}
+			delivered := 0
+			ctx := runcompletion.With(t.Context(), func(context.Context, state.Run) error { delivered++; return nil })
+			run, err := h.Run(ctx, newSession(t, h), "Fix the fixture decrement")
+			if stage == "ordinary" {
+				if err != nil || run.ExperienceStatus != "review_pending" || run.ExecutionStatus != "completed" || run.MemoryStatus != "unchanged" || delivered != 1 || len(runner.requests) != 1 {
+					t.Fatalf("ordinary run: %+v %v", run, err)
+				}
+				return
+			}
+			var limit *experience.LimitError
+			if !errors.As(err, &limit) || run.ExecutionStatus != "completed" || run.MemoryStatus != "unchanged" || run.ExperienceStatus != "failed" || run.AcceptanceStatus != "unverified" || run.Error != "" || run.Output == "" {
+				t.Fatalf("independent outcomes lost: %+v %v", run, err)
+			}
+			evidence, err := h.Store.ToolEvidence(t.Context(), run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retried, err := h.RetryExperience(ctx, run.ID)
+			if !errors.As(err, &limit) || retried.ExecutionStatus != "completed" || retried.MemoryStatus != run.MemoryStatus || retried.Output != run.Output || delivered != 1 || len(runner.requests) != 1 {
+				t.Fatalf("retry replayed execution/delivery or lost outcomes: %+v %v", retried, err)
+			}
+			retained, err := h.Store.ToolEvidence(t.Context(), run.ID)
+			if err != nil || !reflect.DeepEqual(evidence, retained) {
+				t.Fatal("retained evidence changed", err)
+			}
+			saved, err := h.Store.Run(t.Context(), run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			blocked := 0
+			for _, e := range saved.Events {
+				if e.Type == "experience.blocked" {
+					blocked++
+					b, _ := json.Marshal(e.Data)
+					if !strings.Contains(string(b), "entire_payload") || e.Data["run_id"] != run.ID || e.Data["native_replayed"] != false {
+						t.Fatalf("missing attribution: %s", b)
+					}
+				}
+			}
+			if blocked != 2 {
+				t.Fatalf("expected original and retry diagnostics, got %d", blocked)
+			}
+		})
+	}
+}
+
+// Record the oversized result through the normal evidence journal, so retries
+// exercise the same retained payload rather than a substituted extraction input.
+type oversizedEvidenceRunner struct {
+	inner *experienceRunner
+	size  int
+}
+
+func (r oversizedEvidenceRunner) Run(ctx context.Context, req harness.Request, emit func(harness.Observation) error) (harness.Result, error) {
+	return r.inner.Run(ctx, req, func(o harness.Observation) error {
+		if o.Tool != nil && o.Tool.Stage == "result" && o.Tool.ID == "test-1" {
+			o.Tool.Result = json.RawMessage(`"` + strings.Repeat("x", r.size) + `"`)
+		}
+		return emit(o)
+	})
 }
