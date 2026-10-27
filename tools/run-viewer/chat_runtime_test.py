@@ -367,6 +367,18 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(turn["output"],[])
         self.assertNotIn("steps",turn)
 
+    def test_execution_ready_shows_nonstreamed_answer_once_before_closeout(self):
+        turn = {"id":"ready", "text":"", "output":[]}
+        ready = {"type":"execution.ready", "phase":"execute", "data":{"output":"Final answer", "execution_status":"completed", "closeout":"pending"}}
+        self.runtime._event(turn, ready)
+        self.runtime._event(turn, ready)
+        self.assertEqual(turn["text"], "Final answer")
+        self.assertNotIn("run.finished", [row.get("label") for row in turn["output"]])
+        streamed = {"id":"streamed", "text":"", "output":[]}
+        self.runtime._event(streamed, {"type":"text.delta", "phase":"execute", "delta":"Streamed"})
+        self.runtime._event(streamed, {"type":"execution.ready", "phase":"execute", "data":{"output":"Streamed"}})
+        self.assertEqual(streamed["text"], "Streamed")
+
     def test_native_tool_errors_keep_the_original_result(self):
         turn = {"id":"native", "text":"", "output":[]}
         self.runtime._event(turn,{"type":"tool.activity","phase":"execute","data":{"tool":{"id":"read-1","name":"Read","stage":"call","input":{"file_path":"missing.txt"}}}})

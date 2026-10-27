@@ -305,7 +305,8 @@ func TestLegacyBindingStartsFreshAndFailedRouteRecoversAutomatically(t *testing.
 		return memory.Decision{}, errors.New("private fixture memory diagnostic")
 	})
 	failed := f.process(t, f.message(t, "failed", "Explain project alpha.", "text", "dm"))
-	if failed.Status != "failed" || len(f.runner.snapshot()) != 2 || strings.Contains(failed.ReplyText, "private fixture") {
+	// The answer left before the failing closeout: message and reply stay successful.
+	if failed.Status != "completed" || f.run(t, failed).MemoryStatus != "failed" || len(f.runner.snapshot()) != 2 || strings.Contains(failed.ReplyText, "private fixture") {
 		t.Fatal("failed route lost its outcome or leaked diagnostics", failed)
 	}
 	f.host.Decider = serviceDecider(func(context.Context, string, []state.Memory) (memory.Decision, error) {

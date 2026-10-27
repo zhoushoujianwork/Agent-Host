@@ -15,6 +15,7 @@ import (
 	"agent-host/internal/assembly"
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/routing"
+	"agent-host/internal/runcompletion"
 	"agent-host/internal/state"
 )
 
@@ -344,6 +345,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	var run state.Run
 	var runErr error
 	waiting := false
+	var earlyRun *earlyReply
 	if resolutionErr == nil && m.MessageType == "interactiveCard" && !supportedInput(m) && s.ReadForwardedCard != nil &&
 		m.ConversationType == "1" && s.OwnerID != "" && m.SenderID == s.OwnerID && m.AudienceID == "owner" && m.ReplyExpiresAt.After(time.Now()) {
 		readCtx, stopRead := context.WithTimeout(turnCtx, 30*time.Second)
@@ -378,6 +380,11 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 	} else {
 		var handled bool
 		m, runErr = s.prepareInput(turnCtx, m)
+		// Hosts that support the execution-ready hook deliver the answer before
+		// memory closeout; others keep the legacy post-run reply below.
+		early := &earlyReply{}
+		runCtx := runcompletion.With(withEarlyReply(turnCtx, early), s.earlyReplyHandler(m, early))
+		earlyRun = early
 		if runErr != nil {
 			handled, reply = true, "附件未能下载或保存，本次任务没有执行。请重新发送附件。"
 		} else {
@@ -388,7 +395,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 					handled, reply, runErr = s.OwnerPrivateCommand(turnCtx, m)
 				}
 				if !handled && runErr == nil {
-					handled, reply, runErr = s.approvalReply(turnCtx, m)
+					handled, reply, runErr = s.approvalReply(runCtx, m)
 				}
 			}
 			if !handled && runErr == nil && m.Input == nil {
@@ -397,7 +404,7 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 		}
 		if !handled {
 			var notice string
-			run, notice, runErr = s.runMessage(turnCtx, m)
+			run, notice, runErr = s.runMessage(runCtx, m)
 			reply = resultTextWithNotice(run, runErr, notice, replyBodyBudget(m))
 			if run.ID == "" && runErr == nil {
 				stored, err := s.Store.ChannelMessage(turnCtx, m.ID)
@@ -413,26 +420,18 @@ func (s *Service) processMessage(ctx context.Context, m state.ChannelMessage, re
 			status, cause = "failed", runErr.Error()
 		}
 	}
-	// Outcome recording and one delivery attempt must remain possible after a
-	// turn timeout. The bounded context never retries the native task.
-	finishCtx, finishCancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer finishCancel()
-	if !waiting {
-		if err := s.Store.FinishChannelMessage(finishCtx, m.ID, status, cause); err != nil {
-			return fmt.Errorf("finish channel input: %w", err)
+	if earlyRun != nil && earlyRun.started() {
+		// The answer was already recorded and attempted before closeout. Never
+		// make a second attempt, even when that delivery failed or is unknown,
+		// and never rewrite the recorded message outcome or add a second warning.
+		if runErr != nil {
+			if err := s.closeoutFailed(m, run.ID, runErr); err != nil {
+				return err
+			}
 		}
+		return earlyRun.failure()
 	}
-	if err := s.observe("channel.processed", fmt.Sprintf("message=%s status=%s run=%s", m.ID, status, run.ID)); err != nil {
-		return err
-	}
-	message := replyForMessage(m, reply)
-	if m.ReplyTarget != nil {
-		message.Text = apiReplyText(reply, replyBodyBudget(m))
-	}
-	if err := s.Store.PrepareChannelReply(finishCtx, m.ID, message.Text); err != nil {
-		return fmt.Errorf("prepare channel reply: %w", err)
-	}
-	return s.deliverChannelReply(finishCtx, m, message)
+	return s.finishAndDeliver(m, status, cause, reply, waiting, run.ID)
 }
 
 func (s *Service) deliverChannelReply(finishCtx context.Context, m state.ChannelMessage, message dingtalk.ReplyMessage) error {

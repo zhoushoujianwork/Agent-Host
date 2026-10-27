@@ -15,6 +15,9 @@ type Renderer struct {
 	Out       io.Writer
 	JSON      bool
 	streaming bool
+	// streamed records runs whose native text already reached this renderer, so
+	// execution.ready prints the saved answer only for non-streaming harnesses.
+	streamed map[string]bool
 }
 
 func safe(s string) string {
@@ -31,6 +34,10 @@ func (r *Renderer) Render(e event.Event) error {
 		return json.NewEncoder(r.Out).Encode(e)
 	}
 	if e.Type == "text.delta" {
+		if r.streamed == nil {
+			r.streamed = map[string]bool{}
+		}
+		r.streamed[e.RunID] = true
 		if !r.streaming {
 			if _, err := fmt.Fprintf(r.Out, "\n  %s › ", safe(e.Agent)); err != nil {
 				return err
@@ -48,6 +55,13 @@ func (r *Renderer) Render(e event.Event) error {
 			return err
 		}
 		r.streaming = false
+	}
+	if e.Type == "execution.ready" && !r.streamed[e.RunID] {
+		if output, _ := e.Data["output"].(string); output != "" {
+			if _, err := fmt.Fprintf(r.Out, "\n  %s › %s\n\n", safe(e.Agent), safe(output)); err != nil {
+				return err
+			}
+		}
 	}
 	message := strings.ReplaceAll(safe(e.Message), "\n", " ↵ ")
 	if strings.HasPrefix(e.Type, "phase.") {

@@ -163,6 +163,11 @@ and result destination at intake. Configured CLI/channel executions persist this
 plan before native work; channel workers deliver queued results using verified
 bot accounts and retain delivery evidence independently from execution.
 
+[Answer delivery and closeout](reply-closeout.md) makes a durably completed
+Agent answer available before built-in memory and experience processing.
+Closeout stays owned by the same Host invocation; its failures remain separate
+from execution and delivery, and do not trigger task replay or a second answer.
+
 ## Delivered foundation
 
 | Area | Current behavior | Boundary / next gap |

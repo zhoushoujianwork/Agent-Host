@@ -190,6 +190,7 @@ func dispatchTaskFeedbackAt(ctx context.Context, q *taskfeedback.Queue, o option
 		}
 		finished := run.ExecutionStatus != "running" && run.ExecutionStatus != ""
 		finalReceipt := false
+		executionReady := false
 		finishedAt := run.CreatedAt
 		for _, e := range run.Events {
 			if e.Type == "run.finished" {
@@ -197,12 +198,19 @@ func dispatchTaskFeedbackAt(ctx context.Context, q *taskfeedback.Queue, o option
 				finalReceipt = true
 				finishedAt = e.At
 			}
+			if e.Type == "execution.ready" {
+				executionReady = true
+			}
 		}
 		// Completed native execution can precede memory processing. Wait for the
 		// final receipt, except recovered unknown/failed runs with no live turn.
 		// Saved candidates stay review_pending while the live turn compares them.
+		// A verified notify-mode answer depends only on completed native execution
+		// (the execution.ready journal event), never on closeout. Origin-message
+		// delivery keeps waiting: the channel owns that early send and recovery
+		// must not race it.
 		if !finalReceipt && run.ExecutionStatus == "completed" && (run.MemoryStatus == "pending" || run.ExperienceStatus == "pending" || run.ExperienceStatus == "review_pending") {
-			finished = false
+			finished = item.Plan.Mode == "notify" && executionReady
 		}
 		if !finished && now.Sub(item.UpdatedAt) > 30*time.Second {
 			active, probeErr := state.HostActive(item.Home)

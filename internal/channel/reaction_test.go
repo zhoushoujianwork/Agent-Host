@@ -132,6 +132,13 @@ func TestReactionCompletionRequiresTaskAndReplySuccess(t *testing.T) {
 			m := f.process(t, input)
 			drainReactions(t, f.service)
 			calls := f.service.Reactor.(*serviceReactor).snapshot()
+			if failure == "memory" {
+				// Task execution and reply both succeeded; closeout failure stays on the run.
+				if calls[len(calls)-1].label != "已完成" || f.run(t, m).MemoryStatus != "failed" {
+					t.Fatalf("closeout failure changed delivered completion: %+v", calls)
+				}
+				return
+			}
 			if calls[len(calls)-1].label != "打叉" {
 				t.Fatalf("false completion: %+v", calls)
 			}

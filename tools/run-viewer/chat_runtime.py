@@ -539,6 +539,13 @@ class ChatRuntime:
                 turn["model"] = str(event["model"])
             if kind == "text.delta":
                 self._text(turn, event.get("delta", ""))
+            if kind == "execution.ready":
+                # Execution is durably complete, but Host closeout may still be
+                # running: show a non-streamed answer now and keep the turn open
+                # until run.finished.
+                output = (event.get("data") or {}).get("output")
+                if isinstance(output, str) and output and not turn["text"]:
+                    self._text(turn, output)
             if kind in {"native.evidence", "agent.started", "agent.result", "tool.activity"}:
                 if event.get("component") == "harness.acp":
                     self._acp(turn, event)

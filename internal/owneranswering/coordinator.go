@@ -683,9 +683,37 @@ func (c *Coordinator) evaluate(ctx context.Context, r *state.OwnerAnsweringRecor
 	var err error
 	if draftOnly {
 		o, err = c.Draft(ctx, *q)
-	} else {
-		o, err = c.Handle(ctx, *q)
+		return c.finishOutcome(ctx, r, q, o, err, true)
 	}
+	// Handle may deliver its outcome before Host closeout through the request
+	// scoped callback. The coordinator stays the only delivery authority: the
+	// early path runs the same finishOutcome tail, exactly once.
+	early := &earlyOutcome{}
+	o, err = c.Handle(withOutcomeReady(ctx, func(o Outcome, err error) error {
+		early.mu.Lock()
+		defer early.mu.Unlock()
+		if early.done {
+			return errors.New("outcome was already handled")
+		}
+		early.done = true
+		early.err = c.finishOutcome(ctx, r, q, o, err, false)
+		return early.err
+	}), *q)
+	early.mu.Lock()
+	handled, earlyErr := early.done, early.err
+	early.mu.Unlock()
+	if handled {
+		// Closeout results after an early outcome never change peer delivery or
+		// question state; the Host journal retains them.
+		return earlyErr
+	}
+	return c.finishOutcome(ctx, r, q, o, err, false)
+}
+
+// finishOutcome saves the observed handler outcome, validates it and, for a
+// valid answer, runs the single guarded delivery. It is shared by the ordinary
+// post-Handle path and the early outcome-ready path.
+func (c *Coordinator) finishOutcome(ctx context.Context, r *state.OwnerAnsweringRecord, q *Question, o Outcome, err error, draftOnly bool) error {
 	if o.RunID != "" {
 		q.RunID = o.RunID
 	}

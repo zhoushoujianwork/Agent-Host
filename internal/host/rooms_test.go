@@ -179,8 +179,8 @@ func TestRoomHistorySurvivesRuntimeAndModelChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			runner.status = "canceled"
-			if _, err := h.Run(t.Context(), greeting, "hi"); err != nil {
-				t.Fatal(err)
+			if canceled, err := h.Run(t.Context(), greeting, "hi"); err == nil || canceled.ExecutionStatus != "canceled" {
+				t.Fatalf("expected retained canceled greeting: run=%+v error=%v", canceled, err)
 			}
 			runner.status = ""
 			request := input("forward", "send that result to the colleague")

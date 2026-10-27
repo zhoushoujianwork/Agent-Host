@@ -26,6 +26,7 @@ import (
 	"agent-host/internal/managedskills"
 	"agent-host/internal/memory"
 	"agent-host/internal/objectmemory"
+	"agent-host/internal/runcompletion"
 	"agent-host/internal/state"
 	"agent-host/internal/taskfeedback"
 )
@@ -738,18 +739,54 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		}
 		return h.receipt(j, err)
 	}
+	// Native execution is durably complete. Offer the answer before built-in
+	// closeout; closeout continues synchronously in this owned invocation.
+	readyErr := h.executionReady(ctx, j)
+	ctx = runcompletion.Without(ctx)
 	if reason := r.AutomaticMemorySkipReason(); reason != "" {
-		err = h.Store.SkipAutomaticMemory(finishCtx, r.ID, reason)
+		// Delivery can outlive the context used to save native completion.
+		// Record the skip with its own bounded persistence budget.
+		skipCtx, cancelSkip := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelSkip()
+		err = h.Store.SkipAutomaticMemory(skipCtx, r.ID, reason)
 		if err == nil {
 			err = j.emit(event.Event{Type: "memory.skipped", Phase: "remember", Component: "host", Status: "skipped", Message: "automatic memory and experience are paused for this run", Data: map[string]any{"reason": reason, "projects": r.Projects, "memory_attribution": r.MemoryAttribution}})
 		}
-		return h.receipt(j, err)
+		return h.receipt(j, errors.Join(readyErr, err))
 	}
 	err = h.finalize(ctx, j)
 	if err == nil {
 		err = h.finalizeExperience(ctx, j)
 	}
-	return h.receipt(j, err)
+	return h.receipt(j, errors.Join(readyErr, err))
+}
+
+// executionReady records the persisted native answer and invokes the
+// request-scoped delivery handler at most once. The saved run still has pending
+// memory and experience; handler failure is journaled and never replays native
+// work, retries delivery or suppresses closeout. A returned error is only a
+// failure to persist the execution.ready evidence itself.
+func (h *Host) executionReady(ctx context.Context, j *journal) error {
+	handler := runcompletion.From(ctx)
+	// Reads must survive cancellation of the execution context but stay bounded.
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelRead()
+	saved, err := h.Store.Run(readCtx, j.run.ID)
+	if err != nil {
+		return fmt.Errorf("read completed run for execution.ready: %w", err)
+	}
+	readyErr := j.emit(event.Event{Type: "execution.ready", Phase: "execute", Component: "host", Status: "completed", Agent: saved.Agent, Model: saved.Model, Message: "native execution completed; memory and experience closeout continues after this answer", Data: map[string]any{"output": saved.Output, "execution_status": saved.ExecutionStatus, "acceptance_status": saved.AcceptanceStatus, "memory_status": saved.MemoryStatus, "experience_status": saved.ExperienceStatus, "closeout": "pending", "handler": handler != nil}})
+	if handler == nil {
+		return readyErr
+	}
+	if reloaded, loadErr := h.Store.Run(readCtx, j.run.ID); loadErr == nil {
+		saved = reloaded
+	}
+	if handlerErr := handler(ctx, saved); handlerErr != nil {
+		failure := j.emit(event.Event{Type: "execution.ready.handler_failed", Phase: "execute", Component: "host", Status: "failed", Message: handlerErr.Error(), Data: map[string]any{"error": handlerErr.Error(), "closeout": "continues", "native_replayed": false}})
+		return errors.Join(readyErr, failure)
+	}
+	return readyErr
 }
 
 func (h *Host) failBeforeExecution(j *journal, cause error) (state.Run, error) {

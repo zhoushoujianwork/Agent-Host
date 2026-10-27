@@ -97,3 +97,47 @@ func TestProgressGapIsVisibleWithoutChangingOutcomeOrRawEvidence(t *testing.T) {
 		t.Fatal("structured progress failure evidence was lost", err)
 	}
 }
+
+func TestTerminalShowsExecutionReadyOutputOnlyWhenNotAlreadyStreamed(t *testing.T) {
+	ready := func(run string) event.Event {
+		return event.Event{Type: "execution.ready", RunID: run, Agent: "claude", Phase: "execute", Component: "host", Status: "completed", At: time.Now(), Message: "native execution completed", Data: map[string]any{"output": "Final answer\x1b"}}
+	}
+	var plain bytes.Buffer
+	r := Renderer{Out: &plain}
+	if err := r.Render(ready("nonstreaming")); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(plain.String(), "Final answer") != 1 || strings.Contains(plain.String(), "\x1b") {
+		t.Fatalf("non-streaming output was not rendered once and sanitized: %q", plain.String())
+	}
+	var streamed bytes.Buffer
+	r = Renderer{Out: &streamed}
+	for _, e := range []event.Event{{Type: "text.delta", RunID: "streaming", Agent: "claude", Delta: "Final answer"}, ready("streaming")} {
+		if err := r.Render(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Count(streamed.String(), "Final answer") != 1 {
+		t.Fatalf("streamed answer was duplicated by execution.ready: %q", streamed.String())
+	}
+	// Streaming for one run must not hide the answer of another run.
+	var mixed bytes.Buffer
+	r = Renderer{Out: &mixed}
+	for _, e := range []event.Event{{Type: "text.delta", RunID: "one", Agent: "claude", Delta: "first"}, ready("two")} {
+		if err := r.Render(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !strings.Contains(mixed.String(), "Final answer") {
+		t.Fatalf("another run's stream suppressed this answer: %q", mixed.String())
+	}
+	var js bytes.Buffer
+	r = Renderer{Out: &js, JSON: true}
+	if err := r.Render(ready("json")); err != nil {
+		t.Fatal(err)
+	}
+	var decoded event.Event
+	if err := json.Unmarshal(js.Bytes(), &decoded); err != nil || decoded.Data["output"] != "Final answer\x1b" || decoded.Type != "execution.ready" {
+		t.Fatalf("JSON observers must receive the final output: %q %v", js.String(), err)
+	}
+}

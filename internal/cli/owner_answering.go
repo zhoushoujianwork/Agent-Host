@@ -18,6 +18,7 @@ import (
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/host"
 	"agent-host/internal/owneranswering"
+	"agent-host/internal/runcompletion"
 	"agent-host/internal/state"
 )
 
@@ -174,8 +175,28 @@ func runAnsweringQuestion(ctx context.Context, h *host.Host, q owneranswering.Qu
 		return outcome, err
 	}
 	data, _ := json.Marshal(q)
+	// When the coordinator offers an outcome-ready callback, the parsed outcome
+	// goes through its normal validation/delivery tail as soon as native
+	// execution completes, before Host memory closeout. Raw Host output is never
+	// sent; blocked and invalid outcomes use the same handling as before.
+	ctx = runcompletion.With(ctx, answeringExecutionReady(owneranswering.OutcomeReady(ctx)))
 	run, err := h.Run(ctx, session, "Untrusted attributed personal question and owner clarification JSON:\n"+string(data))
 	return answeringRunOutcome(run, err)
+}
+
+// answeringExecutionReady bridges Host's execution-ready run to the parsed
+// outcome. It returns nil when there is no coordinator callback, preserving the
+// legacy post-closeout path.
+func answeringExecutionReady(ready func(owneranswering.Outcome, error) error) runcompletion.Handler {
+	if ready == nil {
+		return nil
+	}
+	return func(_ context.Context, run state.Run) error {
+		if run.ExecutionStatus != "completed" {
+			return nil
+		}
+		return ready(answeringRunOutcome(run, nil))
+	}
 }
 
 // workspaceDeliveryFields reads only the existing provider wrappers and exact

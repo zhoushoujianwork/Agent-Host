@@ -266,6 +266,7 @@ func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state
 		if err != nil {
 			return state.Run{}, "", err
 		}
+		setReplyNotice(ctx, notice)
 		run, err := s.Host.RunChannel(ctx, session, m.Text, m.ID)
 		return run, notice, err
 	}
@@ -306,6 +307,7 @@ func (s *Service) runResolved(ctx context.Context, m state.ChannelMessage, h Hos
 	if err != nil {
 		return state.Run{ProjectID: runtime.ProjectID, ProjectName: runtime.ProjectName, Workspace: runtime.Workspace, Projects: runtime.Projects, AdditionalDirectories: runtime.AdditionalDirectories}, "", err
 	}
+	setReplyNotice(ctx, notice)
 	run, err := h.RunChannel(ctx, session, m.Text, m.ID)
 	return run, notice, err
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,6 +47,11 @@ func observeAndDrainHostPhases(t *testing.T, f *serviceFixture, messageID string
 			return err
 		}
 		for _, reaction := range reactions {
+			// The answer is delivered before closeout, so its reply and terminal
+			// markers may already exist when memory phases start.
+			if run.ExecutionStatus == "completed" && (e.Phase == "remember" || e.Phase == "persist" || e.Phase == "evidence" || e.Phase == "extract" || e.Phase == "assess" || e.Phase == "candidates") {
+				continue
+			}
 			if reaction.Stage != "received" && reaction.Stage != "processing" {
 				return fmt.Errorf("internal phase leaked into public outbox: %+v", reaction)
 			}
@@ -159,7 +165,7 @@ func TestHostExperienceMarkersRequireActualExtractionAndAssessment(t *testing.T)
 	}{
 		{"unpaired tool", false, false,
 			[]string{"recall", "execute", "remember", "persist", "evidence"},
-			[]string{"已收到", "处理中", "打叉"}},
+			[]string{"已收到", "处理中", "已完成"}},
 		{"paired tool without drafts", true, false,
 			[]string{"recall", "execute", "remember", "persist", "evidence", "extract", "candidates"},
 			[]string{"已收到", "处理中", "已完成"}},
@@ -209,12 +215,13 @@ func TestHostExperienceMarkersRequireActualExtractionAndAssessment(t *testing.T)
 			if err != nil || len(candidates) != wantAssessments {
 				t.Fatalf("candidate persistence: candidates=%+v error=%v", candidates, err)
 			}
-			wantStatus := "completed"
-			if !tc.paired {
-				wantStatus = "failed"
-			}
-			if m.Status != wantStatus || m.ReplyStatus != "accepted" {
+			// The answer was delivered before closeout, so an unpaired-tool
+			// extraction failure stays on the run and never rewrites the message.
+			if m.Status != "completed" || m.ReplyStatus != "accepted" {
 				t.Fatalf("unexpected experience outcome: %+v", m)
+			}
+			if run := f.run(t, m); !tc.paired && run.ExperienceStatus != "failed" || tc.paired && run.ExperienceStatus == "failed" {
+				t.Fatalf("closeout outcome lost: %+v", run)
 			}
 		})
 	}
@@ -232,11 +239,11 @@ func TestHostJevFailureMarksFailureWithoutMemoryPersistence(t *testing.T) {
 	if want := []string{"recall", "execute", "remember"}; !reflect.DeepEqual(*phases, want) {
 		t.Fatalf("failure progressed to persistence: got=%v want=%v", *phases, want)
 	}
-	if got, want := addedReactionLabels(t, f, input.ConversationID, input.ID), []string{"已收到", "处理中", "打叉"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("failure markers: got=%v want=%v", got, want)
+	if got, want := addedReactionLabels(t, f, input.ConversationID, input.ID), []string{"已收到", "处理中", "已完成"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("answer markers: got=%v want=%v", got, want)
 	}
 	run := f.run(t, m)
-	if run.ExecutionStatus != "completed" || run.MemoryStatus != "failed" || m.Status != "failed" || m.ReplyStatus != "accepted" {
+	if run.ExecutionStatus != "completed" || run.MemoryStatus != "failed" || m.Status != "completed" || m.ReplyStatus != "accepted" || len(f.replier.snapshot()) != 1 {
 		t.Fatalf("memory failure overwrote native or reply truth: run=%+v message=%+v", run, m)
 	}
 	memories, err := f.service.Store.Memories(context.Background(), f.service.Scope)
@@ -245,11 +252,12 @@ func TestHostJevFailureMarksFailureWithoutMemoryPersistence(t *testing.T) {
 	}
 }
 
-func TestWorkKeepsGenericProgressWhileDecisionIsBlocked(t *testing.T) {
+func TestWorkDeliversReplyWhileDecisionIsBlocked(t *testing.T) {
 	f := newServiceFixture(t)
 	entered, release := make(chan struct{}), make(chan struct{})
+	var firstDecision sync.Once
 	f.host.Decider = serviceDecider(func(ctx context.Context, _ string, _ []state.Memory) (memory.Decision, error) {
-		close(entered)
+		firstDecision.Do(func() { close(entered) })
 		select {
 		case <-release:
 			return memory.Decision{Kind: "none", Model: "fixture-jev"}, nil
@@ -257,15 +265,10 @@ func TestWorkKeepsGenericProgressWhileDecisionIsBlocked(t *testing.T) {
 			return memory.Decision{}, ctx.Err()
 		}
 	})
-	jevVisible, completed := make(chan state.ChannelReaction, 1), make(chan state.ChannelReaction, 1)
+	completed := make(chan state.ChannelReaction, 1)
 	f.service.ObserveReaction = func(kind string, reaction state.ChannelReaction, _ time.Duration) error {
-		if kind == "channel.reaction.finished" && reaction.Status == "accepted" {
-			switch reaction.Stage {
-			case "processing":
-				jevVisible <- reaction
-			case "completed":
-				completed <- reaction
-			}
+		if kind == "channel.reaction.finished" && reaction.Status == "accepted" && reaction.Stage == "completed" {
+			completed <- reaction
 		}
 		return nil
 	}
@@ -285,33 +288,47 @@ func TestWorkKeepsGenericProgressWhileDecisionIsBlocked(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("Jev decision did not start")
 	}
-	var visible state.ChannelReaction
-	select {
-	case visible = <-jevVisible:
-	case <-ctx.Done():
-		t.Fatal("Jev marker was not accepted while the decision was blocked")
-	}
-	m := f.receipt(t, input.ID)
-	run := f.run(t, m)
-	if visible.Label != "处理中" || !visible.Active || visible.ChannelMessageID != m.ID || visible.SourceRunID != "" || visible.SourceEventSeq != 0 {
-		t.Fatalf("in-flight Jev marker lost attribution: %+v", visible)
-	}
-	if m.Status != "claimed" || len(f.replier.snapshot()) != 0 || run.ExecutionStatus != "completed" || run.MemoryStatus != "pending" {
-		t.Fatalf("decision was not visibly pending before reply: message=%+v run=%+v", m, run)
-	}
-	for _, reaction := range m.Reactions {
-		if reaction.Stage == "persist" || reaction.Stage == "completed" || reaction.Stage == "failed" {
-			t.Fatalf("blocked decision advanced to a later stage: %+v", reaction)
-		}
-	}
-	close(release)
+	// The decider is still BLOCKED: the answer and terminal marker must already
+	// be delivered, while memory remains pending.
 	select {
 	case <-completed:
 	case <-ctx.Done():
-		t.Fatal("released decision did not complete reply and terminal marker")
+		t.Fatal("reply was not delivered while the decision was blocked")
+	}
+	m := f.receipt(t, input.ID)
+	run := f.run(t, m)
+	if m.Status != "completed" || m.ReplyStatus != "accepted" || len(f.replier.snapshot()) != 1 || run.ExecutionStatus != "completed" || run.MemoryStatus != "pending" {
+		t.Fatalf("reply did not precede blocked closeout: message=%+v run=%+v", m, run)
+	}
+	for _, e := range run.Events {
+		if e.Type == "run.finished" {
+			t.Fatal("run.finished was emitted before closeout ended")
+		}
+	}
+	followup := f.message(t, "after-early-reply", "Continue this conversation.", "text", "blocked-dm")
+	f.receive(t, followup)
+	// Let the worker scan the queue while closeout still owns the binding.
+	time.Sleep(350 * time.Millisecond)
+	if len(f.runner.snapshot()) != 1 || f.receipt(t, followup.ID).Status != "queued" {
+		t.Fatal("an early reply released native-session exclusion during closeout")
+	}
+	close(release)
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if run = f.run(t, f.receipt(t, input.ID)); run.MemoryStatus != "pending" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	m = f.receipt(t, input.ID)
-	if m.Status != "completed" || m.ReplyStatus != "accepted" || len(f.replier.snapshot()) != 1 || len(f.runner.snapshot()) != 1 {
-		t.Fatalf("unexpected completion after releasing Jev: %+v", m)
+	if run.MemoryStatus == "pending" || m.Status != "completed" || m.ReplyStatus != "accepted" {
+		t.Fatalf("closeout after release changed the delivered answer: message=%+v run=%+v", m, run)
+	}
+	for time.Now().Before(deadline) && f.receipt(t, followup.ID).ReplyStatus != "accepted" {
+		time.Sleep(20 * time.Millisecond)
+	}
+	requests := f.runner.snapshot()
+	if len(requests) != 2 || !requests[1].Resume || requests[0].NativeSessionID != requests[1].NativeSessionID || f.receipt(t, followup.ID).SessionID != m.SessionID {
+		t.Fatalf("follow-up after closeout lost native continuity: %+v", requests)
 	}
 }

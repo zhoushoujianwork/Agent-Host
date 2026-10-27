@@ -315,7 +315,11 @@ func TestDingTalkServiceAutomaticallyRecoversForNewMessage(t *testing.T) {
 			} else if failure == "unknown" {
 				outcomeText = "结果未确认"
 			}
-			if first.Status != "failed" || first.ReplyStatus != "accepted" || !strings.Contains(first.ReplyText, outcomeText) {
+			wantStatus := "failed"
+			if failure == "memory" {
+				wantStatus, outcomeText = "completed", firstRun.Output
+			}
+			if first.Status != wantStatus || first.ReplyStatus != "accepted" || !strings.Contains(first.ReplyText, outcomeText) {
 				t.Fatalf("failure hidden: %+v", first)
 			}
 			if failure != "memory" && (firstRun.ExecutionStatus != failure || firstRun.MemoryStatus != "skipped") || failure == "memory" && (firstRun.ExecutionStatus != "completed" || firstRun.MemoryStatus != "failed") {
@@ -661,8 +665,8 @@ func TestDingTalkServiceLongReplyPreservesUTF8AndDurableFullOutput(t *testing.T)
 			if r.Output != full || len(reply) > dingtalk.MaxReplyBytes || !utf8.ValidString(reply) || !strings.Contains(reply, "节选") || strings.Contains(reply, r.ID) || m.ReplyText != reply {
 				t.Fatalf("long reply handling: bytes=%d valid=%v fullSaved=%v reply=%q", len(reply), utf8.ValidString(reply), r.Output == full, reply)
 			}
-			if outcome == "memory failure" && !strings.Contains(reply, "失败") {
-				t.Fatalf("long body hid memory failure: %q", reply)
+			if outcome == "memory failure" && (r.MemoryStatus != "failed" || m.Status != "completed" || strings.Contains(reply, "后续保存步骤失败")) {
+				t.Fatalf("closeout failure changed the completed answer: run=%+v message=%+v", r, m)
 			}
 		})
 	}
