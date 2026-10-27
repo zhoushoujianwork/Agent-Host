@@ -10,6 +10,7 @@ RUNTIME_ROOT ?= $(CURDIR)/.agent-host/runtime
 CONFIG_DIR ?= $(CURDIR)/.agent-host/config
 RUN_ARGS ?=
 PYTHON ?= python3
+export PYTHON
 INSTALL_ARGS ?=
 
 build:
@@ -23,7 +24,7 @@ uninstall-service:
 
 # Historical local packaging utility; normal distribution uses source commits.
 package:
-	python3 -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
+	$(PYTHON) -B tools/release/package.py --version "$(VERSION)" --output "$(DIST_DIR)"
 
 run: build
 ifeq ($(SINGLE_RUNTIME),1)
@@ -44,7 +45,7 @@ help:
 		'  uninstall-service Stop and remove automatic startup; retain configuration and state' \
 		'  run     Start or restart enabled channels and open the workbench in a browser' \
 		'  check   Check Go formatting, run go vet and tests' \
-		'  viewer  Start the local execution viewer (Python 3.10+)' \
+		'  viewer  Start the local execution viewer (Python 3.9+)' \
 		'  help    Print this usage guide (default target)' \
 		'' \
 		'Viewer options: pass through VIEWER_ARGS' \
@@ -69,9 +70,10 @@ help:
 		'Open the printed URL in a browser. Stop the viewer with Ctrl-C.'
 
 viewer:
-	python3 -B tools/run-viewer/server.py $(VIEWER_ARGS)
+	$(PYTHON) -B tools/run-viewer/server.py $(VIEWER_ARGS)
 
 check:
+	@$(PYTHON) -c 'import sys; sys.exit("make check requires Python 3.9+") if sys.version_info < (3, 9) else None'
 	@unformatted="$$(gofmt -l cmd internal plugins)" && \
 		{ test -z "$$unformatted" || { printf '%s\n' "$$unformatted"; exit 1; }; }
 	go vet ./...
@@ -84,26 +86,26 @@ check:
 	$(PYTHON) -B tools/install_test.py
 	$(PYTHON) -B skills/agent-host-memory/scripts/import_memgov_test.py
 	$(PYTHON) -B skills/agent-host-tasks/scripts/chat_test.py
-	python3 -B tools/service/install_test.py
-	python3 -B tools/service/autostart_test.py
-	python3 -B tools/service/migrate_runtime_test.py
-	python3 -B tools/service/run_test.py
-	python3 -B tools/service/migrate_config_test.py
-	python3 -B tools/service/migrate_datasource_test.py
-	python3 -B tools/service/validate_file_memory_history_test.py
-	python3 -B tools/release/package_test.py
-	python3 -B tools/release/export_public_test.py
-	python3 -B tools/run-viewer/server_test.py
-	python3 -B tools/run-viewer/record_control_test.py
+	$(PYTHON) -B tools/service/install_test.py
+	$(PYTHON) -B tools/service/autostart_test.py
+	$(PYTHON) -B tools/service/migrate_runtime_test.py
+	$(PYTHON) -B tools/service/run_test.py
+	$(PYTHON) -B tools/service/migrate_config_test.py
+	$(PYTHON) -B tools/service/migrate_datasource_test.py
+	$(PYTHON) -B tools/service/validate_file_memory_history_test.py
+	$(PYTHON) -B tools/release/package_test.py
+	$(PYTHON) -B tools/release/export_public_test.py
+	$(PYTHON) -B tools/run-viewer/server_test.py
+	$(PYTHON) -B tools/run-viewer/record_control_test.py
 	node --test tools/run-viewer/app_test.cjs tools/run-viewer/execution-control_test.cjs
-	python3 -B tools/run-viewer/memory_view_test.py
-	python3 -B tools/run-viewer/settings_test.py
-	python3 -B tools/run-viewer/platform_skills_test.py
+	$(PYTHON) -B tools/run-viewer/memory_view_test.py
+	$(PYTHON) -B tools/run-viewer/settings_test.py
+	$(PYTHON) -B tools/run-viewer/platform_skills_test.py
 	node --test tools/run-viewer/platform-skills_test.cjs
-	python3 -B tools/run-viewer/agent_profiles_test.py
+	$(PYTHON) -B tools/run-viewer/agent_profiles_test.py
 	node --test tools/run-viewer/agent-profiles_test.cjs
-	python3 -B tools/run-viewer/chat_runtime_test.py
-	python3 -B tools/run-viewer/session_chat_test.py
+	$(PYTHON) -B tools/run-viewer/chat_runtime_test.py
+	$(PYTHON) -B tools/run-viewer/session_chat_test.py
 	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs
-	python3 -B experiments/history/dws_platform_test.py
-	python3 -B experiments/experience/observe_test.py
+	$(PYTHON) -B experiments/history/dws_platform_test.py
+	$(PYTHON) -B experiments/experience/observe_test.py

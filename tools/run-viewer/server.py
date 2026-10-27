@@ -235,9 +235,23 @@ class Catalog:
 
     def connection(self):
         self.validate_private_home()
-        conn = sqlite3.connect(self.database.as_uri() + "?mode=ro", uri=True, timeout=2, factory=MemoryConnection)
-        conn.execute("PRAGMA query_only=ON")
-        conn.execute("BEGIN")
+        uri = self.database.as_uri() + "?mode=ro"
+        sidecars = [Path(str(self.database) + suffix) for suffix in ("-wal", "-shm")]
+        # A read-only SQLite connection can still create WAL sidecars. Avoid
+        # opening a WAL database without both sidecars in live mode.
+        with self.database.open("rb") as source:
+            header = source.read(20)
+        snapshot = header[18:20] == b"\x02\x02" and not all(p.exists() for p in sidecars)
+        conn = sqlite3.connect(uri + ("&immutable=1" if snapshot else ""),
+                               uri=True, timeout=2, factory=MemoryConnection)
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            conn.execute("BEGIN")
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        except sqlite3.Error:
+            conn.close()
+            raise
+        conn.snapshot = snapshot
         return conn
 
     def validate_private_home(self):
@@ -605,8 +619,10 @@ class Catalog:
         rows = []
         total = 0
         source_status = "missing_database"
+        snapshot = False
         if self.database.exists():
             conn = self.connection()
+            snapshot = conn.snapshot
             try:
                 context = self.filter_context(conn)
                 scope = context["scope"]
@@ -627,7 +643,8 @@ class Catalog:
         return {"records": rows, "database_present": self.database.exists(), "database_count": total,
                 "sources": [{"id": "db", "kind": "database", "name": "本机 state.db",
                              "home": str(self.database.parent), "status": source_status,
-                             "record_count": total}],
+                             "record_count": total, "snapshot": snapshot,
+                             "notice": "Snapshot may lag recent writes" if snapshot else ""}],
                 "database_limit": RUN_LIMIT, **context,
                 "default_key": next((r["key"] for r in rows if r["execution_status"] == "running"),
                                     next((r["key"] for r in rows if r["review_events"]), rows[0]["key"] if rows else None))}
@@ -659,7 +676,7 @@ class Catalog:
             memories = [decode(row[0]) for row in conn.execute(
                 "SELECT payload FROM " + self.memory_table(conn) + memory_where + " AND scope IN (" + ",".join("?" for _ in scopes) + ")", memory_args + tuple(scopes))]
             return {"key": key, "run": run, "events": events, "candidates": candidates, "memories": memories,
-                    "source": {"id": "db", "kind": "database", "name": "本机 state.db"}, "snapshot": False,
+                    "source": {"id": "db", "kind": "database", "name": "本机 state.db"}, "snapshot": getattr(conn, "snapshot", False),
                     "receipt": next((e for e in reversed(events) if e["type"] == "run.finished"), {})}
         finally:
             conn.close()

@@ -15,11 +15,15 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"agent-host/internal/testutil"
 )
 
 // Re-exec real processes so parent loss includes SIGKILL, with no opportunity
 // for the parent to forward a cancellation signal to the Host.
 func TestChatCallerLifecycle(t *testing.T) {
+	testutil.RequireProcessListing(t, "/bin/ps", "-p", strconv.Itoa(os.Getpid()), "-o", "stat=", "-o", "lstart=")
+	testutil.RequireProcessListing(t, "/bin/ps", "-axo", "pid=,ppid=")
 	const modeKey = "AGENT_HOST_CALLER_TEST_MODE"
 	const rootKey = "AGENT_HOST_CALLER_TEST_ROOT"
 	const argsKey = "AGENT_HOST_CALLER_TEST_ARGS"

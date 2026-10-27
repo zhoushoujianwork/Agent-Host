@@ -58,7 +58,7 @@ handwritten Skills. See [support details](README-detail.md#plugin-and-integratio
 
 ## Start
 
-Requires Go 1.26+, Make, Python 3.10+ and Claude Code. Configure your Claude/Jev credentials
+Requires Go 1.26+, Make, Python 3.9+ and Claude Code. Configure your Claude/Jev credentials
 and channel settings using the [runtime setup guide](docs/service-install.md).
 
 Clone and compile locally; distribution is source-only:
@@ -168,5 +168,12 @@ configuration applies after restart.
 ```sh
 make check
 ```
+
+Automated checks use temporary state and fake harness executables; Claude Code and
+credentials are required for real execution, not `make check`. Python 3.9+ and Node.js
+are required for tool/viewer tests. Select Python with `make check PYTHON=/path/to/python3`.
+Process lifecycle integration tests skip with the denied `ps` command only when
+the environment forbids process listing; other process inspection failures fail
+the tests. These tests run fully on machines that permit process listing.
 
 [Apache License 2.0](LICENSE) · [Third-party notices](NOTICE)
