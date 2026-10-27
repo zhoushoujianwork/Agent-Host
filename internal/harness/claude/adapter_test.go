@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"agent-host/internal/harness"
+	"agent-host/internal/testutil"
 )
 
 const testSession = "e7a0d011-08ab-48ca-908e-77d853094ba0"
@@ -851,6 +852,7 @@ func TestNativeStreamingPolicyPreservesNativeOutputCaps(t *testing.T) {
 }
 
 func TestCancellationStopsProcessGroup(t *testing.T) {
+	testutil.RequireProcessListing(t, "/bin/ps", "-axo", "pid=,ppid=")
 	for _, mode := range []string{"cancel_tree", "cancel_detached_tree"} {
 		t.Run(mode, func(t *testing.T) {
 			unrelated := exec.Command("/bin/sleep", "10")

@@ -22,6 +22,11 @@ enumerated owner-local configuration files; see the
 [settings implementation](../../docs/settings-console-detail.md). Saving source
 configuration does not replace the viewer's current catalog or restart services.
 
+WAL databases without both sidecars are opened with `mode=ro&immutable=1`
+as explicit snapshots that may lag recent writes. The viewer does not create
+WAL/SHM files; live databases with sidecars retain ordinary read-only refresh.
+Snapshot records cannot be taken over as live sessions. Python 3.9 is supported.
+
 SQLite is opened with `mode=ro`, `query_only=ON`, and a read transaction per
 request. Legacy reads invoke no Host process. A file-memory backend uses the
 explicit local Host verifier to validate publication and rebuild derived cache;

@@ -90,6 +90,7 @@ func (x *NativeExtractor) Refine(ctx context.Context, run state.Run, draft state
 func (x *NativeExtractor) extract(ctx context.Context, run state.Run, evidence []state.ToolEvidence, adopted *state.Memory, rejected *state.ExperienceDraft, emit func(harness.Observation) error) (Extraction, error) {
 	out := Extraction{Drafts: []state.ExperienceDraft{}}
 	audit := struct {
+		Limit                *LimitError     `json:"limit,omitempty"`
 		Policy               string          `json:"policy_version"`
 		Reason               string          `json:"reason"`
 		RequestedModel       string          `json:"requested_model"`
@@ -146,7 +147,8 @@ func (x *NativeExtractor) extract(ctx context.Context, run state.Run, evidence [
 		return finish("invalid_source", fmt.Errorf("encode extraction source: %w", err))
 	}
 	if len(source) > MaxSourceBytes {
-		return finish("source_limit", fmt.Errorf("experience source exceeds %d bytes; no truncation performed", MaxSourceBytes))
+		audit.Limit = payloadLimit("source", len(source), MaxSourceBytes)
+		return finish("source_limit", audit.Limit)
 	}
 	sessionID, err := uuid.NewRandom()
 	if err != nil {

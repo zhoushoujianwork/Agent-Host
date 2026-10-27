@@ -296,7 +296,7 @@ function renderSources() {
     read_failed: "Source read failed. Check this runtime's state database.",
   };
   for (const source of array(state.index.sources)) {
-    node.append(dom("p", "note", `${source.channel || "local"}: ${statuses[source.status] || source.status} · ${source.home}${source.error ? " · " + source.error : ""}`));
+    node.append(dom("p", "note", `${source.channel || "local"}: ${statuses[source.status] || source.status} · ${source.home}${source.error ? " · " + source.error : ""}${source.notice ? " · " + source.notice : ""}`));
   }
   if (state.index.channels && !state.index.channels.includes("cli")) {
     node.append(dom("p", "note", "CLI source is not mounted. Use service run --config-dir ROOT/config, or service workbench for CLI-only use."));

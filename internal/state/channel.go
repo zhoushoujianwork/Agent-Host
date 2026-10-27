@@ -60,6 +60,7 @@ func (s *Store) EnqueueChannelMessage(ctx context.Context, m ChannelMessage, rep
 		m.ReceivedAt = time.Now().UTC()
 	}
 	m.Status, m.ReplyStatus = "queued", "pending"
+	m.ReplyKind = ""
 	m.SessionID, m.RunID, m.Error, m.ReplyText, m.ReplyError = "", "", "", "", ""
 	m.Reactions = nil
 	m.ProjectID, m.Workspace, m.ResolvedScope, m.RuntimeFingerprint, m.RouteBinding = "", "", "", "", ""
@@ -579,6 +580,9 @@ func (s *Store) RecoverChannels(ctx context.Context) error {
 			if m.Status == "claimed" {
 				m.Status = "unknown"
 				m.Error = "host stopped after claiming the message; execution was not replayed"
+				if m.ReplyStatus == "pending" {
+					m.ReplyKind = "recovery_notice"
+				}
 				changed = true
 			}
 			if m.ReplyStatus == "sending" {
@@ -603,4 +607,27 @@ func (s *Store) RecoverChannels(ctx context.Context) error {
 		}
 		return recoverChannelReactions(ctx, tx)
 	})
+}
+
+// PendingRecoveryNotices lists only notices enrolled by claim recovery, never
+// historical unknown records. Account and profile preserve the original route.
+func (s *Store) PendingRecoveryNotices(ctx context.Context, channel, account, profile string) ([]ChannelMessage, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT payload FROM channel_messages WHERE status='unknown' AND channel=? AND account_id=? AND profile=? AND json_extract(payload,'$.reply_kind')='recovery_notice' AND json_extract(payload,'$.reply_status')='pending' ORDER BY received_at`, channel, account, profile)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var messages []ChannelMessage
+	for rows.Next() {
+		var payload []byte
+		var m ChannelMessage
+		if err := rows.Scan(&payload); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(payload, &m); err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
 }

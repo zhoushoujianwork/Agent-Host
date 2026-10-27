@@ -505,6 +505,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		return err
 	}
+	if command == "chat" && o.oneShot && strings.TrimSpace(o.message) == "" {
+		return errors.New("message cannot be empty")
+	}
 	if command == "chat" {
 		var stop context.CancelFunc
 		ctx, stop, err = chatCallerContext(ctx, parentPID, o.callerPID, o.detach)

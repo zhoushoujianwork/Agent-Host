@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"agent-host/internal/testutil"
 )
 
 func TestRestartWaitIsBoundedWithoutReleasingExistingLock(t *testing.T) {
@@ -151,6 +153,7 @@ func TestCheckoutRestartRecognizesOnlySelectedDeployedBinary(t *testing.T) {
 }
 
 func TestManagedServiceRestartReplacesSupervisorAfterPreflight(t *testing.T) {
+	testutil.RequireProcessListing(t, "ps", "-ww", "-p", strconv.Itoa(os.Getpid()), "-o", "ppid=", "-o", "uid=", "-o", "args=")
 	root, directory := unifiedFixture(t)
 	writeBotJSON(t, filepath.Join(directory, "channels.dingtalk.json"), map[string]any{
 		"version": 1, "enabled": true, "settings": map[string]any{
