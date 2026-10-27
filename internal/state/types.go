@@ -212,6 +212,7 @@ type ChannelMessage struct {
 	SessionID             string            `json:"session_id,omitempty"`
 	RunID                 string            `json:"run_id,omitempty"`
 	Error                 string            `json:"error,omitempty"`
+	ReplyKind             string            `json:"reply_kind,omitempty"`
 	ReplyStatus           string            `json:"reply_status"`
 	ReplyText             string            `json:"reply_text,omitempty"`
 	ReplyError            string            `json:"reply_error,omitempty"`
