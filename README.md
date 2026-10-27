@@ -172,8 +172,12 @@ make check
 Automated checks use temporary state and fake harness executables; Claude Code and
 credentials are required for real execution, not `make check`. Python 3.9+ and Node.js
 are required for tool/viewer tests. Select Python with `make check PYTHON=/path/to/python3`.
+
 Process lifecycle integration tests skip with the denied `ps` command only when
 the environment forbids process listing; other process inspection failures fail
 the tests. These tests run fully on machines that permit process listing.
+
+GitHub Actions runs the full `make check` gate on Ubuntu for pull requests targeting
+`main` and pushes to `main`, without project secrets. See [the CI workflow](.github/workflows/ci.yml).
 
 [Apache License 2.0](LICENSE) · [Third-party notices](NOTICE)
