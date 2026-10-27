@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,10 @@ import (
 
 func TestIdlePromptCancelsWithoutInput(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "synthetic-key")
+	binary := filepath.Join(t.TempDir(), "fake-claude")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 99\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	input, writer := io.Pipe()
 	defer input.Close()
 	defer writer.Close()
@@ -21,7 +27,7 @@ func TestIdlePromptCancelsWithoutInput(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, []string{"chat", "--home", t.TempDir(), "--workspace", t.TempDir()}, input, io.Discard, io.Discard)
+		done <- Run(ctx, []string{"chat", "--claude", binary, "--home", t.TempDir(), "--workspace", t.TempDir()}, input, io.Discard, io.Discard)
 	}()
 	time.AfterFunc(50*time.Millisecond, cancel)
 	select {
@@ -36,7 +42,7 @@ func TestIdlePromptCancelsWithoutInput(t *testing.T) {
 
 func TestBlankExplicitMessageDoesNotBecomeInteractive(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "synthetic-key")
-	err := Run(context.Background(), []string{"chat", "--home", t.TempDir(), "--workspace", t.TempDir(), "-m", ""}, strings.NewReader(""), io.Discard, io.Discard)
+	err := Run(context.Background(), []string{"chat", "--home", t.TempDir(), "--workspace", t.TempDir(), "--claude", filepath.Join(t.TempDir(), "missing"), "-m", ""}, strings.NewReader(""), io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "message cannot be empty") {
 		t.Fatalf("got %v", err)
 	}

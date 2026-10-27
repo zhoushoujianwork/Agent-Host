@@ -18,6 +18,13 @@ import (
 	"agent-host/internal/state"
 )
 
+func testWorkbenchPython() string {
+	if python := os.Getenv("PYTHON"); python != "" {
+		return python
+	}
+	return "python3"
+}
+
 func workbenchFixture(t *testing.T) serviceLayout {
 	t.Helper()
 	layout, _ := newServiceFixture(t)
@@ -37,9 +44,9 @@ func workbenchFixture(t *testing.T) serviceLayout {
 }
 
 func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
-	python, err := exec.LookPath("python3")
+	python, err := exec.LookPath(testWorkbenchPython())
 	if err != nil {
-		t.Fatal("workbench requires Python 3.10+:", err)
+		t.Fatal("workbench requires Python 3.9+:", err)
 	}
 	for _, mode := range []string{"default", "no-browser", "open-failed"} {
 		t.Run(mode, func(t *testing.T) {
@@ -142,7 +149,7 @@ func TestServiceWorkbenchRejectsNonlocalURL(t *testing.T) {
 }
 
 func TestServiceWorkbenchFixedPortAcrossRestarts(t *testing.T) {
-	python, err := exec.LookPath("python3")
+	python, err := exec.LookPath(testWorkbenchPython())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,9 +192,9 @@ func TestServiceWorkbenchFixedPortAcrossRestarts(t *testing.T) {
 }
 
 func TestServiceWorkbenchIncludesCLIStateSource(t *testing.T) {
-	python, err := exec.LookPath("python3")
+	python, err := exec.LookPath(testWorkbenchPython())
 	if err != nil {
-		t.Fatal("workbench requires Python 3.10+:", err)
+		t.Fatal("workbench requires Python 3.9+:", err)
 	}
 	layout := workbenchFixture(t)
 	sources := []configuredChannel{{"dingtalk", layout.Root}}

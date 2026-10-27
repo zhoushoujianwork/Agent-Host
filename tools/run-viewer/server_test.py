@@ -66,6 +66,30 @@ class CatalogTests(unittest.TestCase):
         write_run(conn, "first")
         return conn
 
+    def test_wal_without_sidecars_is_an_explicit_read_only_snapshot(self):
+        conn = self.database()
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.close()
+        before = (self.home / "state.db").read_bytes()
+        result = self.catalog.index()
+        self.assertTrue(result["sources"][0]["snapshot"])
+        self.assertIn("lag", result["sources"][0]["notice"])
+        self.assertTrue(self.catalog.record("db:first")["snapshot"])
+        self.assertEqual(before, (self.home / "state.db").read_bytes())
+        self.assertFalse((self.home / "state.db-wal").exists())
+        self.assertFalse((self.home / "state.db-shm").exists())
+
+    def test_live_wal_observes_new_commits(self):
+        conn = self.database()
+        conn.execute("PRAGMA journal_mode=WAL")
+        write_run(conn, "second")
+        try:
+            self.assertFalse(self.catalog.index()["sources"][0]["snapshot"])
+            write_run(conn, "third")
+            self.assertEqual(self.catalog.index()["database_count"], 3)
+        finally:
+            conn.close()
+
     def test_unified_channels_preserve_colliding_ids_and_memory_links(self):
         first = self.database()
         event = {"type": "tool.called", "data": {"key": "unaltered-tool-input"}}
