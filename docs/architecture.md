@@ -172,7 +172,7 @@ from execution and delivery, and do not trigger task replay or a second answer.
 
 | Area | Current behavior | Boundary / next gap |
 | --- | --- | --- |
-| Execution and channels | Claude Code streaming/continuation; CLI, DingTalk and Feishu chat; Feishu meeting text; attachments, queues and failed-session handoff | Codex execution and meeting audio are planned; broader platform acceptance remains open |
+| Execution and channels | Claude Code streaming/continuation; CLI, DingTalk and Feishu chat; Feishu meeting text; opt-in meeting voice through ASR, Host and TTS; attachments, queues and failed-session handoff | Meeting voice has local source/protocol checks only; live voice acceptance, Codex execution and broader platform acceptance remain open |
 | Shared engine interface | Configurable Claude ACP runner shared by CLI/channel workers and the Web Host CLI destination; streamed events, native continuation and cancellation implemented | Codex, interactive approval UI, channel Stop controls, warm bridge reuse and broader group/meeting acceptance remain open; native sessions do not migrate across engines |
 | Project work | Bounded local Git discovery, selected-target enrollment, automatic routing and shared execution receipts | No durable feature/worktree ownership or PR/MR delivery lifecycle |
 | Memory and Skills | Explicitly migrated file backend, source-grounded facts and procedures, automatic selected-experience publication, blacklist and scoped native Skills | Legacy SQLite experience requires review; general extraction quality and scale remain unmeasured |
@@ -285,7 +285,9 @@ Reusable provider integrations follow the [plugin library boundary](plugin-libra
 The Feishu meeting control/text library is an independent Go module used by Host
 and intended for GTMGoPlay; application policy and persistence stay in their
 own adapters. A separate speech library provides streaming ASR/TTS adapters;
-callers retain Agent execution and turn policy. Live meeting audio still needs
-the verified Feishu audio protocol and integration acceptance. A generic plugin
+callers retain Agent execution and turn policy. The user-supplied meeting starter
+provides the source reference for Feishu's audio protocol. Opt-in meeting voice
+keeps Agent execution in Host; live audio integration acceptance remains pending.
+A generic plugin
 loader/marketplace, custom Host model/tool loop and
 transparent migration of native conversations remain outside this increment.

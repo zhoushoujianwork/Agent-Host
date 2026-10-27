@@ -67,7 +67,8 @@ credential availability. It creates no Host state and does not prove platform
 permissions, bot Open ID, membership or realtime audio access.
 serve continuously polls until stopped; it owns its state home.
 Use a separate state home and native profile for meeting trials.
-This channel implements text only; it does not receive or transmit audio.
+Optional voice (see docs/feishu-meeting-voice.md) is half duplex meeting audio
+through speech ASR and TTS; without a voice block this channel is text only.
 `
 
 type feishuMeetingConfigFile struct {
@@ -82,6 +83,8 @@ type feishuMeetingConfigFile struct {
 	IMChat               bool     `json:"im_chat,omitempty"`
 	IMReactions          bool     `json:"im_reactions,omitempty"`
 	OwnerOpenID          string   `json:"owner_open_id,omitempty"`
+	// Voice is optional. Credentials are referenced by environment variable name.
+	Voice *feishumeeting.VoiceConfig `json:"voice,omitempty"`
 }
 
 func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
@@ -105,6 +108,9 @@ func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
 	}
 	cfg := feishumeeting.Config{Profile: c.Profile, AppID: c.AppID, BotOpenID: c.BotOpenID, MeetingID: c.MeetingID, TenantID: c.TenantID,
 		AllowedSenderOpenIDs: c.AllowedSenderOpenIDs, PollInterval: time.Duration(c.PollIntervalSeconds) * time.Second, AutoJoin: c.AutoJoin, IMChat: c.IMChat, IMReactions: c.IMReactions, OwnerOpenID: c.OwnerOpenID}
+	if c.Voice != nil {
+		cfg.Voice = c.Voice.Normalized()
+	}
 	if err := cfg.Validate(); err != nil {
 		return feishumeeting.Config{}, err
 	}
@@ -189,6 +195,11 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 			"bot_open_id_verified": false, "voice_supported": false,
 		})
 	}
+	// Local only: reads the referenced environment variables, never connects.
+	asr, tts, err := feishuVoiceProviders(cfg, os.LookupEnv)
+	if err != nil {
+		return err
+	}
 	agents, err := loadAgents(o.agentsConfig)
 	if err != nil {
 		return err
@@ -244,7 +255,11 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 				transport = "feishu_cli_events"
 			}
 		}
-		return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "transport": transport, "scope": scope, "agents": len(agents.Agents), "model": o.model, "jev_provider": client.Provider(), "jev_model": client.Model(), "platform_verified": false, "native_auth_verified": false, "voice_supported": false, "auto_join_enabled": cfg.AutoJoin, "im_chat_enabled": cfg.IMChat, "im_reactions_enabled": cfg.IMReactions})
+		if cfg.Voice.Enabled {
+			transport += "_and_realtime_audio"
+			scope += "_and_wake_prefixed_unattributed_meeting_audio"
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"status": "local_configuration_valid", "transport": transport, "scope": scope, "agents": len(agents.Agents), "model": o.model, "jev_provider": client.Provider(), "jev_model": client.Model(), "platform_verified": false, "native_auth_verified": false, "voice_supported": cfg.Voice.Enabled, "auto_join_enabled": cfg.AutoJoin, "im_chat_enabled": cfg.IMChat, "im_reactions_enabled": cfg.IMReactions})
 	}
 	release, err := state.Acquire(o.home)
 	if err != nil {
@@ -317,11 +332,15 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	if err := service.Validate(); err != nil {
 		return err
 	}
+	var voice *meetingVoice
+	if cfg.Voice.Enabled {
+		voice = newMeetingVoice(asr, tts, service.ReceiveMessage, observe)
+	}
 	if cfg.AutoJoin || cfg.IMChat {
-		return serveFeishuAutomaticEntry(ctx, cfg, o.home, service, sink, observe)
+		return serveFeishuAutomaticEntryVoice(ctx, cfg, o.home, service, voice, sink, observe)
 	}
 	receiver := feishumeeting.Receiver{Config: cfg, ProgressPath: filepath.Join(o.home, "feishu-meeting", channel.Key(cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID)+".json")}
-	return serveChannelRuntime(ctx, "Feishu meeting", func(ctx context.Context, observe func(string, string) error) error {
-		return receiver.Run(ctx, service.ReceiveMessage, observe)
-	}, service.Work, observe)
+	return serveFeishuFixedMeeting(ctx, cfg, service, voice, observe, func(ctx context.Context, _ feishumeeting.Config, handle func(context.Context, channel.Message) error, observed func(string, string) error) error {
+		return receiver.Run(ctx, handle, observed)
+	})
 }

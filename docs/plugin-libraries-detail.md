@@ -5,8 +5,9 @@ The [main decision](plugin-libraries.md) governs scope and ownership.
 ## Module and dependency direction
 
 `plugins/feishu` is the module
-`github.com/zhoushoujianwork/Agent-Host/plugins/feishu`. It imports only the Go
-standard library. The root Host module requires it with a checkout-relative
+`github.com/zhoushoujianwork/Agent-Host/plugins/feishu`. Meeting control uses the
+Go standard library; the audio transport also requires `coder/websocket` v1.8.15
+and `google.golang.org/protobuf` v1.36.11. The root Host module requires it with a checkout-relative
 `replace`, so building a source checkout does not require a published version.
 External consumers require this submodule, not the `agent-host` root module.
 
@@ -58,7 +59,7 @@ its existing startup baseline and scope hash, so extraction does not replay
 history or invalidate existing cursor files. Unknown event payloads remain
 available to external consumers without being promoted to Host tasks.
 
-## Identity probe and audio blocker
+## Identity probe
 
 `agent-host feishu probe --config PATH` (also `feishu-meeting probe`) runs only
 the library identity check. It does not require native model configuration or
@@ -73,15 +74,65 @@ The built Host's `probe` passed with the installed configuration (exit 0). A
 private temporary copy using the requested app ID with the installed profile
 was rejected (exit 1, no success output). That copy was removed after the check.
 
-The supplied [meeting manual](https://bytedance.larkoffice.com/docx/CZUOdaFtQoNbTAxVilbcPcqonGh)
-describes an optional voice extension and references `GetBotRealtimeEndpoint`,
-but its retrieved content omits Step 4. The
-[official meeting SDK guide](https://github.com/larksuite/channel-sdk-python/blob/main/docs/meeting-channel.md)
-documents meeting events and text. A focused inspection of official CLI,
-Go SDK and Node channel SDK source did not find the referenced endpoint symbol.
-The endpoint path, credentials, audio encoding/framing, send/receive controls,
-expiry/reconnect and interruption acknowledgement must be verified before the
-audio adapter is implemented. No public voice API claims working Feishu audio.
+## Feishu audio transport
+
+The earlier blocker was a missing wire contract. The user-supplied
+`doubao-voice-meeting-starter` archive (Python reference; not run, not copied
+beyond its two `.proto` schemas) supplied one. The library implements it, but
+**protocol confidence is source-only**: nothing here has talked to Feishu.
+
+- Endpoint: `lark-cli --profile P api GET /open-apis/vc/v1/realtime/endpoint --params {"meeting_id":…} --as bot`
+  through `Transport.Run`. Stdout must be one JSON document: the CLI envelope
+  (`ok`, `data.websocket_url`) or the raw platform response (`code` 0, `data`),
+  also when the platform response is nested in the envelope. A process error
+  fails the call even if stdout looks valid. The URL must be `wss` (plaintext
+  `ws` only for loopback fixtures), without user info or fragment, at most 4096
+  bytes. The signed URL is never returned, stored, logged or placed in errors;
+  dial errors are replaced by a fixed message and redirects are not followed.
+- Framing: each binary WebSocket message is a Frontier `Frame` (proto2,
+  service 33555721, method 1, `binary`, `application/x-protobuf`, frame type 0)
+  holding a `meeting_realtime.v1` `ClientEvent` or `ServerEvent`. Inbound frame
+  types 1, 2, 16 and 32 (ack, need-ack, cursors) and empty payloads are skipped;
+  the client sends no acks. Schemas are in `internal/audioproto`; regenerate with
+  `go generate` there (needs `protoc`, `protoc-gen-go`).
+- Session: `session.create` (session 0, fresh UUID event ID) offers
+  `audio/pcm`, `s16le`, 24000 Hz for both directions. `session.created` must
+  carry a positive session ID, the same media, and, when present, the request's
+  event ID. Later events must name that session.
+- Audio: `ReadAudio` returns `AudioFrame` with track, source, format, `PTSMS`,
+  `DurationMS`, event ID and creation time. Chunks must be non-empty, sample
+  aligned and, if they state a format, 24 kHz mono s16le; labels are at most
+  256 bytes. `WriteAudio` rejects odd or over-1 MiB input and never trims, then
+  sends ordered `audio.upstream.append` events of at most 4800 bytes (100 ms).
+  `ClearAudio` sends `audio.upstream.clear` (barge-in flush). `Close` sends
+  `session.close` (`USER_LEFT`); it does not leave the meeting.
+- Limits and lifecycle: messages are limited to 1 MiB; at most 1024
+  consecutive skipped frames or ignored events; setup (endpoint, handshake,
+  negotiation) defaults to 15 s; the close notice to 5 s. Writes, clears and
+  close are serialized; reads are serialized separately. An `error` or
+  `session.closed` event, malformed or oversize data, a text message, a socket
+  failure, or cancellation during socket I/O ends the session permanently with a
+  sticky error (`AudioServerError` keeps only the numeric code and retryable
+  flag; `AudioClosedError` the close reason). Cancelling a context before any I/O
+  is a plain rejection. Cancelling a blocked read or write must close the socket,
+  so it also ends the session. There is no retry, reconnect, rejoin or replay.
+- Unknown server event types are ignored (bounded). Echo of the bot's own audio,
+  resampling, VAD and turn policy belong to the caller.
+
+Tests (`audio_test.go`, `audio_helpers_test.go`) use literal golden frame bytes,
+a real HTTP/WebSocket handshake over `net.Pipe`, malformed and oversize input,
+cancellation, chunking, serialized writes, clear, bounded close and
+signed-URL secrecy. The independent consumer now also carries the module's
+`go.sum` and compiles the audio API; it opens no live session.
+
+Pending live acceptance: the service/method constants, 24 kHz in both
+directions (the starter's README says 16 kHz upstream, its code uses 24 kHz),
+frame-type handling, ack and expiry behavior, error codes, behavior when
+the bot is not in the meeting, and whether the installed CLI's `api`
+command output matches the parsed shapes. The root Host module needs matching
+indirect requirements (`coder/websocket` v1.8.15, `google.golang.org/protobuf`
+v1.36.11) in `go.mod`/`go.sum` before it builds with this module; that change is
+outside this increment.
 
 ## Verification
 
@@ -174,9 +225,10 @@ turn policy, not a core orchestration API. The independent-consumer subprocess
 uses a quoted replacement path and a context timeout. See the
 [README](../plugins/speech/README.md) for formats, limits and caller responsibilities.
 
-This increment provides no live speech acceptance, Feishu audio transport,
-automatic barge-in, VAD or complete meeting integration. Host and GTM runtime
-configuration, credentials and existing speech implementations are unchanged.
+The speech library itself provides no live speech acceptance, Feishu transport,
+automatic barge-in or VAD. The later opt-in [Host meeting adapter](feishu-meeting-channel.md)
+owns resampling, energy-based turn detection and half-duplex playback. GTM runtime
+integration remains separate.
 
 ### Speech implementation receipts
 
@@ -201,3 +253,37 @@ Final supervising validation passed: `go -C plugins/speech test -race ./...`,
 headless Python/JavaScript suites), staged whitespace review and local document
 link checks. Package compilation was serialized to avoid contention; no test
 was skipped or replaced. Desktop and live-provider acceptance remain pending.
+
+## Meeting voice implementation receipts (2026-10-27)
+
+These worker reports were reviewed against the diff. All runs used profile
+`claude-claude-sonnet-5-1m-inherit-inherit`, model `claude-sonnet-5[1m]`.
+Costs below are estimated worker USD, not verified billing or supervising-agent
+cost. The timed-out run's full cost is unavailable; its reported $0.19137
+estimate covers only the salvaged report. Do not treat that as its execution
+cost or infer an overall total.
+
+| Run | Status / exit | Measured elapsed | Estimated worker USD | Session |
+| --- | --- | ---: | ---: | --- |
+| Protocol feasibility | ok / 0 | 103.293 s | 0.501384 | `4efc6b5d-3147-432b-b072-e55c7cffb1c8` |
+| Reusable audio transport | ok / 0 | 1643.678 s | 5.468648 | `4efc6b5d-3147-432b-b072-e55c7cffb1c8` |
+| Initial Host bridge | timeout / 124, salvaged partial report | 1833.270 s | unavailable; report only 0.19137 | `3e3fe2fa-1068-40db-bb57-7df69be6ab6d` |
+| Resumed CLI integration | ok / 0 | 1036.652 s | 3.990628 | `3e3fe2fa-1068-40db-bb57-7df69be6ab6d` |
+| Bridge hardening and regressions | ok / 0 | 1227.231 s | 2.069152 | `2e8e1922-b5a3-42c3-938a-f27ecbcccff8` |
+
+The timeout's partial files were preserved. The resumed work completed CLI
+wiring and documentation, while a separate bounded review corrected playback
+pacing, generation resets, cancellation, PCM completion and recognition limits.
+Supervising review additionally rejected ambiguous endpoint errors, checked
+cancellation after gate acquisition, enforced reply expiry on delivery, and
+included the current chunk in the 200 ms playback bound. Source attribution
+states that the speaker is unverified without inventing a human identity.
+
+No live meeting or speech-provider calls, production configuration changes,
+service restarts or desktop interaction were performed.
+
+Final supervising checks passed: `GOFLAGS=-p=1 make check` (Go formatting,
+vet/tests, both plugin modules and all headless Python/JavaScript targets),
+the Feishu transport race suite, 64 targeted voice/CLI race cases, local links
+in seven affected documents and staged whitespace review. Live meeting and
+speech-provider acceptance remain pending.

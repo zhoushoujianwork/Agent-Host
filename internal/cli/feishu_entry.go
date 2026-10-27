@@ -27,10 +27,16 @@ type meetingContextSource interface {
 // Entry and model execution share one durable queue and concurrency limit.
 // Each meeting keeps an independently cancelable polling/native lifetime.
 func serveFeishuAutomaticEntry(ctx context.Context, cfg feishumeeting.Config, home string, service *channel.Service, sink event.Sink, observe func(string, string) error) error {
+	return serveFeishuAutomaticEntryVoice(ctx, cfg, home, service, nil, sink, observe)
+}
+
+// voice is nil unless the optional unattributed-audio bridge is configured.
+func serveFeishuAutomaticEntryVoice(ctx context.Context, cfg feishumeeting.Config, home string, service *channel.Service, voice *meetingVoice, sink event.Sink, observe func(string, string) error) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	registry := &meetingPollRegistry{home: home, service: service, observe: observe, meetings: map[string]*meetingPoll{}, failures: make(chan meetingPollFailure, 4)}
 	defer registry.Close()
+	defer voice.Close()
 	var gateMu sync.Mutex
 	meetingEnabled := cfg.AutoJoin || cfg.MeetingID != ""
 	managerReady, streamReady, emittedReady := !meetingEnabled, false, false
@@ -71,7 +77,8 @@ func serveFeishuAutomaticEntry(ctx context.Context, cfg feishumeeting.Config, ho
 		entryCfg := cfg
 		entryCfg.AutoJoin = true // A manual seed is only restored through a read.
 		var err error
-		manager, err = feishumeeting.OpenEntryManager(entryCfg, path, nil, feishumeeting.EntryHooks{StartMeeting: registry.Start, StopMeeting: registry.Stop, Observe: entryObserve})
+		start, stop := voice.hooks(registry.Context, registry.Start, registry.Stop)
+		manager, err = feishumeeting.OpenEntryManager(entryCfg, path, nil, feishumeeting.EntryHooks{StartMeeting: start, StopMeeting: stop, Observe: entryObserve})
 		if err != nil {
 			return err
 		}
@@ -84,6 +91,8 @@ func serveFeishuAutomaticEntry(ctx context.Context, cfg feishumeeting.Config, ho
 	if cfg.IMChat {
 		service.TextReplier = feishuTextReplier{Meeting: meetingReplier, IM: feishu.Replier{Config: feishuIMConfig(cfg)}}
 	}
+	// Wrap last: only accepted text replies of registered voice requests are spoken.
+	service.TextReplier = withMeetingVoice(service.TextReplier, voice)
 	resolve := service.ResolveAgent
 	service.ResolveAgent = func(ctx context.Context, message state.ChannelMessage) (*channel.Service, error) {
 		if message.Channel == state.ReplyTargetFeishu {

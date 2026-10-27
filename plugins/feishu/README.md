@@ -1,12 +1,14 @@
 # Feishu meeting library
 
 Importable Go meeting operations shared by Agent-Host and external applications.
-This module has standard-library dependencies only and uses a named `lark-cli`
+This module uses a named `lark-cli`
 profile for credentials. It does not require the Agent-Host server, database,
 native harness or memory system.
 
 Supported: profile identity check, join, membership, meeting event polling,
-text send and explicit leave. **Realtime meeting audio is not implemented.**
+text send, explicit leave and a realtime audio transport (`OpenAudio`,
+24 kHz mono s16le PCM). **The audio protocol comes from a user-supplied reference
+and has not been accepted against a live meeting.**
 
 ## Import from another checkout
 

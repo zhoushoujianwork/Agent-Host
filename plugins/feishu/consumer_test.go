@@ -23,8 +23,12 @@ func TestIndependentConsumer(t *testing.T) {
 	moduleRoot := filepath.Dir(file)
 	dir := t.TempDir()
 	quotedRoot, _ := json.Marshal(moduleRoot)
-	mod := "module independent-consumer\n\ngo 1.26.0\n\nrequire github.com/zhoushoujianwork/Agent-Host/plugins/feishu v0.0.0\nreplace github.com/zhoushoujianwork/Agent-Host/plugins/feishu => " + string(quotedRoot) + "\n"
-	for name, body := range map[string]string{"go.mod": mod, "main.go": consumerSource} {
+	mod := "module independent-consumer\n\ngo 1.26.0\n\nrequire (\n\tgithub.com/coder/websocket v1.8.15\n\tgithub.com/zhoushoujianwork/Agent-Host/plugins/feishu v0.0.0\n\tgoogle.golang.org/protobuf v1.36.11\n)\nreplace github.com/zhoushoujianwork/Agent-Host/plugins/feishu => " + string(quotedRoot) + "\n"
+	sums, err := os.ReadFile(filepath.Join(moduleRoot, "go.sum"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"go.mod": mod, "go.sum": string(sums), "main.go": consumerSource} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -51,6 +55,7 @@ type transport struct{}
 func (transport) Run(ctx context.Context, args ...string) (feishu.Output,error) {
  raw := ""
  switch args[2] {
+ case "api": raw = "{\"ok\":true,\"data\":{\"websocket_url\":\"ws://127.0.0.1:1/x?ticket=SECRET-TICKET\"}}"
  case "whoami": raw = "{\"profile\":\"example\",\"appId\":\"cli_example\",\"identity\":\"bot\",\"available\":true}"
  case "vc":
   switch args[3] {
@@ -77,6 +82,15 @@ func main() {
  if items[0].Content != "hello" || page.Cursor != "next" { panic("events") }
  sent,err := c.SendText(ctx,joined.MeetingID,"persisted-uuid","consumer reply");check(err)
  if sent.Outcome != feishu.Accepted { panic("send") }
+ // Audio: the public surface compiles for an outside module, and a failed
+ // connection never leaks the signed endpoint. No live session is needed here.
+ var _ func(context.Context,string,feishu.AudioConfig) (*feishu.AudioSession,error) = c.OpenAudio
+ var _ func(*feishu.AudioSession,context.Context) (feishu.AudioFrame,error) = (*feishu.AudioSession).ReadAudio
+ var _ func(*feishu.AudioSession,context.Context,[]byte) error = (*feishu.AudioSession).WriteAudio
+ var _ func(*feishu.AudioSession,context.Context) error = (*feishu.AudioSession).ClearAudio
+ var _ func(*feishu.AudioSession) error = (*feishu.AudioSession).Close
+ audio,err := c.OpenAudio(ctx,joined.MeetingID,feishu.AudioConfig{})
+ if err == nil || audio != nil || strings.Contains(err.Error(),"SECRET-TICKET") || strings.Contains(err.Error(),"127.0.0.1") { panic("audio open") }
  left,err := c.Leave(ctx,joined.MeetingID);check(err)
  if left.Outcome != feishu.Accepted { panic("leave") }
  fmt.Println("external-consumer-ok")

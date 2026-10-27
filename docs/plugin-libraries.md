@@ -25,22 +25,30 @@ parsing and cancellation. The application owns the Agent/model response between
 recognition and synthesis, audio conversion and turn policy.
 
 Local protocol tests and an independent-consumer fixture cover this first slice.
-It has no live provider acceptance, Feishu audio transport, VAD or automatic
-barge-in. No Host or GTM application integration is included.
+It has no live provider acceptance, VAD or automatic barge-in. The Feishu
+library supplies the audio transport separately. Host's opt-in meeting adapter
+owns turn detection, resampling and Agent execution; GTM application integration
+remains separate.
 
 ## Voice status and next steps
 
-**Realtime meeting audio is not implemented.** The supplied meeting manual's
-retrievable text omits its voice setup section. The official CLI and SDK sources
-checked for this increment did not supply the referenced realtime endpoint and
-audio wire contract. No guessed endpoint or synthetic success stands in for
-real audio acceptance.
+The Feishu library now has a **source-verified, not live-verified** meeting
+audio transport: `MeetingClient.OpenAudio` returns an `AudioSession` with
+`ReadAudio`, `WriteAudio`, `ClearAudio` and `Close`, using 24 kHz mono s16le PCM
+in both directions. Its protocol comes from the user-supplied reference starter,
+not from official documentation, and no live meeting session has confirmed it.
+Details and limits are in the [implementation notes](plugin-libraries-detail.md#feishu-audio-transport).
 
-The next slice needs the official audio connection/protocol documentation. The
-local Feishu profile is configured; verify its app identity and voice access for
-the selected test meeting. Then implement the Feishu audio transport, bridge it
-to the speech library and the application's Agent, and verify spoken input,
-a fixed spoken reply and interruption in that meeting.
+Host's [meeting channel](feishu-meeting-channel.md) bridges this transport to
+16 kHz ASR, the existing Host Agent and 24 kHz TTS. Voice is opt-in and uses
+wake-prefixed, unattributed meeting audio; energy-based turn detection and
+half-duplex playback remain application policy.
+
+Live acceptance, robust echo cancellation, interruption and GTMGoPlay integration
+remain open. Next, verify the selected profile's app identity and published
+realtime permissions, then run a separately authorized meeting test of spoken
+input and a spoken reply. The current half-duplex bridge does not implement
+barge-in.
 
 ## Library ownership
 

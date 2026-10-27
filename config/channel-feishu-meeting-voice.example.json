@@ -1,0 +1,26 @@
+{
+  "profile": "YOUR_PROFILE",
+  "app_id": "cli_YOURAPPLICATIONID",
+  "bot_open_id": "ou_YOURBOTOPENID",
+  "tenant_id": "YOUR_FEISHU_TENANT_ID",
+  "allowed_sender_open_ids": ["ou_YOUROWNEROPENID"],
+  "poll_interval_seconds": 5,
+  "auto_join": true,
+  "voice": {
+    "enabled": true,
+    "accept_unattributed_audio": true,
+    "wake_prefix": "AI",
+    "asr": {
+      "endpoint": "wss://YOUR_ASR_HOST/api/v3/sauc/bigmodel",
+      "resource_id": "YOUR_ASR_RESOURCE_ID",
+      "api_key_env": "AGENT_HOST_VOICE_ASR_API_KEY"
+    },
+    "tts": {
+      "endpoint": "wss://YOUR_TTS_HOST/api/v1/tts/ws_binary",
+      "cluster": "YOUR_TTS_CLUSTER",
+      "voice": "YOUR_VOICE_TYPE",
+      "app_id_env": "AGENT_HOST_VOICE_TTS_APP_ID",
+      "access_token_env": "AGENT_HOST_VOICE_TTS_ACCESS_TOKEN"
+    }
+  }
+}

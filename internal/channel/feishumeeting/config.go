@@ -25,6 +25,7 @@ type Config struct {
 	IMReactions          bool          `json:"im_reactions,omitempty"`
 	OwnerOpenID          string        `json:"owner_open_id,omitempty"`
 	AllowPrivateUsers    bool          `json:"-"`
+	Voice                VoiceConfig   `json:"voice,omitempty"`
 }
 
 var (
@@ -46,6 +47,12 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.TenantID) != c.TenantID || c.TenantID == "" || len(c.TenantID) > 256 || strings.ContainsAny(c.TenantID, "\x00\r\n") {
 		return errors.New("Feishu meeting requires its actual tenant identifier")
+	}
+	if err := c.Voice.Validate(); err != nil {
+		return err
+	}
+	if c.Voice.Enabled && c.MeetingID == "" && !c.AutoJoin {
+		return errors.New("Feishu voice requires a meeting_id or auto_join")
 	}
 	if c.PollInterval < 5*time.Second {
 		return errors.New("Feishu meeting poll interval must be at least 5 seconds")

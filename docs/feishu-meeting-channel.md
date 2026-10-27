@@ -104,10 +104,9 @@ without starting Host. `agent-host feishu probe --config PATH` verifies that the
 local CLI profile selects the configured app before a trial; it does not prove
 platform permissions or audio readiness.
 
-This implements TAT text entry and conversation. Voice still requires Feishu's
-enabled bidirectional audio channel and protocol, a streaming voice model or
-speech-recognition/synthesis pipeline, and turn/interruption handling. Adding a
-model setting alone cannot make this bot audible. The
+Text entry is the default. Optional meeting voice is a separate, half-duplex
+speech path described in [Feishu meeting voice](feishu-meeting-voice.md). It is
+off unless the `voice` block is configured. The
 [official meeting guide](https://github.com/larksuite/channel-sdk-python/blob/main/docs/meeting-channel.md)
 also describes pushed meeting activities; this implementation keeps meeting
 text on CLI polling.

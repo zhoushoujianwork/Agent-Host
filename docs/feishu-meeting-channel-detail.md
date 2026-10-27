@@ -416,5 +416,6 @@ observed private re-entry and fresh meeting reply do not establish every one of
 those lifecycle paths. Larger traffic, multiple-sender use and new long-term
 memory remain separately unmeasured. Raw platform receipts, source IDs and
 provider credentials stay in the private runtime; only aggregate results belong
-in this guide. Meeting-text push transport and audio remain outside this
-increment.
+in this guide. Meeting-text push transport remains outside this increment. Optional voice
+is covered by [Feishu meeting voice](feishu-meeting-voice.md) and its
+[detail](feishu-meeting-voice-detail.md).

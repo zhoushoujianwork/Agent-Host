@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package meeting_realtime.v1;
+
+option go_package = "github.com/zhoushoujianwork/Agent-Host/plugins/feishu/internal/audioproto;audioproto";
+
+message ClientEvent {
+  string type = 1;
+  string event_id = 2;
+  int64 session_id = 3;
+  string created_at = 4;
+
+  oneof payload {
+    SessionCreate session_create = 10;
+    AudioUpstreamAppend audio_upstream_append = 11;
+    AudioUpstreamClear audio_upstream_clear = 12;
+    SessionClose session_close = 13;
+  }
+}
+
+message ServerEvent {
+  string type = 1;
+  string event_id = 2;
+  int64 session_id = 3;
+  string created_at = 4;
+
+  oneof payload {
+    SessionCreated session_created = 10;
+    AudioDownstreamDelta audio_downstream_delta = 20;
+    SessionClosed session_closed = 30;
+    Error error = 90;
+  }
+}
+
+message SessionCreate {
+  Session session = 1;
+}
+
+message SessionCreated {
+  string client_event_id = 1;
+  Session session = 2;
+}
+
+message SessionClose {
+  ClientCloseReason reason = 1;
+}
+
+enum ClientCloseReason {
+  CLIENT_CLOSE_REASON_UNSPECIFIED = 0;
+  USER_LEFT = 1;
+  CLIENT_ERROR = 2;
+}
+
+message SessionClosed {
+  int64 session_id = 1;
+  ServerCloseReason reason = 2;
+}
+
+enum ServerCloseReason {
+  SERVER_CLOSE_REASON_UNSPECIFIED = 0;
+  SERVER_SHUTDOWN = 1;
+  IDLE_TIMEOUT = 2;
+  INTERNAL_ERROR = 3;
+}
+
+message Session {
+  Media media = 1;
+}
+
+message Media {
+  AudioFormat audio_upstream_format = 1;
+  AudioFormat audio_downstream_format = 2;
+}
+
+message AudioFormat {
+  string type = 1;
+  string encoding = 2;
+  uint32 sample_rate = 3;
+}
+
+message AudioUpstreamAppend {
+  bytes delta = 1;
+}
+
+message AudioUpstreamClear {
+}
+
+message AudioDownstreamDelta {
+  string track_id = 1;
+  string source = 2;
+  AudioFormat format = 3;
+  uint64 pts_ms = 4;
+  uint32 duration_ms = 5;
+  bytes delta = 6;
+}
+
+message Error {
+  string client_event_id = 1;
+  ErrorCode code = 2;
+  string message = 3;
+  bool retryable = 4;
+  map<string, string> details = 5;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_REQUEST = 1001;
+  ERROR_CODE_INVALID_PAYLOAD = 1002;
+  ERROR_CODE_MEDIA_FORMAT_UNSUPPORTED = 2001;
+  ERROR_CODE_MEDIA_SUBSCRIPTION_CONFLICT = 2002;
+  ERROR_CODE_AUTH_FAILED = 4001;
+  ERROR_CODE_PERMISSION_DENIED = 4002;
+  ERROR_CODE_SESSION_EXPIRED = 4003;
+  ERROR_CODE_UNSUPPORTED_PROTOCOL = 4004;
+  ERROR_CODE_RATE_LIMITED = 4005;
+  ERROR_CODE_RESUME_FAILED = 4006;
+  ERROR_CODE_PAYLOAD_TOO_LARGE = 4007;
+  ERROR_CODE_CONNECTION_REPLACED = 4500;
+}
