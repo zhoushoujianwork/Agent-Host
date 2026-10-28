@@ -34,6 +34,7 @@ import (
 const usage = `Agent-Host: native Claude chat with observable, source-linked memory.
 
 Usage:
+  agent-host status (--root ABSOLUTE_ROOT | --home PATH ...) [--window 24h] [--stale-after 2h] [--viewer-port 8765] [--no-http] [--format text|json]
   agent-host stats (--root ABSOLUTE_ROOT | --home PATH ...) [--since 7d] [--compare] [--format text|json]
   agent-host chat [-m MESSAGE] [--resume SESSION] [options]
   agent-host skills list|import|review|publish|enable|disable|withdraw|rollback --root PATH [--help]
@@ -425,6 +426,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		_, err := fmt.Fprintf(out, "agent-host %s (commit %s, dirty=%s, %s/%s, %s)\n", info.Version, revision, dirty, info.GOOS, info.GOARCH, info.GoVersion)
 		return err
+	}
+	if args[0] == "status" {
+		return stats.RunStatus(ctx, args[1:], out, errout)
 	}
 	if args[0] == "stats" {
 		return stats.Run(ctx, args[1:], out, errout)
