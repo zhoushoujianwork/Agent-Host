@@ -116,7 +116,10 @@ func TestStatusPrivacyCurrentStateAndReadOnly(t *testing.T) {
 	}
 }
 func TestStatusRootAuxiliaryStores(t *testing.T) {
-	root := t.TempDir()
+	root := filepath.Join(t.TempDir(), "runtime[1]")
+	if e := os.MkdirAll(root, 0700); e != nil {
+		t.Fatal(e)
+	}
 	home, db := fixture(t)
 	statusTables(t, db)
 	if e := os.Symlink(home, filepath.Join(root, "cli-state")); e != nil {
@@ -235,5 +238,82 @@ func TestStatusUnsupportedAndExistingLock(t *testing.T) {
 	}
 	if findCheck(t, r, "runs.window", "").Evidence.(map[string]any)["outcomes"] != nil {
 		t.Fatal("unavailable window claimed zero")
+	}
+}
+
+func TestStatusChannelLogsAndLiteralCandidates(t *testing.T) {
+	for _, name := range []string{"runtime", "runtime[1]"} {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), name)
+			home, db := fixture(t)
+			statusTables(t, db)
+			logDir := filepath.Join(root, "channels", "dingtalk", "logs")
+			if e := os.MkdirAll(logDir, 0700); e != nil {
+				t.Fatal(e)
+			}
+			if e := os.Symlink(home, filepath.Join(root, "cli-state")); e != nil {
+				t.Fatal(e)
+			}
+			path := filepath.Join(logDir, "service.ndjson")
+			content := []byte("PRIVATE_CHANNEL_LOG_CONTENT")
+			if e := os.WriteFile(path, content, 0600); e != nil {
+				t.Fatal(e)
+			}
+			info, e := os.Stat(path)
+			if e != nil {
+				t.Fatal(e)
+			}
+			o := options(home)
+			o.Homes = nil
+			o.Root = root
+			r, e := CollectStatus(context.Background(), o, true, 8765)
+			if e != nil {
+				t.Fatal(e)
+			}
+			c := findCheck(t, r, "disk", "service_logs")
+			if c.Status != "passed" {
+				t.Fatalf("channel log omitted: %+v", c)
+			}
+			items := c.Evidence.([]any)
+			if len(items) != 1 {
+				t.Fatalf("log count: %v", items)
+			}
+			metadata := items[0].(map[string]any)
+			if metadata["bytes"] != info.Size() || !metadata["modified_at"].(time.Time).Equal(info.ModTime()) {
+				t.Fatal(metadata)
+			}
+			raw, _ := json.Marshal(r)
+			if strings.Contains(string(raw), string(content)) || strings.Contains(string(raw), path) {
+				t.Fatal("private log escaped")
+			}
+			topLogs := filepath.Join(root, "logs")
+			if e := os.MkdirAll(topLogs, 0700); e != nil {
+				t.Fatal(e)
+			}
+			if e := os.WriteFile(filepath.Join(topLogs, "service.stderr.log"), []byte("top-level log"), 0600); e != nil {
+				t.Fatal(e)
+			}
+			r, e = CollectStatus(context.Background(), o, true, 8765)
+			if e != nil {
+				t.Fatal(e)
+			}
+			items = findCheck(t, r, "disk", "service_logs").Evidence.([]any)
+			if len(items) != 2 {
+				t.Fatalf("top-level and channel logs must both be retained: %v", items)
+			}
+		})
+	}
+}
+func TestStatusLiteralWrongHomeCandidates(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime[1]")
+	candidate := filepath.Join(root, "runtime", "channels", "dingtalk", "state")
+	if e := os.MkdirAll(candidate, 0700); e != nil {
+		t.Fatal(e)
+	}
+	for _, o := range []Options{{Root: root}, {Homes: []string{root}}} {
+		candidates := statusCandidates(o)
+		if len(candidates) != 1 || candidates[0] != candidate {
+			t.Fatalf("literal candidate omitted: %v", candidates)
+		}
 	}
 }

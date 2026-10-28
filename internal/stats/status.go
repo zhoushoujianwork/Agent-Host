@@ -227,7 +227,14 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 		}
 	}
 	for _, root := range roots {
-		ops, _ := filepath.Glob(filepath.Join(root, "channels", "*", "dws", "host-operations.db"))
+		channels := statusChildren(filepath.Join(root, "channels"))
+		ops := []string{}
+		for _, channel := range channels {
+			path := filepath.Join(channel, "dws", "host-operations.db")
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				ops = append(ops, path)
+			}
+		}
 		if len(ops) == 0 {
 			r.add("operations.pending", "platform", "unknown", "No operations store discovered", nil)
 		}
@@ -269,7 +276,10 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 			}
 			r.add("backup", "platform", status, "Recorded backup state", map[string]any{"enabled": b.Enabled, "last_success_age_seconds": age(o.Now, b.LastSuccess.Format(time.RFC3339Nano)), "has_last_error": b.LastError != ""})
 		}
-		logs, _ := filepath.Glob(filepath.Join(root, "logs", "*"))
+		logs := statusChildren(filepath.Join(root, "logs"))
+		for _, channel := range channels {
+			logs = append(logs, statusChildren(filepath.Join(channel, "logs"))...)
+		}
 		items := []any{}
 		for _, p := range logs {
 			if len(items) == 100 {
@@ -331,6 +341,17 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 	}
 	return r, nil
 }
+
+// statusChildren treats the supplied directory literally, including glob metacharacters.
+func statusChildren(directory string) []string {
+	entries, _ := os.ReadDir(directory)
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		paths = append(paths, filepath.Join(directory, entry.Name()))
+	}
+	return paths
+}
+
 func statusCandidates(o Options) []string {
 	result := []string{}
 	bases := o.Homes
@@ -338,11 +359,14 @@ func statusCandidates(o Options) []string {
 		bases = []string{o.Root}
 	}
 	for _, base := range bases {
-		for _, pattern := range []string{"cli-state", "channels/*/state", "runtime/cli-state", "runtime/channels/*/state"} {
-			matches, _ := filepath.Glob(filepath.Join(base, pattern))
-			for _, p := range matches {
-				if i, e := os.Stat(p); e == nil && i.IsDir() {
-					result = append(result, p)
+		for _, root := range []string{base, filepath.Join(base, "runtime")} {
+			paths := []string{filepath.Join(root, "cli-state")}
+			for _, channel := range statusChildren(filepath.Join(root, "channels")) {
+				paths = append(paths, filepath.Join(channel, "state"))
+			}
+			for _, path := range paths {
+				if info, err := os.Stat(path); err == nil && info.IsDir() {
+					result = append(result, path)
 				}
 			}
 		}
