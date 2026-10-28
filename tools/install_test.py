@@ -34,8 +34,10 @@ class InstallTests(unittest.TestCase):
         (self.skill / "SKILL.md").write_text("fixture skill")
         (self.skill / "references" / "protocol.md").write_text("fixture protocol")
         self.task_skill = self.repo / "skills" / INSTALL.TASK_SKILL
-        self.task_skill.mkdir()
-        (self.task_skill / "SKILL.md").write_text("fixture task handoff")
+        for name in INSTALL.OPTIONAL_SKILLS:
+            source = self.repo / "skills" / name
+            source.mkdir()
+            (source / "SKILL.md").write_text("fixture optional skill")
         self.bin_dir = self.home / ".local" / "bin"
         self.env = {"PATH": ""}
 
@@ -52,7 +54,9 @@ class InstallTests(unittest.TestCase):
             target = (self.home / ".agents" / "skills" if name == "codex" else root / "skills") / INSTALL.SKILL
             self.assertEqual(target.resolve(), self.skill.resolve())
             self.assertEqual((target / "references" / "protocol.md").read_text(), "fixture protocol")
-            self.assertEqual((target.parent / INSTALL.TASK_SKILL).resolve(), self.task_skill.resolve())
+            for skill_name in INSTALL.OPTIONAL_SKILLS:
+                self.assertEqual((target.parent / skill_name).resolve(),
+                                 (self.repo / "skills" / skill_name).resolve())
         cli = self.bin_dir / "agent-host"
         result = subprocess.run([str(cli)], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.strip(), "fixture-cli")
@@ -79,6 +83,27 @@ class InstallTests(unittest.TestCase):
         rows = self.install(agents={"codex"})
         self.assertEqual(dict((name, status) for name, status, _ in rows)["codex/agent-host-tasks"], "preserved")
         self.assertEqual((target / "SKILL.md").read_text(), "custom task handoff")
+
+    def test_new_skills_preserve_custom_links_and_report_missing_bundles(self):
+        for name in ("agent-host-platform", "agent-host-work-items"):
+            with self.subTest(skill=name):
+                target = self.home / ".agents/skills" / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                custom = self.root / ("custom-" + name)
+                custom.mkdir()
+                (custom / "SKILL.md").write_text("custom guidance")
+                if target.is_symlink():
+                    target.unlink()
+                target.symlink_to(custom, target_is_directory=True)
+                for _ in range(2):
+                    rows = dict((key, status) for key, status, _ in self.install(agents={"codex"}))
+                    self.assertEqual(rows["codex/" + name], "preserved")
+                    self.assertEqual(target.resolve(), custom.resolve())
+                    self.assertEqual((target / "SKILL.md").read_text(), "custom guidance")
+                shutil.rmtree(self.repo / "skills" / name)
+                rows = dict((key, status) for key, status, _ in self.install(agents={"codex"}))
+                self.assertEqual(rows["codex/" + name], "not-bundled")
+                self.assertEqual(target.resolve(), custom.resolve())
 
     def test_path_detection_and_explicit_agent_selection(self):
         rows = self.install(which=lambda name, **k: "/fake/claude" if name == "claude" else None)

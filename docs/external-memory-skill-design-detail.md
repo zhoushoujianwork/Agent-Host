@@ -23,8 +23,11 @@ with a three-minute transport/request budget and required expected revision.
 
 `make install` builds first, then runs `tools/install.py`. This user-local
 installer links the built executable into `~/.local/bin` and the complete source
-skill into each detected supported client's skill directory. Detection checks
-the configured client directory or its command on PATH. `--agents` explicitly
+skills (`agent-host-memory`, `agent-host-tasks`, `agent-host-platform`, and
+`agent-host-work-items`) into each detected supported client's skill directory.
+Older runtime bundles report absent optional skills as `not-bundled`; installing
+from a migrated runtime does not copy development skills into production.
+Detection checks the configured client directory or its command on PATH. `--agents` explicitly
 selects supported clients, including those not detected; it limits the set rather
 than adding to autodetection. It never edits memory connections. When private
 runtime configuration exists, it also registers and starts the user service;
