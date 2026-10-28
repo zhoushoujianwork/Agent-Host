@@ -1,0 +1,12 @@
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+main { max-width: 1280px; padding: 24px; margin: auto; }
+h1 { margin-bottom: 8px; } h2 { font-size: 18px; } h3 { font-size: 14px; }
+a { color: var(--accent); } label { display: inline-block; margin: 8px 24px 8px 0; }
+section, .banner { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.cards, .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.cards strong { font-size: 30px; } .coverage, small { color: var(--muted); font-size: 12px; }
+.notice { border-left: 4px solid var(--warning); padding: 12px; }
+table { width: 100%; border-collapse: collapse; } th, td { padding: 8px; text-align: left; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.day { margin: 12px 0; } .bar { display: flex; width: 100%; background: var(--surface-soft); min-height: 24px; }
+.bar svg { flex-shrink: 0; } .completed { fill: var(--accent); } .canceled { fill: var(--warning); } .failed { fill: var(--danger); } .other { fill: var(--info); }
+li { margin: 10px 0; overflow-wrap: anywhere; }

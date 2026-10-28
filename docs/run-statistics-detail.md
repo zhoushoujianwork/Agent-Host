@@ -1,7 +1,8 @@
 # Run statistics implementation contract
 
 See [the user guide](run-statistics.md). This increment reads existing evidence;
-new acceptance/category recording and the Web page are separate work.
+新增业务验收与任务分类记录仍属后续工作。只读 Web 页面已接入此契约，见
+[Stats 使用说明](../tools/run-viewer/README.md#stats)。
 
 ## Reading and privacy
 

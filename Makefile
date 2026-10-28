@@ -101,7 +101,7 @@ check:
 	$(PYTHON) -B tools/run-viewer/memory_view_test.py
 	$(PYTHON) -B tools/run-viewer/settings_test.py
 	$(PYTHON) -B tools/run-viewer/platform_skills_test.py
-	node --test tools/run-viewer/platform-skills_test.cjs
+	node --test tools/run-viewer/platform-skills_test.cjs tools/run-viewer/stats_test.cjs
 	$(PYTHON) -B tools/run-viewer/agent_profiles_test.py
 	node --test tools/run-viewer/agent-profiles_test.cjs
 	$(PYTHON) -B tools/run-viewer/chat_runtime_test.py

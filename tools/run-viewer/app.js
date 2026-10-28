@@ -255,20 +255,21 @@ async function refresh() {
   $("refresh").disabled = true;
   try {
     const index = await api("/api/records");
+    const requested = state.index ? null : new URL(location.href).searchParams.get("key");
     state.index = index;
     renderSources();
     renderList();
     const visible = index.records.filter(row => matchesEntry(row,$("source-filter").value));
-    $("empty").hidden = visible.length !== 0;
-    if (!visible.length) {
-      state.key = null;
-      state.record = null;
-      $("content").hidden = true;
-    } else if (!state.key || !visible.some(row => row.key === state.key)) {
-      const requested = new URL(location.href).searchParams.get("key");
-      await select(visible.find(row => row.key === requested)?.key || visible.find(row => row.key === index.default_key)?.key || visible[0].key, Boolean(requested));
+    $("empty").hidden = Boolean(state.key || requested || visible.length);
+    if (!state.key && (requested || visible.length)) {
+      // The index is bounded; a deep link must resolve through the record API.
+      // That API enforces scope and reports missing records without a fallback.
+      await select(requested || visible.find(row => row.key === index.default_key)?.key || visible[0].key, Boolean(requested));
       // select owns its error state.
       return;
+    } else if (!state.key) {
+      state.record = null;
+      $("content").hidden = true;
     } else {
       const key = state.key;
       const generation = state.generation;

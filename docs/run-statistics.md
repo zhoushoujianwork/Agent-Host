@@ -2,7 +2,7 @@
 
 The source implementation provides a read-only `agent-host stats` command for
 retained execution evidence. It does not record new facts or change a runtime.
-The Web statistics page and task-category/acceptance recording remain planned.
+只读 [Stats 页面](../tools/run-viewer/README.md#stats) 已实现；任务分类与验收记录仍待实现。
 [Technical contract](run-statistics-detail.md) defines coverage and window semantics.
 
 ```sh
