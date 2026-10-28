@@ -237,6 +237,7 @@ process; durable evidence stays in the selected CLI state. See
 
 Stats 使用 `--host-binary` 指定的 Host `stats --format json`，统计所有挂载的
 状态库，不包含归档报告，也不沿用执行页的项目、Agent 或受众过滤。
+执行详情按链接中的记录键直接读取，不受最近 200 条索引限制；记录不存在或超出范围时显示错误，不跳转到其他执行。
 执行详情仍遵守查看器原有范围限制。页面仅请求统计 JSON，不加载请求、回复或发送者信息。
 每 5 秒刷新，同一查询缓存 8 秒；Host 失败会清空旧结果并显示错误。
 API 接受 `since=24h|7d|30d|YYYY-MM-DD`、`until=YYYY-MM-DD`、安全标识符
