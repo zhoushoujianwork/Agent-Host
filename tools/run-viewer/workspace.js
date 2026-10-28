@@ -1,7 +1,7 @@
 "use strict";
 
 const $ = id => document.getElementById(id);
-const titles = {memory:"记忆图谱",executions:"执行记录",settings:"设置"};
+const titles = {stats:"Stats",memory:"记忆图谱",executions:"执行记录",settings:"设置"};
 const storageKey = "agent-host.workspace.v1";
 let saved = {};
 try { saved = JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { /* Storage is optional. */ }

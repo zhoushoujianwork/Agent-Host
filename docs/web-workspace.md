@@ -1,7 +1,7 @@
 # Web interface
 
 AGH opens on the memory graph, with execution records and settings in the left
-navigation and Chat on the right. The conversation canvas/workbench is temporarily
+navigation and Chat on the right. 左侧另有只读 Stats 页面。 The conversation canvas/workbench is temporarily
 disabled. [Implementation notes](web-workspace-detail.md).
 
 ## Available now
@@ -60,6 +60,15 @@ data or stops a run.
 Settings remain loaded across module switches. Checked saves preserve private
 previous versions, protect secrets and reject conflicting edits. Service changes
 still require a deliberate restart.
+
+## Stats
+
+`/stats.html` 已提供挂载状态库的执行统计、每日堆叠图、结果与错误分类、
+Agent / 渠道 / 模型分布、工具、耗时和用量费用，以及执行记录链接。
+支持 24h / 7d / 30d 与等长前窗对比，逐项展示覆盖率与不可读来源。
+缺失值保持未测量；完成数量不称为成功率，业务验收状态单独展示。
+此页没有修改操作，也不请求正文、回复或发送者信息。
+[使用与范围](../tools/run-viewer/README.md#stats)。
 
 ## Temporary scope
 

@@ -2,6 +2,8 @@
 """Serve an owner-local workbench with Host-owned memory controls."""
 
 import argparse
+import datetime
+import re
 import gzip
 import hashlib
 import json
@@ -797,6 +799,88 @@ class MultiCatalog:
         return self.catalogs[channel].action(reference, action, note, revision)
 
 
+class StatsReader:
+    """Read Host aggregates with a bounded, short-lived per-query cache."""
+
+    def __init__(self, catalog):
+        self.catalogs = catalog.catalogs if isinstance(catalog, MultiCatalog) else {"": catalog}
+        self.cache = {}
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def query(raw):
+        query = parse_qs(raw, keep_blank_values=True)
+        if set(query) - {"since", "until", "agent", "channel", "compare"}:
+            raise ValueError("unknown stats parameter")
+        for key, values in query.items():
+            if len(values) != 1 or not values[0]:
+                raise ValueError("stats parameters require one nonempty value")
+            value = values[0]
+            if key == "compare":
+                valid = value in {"0", "1"}
+            elif key in {"agent", "channel"}:
+                valid = re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}", value)
+            elif key == "since" and value in {"24h", "7d", "30d"}:
+                valid = True
+            else:
+                valid = re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value)
+                if valid:
+                    datetime.date.fromisoformat(value)
+            if not valid:
+                raise ValueError("invalid stats " + key)
+        return {key: values[0] for key, values in query.items()}
+
+    def read(self, query):
+        key = tuple(sorted(query.items()))
+        with self.lock:
+            now = time.monotonic()
+            self.cache = {k: v for k, v in self.cache.items() if now - v[0] < 8}
+            if key in self.cache:
+                return self.cache[key][1]
+            catalogs = list(self.catalogs.values())
+            command = [str(catalogs[0].host_binary), "stats", "--format", "json"]
+            for catalog in catalogs:
+                command.extend(["--home", str(catalog.database.parent)])
+            for name, value in sorted(query.items()):
+                if name == "compare":
+                    if value == "1":
+                        command.append("--compare")
+                else:
+                    command.extend(["--" + name, value])
+            try:
+                result = subprocess.run(command, capture_output=True, timeout=30, check=False)
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ValueError(f"stats unavailable: {error}") from error
+            if result.returncode:
+                raise ValueError(result.stderr.decode("utf-8", errors="replace").strip() or "stats command failed")
+            if len(result.stdout) > MAX_REPORT_BYTES:
+                raise ValueError("stats report exceeded its bound")
+            report = decode(result.stdout)
+            if report.get("schema_version") != 1:
+                raise ValueError("unsupported stats schema")
+            # Resolve only drill-down IDs, never fetch prompts, answers or names.
+            for part in (report, report.get("previous")):
+                if not part:
+                    continue
+                for item in part.get("attention") or []:
+                    item["record_keys"] = []
+                    for name, catalog in self.catalogs.items():
+                        try:
+                            conn = catalog.connection()
+                            try:
+                                found = conn.execute("SELECT id FROM runs WHERE id=?", (item["run_id"],)).fetchone()
+                            finally:
+                                conn.close()
+                            if found:
+                                item["record_keys"].append((name + ":" if name else "") + "db:" + item["run_id"])
+                        except (OSError, ValueError, sqlite3.Error):
+                            item["link_resolution_incomplete"] = True
+            if len(self.cache) >= 64:
+                self.cache.pop(next(iter(self.cache)))
+            self.cache[key] = (time.monotonic(), report)
+            return report
+
+
 class Handler(BaseHTTPRequestHandler):
     def send(self, status, data, content_type="application/json; charset=utf-8", *, attachment=None):
         is_json = isinstance(data, dict)
@@ -836,7 +920,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         target = urlsplit(self.path)
         try:
-            if target.path == "/api/chat":
+            if target.path == "/api/stats":
+                try:
+                    query = StatsReader.query(target.query)
+                except ValueError as error:
+                    self.send(400, {"error": str(error)})
+                    return
+                self.send(200, self.server.stats_reader.read(query))
+            elif target.path == "/api/chat":
                 chat = getattr(self.server, "chat_runtime", None)
                 result = chat.snapshot() if chat else {"enabled": False, "notice": "Chat 未配置。", "turns": [], "active_id": None}
                 catalogs = self.server.catalog.catalogs.items() if isinstance(self.server.catalog, MultiCatalog) else [("", self.server.catalog)]
@@ -905,7 +996,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = record_control.record(self.server.catalog, keys[0])
                     result["mutation_token"] = getattr(self.server, "mutation_token", None)
                     self.send(200, result)
-            elif target.path in {"/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
+            elif target.path in {"/stats.html", "/stats.js", "/stats.css", "/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
@@ -1032,6 +1123,7 @@ def main():
     server.settings_store = SettingsStore(args.backup_root, args.host_binary,
                                         Path.home() / ".config/agent-host/task-handoff.json",
                                         web_config=args.chat_config or default_config(args.backup_root)) if args.backup_root else None
+    server.stats_reader = StatsReader(catalog)
     server.mutation_token = secrets.token_urlsafe(32)
     server.chat_runtime = AgentChatRuntime(args.chat_config or default_config(args.backup_root))
     def stop_server(_signal, _frame):

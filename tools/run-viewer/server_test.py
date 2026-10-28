@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -447,6 +448,7 @@ class HTTPTests(unittest.TestCase):
         conn.close()
         self.server = viewer.ThreadingHTTPServer(("127.0.0.1", 0), viewer.Handler)
         self.server.catalog = self.catalog
+        self.server.stats_reader = viewer.StatsReader(self.catalog)
         self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.worker.start()
         self.base = f"http://127.0.0.1:{self.server.server_port}"
@@ -456,6 +458,71 @@ class HTTPTests(unittest.TestCase):
         self.server.server_close()
         self.worker.join()
         CatalogTests.tearDown(self)
+
+    def test_stats_rejects_unknown_duplicate_empty_and_unsafe_values(self):
+        for query in ("extra=1", "since=1h", "since=2026-02-30", "until=7d", "compare=true",
+                      "agent=a%3Btouch", "channel=../cli", "since=", "since=7d&since=24h", "agent=-x"):
+            with self.subTest(query=query), patch.object(viewer.subprocess, "run") as command:
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(self.base + "/api/stats?" + query)
+                self.assertEqual(error.exception.code, 400)
+                command.assert_not_called()
+
+    def test_stats_cache_partial_sources_and_argument_list(self):
+        report = {"schema_version": 1, "sources": [{"name": "cli", "status": "ok"},
+                  {"name": "feishu", "status": "unreadable", "reason": "busy"}], "attention": []}
+        result = subprocess.CompletedProcess([], 0, json.dumps(report).encode(), b"")
+        with patch.object(viewer.subprocess, "run", return_value=result) as command:
+            for query in ("since=7d&compare=1", "compare=1&since=7d"):
+                with urlopen(self.base + "/api/stats?" + query) as response:
+                    self.assertEqual(json.load(response), report)
+            self.assertEqual(command.call_count, 1)
+            args, kwargs = command.call_args
+            self.assertEqual(args[0], [str(self.catalog.host_binary), "stats", "--format", "json",
+                                      "--home", str(self.catalog.database.parent), "--compare", "--since", "7d"])
+            self.assertNotIn("shell", kwargs)
+            self.assertEqual(kwargs["timeout"], 30)
+            with urlopen(self.base + "/api/stats?since=24h"):
+                pass
+            self.assertEqual(command.call_count, 2)
+            with patch.object(viewer.time, "monotonic", return_value=viewer.time.monotonic() + 9):
+                with urlopen(self.base + "/api/stats?since=24h"):
+                    pass
+            self.assertEqual(command.call_count, 3)
+
+    def test_stats_multiple_homes_and_attention_record_keys(self):
+        conn = sqlite3.connect(self.home / "state.db")
+        write_run(conn, "attention-run")
+        conn.commit()
+        conn.close()
+        catalog = viewer.MultiCatalog(["local=" + str(self.home), "missing=" + str(self.root / "missing")])
+        self.server.stats_reader = viewer.StatsReader(catalog)
+        report = {"schema_version": 1, "attention": [{"run_id": "attention-run", "reason": "failed"}]}
+        result = subprocess.CompletedProcess([], 0, json.dumps(report).encode(), b"")
+        with patch.object(viewer.subprocess, "run", return_value=result) as command:
+            with urlopen(self.base + "/api/stats?agent=default&channel=cli&until=2026-10-28&compare=0") as response:
+                data = json.load(response)
+            self.assertEqual(data["attention"][0]["record_keys"], ["local:db:attention-run"])
+            args = command.call_args.args[0]
+            self.assertEqual(args.count("--home"), 2)
+            self.assertNotIn("--compare", args)
+            self.assertIn("2026-10-28", args)
+
+    def test_stats_errors_are_visible_and_not_cached(self):
+        for result in (subprocess.CompletedProcess([], 1, b"", b"store unavailable"),
+                       subprocess.CompletedProcess([], 0, b"invalid json", b"")):
+            with patch.object(viewer.subprocess, "run", return_value=result) as command:
+                for _ in range(2):
+                    with self.assertRaises(HTTPError) as error:
+                        urlopen(self.base + "/api/stats")
+                    self.assertEqual(error.exception.code, 500)
+                    if result.returncode:
+                        self.assertIn("store unavailable", error.exception.read().decode())
+                self.assertEqual(command.call_count, 2)
+        with patch.object(viewer.subprocess, "run", side_effect=subprocess.TimeoutExpired("stats", 30)):
+            with self.assertRaises(HTTPError) as error:
+                urlopen(self.base + "/api/stats")
+            self.assertEqual(error.exception.code, 500)
 
     def test_large_json_compression_preserves_content_and_negotiation(self):
         payload = {"records": [{"input": "Recorded source 原文" * 300}]}

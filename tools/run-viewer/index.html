@@ -20,6 +20,7 @@
     <a class="brand agh-brand" href="#memory" aria-label="AGH 首页"><img src="/logo.svg" width="40" height="40" alt="AGH"></a>
     <nav aria-label="主导航">
       <a href="#memory" data-view="memory"><span>◇</span>记忆</a>
+      <a href="#stats" data-view="stats"><span>▥</span>Stats</a>
       <a href="#executions" data-view="executions"><span>≋</span>记录</a>
     </nav>
     <a class="settings-link" href="#settings" data-view="settings"><span>⚙</span>设置</a>
@@ -29,6 +30,7 @@
     <header class="topbar"><div><strong>AGH</strong><span class="divider">/</span><span id="view-title">记忆图谱</span><span class="beta">PREVIEW</span></div><div class="header-actions"><span id="connection">本地模式</span><label class="theme-picker"><span>外观</span><select data-theme-picker aria-label="外观主题"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label><button id="close-chat" class="close-chat" type="button" aria-label="关闭当前聊天" aria-keyshortcuts="Meta+W" title="关闭当前聊天 (⌘W)" hidden>关闭聊天 <kbd>⌘W</kbd></button><button id="chat-toggle" aria-expanded="true" aria-controls="chat-panel">◧ Chat</button></div></header>
     <div class="studio">
       <section id="memory" class="view frame-view" hidden><iframe title="记忆图谱与记忆库" data-src="/memory.html"></iframe></section>
+      <section id="stats" class="view frame-view" hidden><iframe title="Stats" data-src="/stats.html"></iframe></section>
       <section id="executions" class="view frame-view" hidden><iframe title="执行记录与证据" data-src="/executions.html"></iframe></section>
       <aside id="chat-panel" class="chat-panel" aria-label="Chat 对话">
         <div class="chat-heading"><div class="chat-identity"><img src="/logo.svg" width="30" height="30" alt=""><div><strong>Chat <span class="draft-badge">本地执行</span></strong><small>原生输出，实时可见</small></div></div><button id="new-chat" type="button" class="chat-new">新对话</button><button id="panel-close" class="chat-icon-button" type="button" aria-label="收起 Chat" title="收起 Chat (⌘W)">×</button></div>

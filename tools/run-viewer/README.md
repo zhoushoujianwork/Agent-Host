@@ -226,3 +226,18 @@ It never silently chooses a different Host home or channel state. The browser
 never receives provider credentials. UI conversation state lasts for the viewer
 process; durable evidence stays in the selected CLI state. See
 [Web Chat implementation](../../docs/web-workspace-detail.md#web-chat-execution).
+
+## Stats
+
+左侧 **Stats**（`/stats.html`）展示已挂载状态库的只读统计，支持 24h / 7d /
+30d 窗口与前一等长窗口对比。展示执行结果、每日分布、Agent / 渠道 / 模型、
+错误、工具、耗时及用量费用；关注项链接回对应执行记录。
+缺失测量显示 `not measured`，每项标注覆盖率，不可读来源仍显示。
+执行完成不等于业务验收通过，原生费用估算不等于账单。
+
+Stats 使用 `--host-binary` 指定的 Host `stats --format json`，统计所有挂载的
+状态库，不包含归档报告，也不沿用执行页的项目、Agent 或受众过滤。
+执行详情仍遵守查看器原有范围限制。页面仅请求统计 JSON，不加载请求、回复或发送者信息。
+每 5 秒刷新，同一查询缓存 8 秒；Host 失败会清空旧结果并显示错误。
+API 接受 `since=24h|7d|30d|YYYY-MM-DD`、`until=YYYY-MM-DD`、安全标识符
+`agent` / `channel` 和 `compare=0|1`；日期按 UTC 解释。
