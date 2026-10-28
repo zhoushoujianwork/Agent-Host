@@ -1,9 +1,14 @@
 ---
 name: agent-host-memory
-description: Save durable decisions, preferences, facts, evidence-backed procedures, and explicitly requested source-note imports to a configured local Agent-Host, and recall its memory for current work. Use when asked to remember or import knowledge into Agent-Host or when prior project knowledge would help.
+description: Save durable decisions, preferences, facts, evidence-backed procedures, and explicitly requested source-note imports to a configured local Agent-Host, and recall its memory for current work. Use when asked to remember or import knowledge into Agent-Host or when prior project knowledge would help. Use for 记住、保存知识、导入资料、回忆已有决策; not for platform status, issue filing, or task execution.
 ---
 
 # Agent-Host memory
+
+For platform state use [agent-host-platform](../agent-host-platform/SKILL.md); for filing or queuing work use [agent-host-work-items](../agent-host-work-items/SKILL.md).
+
+Before using commands, check the installed `agent-host --help` and the relevant
+subcommand help; report unsupported capabilities without substituting another runtime.
 
 For execution of a clear daily operations or business task, use `agent-host-tasks`
 skill when installed. This skill handles knowledge intake and recall; memory
