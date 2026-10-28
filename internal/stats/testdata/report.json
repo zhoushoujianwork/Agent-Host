@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-28T12:00:00Z",
+  "window": {
+    "since": "2026-10-27T12:00:00Z",
+    "until": "2026-10-28T12:00:00Z"
+  },
+  "sources": [
+    {
+      "name": "store-1",
+      "status": "ok",
+      "runs": 6
+    }
+  ],
+  "totals": {
+    "runs": 6
+  },
+  "outcomes": {
+    "canceled": 1,
+    "completed": 1,
+    "failed": 1,
+    "running": 1,
+    "stale_running": 1,
+    "unrecorded": 1
+  },
+  "acceptance": {
+    "accepted": 0,
+    "rejected": 0,
+    "unverified": 6
+  },
+  "memory": {
+    "failed": 1,
+    "other": 2,
+    "saved": 1,
+    "skipped": 1,
+    "unchanged": 1
+  },
+  "daily": [
+    {
+      "date": "2026-10-28",
+      "completed": 1,
+      "canceled": 1,
+      "failed": 1,
+      "other": 3
+    }
+  ],
+  "by_agent": [
+    {
+      "name": "ops",
+      "runs": 6
+    }
+  ],
+  "by_channel": [
+    {
+      "name": "cli",
+      "runs": 6
+    }
+  ],
+  "by_model": [
+    {
+      "name": "model-one",
+      "runs": 6
+    }
+  ],
+  "duration_seconds": {
+    "count": 3,
+    "median": 20,
+    "p90": 30,
+    "max": 30
+  },
+  "error_classes": [
+    {
+      "class": "caller_lost",
+      "runs": 1,
+      "example_runs": [
+        "b"
+      ]
+    },
+    {
+      "class": "protocol_malformed_event",
+      "runs": 1,
+      "example_runs": [
+        "d"
+      ]
+    }
+  ],
+  "tools": {
+    "runs_with_tool_activity": 1,
+    "named": [
+      {
+        "name": "Read",
+        "runs": 1
+      }
+    ],
+    "unnamed_runs": 1
+  },
+  "usage": {
+    "runs_with_usage": 1,
+    "input_tokens": 10,
+    "output_tokens": 5,
+    "cost_usd": 0.25,
+    "runs_missing_cost": 5
+  },
+  "attention": [
+    {
+      "run_id": "c",
+      "reason": "unrecorded"
+    },
+    {
+      "run_id": "d",
+      "reason": "memory_failed"
+    },
+    {
+      "run_id": "e",
+      "reason": "stale_running"
+    }
+  ],
+  "coverage": {
+    "cost_usd": [
+      1,
+      6
+    ],
+    "duration": [
+      3,
+      6
+    ],
+    "input_tokens": [
+      1,
+      6
+    ],
+    "output_tokens": [
+      1,
+      6
+    ],
+    "tools_named": [
+      0,
+      1
+    ],
+    "usage": [
+      1,
+      6
+    ]
+  },
+  "previous": {
+    "schema_version": 1,
+    "generated_at": "2026-10-28T12:00:00Z",
+    "window": {
+      "since": "2026-10-26T12:00:00Z",
+      "until": "2026-10-27T12:00:00Z"
+    },
+    "sources": [
+      {
+        "name": "store-1",
+        "status": "ok",
+        "runs": 1
+      }
+    ],
+    "totals": {
+      "runs": 1
+    },
+    "outcomes": {
+      "canceled": 0,
+      "completed": 1,
+      "failed": 0,
+      "running": 0,
+      "stale_running": 0,
+      "unrecorded": 0
+    },
+    "acceptance": {
+      "accepted": 1,
+      "rejected": 0,
+      "unverified": 0
+    },
+    "memory": {
+      "failed": 0,
+      "other": 0,
+      "saved": 0,
+      "skipped": 1,
+      "unchanged": 0
+    },
+    "daily": [
+      {
+        "date": "2026-10-27",
+        "completed": 1,
+        "canceled": 0,
+        "failed": 0,
+        "other": 0
+      }
+    ],
+    "by_agent": [
+      {
+        "name": "unrecorded",
+        "runs": 1
+      }
+    ],
+    "by_channel": [
+      {
+        "name": "store-1",
+        "runs": 1
+      }
+    ],
+    "by_model": [
+      {
+        "name": "unrecorded",
+        "runs": 1
+      }
+    ],
+    "duration_seconds": {
+      "count": 0,
+      "median": null,
+      "p90": null,
+      "max": null
+    },
+    "error_classes": [],
+    "tools": {
+      "runs_with_tool_activity": 0,
+      "named": [],
+      "unnamed_runs": 0
+    },
+    "usage": {
+      "runs_with_usage": 0,
+      "input_tokens": null,
+      "output_tokens": null,
+      "cost_usd": null,
+      "runs_missing_cost": 1
+    },
+    "attention": [],
+    "coverage": {
+      "cost_usd": [
+        0,
+        1
+      ],
+      "duration": [
+        0,
+        1
+      ],
+      "input_tokens": [
+        0,
+        1
+      ],
+      "output_tokens": [
+        0,
+        1
+      ],
+      "tools_named": [
+        0,
+        0
+      ],
+      "usage": [
+        0,
+        1
+      ]
+    },
+    "previous": null
+  }
+}

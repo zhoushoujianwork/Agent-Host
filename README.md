@@ -36,6 +36,13 @@ acceptance remain separate checks. Migrated file-memory runtimes automatically
 publish selected execution lessons; legacy SQLite runtimes retain `memory accept`.
 Codex execution and meeting audio are planned.
 
+## Run statistics
+
+Use `agent-host stats --root /absolute/runtime --since 7d --compare --format json`
+to inspect retained runs without changing state. Explicit `--home` directories are
+also supported. Execution, acceptance and memory remain separate; unknown usage
+is null with coverage. See [run statistics](docs/run-statistics.md).
+
 ## Plugin and integration support
 
 Built-in capabilities use MCP tools or channel adapters:
