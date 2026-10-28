@@ -292,3 +292,6 @@ Task execution uses a one-hour timeout (`1h`) in the supplied configuration.
 Set `profiles.<name>.execution.timeout` in `config/host.json` to override it;
 restart the service after changing this value. The deadline includes routing,
 execution and memory finalization. Timed-out tasks are never replayed automatically.
+
+平台当前状态可通过 `agent-host status --root /absolute/runtime --no-http` 只读查询；
+该命令不判断进程归属、不启动或重启服务。见[平台状态](platform-status.md)。

@@ -43,6 +43,8 @@ to inspect retained runs without changing state. Explicit `--home` directories a
 also supported. Execution, acceptance and memory remain separate; unknown usage
 is null with coverage. See [run statistics](docs/run-statistics.md).
 
+使用 `agent-host status --root /absolute/runtime --format json` 查询只读当前状态与待关注事项，见[平台状态](docs/platform-status.md)。
+
 ## Plugin and integration support
 
 Built-in capabilities use MCP tools or channel adapters:
