@@ -22,10 +22,35 @@ type VoiceConfig struct {
 	Enabled bool `json:"enabled,omitempty"`
 	// AcceptUnattributedAudio must be true to enable voice: meeting audio is not
 	// tied to a human identity or to the sender allowlist.
-	AcceptUnattributedAudio bool     `json:"accept_unattributed_audio,omitempty"`
-	WakePrefix              string   `json:"wake_prefix,omitempty"`
-	ASR                     VoiceASR `json:"asr,omitempty"`
-	TTS                     VoiceTTS `json:"tts,omitempty"`
+	AcceptUnattributedAudio bool   `json:"accept_unattributed_audio,omitempty"`
+	WakePrefix              string `json:"wake_prefix,omitempty"`
+	// CredentialsFile optionally names a private JSON object that maps the
+	// referenced environment variable names to secret strings. When set, it is
+	// the only credential source and the inherited environment is not consulted.
+	// A relative path is resolved against the directory of the Feishu
+	// configuration file by the loader. The file is read by the Host adapter.
+	CredentialsFile string   `json:"credentials_file,omitempty"`
+	ASR             VoiceASR `json:"asr,omitempty"`
+	TTS             VoiceTTS `json:"tts,omitempty"`
+}
+
+// ReferencedEnvNames returns the distinct, nonempty credential names this
+// configuration references, in a stable order.
+func (v VoiceConfig) ReferencedEnvNames() []string {
+	var names []string
+	for _, name := range []string{v.ASR.APIKeyEnv, v.ASR.AppIDEnv, v.ASR.AccessTokenEnv, v.TTS.AppIDEnv, v.TTS.AccessTokenEnv} {
+		if name == "" {
+			continue
+		}
+		seen := false
+		for _, existing := range names {
+			seen = seen || existing == name
+		}
+		if !seen {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 type VoiceASR struct {
@@ -68,6 +93,9 @@ func (v VoiceConfig) Validate() error {
 		return errors.New("Feishu voice requires accept_unattributed_audio true: meeting audio has no verified speaker identity and bypasses the sender allowlist")
 	}
 	v = v.Normalized()
+	if f := v.CredentialsFile; f != "" && (len(f) > 4096 || !utf8.ValidString(f) || strings.TrimSpace(f) != f || strings.ContainsAny(f, "\x00\r\n")) {
+		return errors.New("Feishu voice credentials_file must be a single-line file path")
+	}
 	if !validWakePrefix(v.WakePrefix) {
 		return errors.New("Feishu voice wake_prefix must be 1-32 bytes of printable text without control characters")
 	}

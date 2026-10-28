@@ -118,6 +118,9 @@ func TestASRWireAndUtteranceVersusProviderFinal(t *testing.T) {
 		if r.Header.Get("X-Api-Key") != "test-key" || r.Header.Get("X-Api-Resource-Id") != "asr-resource" || r.Header.Get("X-Api-Connect-Id") == "" {
 			t.Error("missing ASR authentication")
 		}
+		if id := r.Header.Get("X-Api-Request-Id"); id == "" || id != r.Header.Get("X-Api-Connect-Id") {
+			t.Error("ASR request and connection identities are missing or inconsistent")
+		}
 		req := checkRequest(t, readFrame(t, ctx, c))
 		audio := req["audio"].(map[string]any)
 		if audio["format"] != "pcm" || audio["rate"] != float64(16000) || audio["bits"] != float64(16) || audio["channel"] != float64(1) {
@@ -597,6 +600,9 @@ func TestASRLegacyAuthAndFinalText(t *testing.T) {
 	cfg := fixture(t, func(ctx context.Context, c *websocket.Conn, r *http.Request) {
 		if r.Header.Get("X-Api-App-Key") != "test-app" || r.Header.Get("X-Api-Access-Key") != "test-token" || r.Header.Get("X-Api-Key") != "" {
 			t.Error("wrong legacy ASR headers")
+		}
+		if id := r.Header.Get("X-Api-Request-Id"); id == "" || id != r.Header.Get("X-Api-Connect-Id") {
+			t.Error("legacy ASR request and connection identities are missing or inconsistent")
 		}
 		readFrame(t, ctx, c)
 		send(t, ctx, c, frame{kind: fullResponse, flags: 2, serialization: 1, payload: []byte(`{"result":{"text":"done"}}`)})

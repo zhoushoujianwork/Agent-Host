@@ -79,7 +79,9 @@ func (c Config) headers(tts bool) (http.Header, error) {
 	if _, err := rand.Read(id[:]); err != nil {
 		return nil, errors.New("doubao: connection identity unavailable")
 	}
-	h.Set("X-Api-Connect-Id", hex.EncodeToString(id[:]))
+	requestID := hex.EncodeToString(id[:])
+	h.Set("X-Api-Connect-Id", requestID)
+	h.Set("X-Api-Request-Id", requestID)
 	return h, nil
 }
 

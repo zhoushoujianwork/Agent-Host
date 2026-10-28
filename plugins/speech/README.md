@@ -38,6 +38,10 @@ No arbitrary header overrides or resource-ID substitutions are performed. The
 caller owns endpoint selection and authentication. TTS v3 bidirectional
 endpoints and API-key-only TTS authentication are unsupported in this phase.
 
+ASR supplies both `X-Api-Request-Id` and `X-Api-Connect-Id` with a fresh matching
+identifier on each connection. The request identifier is required by the
+[current streaming ASR API](https://docs.volcengine.com/docs/doubao-voice/bidirectional-streaming-automatic-speech-recognition-websocket?lang=zh).
+
 The [compile-checked example](example/turn.go) demonstrates the entire turn:
 
 ```go

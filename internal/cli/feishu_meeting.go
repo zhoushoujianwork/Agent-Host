@@ -110,6 +110,15 @@ func loadFeishuMeetingConfig(path string) (feishumeeting.Config, error) {
 		AllowedSenderOpenIDs: c.AllowedSenderOpenIDs, PollInterval: time.Duration(c.PollIntervalSeconds) * time.Second, AutoJoin: c.AutoJoin, IMChat: c.IMChat, IMReactions: c.IMReactions, OwnerOpenID: c.OwnerOpenID}
 	if c.Voice != nil {
 		cfg.Voice = c.Voice.Normalized()
+		// Resolve against the original configuration's directory, never the cwd,
+		// so standalone and managed layouts agree.
+		if cfg.Voice.Enabled && cfg.Voice.CredentialsFile != "" && !filepath.IsAbs(cfg.Voice.CredentialsFile) {
+			resolved, err := filepath.Abs(filepath.Join(filepath.Dir(path), cfg.Voice.CredentialsFile))
+			if err != nil {
+				return feishumeeting.Config{}, errors.New("Feishu voice credentials_file cannot be resolved")
+			}
+			cfg.Voice.CredentialsFile = resolved
+		}
 	}
 	if err := cfg.Validate(); err != nil {
 		return feishumeeting.Config{}, err

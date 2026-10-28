@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"agent-host/internal/channel"
@@ -13,16 +16,57 @@ import (
 )
 
 // feishuVoiceProviders validates voice configuration and credentials locally.
-// It reads only the referenced environment variables and never connects.
+// It reads only the referenced credentials and never connects. With a
+// credentials_file the private file is the exclusive source; otherwise lookup
+// (the process environment) is used.
 func feishuVoiceProviders(cfg feishumeeting.Config, lookup func(string) (string, bool)) (speech.ASRProvider, speech.TTSProvider, error) {
 	if !cfg.Voice.Enabled {
 		return nil, nil, nil
+	}
+	if err := cfg.Voice.Validate(); err != nil {
+		return nil, nil, err
+	}
+	if cfg.Voice.CredentialsFile != "" {
+		var err error
+		if lookup, err = voiceCredentialsFileLookup(cfg.Voice); err != nil {
+			return nil, nil, err
+		}
 	}
 	credentials, err := cfg.Voice.ResolveCredentials(lookup)
 	if err != nil {
 		return nil, nil, err
 	}
 	return feishumeeting.DoubaoSpeech(cfg.Voice, credentials)
+}
+
+// voiceCredentialsFileLookup loads the private credentials file once and returns
+// a lookup over it. Values stay in memory only: nothing is exported to the
+// process environment. Errors name neither values nor unknown keys.
+func voiceCredentialsFileLookup(v feishumeeting.VoiceConfig) (func(string) (string, bool), error) {
+	var raw map[string]json.RawMessage
+	if err := readServiceJSON(v.CredentialsFile, &raw); err != nil {
+		return nil, fmt.Errorf("Feishu voice credentials_file: %w", err)
+	}
+	referenced := map[string]bool{}
+	for _, name := range v.ReferencedEnvNames() {
+		referenced[name] = true
+	}
+	values := make(map[string]string, len(raw))
+	for name, field := range raw {
+		if !referenced[name] {
+			return nil, errors.New("Feishu voice credentials_file contains a field the voice configuration does not reference")
+		}
+		field = bytes.TrimSpace(field)
+		var value string
+		if len(field) == 0 || field[0] != '"' || json.Unmarshal(field, &value) != nil {
+			return nil, errors.New("Feishu voice credentials_file values must be strings")
+		}
+		if value == "" || value != strings.TrimSpace(value) || strings.ContainsAny(value, "\x00\r\n") {
+			return nil, errors.New("Feishu voice credentials_file values must be nonempty single-line strings without surrounding whitespace")
+		}
+		values[name] = value
+	}
+	return func(name string) (string, bool) { value, ok := values[name]; return value, ok }, nil
 }
 
 // meetingVoice owns one independently cancelable voice bridge per meeting.

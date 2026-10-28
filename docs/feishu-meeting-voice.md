@@ -9,8 +9,10 @@ TTS. There is no realtime speech-to-speech model. Technical detail:
 ## Enable
 
 Add a `voice` block to the meeting configuration (see
-[the example](../config/channel-feishu-meeting-voice.example.json)) and export
-the environment variables it names. Configuration never holds credential values.
+[the example](../config/channel-feishu-meeting-voice.example.json)) and supply
+the credentials it names, either by exporting environment variables or through
+a private credentials file (below). The channel configuration holds references;
+secret values stay in the selected credential source.
 
 - `enabled` and `accept_unattributed_audio` must both be `true`.
 - `wake_prefix` defaults to `AI`. Only an utterance that starts with it and has
@@ -20,13 +22,50 @@ the environment variables it names. Configuration never holds credential values.
 - `tts`: `endpoint` (path `/api/v1/tts/ws_binary`), `cluster`, `voice`,
   `app_id_env` and `access_token_env`.
 
+- `credentials_file` (optional): see [Credentials file](#credentials-file).
+
 `agent-host feishu-meeting check` validates the block and reads the named
-environment variables without any network access, and reports
+credentials without any network access, and reports
 `voice_supported` as true only when voice is enabled. `probe` stays identity-only
 and reports `voice_supported` false. `serve` works with `auto_join` or a fixed
 `meeting_id`; it does not work in IM-only mode.
 The [channel startup guide](feishu-meeting-channel.md#enable-and-start) gives
 the commands and a separate state home for trials.
+
+## Credentials file
+
+The managed service environment file only accepts provider keys, so a managed
+service keeps speech credentials in a separate private file. Set
+`voice.credentials_file` to its path. A relative path is resolved against the
+directory of the Feishu configuration file, not the working directory, so
+standalone and managed runs agree.
+
+The file is a JSON object that maps the same environment names referenced by
+`asr.api_key_env`, `asr.app_id_env`, `asr.access_token_env`, `tts.app_id_env`
+and `tts.access_token_env` to secret strings. The values below are placeholders:
+
+```json
+{
+  "AGENT_HOST_VOICE_ASR_API_KEY": "PLACEHOLDER_ASR_API_KEY",
+  "AGENT_HOST_VOICE_TTS_APP_ID": "PLACEHOLDER_TTS_APP_ID",
+  "AGENT_HOST_VOICE_TTS_ACCESS_TOKEN": "PLACEHOLDER_TTS_ACCESS_TOKEN"
+}
+```
+
+- Create it with mode `0600`, owned by the service user, as a regular file (no
+  symlink), at most 32 KiB. Group or other access is rejected.
+- When `credentials_file` is set, the file is the only credential source. The
+  inherited environment is never used as a fallback, and a missing, unreadable
+  or invalid file is an error.
+- Every referenced name must be present. Keys the voice block does not
+  reference, duplicate keys, `null`, non-string values, empty values and
+  values with a newline or surrounding whitespace are rejected. Errors name
+  missing environment names but never print values or unknown keys.
+- Values are held in memory only. They are not exported to the process
+  environment, the model or workbench environment, or logs.
+- With voice disabled or no `voice` block, the file is not read and need not
+  exist. Without `credentials_file`, the named environment variables are used
+  as before.
 
 ## Scope and identity
 
@@ -39,8 +78,8 @@ owner or a human Open ID, and never load a private profile. Text requests keep
 the sender allowlist.
 
 The supplied starter requires published `vc:meeting.bot.join:write` and
-`vc:meeting.bot.realtime:write`, in addition to the text channel's meeting
-scopes. Local checks do not verify platform permissions.
+`vc:meeting.bot.realtime:write` (the realtime scope is mandatory for audio), in
+addition to the text channel's meeting scopes. Local checks do not verify platform permissions.
 
 ## Behavior
 

@@ -43,14 +43,43 @@ closing the audio session. Partial or empty completed PCM is an error.
 ## Configuration schema
 
 `voice.enabled`, `voice.accept_unattributed_audio`, `voice.wake_prefix`,
+`voice.credentials_file`,
 `voice.asr.{endpoint,cluster,resource_id,api_key_env,app_id_env,access_token_env}`,
 `voice.tts.{endpoint,cluster,voice,app_id_env,access_token_env}`. Unknown fields
 and null values are rejected. Environment names must be identifiers; a value that
 looks like a secret is rejected as a name.
 
+## Credentials file handling
+
+`loadFeishuMeetingConfig` makes a relative `credentials_file` absolute against
+the directory of the original configuration file, for enabled voice only.
+`feishuVoiceProviders` then validates the voice block and, if the field is set,
+reads the file with `readServiceJSON` (owner, mode, regular file, no symlink,
+32 KiB, duplicate-key and trailing-data checks). Each value must be a JSON
+string that is nonempty, single-line and untrimmed, and each key must be one of
+`VoiceConfig.ReferencedEnvNames()`. The resulting in-memory map is the only
+`lookup` passed to `ResolveCredentials`; the process environment is neither
+read nor written. Absent field: `os.LookupEnv` as before. Disabled voice returns
+before any read.
+
 ## Tests
 
 Fake audio, ASR and TTS cover wake gating, source identity, final revisions,
 reply correlation, failure separation, fixed and automatic lifetimes, startup
-failure and poll failure. They need no network. Real Feishu audio and speech
-services are untested.
+failure and poll failure. Credentials-file tests cover relative resolution across working directories,
+exclusive use without environment fallback, malformed content, unsafe
+permissions and symlinks, error redaction and disabled voice. They need no network.
+
+## Runtime activation probe (2026-10-28)
+
+The bot's membership in the invited meeting was confirmed. A real request for
+`/open-apis/vc/v1/realtime/endpoint` was rejected with CLI exit 3,
+`authorization.app_scope_not_applied`, code `99991672`, naming the missing
+`vc:meeting.bot.realtime:write` scope. The app must apply that permission and
+publish the version before audio setup can proceed. No audio session was
+created and no PCM frames were received.
+
+The supplied starter contains placeholder credentials, and the selected service
+has no configured ASR/TTS credentials. A private empty credential template is
+prepared locally; it is deliberately not treated as a usable credential source.
+Real speech-provider calls and spoken-input/output acceptance remain pending.

@@ -10,6 +10,7 @@
     "enabled": true,
     "accept_unattributed_audio": true,
     "wake_prefix": "AI",
+    "credentials_file": "credentials/voice.feishu.json",
     "asr": {
       "endpoint": "wss://YOUR_ASR_HOST/api/v3/sauc/bigmodel",
       "resource_id": "YOUR_ASR_RESOURCE_ID",
