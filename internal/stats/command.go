@@ -56,6 +56,7 @@ func Run(ctx context.Context, args []string, out, errout io.Writer) error {
 	since := fs.String("since", "7d", "duration, RFC3339 or UTC date")
 	until := fs.String("until", "", "RFC3339 or UTC date (default now)")
 	fs.StringVar(&o.Agent, "agent", "", "filter agent ID")
+	fs.StringVar(&o.TaskKind, "task-kind", "", "filter AI task kind (unlabeled for missing)")
 	fs.StringVar(&o.Channel, "channel", "", "filter channel")
 	fs.BoolVar(&o.Compare, "compare", false, "include preceding equal window")
 	fs.DurationVar(&o.StaleAfter, "stale-after", 2*time.Hour, "running age threshold")
@@ -115,7 +116,7 @@ func writeWindow(out io.Writer, r *Report) error {
 		name  string
 		value any
 	}{
-		{"Sources", r.Sources}, {"Totals", r.Totals}, {"Execution", r.Outcomes}, {"Acceptance", r.Acceptance}, {"Memory", r.Memory}, {"Daily (UTC)", r.Daily}, {"By agent", r.ByAgent}, {"By channel", r.ByChannel}, {"By model", r.ByModel}, {"Duration (seconds)", r.Duration}, {"Error classes", r.Errors}, {"Tools", r.Tools}, {"Usage (observed subtotals)", r.Usage}, {"Coverage", r.Coverage}, {"Attention", r.Attention},
+		{"Sources", r.Sources}, {"Totals", r.Totals}, {"Execution", r.Outcomes}, {"Acceptance", r.Acceptance}, {"Success rate", r.SuccessRate}, {"By task kind", r.ByTaskKind}, {"Memory", r.Memory}, {"Daily (UTC)", r.Daily}, {"By agent", r.ByAgent}, {"By channel", r.ByChannel}, {"By model", r.ByModel}, {"Duration (seconds)", r.Duration}, {"Error classes", r.Errors}, {"Tools", r.Tools}, {"Usage (observed subtotals)", r.Usage}, {"Coverage", r.Coverage}, {"Attention", r.Attention},
 	}
 	for _, section := range sections {
 		raw, err := json.Marshal(section.value)

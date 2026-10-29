@@ -472,6 +472,8 @@ function overview(panel, record) {
     grid.append(item);
   }
   statuses.node.append(grid);
+  statuses.body.append(dom("p", "note", `任务类型：${run.task_kind || "unlabeled"}`));
+  if (run.judgment) statuses.body.append(dom("p", "note", `AI 验收 · ${run.judgment.actor} · ${run.judgment.judged_at}：${run.judgment.reason}`));
   const errors = [run.error, run.memory_error, run.experience_error].filter(Boolean);
   if (errors.length) statuses.body.append(dom("p", "note", errors.join("\n")));
   const timing = card("组件耗时", "每个阶段最近一次完成的耗时；重试与人工审核可在事件中查看。");

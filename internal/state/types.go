@@ -87,6 +87,15 @@ type Memory struct {
 	ReviewNote        string          `json:"review_note,omitempty"`
 }
 
+// RunJudgment is the Agent's evidence-grounded closeout, independent of execution.
+type RunJudgment struct {
+	TaskKind string    `json:"task_kind,omitempty"`
+	Outcome  string    `json:"outcome"`
+	Reason   string    `json:"reason"`
+	Actor    string    `json:"actor"`
+	JudgedAt time.Time `json:"judged_at"`
+}
+
 type Run struct {
 	CompletedAt           *time.Time         `json:"completed_at,omitempty"`
 	Room                  *RoomTurn          `json:"room,omitempty"`
@@ -104,6 +113,8 @@ type Run struct {
 	ExecutionStatus       string             `json:"execution_status"`
 	MemoryStatus          string             `json:"memory_status"`
 	MemoryAttribution     string             `json:"memory_attribution,omitempty"` // unresolved pauses automatic writeback
+	TaskKind              string             `json:"task_kind,omitempty"`
+	Judgment              *RunJudgment       `json:"judgment,omitempty"`
 	AcceptanceStatus      string             `json:"acceptance_status"`
 	Output                string             `json:"output"`
 	Error                 string             `json:"error,omitempty"`

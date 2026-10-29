@@ -1,4 +1,24 @@
 {
+  "by_task_kind": [
+    {
+      "name": "unlabeled",
+      "runs": 6,
+      "outcomes": {
+        "accepted": 0,
+        "partial": 0,
+        "rejected": 0,
+        "resolved": 0,
+        "unresolved": 0,
+        "unverified": 6
+      },
+      "coverage": [
+        0,
+        6
+      ],
+      "success_rate": null
+    }
+  ],
+  "success_rate": null,
   "schema_version": 1,
   "generated_at": "2026-10-28T12:00:00Z",
   "window": {
@@ -25,7 +45,10 @@
   },
   "acceptance": {
     "accepted": 0,
+    "partial": 0,
     "rejected": 0,
+    "resolved": 0,
+    "unresolved": 0,
     "unverified": 6
   },
   "memory": {
@@ -116,6 +139,10 @@
     }
   ],
   "coverage": {
+    "acceptance": [
+      0,
+      6
+    ],
     "cost_usd": [
       1,
       6
@@ -142,6 +169,26 @@
     ]
   },
   "previous": {
+    "by_task_kind": [
+      {
+        "name": "unlabeled",
+        "runs": 1,
+        "outcomes": {
+          "accepted": 1,
+          "partial": 0,
+          "rejected": 0,
+          "resolved": 0,
+          "unresolved": 0,
+          "unverified": 0
+        },
+        "coverage": [
+          0,
+          1
+        ],
+        "success_rate": null
+      }
+    ],
+    "success_rate": null,
     "schema_version": 1,
     "generated_at": "2026-10-28T12:00:00Z",
     "window": {
@@ -168,7 +215,10 @@
     },
     "acceptance": {
       "accepted": 1,
+      "partial": 0,
       "rejected": 0,
+      "resolved": 0,
+      "unresolved": 0,
       "unverified": 0
     },
     "memory": {
@@ -226,6 +276,10 @@
     },
     "attention": [],
     "coverage": {
+      "acceptance": [
+        0,
+        1
+      ],
       "cost_usd": [
         0,
         1

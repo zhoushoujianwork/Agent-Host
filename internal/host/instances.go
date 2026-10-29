@@ -32,6 +32,7 @@ func (h *Host) partitioned() *Host {
 // Per-turn routing and sender metadata belong to trusted system instructions,
 // not the user message, and do not rotate a group's shared conversation.
 func invocationInstructions(policy string, run state.Run) string {
+	policy += closeoutInstructions(run.ID)
 	if run.Feedback != nil {
 		if run.Feedback.Mode == "notify" {
 			metadata, _ := json.Marshal(map[string]string{"demand_owner": run.Feedback.RequestFor, "notification_recipient": run.Feedback.NotifyTo})

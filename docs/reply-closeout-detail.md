@@ -97,3 +97,36 @@ events; this is not a new execution or evidence-resolution API.
 Isolated tests cover restart before run creation, after a recorded partial tool
 event, repeated recovery, delivery failure/uncertainty and a crash during delivery.
 No production restart or historical notification is part of this implementation.
+
+## AI task classification and acceptance
+
+The executing Agent receives trusted per-run instructions to append an
+`<agh-closeout>` JSON block containing `run_id`, `task_kind`, `outcome`, `reason`
+and `evidence_quote`. This is a Host contract shared by native adapters, not a
+second model/tool loop. The Agent judges the requested work and cites a concrete
+check/result or delivered answer in its reason. Prefer `ops`, `query`, `report`,
+`development`, `other`; new kinds must match `[a-z0-9-]{1,32}`. No text-keyword
+classifier, manual accept command, confirmation UI or reaction is involved.
+
+Host validates the current run ID, slug, outcome and a nonempty verbatim citation
+present in both the delivered answer and reason. It removes the terminal block
+from the persisted answer before delivery, then atomically persists classification
+and judgment with execution completion. Raw native events (including streamed
+metadata) remain evidence; live streaming consumers may see the metadata before
+terminal normalization. Citation validation establishes provenance, not independent
+verification of a model's claims. Semantic acceptance remains an AI judgment.
+Missing/malformed closeout or unsupported evidence is `unresolved`, with an
+explicit diagnostic reason attributed to `host.closeout`; failed/canceled
+execution cannot become `resolved`.
+A run ending before valid classification remains `unlabeled`. Pre-execution
+failures and historical records can remain `unverified`; no historical backfill.
+
+Optional run payload fields are `task_kind` and `judgment` (outcome, reason, actor,
+judged_at); `acceptance_status` mirrors the outcome. There is no schema migration.
+Reason text inherits run-record retention and detail access rules. Run details
+show actor, time and reason. Stats selects only the kind and outcome, never the
+reason, and emits `by_task_kind`, `success_rate` and `coverage.acceptance`.
+Success rate is `resolved / (resolved + partial + unresolved)`, or null without
+judged runs; coverage is `[judged, total]`. Historical accepted/rejected values
+remain visible but do not become AI judgments. CLI `stats --task-kind ops` and
+the Stats page filter use the same read-only aggregation, including comparisons.

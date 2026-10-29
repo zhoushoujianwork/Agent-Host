@@ -810,7 +810,7 @@ class StatsReader:
     @staticmethod
     def query(raw):
         query = parse_qs(raw, keep_blank_values=True)
-        if set(query) - {"since", "until", "agent", "channel", "compare"}:
+        if set(query) - {"since", "until", "agent", "channel", "compare", "task-kind"}:
             raise ValueError("unknown stats parameter")
         for key, values in query.items():
             if len(values) != 1 or not values[0]:
@@ -818,6 +818,8 @@ class StatsReader:
             value = values[0]
             if key == "compare":
                 valid = value in {"0", "1"}
+            elif key == "task-kind":
+                valid = re.fullmatch(r"[a-z0-9-]{1,32}", value)
             elif key in {"agent", "channel"}:
                 valid = re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}", value)
             elif key == "since" and value in {"24h", "7d", "30d"}:
