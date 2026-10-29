@@ -40,8 +40,15 @@ const (
 )
 
 const (
-	defaultTermGrace = 5 * time.Second
-	defaultWaitGrace = 15 * time.Second
+	// Offload stops its own worker, which runs in a separate process group,
+	// with a stop grace and a kill wait, then repeats the group cleanup with
+	// the same bounds: up to about 16s in total. SIGKILL to the wrapper before
+	// that finishes would orphan a stubborn native worker, so the TERM grace
+	// must outlast Offload's cleanup before the wrapper is forced.
+	defaultTermGrace = 30 * time.Second
+	// The client-side deadline is Config.Timeout plus this wait, which covers
+	// Offload's own timeout handling and cleanup after its -t deadline.
+	defaultWaitGrace = 30 * time.Second
 	pipeDrainDelay   = 2 * time.Second
 )
 

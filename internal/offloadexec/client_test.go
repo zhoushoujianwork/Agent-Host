@@ -431,3 +431,56 @@ func startBystander(t *testing.T) int {
 	t.Cleanup(func() { _ = p.Kill(); _, _ = p.Wait() })
 	return p.Pid
 }
+
+// A wrapper that needs longer than the old 5s grace for its own cleanup must
+// finish it under the default shutdown policy and must not be killed early.
+func TestCancelDefaultGraceLetsSlowWrapperCleanupFinish(t *testing.T) {
+	dir := t.TempDir()
+	cmd := filepath.Join(dir, "offload")
+	script := `#!/bin/sh
+cat >/dev/null
+trap 'sleep 6; echo done > '"'` + dir + `/cleanup-finished'"'; exit 143' TERM
+echo ready > '` + dir + `/ready'
+sleep 30 &
+child=$!
+echo $child > '` + dir + `/child.pid'
+wait $child
+`
+	if err := os.WriteFile(cmd, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	c, err := New(Config{Command: cmd, Profile: "alias", Timeout: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(dir + "/child.pid"); err == nil {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		cancel()
+	}()
+	start := time.Now()
+	res, runErr := c.Run(ctx, Request{Prompt: "p", Workspace: t.TempDir()})
+	elapsed := time.Since(start)
+	// Run owns and reaps this process group. Do not signal a saved child PID
+	// after shutdown: the kernel may already have reused it for another process.
+	if _, err := os.Stat(dir + "/ready"); err != nil {
+		t.Fatal("fixture never became ready; cancellation was not tested")
+	}
+	if res.Status != StatusCanceled || res.ErrorKind != KindCanceled || !errors.Is(runErr, context.Canceled) {
+		t.Fatalf("res=%+v err=%v", res, runErr)
+	}
+	if _, err := os.Stat(dir + "/cleanup-finished"); err != nil {
+		t.Fatalf("wrapper was killed before its 6s cleanup finished (Run took %s)", elapsed)
+	}
+	if elapsed < 5*time.Second || elapsed > 10*time.Second {
+		t.Fatalf("Run took %s, want the wrapper's ~6s cleanup, bounded under 10s", elapsed)
+	}
+	waitDead(t, pidFrom(t, dir+"/child.pid"))
+}

@@ -97,6 +97,11 @@ cancellation. No automatic retry, salvage or replay is introduced. The current
 Host-private run-control socket and richer live controls are not claimed by this
 first slice.
 
+Offload owns cleanup of its separately grouped native worker. AGH allows a
+30-second shutdown grace before forcing the Offload wrapper, and a 30-second
+margin after Offload's configured deadline, so the wrapper can finish its own
+bounded cleanup. A slow-wrapper cancellation fixture covers that handoff.
+
 ## Acceptance
 
 Use fake Offload executables and local transport fixtures: success, failure,
