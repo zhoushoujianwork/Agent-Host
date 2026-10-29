@@ -164,6 +164,7 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 		r.staleRuns(ctx, db, ref.name, o.Now.Add(-o.StaleAfter))
 		r.runIDs(ctx, db, "runs.unrecorded", ref.name, "execution_status='unknown'")
 		r.failures(ctx, db, ref.name, o)
+		r.healthWindow(ctx, db, ref.name, o)
 		r.backlog(ctx, db, "intake.unresolved", ref.name, "SELECT count(*),min(received_at) FROM channel_messages WHERE status NOT IN ('completed','failed')", o.Now)
 		var ambiguous int
 		if e := db.QueryRowContext(ctx, "SELECT count(*) FROM channel_messages WHERE status='unknown'").Scan(&ambiguous); e == nil {
@@ -177,7 +178,7 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 		r.Checks[len(r.Checks)-1].NextAction = "agent-host memory verify --home PATH (use this scope's state directory)"
 		db.Close()
 	}
-	for _, id := range []string{"runs.stale_running", "runs.unrecorded", "runs.failures", "intake.unresolved", "memory.candidates", "memory.verification"} {
+	for _, id := range []string{"runs.stale_running", "runs.unrecorded", "runs.failures", "intake.unresolved", "memory.candidates", "memory.verification", "runs.stages", "intake.window", "stages.latency"} {
 		found := false
 		for _, c := range r.Checks {
 			if c.ID == id {
@@ -203,11 +204,16 @@ func CollectStatus(ctx context.Context, o Options, noHTTP bool, port int) (*Stat
 			}
 		}
 		var outcomes any = summary.Outcomes
+		var acceptance any = summary.Acceptance
+		var denominator any = summary.Totals["runs"]
 		if readable == 0 {
 			outcomes = nil
+			acceptance = nil
+			denominator = nil
 		}
-		r.add("runs.window", "platform", status, "Shared stats outcomes in [since, until); unreadable stores excluded", map[string]any{"window": summary.Window, "outcomes": outcomes, "sources": summary.Sources})
+		r.add("runs.window", "platform", status, "Shared stats outcomes in [since, until); unreadable stores excluded", map[string]any{"window": summary.Window, "outcomes": outcomes, "acceptance": acceptance, "denominator": denominator, "unit": "runs", "sources": summary.Sources})
 	}
+	r.add("coverage", "platform", "unknown", "Unavailable evidence is not zero or success", map[string]string{"central_usage_cost": "unavailable", "business_acceptance_recording": "not_implemented", "schedule_configuration": "unavailable", "read_receipts": "unavailable"})
 	roots := []string{}
 	if o.Root != "" {
 		roots = append(roots, o.Root)
@@ -381,6 +387,8 @@ func RunStatus(ctx context.Context, args []string, out, errout io.Writer) error 
 	fs.SetOutput(errout)
 	fs.StringVar(&o.Root, "root", "", "absolute runtime root; exclusive with --home")
 	fs.Var(&h, "home", "state home; repeatable; no default")
+	since := fs.String("since", "", "window start: RFC3339, UTC date or duration; overrides --window")
+	until := fs.String("until", "", "exclusive window end: RFC3339 or UTC date")
 	window := fs.Duration("window", 24*time.Hour, "run window")
 	fs.DurationVar(&o.StaleAfter, "stale-after", 2*time.Hour, "running age threshold")
 	port := fs.Int("viewer-port", 8765, "loopback HTTP port")
@@ -396,7 +404,21 @@ func RunStatus(ctx context.Context, args []string, out, errout io.Writer) error 
 		return errors.New("invalid status arguments")
 	}
 	o.Homes = h
-	o.Since = now.Add(-*window)
+	if *until != "" {
+		var err error
+		o.Until, err = parseTime(*until, now, false)
+		if err != nil {
+			return err
+		}
+	}
+	o.Since = o.Until.Add(-*window)
+	if *since != "" {
+		var err error
+		o.Since, err = parseTime(*since, o.Until, true)
+		if err != nil {
+			return err
+		}
+	}
 	r, e := CollectStatus(ctx, o, *noHTTP, *port)
 	if r == nil {
 		return e

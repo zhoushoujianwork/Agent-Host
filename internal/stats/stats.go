@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -343,7 +344,18 @@ func newAggregate(s, u, n time.Time) *aggregate {
 	}
 }
 
+var dependencyHTTP = regexp.MustCompile(`(?i)\bHTTP (400|402)\b`)
+
 func errorClass(s string) string {
+	if match := dependencyHTTP.FindStringSubmatch(s); match != nil {
+		return "dependency_http_" + match[1]
+	}
+	if strings.Contains(s, "unsupported message type") {
+		return "unsupported_input"
+	}
+	if strings.Contains(s, "experience ") && strings.Contains(s, "exceeds") {
+		return "experience_limit"
+	}
 	// Caller loss is more specific than its appended context-canceled cause.
 	for _, p := range [][2]string{{"caller_lost", "caller exited or became unverifiable"}, {"canceled_context", "context canceled"}, {"canceled_deadline", "context deadline exceeded"}, {"protocol_malformed_event", "malformed event"}, {"process_wait_delay", "WaitDelay expired"}, {"process_exit", "exit status"}, {"persist_event", "persist event"}} {
 		if strings.Contains(s, p[1]) {
