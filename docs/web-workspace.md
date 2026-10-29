@@ -1,5 +1,9 @@
 # Web interface
 
+The [macOS app](macos-app.md) embeds this same workspace in its app window and
+adds a persistent menu, inbox and notification bridge. The browser entry remains
+available for development inspection; the app needs no separately deployed Web product.
+
 AGH opens on the memory graph, with execution records and settings in the left
 navigation and Chat on the right. 左侧另有只读 Stats 页面。 The conversation canvas/workbench is temporarily
 disabled. [Implementation notes](web-workspace-detail.md).
