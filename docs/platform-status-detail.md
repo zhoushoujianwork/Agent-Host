@@ -31,3 +31,30 @@
   返回状态码，非 200 或请求失败为警告；禁用时为未知。
 - 回复交付、已读、提供方可达性、业务验收、缺测 usage/cost 和调度证据
   保留在 unverified。只读状态不提供修复、重放、部署或重启行为。
+
+## 审计窗口与阶段覆盖
+
+`--until` 为排他上界，默认当前时间；`--since` 支持 RFC3339、UTC 日期或
+相对上界的时长，覆盖 `--window`。两者均按纳秒精度比较。
+当前积压检查仍查询全部保留记录，不因历史窗口改变。
+
+- `intake.window` 按消息 received_at 选取，分母为消息数；分别统计处理和
+  reply_status。accepted 仅表示平台接受回复，不表示已读或业务验收。
+- `runs.stages` 按 run created_at 选取，分母为执行数；分别统计 memory_status
+  与 experience_status。缺失或不识别的状态进入 unknown，不推断成功。
+  执行结果仍由 `runs.window` 提供；错误或不可读表返回 unknown/null。
+- 两项检查的 error_observations 是非空错误字段的分类次数；同一记录可有
+  两项错误，不能当作失败记录数或可靠性百分比。仅输出固定类别，不输出正文。
+  HTTP 400/402 为 dependency_http_400/402；不触发路由、重试或提供方切换。
+- `stages.latency` 统计窗口内创建的执行所保留的 phase.finished 事件。
+  只允许 Host 定义的阶段名；每阶段独立报告 observations、timed_observations、
+  total_seconds 和 max_seconds。重复阶段分别计数，缺失或负耗时不计入耗时分母；
+  没有有效耗时为 null。此指标不是消息端到端延迟，也不覆盖无事件的阶段。
+- `coverage` 明示中央 usage/cost unavailable、业务验收记录 not_implemented、
+  调度配置与已读证据 unavailable。未读取调度配置，不能推断 not_configured；
+  stats 的部分用量仍只是观测小计，不是中央总成本。
+- 后续业务验收需要独立的归属、授权和验收证据记录设计；不得由执行完成、
+  经验保存或平台回复 accepted 自动回填历史 accepted/rejected。
+
+隔离测试覆盖精确上下界、空窗口、取消、不支持输入、后处理失败、歧义 intake、
+依赖失败、缺失阶段耗时、文本/JSON 脱敏，以及既有数据库/WAL/锁不变检查。
