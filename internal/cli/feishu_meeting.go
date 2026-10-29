@@ -169,12 +169,17 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(filtered)
 	}
-	if err := enableChannelHistory(&o); err != nil {
-		return err
+	if o.offloadProfile == nil {
+		if err := enableChannelHistory(&o); err != nil {
+			return err
+		}
 	}
 	cfg, err := loadFeishuMeetingConfig(o.feishuConfig)
 	if err != nil {
 		return err
+	}
+	if o.offloadProfile != nil {
+		return runOffloadFeishu(ctx, command, cfg, o, out)
 	}
 	if command == "probe" {
 		client, err := feishulib.NewMeetingClient(feishulib.Config{Profile: cfg.Profile, AppID: cfg.AppID, BotOpenID: cfg.BotOpenID}, nil)
