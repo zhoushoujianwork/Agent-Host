@@ -136,7 +136,10 @@ evidence. Losing the caller never starts a replacement run.
 Use `--caller-pid PID` when a persistent wrapper separates the launcher from the
 actual supervising process. Use `--detach` only for work explicitly intended to
 continue after the caller exits; it does not put the command in the background.
-Each continuation chooses its own lifetime policy.
+Each continuation chooses its own lifetime policy. The launcher must remain alive
+and collected across tool yields; an arbitrary shared application PID does not
+prove ownership. See the [caller binding audit](external-agent-handoff-detail.md#caller-binding-audit-issue-12)
+for wrapper requirements, diagnostic evidence and unresolved historical limits.
 
 Closing a conversation tab is detectable only if its supervising process exits.
 Web and channel services keep their own lifetimes. Cancellation stops owned
