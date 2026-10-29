@@ -43,6 +43,7 @@ Usage:
   agent-host memory submit|receipt|recall|read [--help] [options]
   agent-host memory associate|extract-objects [--help] [options]
   agent-host memory show [options] MEMORY_ID
+  agent-host memory review-report --home PATH [--min-age 168h] [--limit 20] [--status pending|accepted|rejected|all]
   agent-host memory candidates [--run RUN_ID] [--status pending|accepted|rejected|all] [options]
   agent-host memory candidate [options] CANDIDATE_ID
   agent-host memory accept [--note TEXT] [--expires-at RFC3339] [options] CANDIDATE_ID
@@ -426,6 +427,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 		_, err := fmt.Fprintf(out, "agent-host %s (commit %s, dirty=%s, %s/%s, %s)\n", info.Version, revision, dirty, info.GOOS, info.GOARCH, info.GoVersion)
 		return err
+	}
+	if len(args) >= 2 && args[0] == "memory" && args[1] == "review-report" {
+		return stats.RunCandidateReview(ctx, args[2:], out, errout)
 	}
 	if args[0] == "status" {
 		return stats.RunStatus(ctx, args[1:], out, errout)
