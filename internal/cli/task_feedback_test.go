@@ -87,6 +87,77 @@ func TestCLIExplicitFeedbackDeliversOnceWithoutRerunningBusiness(t *testing.T) {
 	t.Log("CLI task executed once; verified recipient received one fixture notification; durable receipt and attempt history retained")
 }
 
+func TestCLIRecipientResolutionDeliversOnceWithoutRerunningBusiness(t *testing.T) {
+	_, args, capture := fileResumeFixture(t)
+	root := t.TempDir()
+	directory := filepath.Join(root, "config")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeBotJSON(t, filepath.Join(directory, "users.json"), userCatalog{Version: 1, Users: []userDefinition{{ID: "alice", DisplayName: "Alice", Accounts: []userAccount{{Channel: "feishu", AccountID: "cli_app", TenantID: "tenant", SenderID: "ou_alice"}}}}})
+	args = append(args, "--feedback-config-dir", directory, "--request-for", "missing", "-m", "Check the named service")
+	if err := Run(t.Context(), args, nil, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	home := ""
+	for i, a := range args {
+		if a == "--home" {
+			home = args[i+1]
+		}
+	}
+	runs := fileResumeRuns(t, home)
+	if len(runs) != 1 || runs[0].Feedback == nil || runs[0].Feedback.NotifyTo != "missing" || runs[0].Feedback.Mode != "needs_recipient" {
+		t.Fatal("CLI did not bind recipient", runs)
+	}
+	q, err := taskfeedback.Open(filepath.Join(root, "feedback"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer q.Close()
+	before, err := os.ReadFile(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, err := q.List(t.Context())
+	if err != nil || len(pending) != 1 {
+		t.Fatal(pending, err)
+	}
+	resolveArgs := []string{"resolve", pending[0].ID, "--config-dir", directory, "--notify-to", "alice", "--notify-channel", "feishu"}
+	if err = runNotifications(t.Context(), resolveArgs, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if err = runNotifications(t.Context(), resolveArgs, io.Discard, io.Discard); err == nil {
+		t.Fatal("repeated resolution succeeded")
+	}
+	sender := &testFeedbackSender{status: "accepted"}
+	account := taskfeedback.Account{Channel: "feishu", AccountID: "cli_app", TenantID: "tenant"}
+	for range 2 {
+		if err = dispatchTaskFeedback(t.Context(), q, options{feedbackConfigDir: directory}, account, nil, sender); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after, _ := os.ReadFile(capture)
+	items, _ := q.List(t.Context())
+	if sender.calls != 1 || sender.user != "ou_alice" || sender.text == "" || len(items) != 1 || items[0].Status != "accepted" || items[0].Receipt != "platform-receipt" || string(before) != string(after) {
+		t.Fatal("notification duplicated or replayed business", sender.calls, items)
+	}
+	var out bytes.Buffer
+	if err = runNotifications(t.Context(), []string{"show", items[0].ID, "--config-dir", directory}, &out, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	var evidence map[string]any
+	if err = json.Unmarshal(out.Bytes(), &evidence); err != nil || len(evidence["attempts"].([]any)) != 2 {
+		t.Fatal("missing delivery evidence", out.String(), err)
+	}
+	if len(fileResumeRuns(t, home)) != 1 {
+		t.Fatal("resolution created another run")
+	}
+	if err = runNotifications(t.Context(), resolveArgs, io.Discard, io.Discard); err == nil {
+		t.Fatal("accepted notification resolved again")
+	}
+	t.Log("CLI task executed once; verified recipient received one fixture notification; durable receipt and attempt history retained")
+}
+
 // openFeedbackSource opens the first queued item's source state the way a
 // peer would: through the Host lease, with no run.finished receipt written.
 func openFeedbackSource(t *testing.T, q *taskfeedback.Queue) *state.Store {

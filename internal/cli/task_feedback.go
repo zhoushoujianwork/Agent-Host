@@ -349,14 +349,14 @@ func recordFeedbackSourceFailure(ctx context.Context, q *taskfeedback.Queue, ite
 
 func runNotifications(ctx context.Context, args []string, out, errout io.Writer) error {
 	if len(args) == 0 || args[0] == "--help" {
-		_, err := fmt.Fprintln(out, "agent-host notifications list|show ID|resolve ID --config-dir ABSOLUTE_CONFIG_DIRECTORY [--notify-to USER_ID --notify-channel CHANNEL]")
+		_, err := fmt.Fprintln(out, "agent-host notifications list|triage|show ID|resolve ID --config-dir ABSOLUTE_CONFIG_DIRECTORY [--notify-to USER_ID --notify-channel CHANNEL] [--review TRIAGE_REVIEW_JSON]")
 		return err
 	}
-	if args[0] != "list" && args[0] != "show" && args[0] != "resolve" {
-		return errors.New("notifications requires list, show or resolve")
+	if args[0] != "triage" && args[0] != "list" && args[0] != "show" && args[0] != "resolve" {
+		return errors.New("notifications requires list, triage, show or resolve")
 	}
 	command, id, rest := args[0], "", args[1:]
-	if command != "list" {
+	if command != "list" && command != "triage" {
 		if len(rest) == 0 || rest[0] == "" {
 			return errors.New("notification ID is required")
 		}
@@ -365,6 +365,7 @@ func runNotifications(ctx context.Context, args []string, out, errout io.Writer)
 	fs := flag.NewFlagSet("notifications "+command, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	dir := fs.String("config-dir", "", "Unified configuration directory")
+	review := fs.String("review", "", "Evidence-backed triage review JSON file")
 	to := fs.String("notify-to", "", "Verified recipient user ID for resolution")
 	provider := fs.String("notify-channel", "", "Configured notification channel")
 	if err := fs.Parse(rest); err != nil {
@@ -378,6 +379,9 @@ func runNotifications(ctx context.Context, args []string, out, errout io.Writer)
 	}
 	if command != "resolve" && (*to != "" || *provider != "") {
 		return errors.New("recipient options require notifications resolve")
+	}
+	if *review != "" && command != "triage" {
+		return errors.New("review requires notifications triage")
 	}
 	path := filepath.Join(filepath.Dir(*dir), "feedback")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) && command == "list" {
@@ -397,6 +401,9 @@ func runNotifications(ctx context.Context, args []string, out, errout io.Writer)
 	items, err := q.List(ctx)
 	if err != nil {
 		return err
+	}
+	if command == "triage" {
+		return writeFeedbackTriage(ctx, items, *review, out, time.Now().UTC())
 	}
 	if command == "show" || command == "resolve" {
 		for _, item := range items {
