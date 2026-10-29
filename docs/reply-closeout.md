@@ -23,7 +23,10 @@ Oversized experience payloads are explicitly blocked before model processing.
 The audit identifies the limit and the entire unprocessed payload; original
 evidence remains retained. Execution and delivery results remain independent.
 
-This change does not add automatic acceptance, detached background jobs or
+AI acceptance and task classification now accompany execution completion; see
+[the closeout contract](reply-closeout-detail.md#ai-task-classification-and-acceptance).
+Humans only hand over tasks; no manual labeling or confirmation is required.
+This change does not add detached background jobs or
 automatic task replay. Source validation and production rollout are separate.
 See the [implementation details](reply-closeout-detail.md) and the
 [architecture](architecture.md).

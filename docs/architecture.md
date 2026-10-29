@@ -20,6 +20,13 @@ Give AI work continuity across conversations and projects. Send a request throug
 CLI, Web, DingTalk or Feishu; Host selects the Agent and project, assembles authorized
 context, runs the selected execution engine and retains evidence and reusable knowledge locally.
 
+**Humans only hand over tasks.** AI classifies, judges and closes out work end to
+end; people are not required to label tasks or confirm acceptance. Judgments must
+cite concrete evidence, and insufficient evidence means unresolved. Execution,
+business acceptance, delivery and memory persistence remain independent.
+[AI closeout details](reply-closeout-detail.md#ai-task-classification-and-acceptance)
+describe the delivered run metadata and aggregate success-rate contract.
+
 The technical route is **a Go host around native execution engines**. Host owns
 business tasks, routing, context, delivery and durable memory. Native engines own
 their model/tool loops and conversations. **ACP is the chosen direction for a shared
@@ -113,7 +120,7 @@ and separately decides whether a useful correction becomes **Memory / a Skill**.
 
 例如：“修复登录测试”从钉钉进入，Host 选择运维助手和目标项目，在项目目录执行。
 执行记录回答“做了什么、结果如何”，长期记忆回答“以后可以复用什么”。
-任务完成、用户验收通过和经验保存成功分别记录。
+任务完成、AI 业务验收和经验保存成功分别记录。
 
 Execution-engine, authorization and storage terms are explained in the
 [bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).

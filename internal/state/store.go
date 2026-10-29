@@ -596,7 +596,7 @@ func (s *Store) AppendEvent(ctx context.Context, e *event.Event) error {
 	return wrap("append event", err)
 }
 
-func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, errorText string) error {
+func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, errorText string, judgment ...RunJudgment) error {
 	if status != "completed" && status != "failed" && status != "canceled" && status != "unknown" {
 		return fmt.Errorf("invalid execution status %q", status)
 	}
@@ -611,6 +611,13 @@ func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, erro
 		run.ExecutionStatus = status
 		now := time.Now().UTC()
 		run.CompletedAt = &now
+		if len(judgment) > 0 {
+			value := judgment[0]
+			value.JudgedAt = now
+			run.Judgment = &value
+			run.TaskKind = value.TaskKind
+			run.AcceptanceStatus = value.Outcome
+		}
 		run.Output = output
 		run.Model = model
 		run.Error = errorText

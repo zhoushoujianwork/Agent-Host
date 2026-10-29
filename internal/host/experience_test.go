@@ -222,7 +222,7 @@ func TestExperienceEvidenceReviewAndFreshSessionRecall(t *testing.T) {
 		}
 	}
 	reviewed, err := h.Store.Run(context.Background(), r.ID)
-	if err != nil || reviewed.ExperienceStatus != "reviewed" || reviewed.AcceptanceStatus != "unverified" {
+	if err != nil || reviewed.ExperienceStatus != "reviewed" || reviewed.AcceptanceStatus != "unresolved" {
 		t.Fatalf("experience approval confused with task acceptance: %+v err=%v", reviewed, err)
 	}
 	phases := map[string]int{}

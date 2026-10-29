@@ -468,6 +468,12 @@ class HTTPTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, 400)
                 command.assert_not_called()
 
+    def test_stats_task_kind_filter(self):
+        self.assertEqual(viewer.StatsReader.query("task-kind=ops"), {"task-kind": "ops"})
+        for value in ["UPPER", "a" * 33, "ops%3Brm", ""]:
+            with self.assertRaises(ValueError):
+                viewer.StatsReader.query("task-kind=" + value)
+
     def test_stats_cache_partial_sources_and_argument_list(self):
         report = {"schema_version": 1, "sources": [{"name": "cli", "status": "ok"},
                   {"name": "feishu", "status": "unreadable", "reason": "busy"}], "attention": []}

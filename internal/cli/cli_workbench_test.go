@@ -186,7 +186,7 @@ func TestCLIWorkbenchObservesOfficialChatAfterStartup(t *testing.T) {
 			Source struct{ Channel string }
 		}
 		get("/api/record?key="+row.Key, &detail)
-		if detail.Source.Channel != "cli" || detail.Run.Input != query || len(detail.Events) == 0 || detail.Run.AcceptanceStatus != "unverified" {
+		if detail.Source.Channel != "cli" || detail.Run.Input != query || len(detail.Events) == 0 || detail.Run.AcceptanceStatus != "unresolved" {
 			t.Fatal("lost source, request, evidence or acceptance", detail)
 		}
 		statuses[detail.Run.ExecutionStatus]++

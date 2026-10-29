@@ -2,6 +2,7 @@
 (function () {
   const escape = value => String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const metric = value => value == null ? "not measured" : escape(value);
+  const rate = value => value == null ? "not measured" : `${(value * 100).toFixed(1)}%`;
   const coverage = pair => pair ? `${metric(pair[0])} of ${metric(pair[1])} runs` : "not measured";
   const table = (title, rows, covered) => `<section><h2>${escape(title)}</h2><p class="coverage">${covered}</p><table><thead><tr><th>指标</th><th>数量 / 值</th><th>覆盖率</th></tr></thead><tbody>${rows.map(([name, value, rowCoverage]) => `<tr><td>${escape(name)}</td><td>${metric(value)}</td><td>${rowCoverage || covered}</td></tr>`).join("")}</tbody></table>${rows.length ? "" : "<p>无记录</p>"}</section>`;
   function render(report, heading = "当前窗口") {
@@ -23,6 +24,8 @@
     html += `<section><h2>每日执行</h2><p class="coverage">${full}</p><p>completed · canceled · failed · other（运行中、过期运行及未记录）</p><div class="chart">${daily.map(d => `<div class="day"><span>${escape(d.date)}</span><div class="bar">${fields.map(k => `<svg class="${k}" width="${100 * (d[k] || 0) / max}%" height="24" role="img" aria-label="${k}: ${metric(d[k])}"><title>${k}: ${metric(d[k])}</title><rect width="100%" height="24"></rect></svg>`).join("")}</div><small>${fields.map(k => `${k}: ${metric(d[k])}`).join(" · ")}</small></div>`).join("")}</div>${daily.length ? "" : "<p>无记录</p>"}</section>`;
     html += '<div class="grid">';
     html += table("执行结果", Object.entries(outcomes), full);
+    html += table("AI 成功率（resolved / judged）", [["成功率", rate(report.success_rate)]], coverage(cov.acceptance));
+    for (const kind of report.by_task_kind || []) html += table(`任务类型：${kind.name}`, [["成功率", rate(kind.success_rate)], ...Object.entries(kind.outcomes || {})], coverage(kind.coverage));
     html += table("业务验收", Object.entries(report.acceptance || {}), full);
     html += table("错误分类", (report.error_classes || []).map(r => [r.class, r.runs]), full);
     for (const [key, title] of [["by_agent", "Agent"], ["by_channel", "渠道"], ["by_model", "模型"]]) html += table(title, (report[key] || []).map(r => [r.name, r.runs]), full);
@@ -35,11 +38,13 @@
   if (typeof module !== "undefined") module.exports = {render, metric, coverage};
   if (typeof document === "undefined") return;
   const windowSelect = document.getElementById("window"), compare = document.getElementById("compare");
+  const taskKind = document.getElementById("task-kind");
   let generation = 0, pending = 0;
   async function refresh() {
     const current = ++generation;
     pending++;
     const query = new URLSearchParams({since: windowSelect.value, compare: compare.checked ? "1" : "0"});
+    if (taskKind?.value) query.set("task-kind", taskKind.value);
     try {
       const response = await fetch(`/api/stats?${query}`);
       const data = await response.json();
@@ -56,6 +61,7 @@
     }
   }
   windowSelect.onchange = compare.onchange = refresh;
+  if (taskKind) taskKind.onchange = refresh;
   setInterval(() => { if (!document.hidden && !pending) refresh(); }, 5000);
   refresh();
 }());

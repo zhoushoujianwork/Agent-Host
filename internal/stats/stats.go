@@ -23,13 +23,13 @@ import (
 )
 
 type Options struct {
-	Root              string
-	Homes             []string
-	Since, Until, Now time.Time
-	Agent, Channel    string
-	StaleAfter        time.Duration
-	Top               int
-	Compare           bool
+	Root                     string
+	Homes                    []string
+	Since, Until, Now        time.Time
+	Agent, Channel, TaskKind string
+	StaleAfter               time.Duration
+	Top                      int
+	Compare                  bool
 }
 type Source struct {
 	Name   string `json:"name"`
@@ -79,7 +79,26 @@ type Usage struct {
 	Cost        *float64 `json:"cost_usd"`
 	MissingCost int      `json:"runs_missing_cost"`
 }
+type KindAcceptance struct {
+	Name        string         `json:"name"`
+	Runs        int            `json:"runs"`
+	Outcomes    map[string]int `json:"outcomes"`
+	Coverage    [2]int         `json:"coverage"`
+	SuccessRate *float64       `json:"success_rate"`
+}
+
+func acceptanceRate(outcomes map[string]int) (*float64, int) {
+	judged := outcomes["resolved"] + outcomes["partial"] + outcomes["unresolved"]
+	if judged == 0 {
+		return nil, 0
+	}
+	rate := float64(outcomes["resolved"]) / float64(judged)
+	return &rate, judged
+}
+
 type Report struct {
+	ByTaskKind    []KindAcceptance  `json:"by_task_kind"`
+	SuccessRate   *float64          `json:"success_rate"`
 	SchemaVersion int               `json:"schema_version"`
 	GeneratedAt   time.Time         `json:"generated_at"`
 	Window        Window            `json:"window"`
@@ -166,6 +185,9 @@ func Collect(ctx context.Context, o Options) (*Report, error) {
 	if !o.Since.Before(o.Until) || o.StaleAfter <= 0 || o.Top < 0 {
 		return nil, errors.New("invalid window, stale-after or top")
 	}
+	if o.TaskKind != "" && !regexp.MustCompile(`^[a-z0-9-]{1,32}$`).MatchString(o.TaskKind) {
+		return nil, errors.New("invalid task kind")
+	}
 	refs, err := discover(o)
 	if err != nil {
 		return nil, err
@@ -243,19 +265,19 @@ func readStore(ctx context.Context, ref storeRef, o Options, compare bool) (*agg
 	// Widen SQLite's millisecond-precision prefilter; apply exact nanosecond bounds
 	// below before reading events. Both historical RFC3339 and UTC offsets work.
 	rows, err := tx.QueryContext(ctx, `SELECT id,execution_status,memory_status,
- json_extract(payload,'$.agent_id'),json_extract(payload,'$.model'),json_extract(payload,'$.acceptance_status'),json_extract(payload,'$.created_at'),json_extract(payload,'$.completed_at'),json_extract(payload,'$.source.channel'),json_extract(payload,'$.error')
+ json_extract(payload,'$.agent_id'),json_extract(payload,'$.model'),json_extract(payload,'$.acceptance_status'),json_extract(payload,'$.created_at'),json_extract(payload,'$.completed_at'),json_extract(payload,'$.source.channel'),json_extract(payload,'$.error'),json_extract(payload,'$.task_kind')
  FROM runs WHERE julianday(created_at)>=julianday(?) AND julianday(created_at)<julianday(?) ORDER BY created_at,id`, since.Add(-time.Second).Format(time.RFC3339Nano), o.Until.Add(time.Second).Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, nil, errors.New("cannot read runs (locked or invalid schema)")
 	}
 	type record struct {
-		id, status, memory                                         string
-		agent, model, accept, created, completed, channel, message sql.NullString
+		id, status, memory                                               string
+		agent, model, accept, created, completed, channel, message, kind sql.NullString
 	}
 	var records []record
 	for rows.Next() {
 		var r record
-		if err = rows.Scan(&r.id, &r.status, &r.memory, &r.agent, &r.model, &r.accept, &r.created, &r.completed, &r.channel, &r.message); err != nil {
+		if err = rows.Scan(&r.id, &r.status, &r.memory, &r.agent, &r.model, &r.accept, &r.created, &r.completed, &r.channel, &r.message, &r.kind); err != nil {
 			break
 		}
 		records = append(records, r)
@@ -280,6 +302,13 @@ func readStore(ctx context.Context, ref storeRef, o Options, compare bool) (*agg
 		if o.Agent != "" && r.agent.String != o.Agent || o.Channel != "" && channel != o.Channel {
 			continue
 		}
+		kind := r.kind.String
+		if kind == "" {
+			kind = "unlabeled"
+		}
+		if o.TaskKind != "" && kind != o.TaskKind {
+			continue
+		}
 		events, err := readEvents(ctx, tx, r.id)
 		if err != nil {
 			return nil, nil, err
@@ -288,6 +317,7 @@ func readStore(ctx context.Context, ref storeRef, o Options, compare bool) (*agg
 		if created.Before(o.Since) {
 			target = b
 		}
+		target.addKind(kind, r.accept.String)
 		target.add(r.id, r.status, r.memory, r.agent.String, r.model.String, r.accept.String, channel, r.message.String, created, r.completed.String, events, o)
 	}
 	return a, b, nil
@@ -314,6 +344,7 @@ func readEvents(ctx context.Context, tx *sql.Tx, id string) ([]event.Event, erro
 }
 
 type aggregate struct {
+	kinds                           map[string]*KindAcceptance
 	r                               *Report
 	durations                       []float64
 	agents, channels, models, tools map[string]int
@@ -330,11 +361,12 @@ func zeros(keys ...string) map[string]int {
 }
 func newAggregate(s, u, n time.Time) *aggregate {
 	return &aggregate{
+		kinds: map[string]*KindAcceptance{},
 		r: &Report{
 			SchemaVersion: 1, GeneratedAt: n.UTC(), Window: Window{s.UTC(), u.UTC()},
 			Sources: []Source{}, Totals: zeros("runs"),
 			Outcomes:   zeros("completed", "canceled", "failed", "running", "stale_running", "unrecorded"),
-			Acceptance: zeros("unverified", "accepted", "rejected"),
+			Acceptance: zeros("unverified", "accepted", "rejected", "resolved", "partial", "unresolved"),
 			Memory:     zeros("saved", "unchanged", "skipped", "failed", "other"),
 			Daily:      []Daily{}, Errors: []ErrorClass{}, Attention: []Attention{},
 			Tools: Tools{Named: []Count{}}, Coverage: map[string][2]int{},
@@ -505,7 +537,28 @@ func (a *aggregate) add(id, status, memory, agent, model, accept, channel, messa
 		a.cover(f, covered, 1)
 	}
 }
+func (a *aggregate) addKind(kind, outcome string) {
+	if a.kinds[kind] == nil {
+		a.kinds[kind] = &KindAcceptance{Name: kind, Outcomes: zeros("unverified", "accepted", "rejected", "resolved", "partial", "unresolved")}
+	}
+	k := a.kinds[kind]
+	if _, ok := k.Outcomes[outcome]; !ok {
+		outcome = "unverified"
+	}
+	k.Runs++
+	k.Outcomes[outcome]++
+}
 func (a *aggregate) merge(b *aggregate) {
+	for name, k := range b.kinds {
+		if a.kinds[name] == nil {
+			a.kinds[name] = &KindAcceptance{Name: name, Outcomes: map[string]int{}}
+		}
+		a.kinds[name].Runs += k.Runs
+		for outcome, n := range k.Outcomes {
+			a.kinds[name].Outcomes[outcome] += n
+		}
+	}
+
 	for _, pair := range [][2]map[string]int{{a.r.Totals, b.r.Totals}, {a.r.Outcomes, b.r.Outcomes}, {a.r.Acceptance, b.r.Acceptance}, {a.r.Memory, b.r.Memory}, {a.agents, b.agents}, {a.channels, b.channels}, {a.models, b.models}, {a.tools, b.tools}} {
 		for k, v := range pair[1] {
 			pair[0][k] += v
@@ -557,6 +610,16 @@ func counts(m map[string]int) []Count {
 }
 func (a *aggregate) finish(top int) {
 	r := a.r
+	r.ByTaskKind = []KindAcceptance{}
+	var judged int
+	r.SuccessRate, judged = acceptanceRate(r.Acceptance)
+	r.Coverage["acceptance"] = [2]int{judged, r.Totals["runs"]}
+	for _, k := range a.kinds {
+		k.SuccessRate, judged = acceptanceRate(k.Outcomes)
+		k.Coverage = [2]int{judged, k.Runs}
+		r.ByTaskKind = append(r.ByTaskKind, *k)
+	}
+	sort.Slice(r.ByTaskKind, func(i, j int) bool { return r.ByTaskKind[i].Name < r.ByTaskKind[j].Name })
 	r.ByAgent = counts(a.agents)
 	r.ByChannel = counts(a.channels)
 	r.ByModel = counts(a.models)

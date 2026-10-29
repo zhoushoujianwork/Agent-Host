@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -307,5 +308,45 @@ func TestEvenDurationPercentiles(t *testing.T) {
 	a.finish(10)
 	if *a.r.Duration.Median != 25 || *a.r.Duration.P90 != 40 || *a.r.Duration.Max != 40 || a.r.Coverage["duration"] != [2]int{4, 5} {
 		t.Fatalf("incorrect percentiles: %+v", a.r.Duration)
+	}
+}
+
+func TestAIJudgmentAggregationAndPrivacy(t *testing.T) {
+	home, db := fixture(t)
+	for i, outcome := range []string{"resolved", "partial", "unresolved", "unverified", "accepted"} {
+		kind := "ops"
+		if i == 4 {
+			kind = ""
+		}
+		insertRun(t, db, state.Run{ID: fmt.Sprint(i), CreatedAt: fixtureNow.Add(-time.Hour), ExecutionStatus: "completed", TaskKind: kind, AcceptanceStatus: outcome, Judgment: &state.RunJudgment{Reason: "PRIVATE_EVIDENCE_REASON"}})
+	}
+	options := Options{Homes: []string{home}, Since: fixtureNow.Add(-24 * time.Hour), Until: fixtureNow, Now: fixtureNow, StaleAfter: time.Hour, Top: 10, Compare: true}
+	report, err := Collect(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.SuccessRate == nil || *report.SuccessRate != 1.0/3 || report.Coverage["acceptance"] != [2]int{3, 5} || len(report.ByTaskKind) != 2 {
+		t.Fatalf("%+v", report)
+	}
+	if report.ByTaskKind[0].Name != "ops" || report.ByTaskKind[0].Coverage != [2]int{3, 4} || report.ByTaskKind[1].SuccessRate != nil || report.Previous.SuccessRate != nil {
+		t.Fatalf("%+v", report.ByTaskKind)
+	}
+	raw, _ := json.Marshal(report)
+	var buf bytes.Buffer
+	if err := WriteText(&buf, report); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw)+buf.String(), "PRIVATE_EVIDENCE_REASON") {
+		t.Fatal("reason leaked into aggregates")
+	}
+	options.TaskKind = "ops"
+	filtered, err := Collect(context.Background(), options)
+	if err != nil || filtered.Totals["runs"] != 4 || filtered.Coverage["acceptance"] != [2]int{3, 4} {
+		t.Fatalf("%+v %v", filtered, err)
+	}
+	options.Homes = append(options.Homes, home) // duplicate source never doubles denominators
+	again, err := Collect(context.Background(), options)
+	if err != nil || again.Totals["runs"] != 4 {
+		t.Fatalf("%+v %v", again, err)
 	}
 }

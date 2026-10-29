@@ -85,7 +85,7 @@ func TestExecutionReadyRunsOnceBeforeDeciderAndExtractor(t *testing.T) {
 			t.Fatalf("handler ran more than once: %v", steps)
 		}
 	}
-	if seen.ExecutionStatus != "completed" || seen.MemoryStatus != "pending" || seen.ExperienceStatus != "pending" || seen.Output == "" || seen.AcceptanceStatus != "unverified" {
+	if seen.ExecutionStatus != "completed" || seen.MemoryStatus != "pending" || seen.ExperienceStatus != "pending" || seen.Output == "" || seen.AcceptanceStatus != "unresolved" {
 		t.Fatalf("handler must see persisted completed execution with pending closeout: %+v", seen)
 	}
 	// receipt snapshots the run before it appends run.finished, so reload.
@@ -222,7 +222,7 @@ func TestExperienceOverflowKeepsCompletedExecutionAndRetryNeverReplays(t *testin
 				return
 			}
 			var limit *experience.LimitError
-			if !errors.As(err, &limit) || run.ExecutionStatus != "completed" || run.MemoryStatus != "unchanged" || run.ExperienceStatus != "failed" || run.AcceptanceStatus != "unverified" || run.Error != "" || run.Output == "" {
+			if !errors.As(err, &limit) || run.ExecutionStatus != "completed" || run.MemoryStatus != "unchanged" || run.ExperienceStatus != "failed" || run.AcceptanceStatus != "unresolved" || run.Error != "" || run.Output == "" {
 				t.Fatalf("independent outcomes lost: %+v %v", run, err)
 			}
 			evidence, err := h.Store.ToolEvidence(t.Context(), run.ID)

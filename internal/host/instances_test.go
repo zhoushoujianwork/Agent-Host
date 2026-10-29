@@ -30,7 +30,7 @@ func TestAgentAndAudiencePartitionHostMemoryAndNativeSessions(t *testing.T) {
 		t.Fatalf("instance provenance missing: %+v %+v", firstSession, first)
 	}
 	request := runner.requests[0]
-	if request.NativeProfile != h.Config.NativeProfile || request.PermissionMode != "bypassPermissions" || request.HostInstructions != h.Config.HostInstructions {
+	if request.NativeProfile != h.Config.NativeProfile || request.PermissionMode != "bypassPermissions" || request.HostInstructions != invocationInstructions(h.Config.HostInstructions, first) {
 		t.Fatalf("instance native policy lost: %+v", request)
 	}
 	for _, partition := range [][2]string{{"helper", "group-b"}, {"reviewer", "group-a"}, {"default", "owner"}} {

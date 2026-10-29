@@ -41,3 +41,11 @@ test('page fetches only stats, renders comparison and clears failed data', async
   assert.equal(nodes.report.innerHTML, '');
   assert.match(nodes.status.textContent, /busy/);
 });
+test('AI acceptance rate and kind coverage exclude reason text', () => {
+  const html = render({totals:{runs:5},success_rate:1/3,coverage:{acceptance:[3,5]},by_task_kind:[{name:'ops',success_rate:1/3,coverage:[3,4],outcomes:{resolved:1,partial:1,unresolved:1,unverified:1},reason:'PRIVATE_REASON'}]});
+  assert.match(html, /33.3%/);
+  assert.match(html, /3 of 5 runs/);
+  assert.match(html, /3 of 4 runs/);
+  assert.match(html, /任务类型：ops/);
+  assert.doesNotMatch(html, /PRIVATE_REASON/);
+});

@@ -67,6 +67,8 @@ still require a deliberate restart.
 Agent / 渠道 / 模型分布、工具、耗时和用量费用，以及执行记录链接。
 支持 24h / 7d / 30d 与等长前窗对比，逐项展示覆盖率与不可读来源。
 缺失值保持未测量；完成数量不称为成功率，业务验收状态单独展示。
+AI 自动分类和验收的记录可按任务类型筛选，展示 `resolved / judged` 成功率
+和 `judged / total` 覆盖率；验收原因仅在执行详情显示，无人工标记步骤。
 此页没有修改操作，也不请求正文、回复或发送者信息。
 [使用与范围](../tools/run-viewer/README.md#stats)。
 
