@@ -1,7 +1,7 @@
 # Project-local runtime
 
-Install automatic startup with `make install`, or run enabled channels in the
-foreground with `make run`. Editable
+新安装可用 `make install` 设置自动启动，或用 `make run` 前台运行渠道。
+现有生产实例须先按下文确认实际运行方式。Editable
 configuration lives in `.agent-host/config/`; channel data lives in
 `.agent-host/channels/<name>/`, plugin data in `.agent-host/datasource/plugins/<name>/`,
 learned knowledge in `.agent-host/memory/`, and rebuildable indexes/task views in
@@ -10,94 +10,42 @@ All remain Git-ignored.
 See the [configuration guide](configuration-layout.md) and
 [implementation details](configuration-layout-detail.md).
 
-## Separate production from development
+## 生产与开发：先确认实际运行方式
 
-The local production service was migrated to `~/.local/share/agent-host/` on
-2026-10-15. Its `bin/`, `config/`, `channels/`, `memory/`, `datasource/` and viewer
-assets are independent copies. The launch service, installed CLI, memory skill
-links and memory connection now use that directory. Rebuilding the development
-checkout does not update the production binary.
-After migration, `make install` recognizes the migration receipt and installs or
-retains links to the independent bundle. It succeeds without deploying the new
-development build or restarting production. Genuine custom-link conflicts still
-remain visible.
+<a id="separate-production-from-development"></a>
+<a id="source-checkout-observation"></a>
 
-The development checkout's former production configuration is archived outside
-the repository under `~/.local/share/agent-host-checkout-archive/`;
-`.agent-host/production-migration.json` records its location. During the temporary
-observation setup below, `.agent-host` links to the live data root. Plain
-`make run` resolves that link before configuration validation and opens the
-workbench in the default browser. Prepare separate configuration and channel
-identities for independent development tests. Automated tests continue using
-their isolated fixtures.
+`.agent-host/production-migration.json` 记录安装迁移来源，不证明当前管理器、
+进程或代码版本。2026-10-15 的独立目录迁移和 10 月 25 日的源码 LaunchAgent
+恢复均为历史事件。10 月 27 日 #10 的部署记录显示 LaunchAgent 未运行，实际
+supervisor 由既有 rollout 流程启动，viewer 使用不可变源码快照。
+这些记录也不能代替下一次操作前的实时检查。
 
-Restart or remove the independent service from this checkout with:
+重启前执行[只读预检与模式选择](service-install-detail.md#production-preflight)，
+确认唯一 supervisor、所属管理器、实际二进制、viewer 源路径及对应部署凭据。
+无法确认、证据冲突、存在竞争管理器或孤儿订阅进程时停止操作。
+不要根据迁移清单直接执行 `make install`，也不要以 `make run` 探测运行方式。
 
-```sh
-python3 -B -m tools.service.autostart install --runtime-dir "$HOME/.local/share/agent-host"
-python3 -B -m tools.service.autostart uninstall --runtime-dir "$HOME/.local/share/agent-host"
-```
+| 已确认的模式 | 授权维护时使用的既有机制 |
+| --- | --- |
+| rollout 快照部署 | 使用该部署凭据对应的既有 rollout 启停流程；保留二进制与 viewer 快照配对，不启用 LaunchAgent |
+| 源码用户服务 | 在拥有服务定义的 checkout 使用 `tools.service.autostart install --config-dir` |
+| 独立 bundle 用户服务 | 使用 `tools.service.autostart install --runtime-dir` 指向已验证 bundle |
+| 前台运行且无服务管理器 | 使用明确配置目录的 `make run RUN_ARGS=--no-browser`，仅在授权替换该前台实例时执行 |
 
-These commands use the already copied production binary. Updating production
-requires explicitly replacing its verified artifacts and restarting; `make build`
-only builds the development checkout. The [migration details](service-install-detail.md#independent-runtime-relocation)
-describe preservation, verification and recovery. The source-bound setup below
-remains available for new installations.
+具体命令、排空、就绪与回退边界见[详细操作步骤](service-install-detail.md#production-restart)。
+本指南修订不要求重启生产，也不授权切换管理器。
 
-### Source-checkout observation
+生产配置、渠道身份和状态必须沿用已确认的物理 runtime 目录。历史观察设置中，
+checkout 的 `.agent-host` 是指向 `~/.local/share/agent-host/` 的整体软链接；
+通过它写入就是修改生产。新工作树不一定具有该链接。独立开发测试使用独立
+配置、渠道身份和隔离状态，不能只换目录却复用生产账号。
 
-On 2026-10-19, local automatic startup was removed to observe the current source
-build against the existing data. On 2026-10-25, source-checkout automatic startup
-was restored after the foreground Host stopped and left an orphaned Feishu
-subscriber holding its app lock. Both channels and the workbench were verified
-after recovery; see the [reliability observation](service-install-detail.md#reliability-observation-2026-10-25).
-
-The active LaunchAgent runs this checkout's binary and viewer against the existing
-data root. To apply a validated source build and restart that service, use:
-
-```sh
-make build
-python3 -B -m tools.service.autostart install --config-dir "$HOME/.local/share/agent-host/config"
-```
-
-For deliberate foreground observation, first remove this source LaunchAgent with
-`python3 -B -m tools.service.autostart uninstall --config-dir "$HOME/.local/share/agent-host/config"`,
-then use `make run`. Avoid running a second supervisor for the same identities.
-
-The executable and viewer come from the checkout; configuration and live data
-remain in `~/.local/share/agent-host/`. `make run` resolves the existing
-`.agent-host` link automatically and opens the browser. `CONFIG_DIR` is optional
-when selecting another configuration; `RUN_ARGS=--no-browser` is an explicit
-opt-out. Native configuration validation still checks the resolved directory and
-its files.
-
-The Git-ignored `.agent-host` directory itself is a single symlink to
-`~/.local/share/agent-host/`. Its entire structure is the live runtime structure,
-including `config`, `channels`, `memory`, `cache`, `datasource`, `projects`,
-`users`, `cli-state` and `logs`. There is no nested `live` directory or mixture
-with previous checkout data. Changes through this link affect the running service.
-
-The previous checkout tree, including old data, individual symlinks and switch
-evidence, is retained outside the repository at
-`~/.local/share/agent-host-checkout-archive/<timestamp>/`. Its
-`validation/manual-source-run-<timestamp>/` directory contains the original
-switch receipt, saved launch-service definition and CLI state backup. The current
-`.agent-host/checkout-layout-current` pointer locates the layout-cleanup receipt;
-the production migration receipt retains updated archive locations.
-
-The installed CLI and external Skill links now point to this checkout so all
-entry points use the same code revision. Operational databases now use schema
-15; the schema-14 CLI state was backed up and upgraded through
-the existing, identity-preserving memory migration command. Published memory
-manifests were unchanged. The private switch receipt retains previous link
-targets and the CLI database backup.
-
-The production migration receipt remains as historical installation provenance.
-`make install` still selects that independent bundle and is not the command for
-restarting this source-based setup. Before switching back to the independent
-bundle, remove the source LaunchAgent and verify that the independent binary
-supports the current database schema. Keep only one supervisor connected to
-these channel identities.
+`make build` 只构建 checkout；如果运行进程使用 checkout 的二进制路径，
+也不得把构建当作受控部署。viewer 来自快照时，修改 checkout viewer 不会更新它。
+迁移感知的 `make install` 可能只保留独立 bundle 的 CLI/Skill 链接，不部署新代码
+也不重启实际 rollout 实例。旧归档、CLI/Skill 链接与 schema 版本均应重新核对，
+不能用它们推断当前服务归属。历史迁移见[迁移细节](service-install-detail.md#independent-runtime-relocation)。
 
 ### Runtime artifact cleanup
 
@@ -165,6 +113,9 @@ can select a different execution profile; provider environments remain isolated.
 
 ## Start and observe
 
+以下安装与前台示例适用于新安装或已通过上述预检确认归属的运行环境，
+不是 rollout 生产实例的通用重启命令。迁移清单存在时还须遵循其安装分支。
+
 ```sh
 make install
 # Stop and remove automatic startup, keeping configuration, memory and state:
@@ -180,8 +131,8 @@ and opens no browser. On Linux, a working user systemd session is required;
 continuing after logout or starting before login requires separately configured
 user lingering. macOS starts after login, not before it.
 
-After code or configuration changes, rerun `make install` to rebuild and restart
-the background service. Use `make uninstall-service` before switching to manual
+已确认由源码服务管理且不存在迁移清单的安装，可在代码或配置变更后用
+`make install` 构建并重启。Use `make uninstall-service` before switching to manual
 foreground operation. A custom runtime uses
 `INSTALL_ARGS="--config-dir /absolute/ROOT/config"`; removal uses the matching
 `CONFIG_DIR=/absolute/ROOT/config`.
