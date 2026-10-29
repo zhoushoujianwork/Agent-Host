@@ -1,8 +1,9 @@
-.PHONY: build install uninstall-service run package check viewer help
+.PHONY: build install uninstall-service run package check viewer macos-app help
 
 .DEFAULT_GOAL := help
 
 VIEWER_ARGS ?=
+APP_ARGS ?=
 VERSION ?=
 DIST_DIR ?= dist
 SINGLE_RUNTIME := $(if $(filter undefined,$(origin RUNTIME_ROOT)),,1)
@@ -46,6 +47,7 @@ help:
 		'  run     Start or restart enabled channels and open the workbench in a browser' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.9+)' \
+		'  macos-app Build a local macOS app; APP_ARGS selects explicit viewer state/config' \
 		'  help    Print this usage guide (default target)' \
 		'' \
 		'Viewer options: pass through VIEWER_ARGS' \
@@ -72,6 +74,9 @@ help:
 viewer:
 	$(PYTHON) -B tools/run-viewer/server.py $(VIEWER_ARGS)
 
+macos-app: build
+	$(PYTHON) -B tools/macos-app/build.py $(APP_ARGS)
+
 check:
 	@$(PYTHON) -c 'import sys; sys.exit("make check requires Python 3.9+") if sys.version_info < (3, 9) else None'
 	@unformatted="$$(gofmt -l cmd internal plugins)" && \
@@ -97,6 +102,7 @@ check:
 	$(PYTHON) -B tools/release/export_public_test.py
 	$(PYTHON) -B tools/run-viewer/server_test.py
 	$(PYTHON) -B tools/run-viewer/record_control_test.py
+	$(PYTHON) -B tools/macos-app/check.py
 	node --test tools/run-viewer/app_test.cjs tools/run-viewer/execution-control_test.cjs
 	$(PYTHON) -B tools/run-viewer/memory_view_test.py
 	$(PYTHON) -B tools/run-viewer/settings_test.py
