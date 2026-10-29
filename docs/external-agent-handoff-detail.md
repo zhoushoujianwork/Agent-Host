@@ -115,6 +115,56 @@ explicit detached worker survives parent loss and finishes normally. Launcher
 tests cover policy receipts, raw/result forwarding, continuation and invalid
 flag combinations. These use isolated fixtures, not production tasks.
 
+## Caller binding audit (issue #12)
+
+The 2026-10-27 reports name watched PIDs 67311 and 79133. Their original
+combined error establishes cancellation after a failed identity check, but does
+not distinguish process exit, zombie state, PID reuse or probe failure. Deployment
+supervisor 69628 remaining alive does not establish ownership of either handoff.
+The historical root cause remains **unverified**: this investigation environment
+has no default `~/.config/agent-host/task-handoff.json`, and the referenced private
+handoff directories were not located through that configuration. No raw records
+are published and no production runtime was operated.
+
+The source establishes this binding for Codex exec / RTK / Python chains:
+
+- Python captures its parent PID and passes it as `--caller-pid` by default.
+  There is no Codex or RTK ancestor discovery. An `exec` replacement preserves
+  the PID; a wrapper that spawns Python and exits does not preserve ownership.
+- Host independently watches its direct parent (normally Python) and the nominated
+  caller's `ps lstart` identity. Explicit `--caller-pid` replaces only the second
+  binding; it cannot keep work alive after the Python launcher exits.
+- A persistent host wrapper must keep the launcher alive, retain the child handle
+  and collect its real exit across yields. Supply a verified owning supervisor PID
+  only when that process actually retains the execution. A shared app PID or an
+  ancestor's name alone is insufficient. This API checks liveness, not ownership
+  authorization or a conversation heartbeat.
+
+Cancellation diagnostics now retain the selected PID, binding reason and initial
+start identity, distinguishing changed identity from probe failure. Probe failures
+separately identify timeout/cancellation, zombie and missing parseable identity;
+`ps` exit failure alone is **not proof of process exit**. Parent loss records the
+observed parent PID. Diagnostics exclude process arguments, environment values and
+raw probe output. Existing one-second polling, timeout and fail-closed cancellation
+remain unchanged; start identity still has the OS `ps` time resolution.
+
+Isolated real-process fixtures cover parent exit/SIGKILL, nominated caller loss
+with the immediate parent alive, and a live owning ancestor retaining a blocked
+execution over multiple poll intervals before collecting successful completion.
+Fake probes cover changed identity and transient unverifiability without PID reuse
+races. Existing terminal-state and launcher tests cover refusal to resume canceled
+work, inspection and partial evidence. These bounded fixtures do not certify a
+573-second Codex/RTK observation or identify the historical wrapper chain.
+This worktree sandbox denies `/bin/ps`; the real-process lifecycle test therefore
+uses its existing explicit skip, and must be run in an environment permitting
+process listing before claiming runtime acceptance.
+
+For a future authorized reproduction, retain locally the launcher/Host/caller
+PID and PPID, start identity and timestamp at launch and failure, the owning tool
+session/child handle and collected exit, plus the precise probe outcome. Correlate
+these before proposing policy changes. Inspect canceled runs and any partial
+effects independently; never replay deployment or messages to recover observation.
+
 ## Data structure sketch
 
 These boundary shapes are expressed in Go for readability; the implementation
