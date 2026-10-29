@@ -189,6 +189,9 @@ func automaticMemorySkipAudit(run Run, reason string) json.RawMessage {
 	if run.MemoryAttribution == "unresolved" {
 		policy = "unresolved-memory-attribution-writeback-disabled"
 	}
+	if reason == MemoryPluginDisabledReason {
+		policy = "memory-plugin-disabled"
+	}
 	raw, _ := json.Marshal(map[string]string{"policy": policy, "reason": reason})
 	return raw
 }

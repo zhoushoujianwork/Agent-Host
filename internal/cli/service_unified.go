@@ -264,10 +264,11 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		return layout, zero, nil, errors.New("channel references an unknown execution profile")
 	}
 	c := p.Execution
-	if c.SkillsRoot == "" {
+	c.OffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.OffloadConfig)
+	if c.SkillsRoot == "" && c.OffloadConfig == "" {
 		c.SkillsRoot = filepath.Join(filepath.Dir(directory), "managed-skills")
 	}
-	if host.Memory != nil && host.Memory.Backend == "files" {
+	if c.OffloadConfig == "" && host.Memory != nil && host.Memory.Backend == "files" {
 		if _, err := os.Stat(filepath.Join(layout.State, "file-memory.json")); err != nil {
 			return layout, zero, nil, errors.New("file memory requires explicit memory migrate before startup")
 		}
@@ -281,7 +282,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 			return layout, zero, nil, err
 		}
 	}
-	if host.Memory != nil && host.Memory.Backend == "sqlite" {
+	if c.OffloadConfig == "" && host.Memory != nil && host.Memory.Backend == "sqlite" {
 		if _, err := os.Stat(state.FileMemoryMarker(layout.State)); err == nil {
 			return layout, zero, nil, errors.New("sqlite backend requires explicit memory rollback before startup")
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -310,16 +311,21 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		return layout, c, nil, err
 	}
 	var env map[string]string
-	if err := readServiceJSON(componentconfig.Resolve(filepath.Join(directory, "host.json"), p.EnvironmentFile), &env); err != nil {
-		return layout, c, nil, err
+	if c.OffloadConfig != "" && p.EnvironmentFile != "" {
+		return layout, c, nil, errors.New("Offload profiles own their provider environment; omit environment_file")
 	}
-	for k, v := range env {
-		if !slices.Contains(serviceEnvironmentKeys, k) || strings.TrimSpace(v) == "" || v != strings.TrimSpace(v) || strings.ContainsAny(v, "\x00\r\n") {
-			return layout, c, nil, errors.New("invalid provider environment")
+	if c.OffloadConfig == "" {
+		if err := readServiceJSON(componentconfig.Resolve(filepath.Join(directory, "host.json"), p.EnvironmentFile), &env); err != nil {
+			return layout, c, nil, err
 		}
-	}
-	if _, err := claude.NativeStreamEnvironment(env); err != nil {
-		return layout, c, nil, err
+		for k, v := range env {
+			if !slices.Contains(serviceEnvironmentKeys, k) || strings.TrimSpace(v) == "" || v != strings.TrimSpace(v) || strings.ContainsAny(v, "\x00\r\n") {
+				return layout, c, nil, errors.New("invalid provider environment")
+			}
+		}
+		if _, err := claude.NativeStreamEnvironment(env); err != nil {
+			return layout, c, nil, err
+		}
 	}
 	if c.EmailConfig, err = unifiedPlugin(directory, "email", id); err != nil {
 		return layout, c, nil, err
@@ -360,6 +366,9 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		c.DWSOnly = !botEnabled
 		c.DisableDWS = !dwsEnabled
 		if dwsEnabled {
+			if c.OffloadConfig != "" {
+				return layout, c, nil, errors.New("Offload channel execution does not support DWS workspace injection yet")
+			}
 			if _, _, err := dingtalkworkspace.Load(path); err != nil {
 				return layout, c, nil, err
 			}
@@ -379,6 +388,11 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 		}
 	} else {
 		return layout, c, nil, errors.New("unknown channel")
+	}
+	if c.OffloadConfig != "" {
+		if err := c.validate(); err != nil {
+			return layout, c, nil, err
+		}
 	}
 	return layout, c, env, nil
 }

@@ -24,6 +24,8 @@ import (
 	"agent-host/internal/harness"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/managedskills"
+	"agent-host/internal/offloadchannel"
+	"agent-host/internal/offloadexec"
 	"agent-host/internal/projectruntime"
 	"agent-host/internal/routing"
 	"agent-host/internal/state"
@@ -107,6 +109,7 @@ Options (place before positional IDs/queries):
   --audience ID         Conversation partition for local state (default owner)
   --native-profile PATH Native Claude configuration directory
   --execution-config PATH Shared ACP execution profile; omitted keeps legacy print
+  --offload-config PATH Opt in to a shared private Offload profile (channel text only); excludes --execution-config
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
@@ -135,6 +138,9 @@ type options struct {
 	renewedFrom                                                                        string
 	executionConfig, executionFingerprint                                              string
 	executionProfile                                                                   *acp.Config
+	offloadConfig                                                                      string
+	offloadProfile                                                                     *offloadchannel.Profile
+	offloadClient                                                                      *offloadexec.Client
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
@@ -232,6 +238,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.model, "model", model, "Claude model")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
 	fs.StringVar(&o.executionConfig, "execution-config", "", "Shared execution profile JSON (ACP); omitted preserves explicit legacy configuration")
+	fs.StringVar(&o.offloadConfig, "offload-config", "", "Shared private Offload profile JSON; omitted preserves explicit legacy configuration")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
@@ -293,6 +300,21 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	if err := loadExecutionOptions(&o); err != nil {
 		return o, nil, err
+	}
+	if o.offloadProfile != nil {
+		if !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {
+			return o, nil, errors.New("Offload execution is currently supported by DingTalk and Feishu channel commands only")
+		}
+		var unsupported string
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "model", "claude", "native-profile", "jev-provider", "jev-model", "jev-endpoint":
+				unsupported = f.Name
+			}
+		})
+		if unsupported != "" {
+			return o, nil, fmt.Errorf("--%s is not an Offload channel setting; configure execution in --offload-config", unsupported)
+		}
 	}
 	if o.debugNonOwner {
 		if o.noTools || len(o.allowedTools) != 0 {

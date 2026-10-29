@@ -202,7 +202,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	if len(positional) != 0 || o.oneShot || o.resume != "" || o.runFilter != "" || o.note != "" || o.reason != "" || o.expiresAt != "" {
 		return errors.New("dingtalk commands accept channel configuration and execution options only")
 	}
-	if command != "status" {
+	if command != "status" && o.offloadProfile == nil {
 		if err := enableChannelHistory(&o); err != nil {
 			return err
 		}
@@ -224,6 +224,9 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	cfg, err := loadBotConfig(o.dingtalkConfig)
 	if err != nil {
 		return err
+	}
+	if o.offloadProfile != nil {
+		return runOffloadDingTalk(ctx, command, cfg, o, out)
 	}
 	agents, err := loadAgents(o.agentsConfig)
 	if err != nil {

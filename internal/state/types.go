@@ -135,11 +135,21 @@ type Run struct {
 	Projects              []ProjectRef       `json:"projects,omitempty"`
 	AdditionalDirectories []string           `json:"additional_directories,omitempty"`
 	Supplements           []UserSupplement   `json:"supplements,omitempty"`
+	// MemoryPluginDisabled records that this run executed on an engine path
+	// with no memory plugin. It is explicit state; old runs default to false.
+	MemoryPluginDisabled bool `json:"memory_plugin_disabled,omitempty"`
 }
+
+// MemoryPluginDisabledReason is the skip reason of a run whose engine path has
+// no memory plugin. It makes the run resumable without any memory closeout.
+const MemoryPluginDisabledReason = "memory_plugin_disabled"
 
 // AutomaticMemorySkipReason keeps execution independent from whether its
 // results can safely be attributed to one durable memory namespace.
 func (r Run) AutomaticMemorySkipReason() string {
+	if r.MemoryPluginDisabled {
+		return MemoryPluginDisabledReason
+	}
 	if r.Source != nil && r.Source.TaskRootID != "" {
 		return "independent_card_task"
 	}
