@@ -1,8 +1,10 @@
 package state
 
 import (
+	"agent-host/internal/event"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testOffloadFingerprint = OffloadFingerprintPrefix + "fixture"
@@ -140,5 +142,62 @@ func TestMemoryPluginDisabledRunIsResumableAndLegacyPendingIsNot(t *testing.T) {
 	pending, err := s.PendingMemory(testContext)
 	if err != nil || len(pending) != 1 || pending[0].ID != legacy.ID {
 		t.Fatalf("pending memory: %+v %v", pending, err)
+	}
+}
+
+func TestOffloadRoomBindingRequiresLatestSealedSameRoom(t *testing.T) {
+	for _, kind := range []string{"valid", "newer-receipt", "different-room"} {
+		t.Run(kind, func(t *testing.T) {
+			st, _ := testStore(t)
+			seed := func(id string) Session {
+				return Session{ID: id, Scope: "/scope", Model: "m", NativeSessionID: OffloadPendingPrefix + id, RuntimeFingerprint: testOffloadFingerprint}
+			}
+			input := func(id, key string) RoomInput {
+				return RoomInput{Key: key, RequestID: id, SenderID: "local-owner", Text: id}
+			}
+			create := func(s Session, id string) Run {
+				r := Run{ID: id, SessionID: s.ID, Agent: "offload", Scope: s.Scope, Input: s.Room.Text, NativeSessionID: s.NativeSessionID, RuntimeFingerprint: s.RuntimeFingerprint, RequestedModel: s.Model, MemoryPluginDisabled: true}
+				if err := st.CreateRun(testContext, r); err != nil {
+					t.Fatal(err)
+				}
+				return r
+			}
+			parent, _, err := st.EnterOffloadRoom(testContext, seed("parent"), input("one", "room"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := create(parent, "run-parent")
+			if err = st.BindOffloadSession(testContext, first.ID, first.NativeSessionID, "native-room"); err != nil {
+				t.Fatal(err)
+			}
+			if err = st.CompleteRun(testContext, first.ID, "completed", "answer", "m", ""); err != nil {
+				t.Fatal(err)
+			}
+			e := event.Event{Type: "run.finished", RunID: first.ID, SessionID: parent.ID, At: time.Now().UTC()}
+			if err = st.AppendEvent(testContext, &e); err != nil {
+				t.Fatal(err)
+			}
+			key := "room"
+			if kind == "different-room" {
+				key = "other"
+			}
+			child, _, err := st.EnterOffloadRoom(testContext, seed("child"), input("two", key))
+			if err != nil {
+				t.Fatal(err)
+			}
+			second := create(child, "run-child")
+			if kind == "newer-receipt" {
+				if _, _, err = st.EnterOffloadRoom(testContext, seed("newer"), input("three", "room")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err = st.BindOffloadSession(testContext, second.ID, second.NativeSessionID, "native-room")
+			if kind == "valid" && err != nil {
+				t.Fatal(err)
+			}
+			if kind != "valid" && err == nil {
+				t.Fatal("unsafe room native sharing accepted")
+			}
+		})
 	}
 }

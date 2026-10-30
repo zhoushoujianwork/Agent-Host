@@ -100,7 +100,7 @@ func TestOffloadChatOneShotAndResume(t *testing.T) {
 
 func TestOffloadChatRejectsUnsupportedModesAndPoliciesBeforeExecution(t *testing.T) {
 	for name, extra := range map[string][]string{
-		"interactive": {}, "room": {"-m", "x", "--room", "r", "--request-id", "q"},
+		"interactive": {}, "room": {"-m", "x", "--room", "r"},
 		"renew": {"-m", "x", "--renew-runtime"}, "takeover": {"-m", "x", "--takeover-session", "s", "--request-id", "q"},
 		"notification": {"-m", "x", "--notify-to", "someone"},
 		"tools":        {"-m", "x", "--no-tools"}, "audience": {"-m", "x", "--audience", "other"},
@@ -182,5 +182,48 @@ func TestOffloadChatRetrievalOnlyNeedsNoClassifier(t *testing.T) {
 	}
 	if _, err = os.Stat(filepath.Join(filepath.Dir(o.offloadConfig), "argv.2")); !os.IsNotExist(err) {
 		t.Fatal("missing key launched execution")
+	}
+}
+
+func TestOffloadWebRoomContinuationAndRecordedRetry(t *testing.T) {
+	o, base := chatOffloadFixture(t)
+	var runs []state.Run
+	for _, request := range []string{"one", "two", "two"} {
+		events, err := chatOffloadEvents(t, append(append([]string{}, base...), "--room", "web-room", "--request-id", request, "-m", request))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var id string
+		for _, e := range events {
+			if e.Type == "run.started" {
+				id = e.RunID
+			}
+			if e.Type == "offload.result" {
+				t.Fatal("private evidence replayed")
+			}
+			if e.Type == "run.finished" && e.Data["memory_status"] != "skipped" {
+				t.Fatal("outcome not projected")
+			}
+		}
+		st, err := state.Open(o.home, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := st.Run(t.Context(), id)
+		st.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		runs = append(runs, r)
+	}
+	if runs[0].SessionID == runs[1].SessionID || runs[0].NativeSessionID != runs[1].NativeSessionID || runs[1].ID != runs[2].ID || runs[1].Room.NativeContinuation != state.OffloadRoomResume {
+		t.Fatal("room continuity or deduplication lost")
+	}
+	dir := filepath.Dir(o.offloadConfig)
+	if _, err := os.Stat(filepath.Join(dir, "argv.3")); !os.IsNotExist(err) {
+		t.Fatal("duplicate replayed native work")
+	}
+	if _, err := chatOffloadEvents(t, append(append([]string{}, base...), "--room", "web-room", "--request-id", "two", "-m", "different")); err == nil {
+		t.Fatal("request ID reused with changed content")
 	}
 }

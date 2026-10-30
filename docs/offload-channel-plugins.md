@@ -16,8 +16,8 @@ either channel's `check` and `serve` command. Managed channel profiles use
 `offload_config`; `service run --no-workbench` starts channels without the Web
 workbench. See the [configuration examples](offload-channel-plugins-detail.md#configuration-and-compatibility).
 
-The same host also supports [one-shot local Chat](offload-chat.md) with explicit
-session resume. Web room integration remains a separate next slice.
+The same host also supports [Web/Mac rooms and one-shot local Chat](offload-chat.md).
+Web rooms preserve request receipts and serialize native continuation per room.
 
 Memory is optional and disabled by default. The [memory plugin](offload-memory-plugin.md)
 adds local retrieval and optional source-grounded user-statement processing.

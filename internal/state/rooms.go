@@ -80,18 +80,33 @@ func (s *Store) ResetRoom(ctx context.Context, key string) error {
 // EnterRoom claims a unique request and seals its context in a short write
 // transaction. The caller's fresh session is never used by another message.
 // A duplicate returns the original receipt; it cannot launch a second run.
+// Offload rooms are serialized by their owning host. Only the latest receipt
+// may supply a native parent; an overlapping/unfinished input starts fresh.
+const OffloadRoomFresh = "offload_fresh"
+const OffloadRoomResume = "offload_serial_continuation"
+
 func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput) (Session, error) {
+	result, _, err := s.enterRoom(ctx, session, input, false)
+	return result, err
+}
+
+func (s *Store) EnterOffloadRoom(ctx context.Context, session Session, input RoomInput) (Session, bool, error) {
+	return s.enterRoom(ctx, session, input, true)
+}
+
+func (s *Store) enterRoom(ctx context.Context, session Session, input RoomInput, offload bool) (Session, bool, error) {
+	created := false
 	var result Session
 	if strings.TrimSpace(input.Key) == "" || input.RequestID == "" || input.SenderID == "" || strings.TrimSpace(input.Text) == "" {
-		return result, errors.New("room, message, authenticated sender and text are required")
+		return result, false, errors.New("room, message, authenticated sender and text are required")
 	}
 	for _, value := range []string{input.Key, input.RequestID, input.SenderID, input.ReplyToID} {
 		if len(value) > 512 || strings.ContainsAny(value, "\x00\r\n") {
-			return result, errors.New("invalid room message identity")
+			return result, false, errors.New("invalid room message identity")
 		}
 	}
 	if len(input.Text) > 16*1024 || len(input.SenderName) > 200 || strings.ContainsAny(input.SenderName, "\x00\r\n") {
-		return result, errors.New("room message exceeds input limits")
+		return result, false, errors.New("room message exceeds input limits")
 	}
 	if input.ReceivedAt.IsZero() {
 		input.ReceivedAt = time.Now().UTC()
@@ -99,6 +114,9 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 	err := s.transaction(ctx, func(tx *sql.Tx) error {
 		if err := s.assignPartition(&session.AgentID, &session.AudienceID); err != nil {
 			return err
+		}
+		if offload && (session.AudienceID != OwnerAudienceID || input.SenderID != "local-owner" || input.ContinueFrom != "" || !strings.HasPrefix(session.RuntimeFingerprint, OffloadFingerprintPrefix) || !IsOffloadPending(session.NativeSessionID)) {
+			return errors.New("invalid local Offload room intake")
 		}
 		var err error
 		key := s.roomKey(input.Key)
@@ -129,6 +147,9 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			if result.Room == nil || result.Room.Text != input.Text || result.Room.SenderID != input.SenderID || result.Room.ReplyToID != input.ReplyToID || input.ContinueFrom != "" && result.Room.ParentSessionID != input.ContinueFrom {
 				return errors.New("room request ID already has different content or sender")
 			}
+			if offload && (!sameRecoveryRuntime(result, session) || result.Model != session.Model || !sameRoomTextScope(result, session)) {
+				return errors.New("room request belongs to a different runtime")
+			}
 			return nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
@@ -138,6 +159,9 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			return errors.New("session already belongs to a room request")
 		}
 		turn := &RoomTurn{RoomID: roomID, RoomInput: input, NativeContinuation: "no_compatible_completed_parent"}
+		if offload {
+			turn.NativeContinuation = OffloadRoomFresh
+		}
 		if input.ContinueFrom != "" {
 			parent, err := s.readSession(ctx, tx, input.ContinueFrom)
 			if err != nil {
@@ -183,7 +207,7 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 		if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 			return err
 		}
-		for _, p := range ids {
+		for index, p := range ids {
 			previous, err := s.readSession(ctx, tx, p.session)
 			if err != nil {
 				return err
@@ -223,8 +247,11 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 						entry.Status = "unknown"
 					} else {
 						entry.Reply, entry.ReplyTruncated = recoveryText(r.Output, 8000)
-						if turn.ParentSessionID == "" && nativeCompatible && previous.NativeSessionID != "" {
+						if turn.ParentSessionID == "" && nativeCompatible && previous.NativeSessionID != "" && (!offload || index == 0 && previous.Room.SenderID == "local-owner" && (previous.Room.NativeContinuation == OffloadRoomFresh || previous.Room.NativeContinuation == OffloadRoomResume)) {
 							turn.NativeContinuation = "compatible_completed_parent"
+							if offload {
+								turn.NativeContinuation = OffloadRoomResume
+							}
 							turn.ParentSessionID = previous.ID
 							turn.ForkFromNativeSessionID = previous.NativeSessionID
 						}
@@ -276,9 +303,10 @@ func (s *Store) EnterRoom(ctx context.Context, session Session, input RoomInput)
 			return err
 		}
 		result = session
+		created = true
 		return nil
 	})
-	return result, err
+	return result, created, err
 }
 
 func linkRoomRun(ctx context.Context, tx *sql.Tx, session Session, run *Run) error {
