@@ -36,8 +36,11 @@ skill into Codex does not implement that adapter. Offload independently owns the
 backend selected by an Offload profile.
 
 An opt-in lightweight path delegates execution to **Offload**, with optional
-channel and memory components. Its first slice supports DingTalk and Feishu text
-conversations with memory disabled, using Offload profiles and native sessions.
+channel and memory components. It supports DingTalk and Feishu text
+conversations, using Offload profiles and native sessions. Memory is disabled
+by default; the [optional memory plugin](offload-memory-plugin.md) adds local
+retrieval and explicit Jev-based user-statement processing without a legacy
+Claude extractor or another native agent loop.
 Existing execution remains the default until the opt-in prototype is accepted;
 no installed service or conversation is migrated automatically. See
 [Offload channel plugins](offload-channel-plugins.md) for scope and limitations.
@@ -275,8 +278,8 @@ separate from the source implementation and isolated native acceptance.
 The next execution increment evaluates the [Offload channel plugin
 prototype](offload-channel-plugins.md). Both existing channels share one slim
 execution adapter, while their current authentication and delivery remain outside
-the model loop. Richer tool injection and memory processing require an explicitly
-supported contract; the prototype must not silently drop their guarantees.
+the model loop. Optional memory processing now runs after answer delivery;
+richer tool injection still requires an explicitly supported contract.
 Existing ACP and print paths remain available during this opt-in evaluation.
 
 [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md) has a disabled-by-default

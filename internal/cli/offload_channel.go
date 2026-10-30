@@ -56,7 +56,7 @@ func composeOffloadChannelHost(store *state.Store, o options, sink event.Sink) c
 	return &offloadchannel.Host{Store: store.WithPartition(o.agentID, o.audienceID), Client: o.offloadClient,
 		Config: offloadchannel.Config{AgentID: o.agentID, AudienceID: o.audienceID, Scope: o.scope,
 			Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model,
-			Instructions: o.hostInstructions, Write: true}, Sink: sink}
+			Instructions: o.hostInstructions, Write: true}, Sink: sink, Memory: o.offloadMemory}
 }
 
 func configureOffloadChannel(service *channel.Service, o options, tenant string, sink event.Sink) {
@@ -125,7 +125,7 @@ func withOffloadChannelStore(ctx context.Context, o options, out io.Writer, serv
 }
 
 func offloadChannelCheck(out io.Writer, kind string, o options) error {
-	_, err := fmt.Fprintf(out, "{\"status\":\"local_configuration_valid\",\"engine\":\"offload\",\"channel\":%q,\"memory_enabled\":false,\"platform_verified\":false,\"native_auth_verified\":false}\n", kind)
+	_, err := fmt.Fprintf(out, "{\"status\":\"local_configuration_valid\",\"engine\":\"offload\",\"channel\":%q,\"memory_enabled\":%t,\"memory_processing_enabled\":%t,\"platform_verified\":false,\"native_auth_verified\":false}\n", kind, o.offloadMemory != nil, o.offloadMemory != nil && o.offloadMemory.Decider != nil)
 	return err
 }
 

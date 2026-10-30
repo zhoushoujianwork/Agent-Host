@@ -16,10 +16,11 @@ either channel's `check` and `serve` command. Managed channel profiles use
 `offload_config`; `service run --no-workbench` starts channels without the Web
 workbench. See the [configuration examples](offload-channel-plugins-detail.md#configuration-and-compatibility).
 
-Memory is optional. This first slice runs with memory disabled and does not
-require Jev or a hidden Claude extraction process. Memory retrieval and processing
-remain a separate extension: enabling that extension must wait for a supported,
-tested execution contract. Missing execution controls fail explicitly.
+Memory is optional and disabled by default. The [memory plugin](offload-memory-plugin.md)
+adds local retrieval and optional source-grounded user-statement processing.
+Only processing requires the explicitly configured Jev classifier; no hidden
+Claude extractor or extra Offload worker is started. Missing execution controls
+still fail explicitly.
 
 Offload owns model execution and credentials. The local 0.3.0 baseline also
 provides native conversation history, statistics and additional directories;

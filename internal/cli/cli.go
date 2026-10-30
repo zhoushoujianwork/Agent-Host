@@ -141,6 +141,7 @@ type options struct {
 	offloadConfig                                                                      string
 	offloadProfile                                                                     *offloadchannel.Profile
 	offloadClient                                                                      *offloadexec.Client
+	offloadMemory                                                                      *offloadchannel.MemoryPlugin
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
@@ -302,7 +303,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 		return o, nil, err
 	}
 	if o.offloadProfile != nil {
-		if !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {
+		if name != "run retry-memory" && !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {
 			return o, nil, errors.New("Offload execution is currently supported by DingTalk and Feishu channel commands only")
 		}
 		var unsupported string
@@ -562,6 +563,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		}
 	} else if len(pos) != 1 {
 		return errors.New("provide exactly one query or ID after options")
+	}
+	if command == "run retry-memory" && o.offloadProfile != nil {
+		return retryOffloadMemory(ctx, o, pos[0], out)
 	}
 	switch command {
 	case "memory search", "memory show", "memory candidate", "memory candidates", "run show", "run events":

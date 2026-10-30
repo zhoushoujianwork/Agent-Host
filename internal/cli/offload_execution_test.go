@@ -94,7 +94,7 @@ func TestOffloadExecutionRejectsInvalidProfile(t *testing.T) {
 		"missing":          filepath.Join(dir, "absent.json"),
 		"relative":         "offload-profile.json",
 		"unknown field":    write(t, dir, "unknown.json", strings.Replace(string(raw), `"version":1`, `"version":1,"tools":["x"]`, 1), 0o600),
-		"memory enabled":   write(t, dir, "memory.json", strings.Replace(string(raw), `"version":1`, `"version":1,"memory":{"enabled":true}`, 1), 0o600),
+		"memory provider":  write(t, dir, "memory.json", strings.Replace(string(raw), `"version":1`, `"version":1,"memory":{"enabled":true,"provider":"unknown"}`, 1), 0o600),
 		"group accessible": write(t, dir, "open.json", string(raw), 0o644),
 	}
 	for name, path := range cases {

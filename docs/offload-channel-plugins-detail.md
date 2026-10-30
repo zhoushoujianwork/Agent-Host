@@ -86,6 +86,11 @@ Offload process is not invented business acceptance. Memory-disabled runs carry
 an explicit policy marker and an audited skipped outcome, so a completed turn
 can continue without pending memory work.
 
+Optional memory-enabled profiles use the [memory plugin contract](offload-memory-plugin-detail.md).
+Retrieval-only profiles skip publication. Processing-enabled profiles deliver
+the answer first, then finalize the exact user statement; pending or failed
+closeout does not invalidate a completed Offload native session.
+
 A fresh AGH session uses a clearly pending native binding. Once a valid Offload
 result supplies a native session, bind it transactionally to the owned session
 and run; never reinterpret an existing ACP identifier. Preserve the actual
@@ -108,7 +113,7 @@ Use fake Offload executables and local transport fixtures: success, failure,
 malformed/additive JSON, unavailable command/profile, bounded output, continuation,
 canonical profile binding, conversation isolation, cancellation, both channel
 delivery paths and disabled channel lifecycle. Memory-disabled execution must
-work without Jev; unsupported memory, MCP, restricted tools or media must fail
+work without Jev; unsupported MCP, restricted tools or media must fail
 before native execution. Preserve the legacy path in regression tests.
 
 Run repository checks and create local commits before the feature-branch PR.

@@ -207,7 +207,7 @@ func (s *Store) FinalizeMemory(ctx context.Context, id string, updates []MemoryU
 		if err != nil {
 			return err
 		}
-		if s.files != nil && len(expectedGeneration) == 1 {
+		if len(expectedGeneration) == 1 && (s.files != nil || expectedGeneration[0] != "") {
 			fingerprint, err := memoryFingerprintTx(ctx, tx, []string{run.Scope}, run.AgentID, run.AudienceID)
 			if err != nil {
 				return err

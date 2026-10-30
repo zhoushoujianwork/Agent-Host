@@ -10,9 +10,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"agent-host/internal/decision/jev"
 	"agent-host/internal/mcpstdio"
 	"agent-host/internal/offloadexec"
 )
@@ -28,11 +30,20 @@ type Profile struct {
 	// Command is the resolved absolute Offload executable.
 	Command string
 	// Profile is the explicit Offload profile name passed to fresh runs.
-	Profile string
-	Model   string
-	Timeout time.Duration
-	// MemoryEnabled is always false: current Offload cannot supply Host memory.
+	Profile       string
+	Model         string
+	Timeout       time.Duration
 	MemoryEnabled bool
+	Memory        MemoryConfig
+}
+
+// MemoryConfig selects AGH memory components, not Offload tools or credentials.
+type MemoryConfig struct {
+	Processing bool          `json:"processing_enabled"`
+	Provider   string        `json:"provider"`
+	Endpoint   string        `json:"endpoint,omitempty"`
+	Model      string        `json:"model"`
+	Timeout    time.Duration `json:"timeout"`
 }
 
 type profileFile struct {
@@ -42,7 +53,12 @@ type profileFile struct {
 	Model   string `json:"model,omitempty"`
 	Timeout string `json:"timeout"`
 	Memory  *struct {
-		Enabled *bool `json:"enabled"`
+		Enabled    *bool  `json:"enabled"`
+		Processing *bool  `json:"processing_enabled,omitempty"`
+		Provider   string `json:"provider,omitempty"`
+		Endpoint   string `json:"endpoint,omitempty"`
+		Model      string `json:"model,omitempty"`
+		Timeout    string `json:"timeout,omitempty"`
 	} `json:"memory,omitempty"`
 }
 
@@ -90,9 +106,6 @@ func Parse(raw []byte) (Profile, string, error) {
 		if f.Memory.Enabled == nil {
 			return p, "", errors.New("offload memory requires an explicit enabled value")
 		}
-		if *f.Memory.Enabled {
-			return p, "", errors.New("offload memory.enabled true is not implemented: the installed Offload cannot provide Host memory tools or hooks")
-		}
 	}
 	timeout, err := time.ParseDuration(f.Timeout)
 	if err != nil {
@@ -110,6 +123,46 @@ func Parse(raw []byte) (Profile, string, error) {
 		return p, "", errors.New("configured Offload command must be an executable regular file")
 	}
 	p = Profile{Version: 1, Command: resolved, Profile: f.Profile, Model: f.Model, Timeout: timeout}
+	if f.Memory != nil && *f.Memory.Enabled {
+		p.MemoryEnabled = true
+		p.Memory = MemoryConfig{Processing: true, Provider: "typesafe", Model: jev.DefaultModel, Timeout: 30 * time.Second}
+		if f.Memory.Processing != nil {
+			p.Memory.Processing = *f.Memory.Processing
+		}
+		if f.Memory.Provider != "" {
+			p.Memory.Provider = f.Memory.Provider
+		}
+		if f.Memory.Model != "" {
+			p.Memory.Model = f.Memory.Model
+		}
+		p.Memory.Endpoint = f.Memory.Endpoint
+		if f.Memory.Timeout != "" {
+			p.Memory.Timeout, err = time.ParseDuration(f.Memory.Timeout)
+			if err != nil {
+				return Profile{}, "", errors.New("memory timeout must be a positive duration")
+			}
+		}
+		if p.Memory.Timeout <= 0 || p.Memory.Timeout > 5*time.Minute {
+			return Profile{}, "", errors.New("memory timeout must be between zero and five minutes")
+		}
+		if p.Memory.Processing {
+			switch p.Memory.Provider {
+			case "typesafe":
+				if p.Memory.Endpoint != "" {
+					return Profile{}, "", errors.New("memory endpoint requires provider custom")
+				}
+			case "custom":
+				if err := jev.ValidateEndpoint(p.Memory.Endpoint); err != nil {
+					return Profile{}, "", err
+				}
+			default:
+				return Profile{}, "", errors.New("memory provider must be typesafe or custom")
+			}
+			if strings.TrimSpace(p.Memory.Model) != p.Memory.Model || p.Memory.Model == "" || len(p.Memory.Model) > 256 || strings.ContainsAny(p.Memory.Model, "\x00\r\n") {
+				return Profile{}, "", errors.New("invalid memory model")
+			}
+		}
+	}
 	if err := p.ClientConfig().Validate(); err != nil {
 		return Profile{}, "", err
 	}
@@ -123,14 +176,19 @@ func (p Profile) ClientConfig() offloadexec.Config {
 
 // Fingerprint identifies every setting that changes how Offload is invoked.
 func (p Profile) Fingerprint() string {
+	var memoryConfig *MemoryConfig
+	if p.MemoryEnabled {
+		memoryConfig = &p.Memory
+	}
 	canonical, _ := json.Marshal(struct {
-		Version int    `json:"version"`
-		Command string `json:"command"`
-		Profile string `json:"profile"`
-		Model   string `json:"model"`
-		Timeout string `json:"timeout"`
-		Memory  bool   `json:"memory"`
-	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), p.MemoryEnabled})
+		Version      int           `json:"version"`
+		Command      string        `json:"command"`
+		Profile      string        `json:"profile"`
+		Model        string        `json:"model"`
+		Timeout      string        `json:"timeout"`
+		Memory       bool          `json:"memory"`
+		MemoryConfig *MemoryConfig `json:"memory_config,omitempty"`
+	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), p.MemoryEnabled, memoryConfig})
 	sum := sha256.Sum256(canonical)
 	return FingerprintPrefix + hex.EncodeToString(sum[:])
 }

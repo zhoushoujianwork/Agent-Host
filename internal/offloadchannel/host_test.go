@@ -25,7 +25,7 @@ n=$(cat "$d/count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/count"
 printf '%s\n' "$@" > "$d/argv.$n"
 cat > "$d/stdin.$n"
 mode=$(cat "$d/mode" 2>/dev/null || echo ok)
-sess=sess-1
+sess=sess-$n
 while [ $# -gt 0 ]; do case "$1" in -r) sess="$2"; shift;; esac; shift; done
 case "$mode" in
 fail) printf '%s\n' '{"status":"error","exit_code":1,"result":"provider says no"}'; exit 1;;
@@ -100,10 +100,14 @@ func (f *fixture) read(name string) string {
 
 // enqueue creates and claims one channel message, mirroring Service intake.
 func (f *fixture) enqueue(id, text string, input *state.ChannelInput, codes []string) state.ChannelMessage {
+	return f.enqueueAs(id, text, input, codes, "", "owner")
+}
+
+func (f *fixture) enqueueAs(id, text string, input *state.ChannelInput, codes []string, conversationType, sender string) state.ChannelMessage {
 	f.t.Helper()
 	c := f.host.Config
 	m := state.ChannelMessage{ID: id, Channel: "dingtalk", AccountID: "app", TenantID: "tenant", MessageID: "native-" + id, ConversationID: "dm",
-		SenderID: "owner", Profile: "profile", Binding: "binding-" + c.AudienceID, Scope: c.Scope, MessageType: "text", Text: text,
+		SenderID: sender, ConversationType: conversationType, Profile: "profile", Binding: "binding-" + c.AudienceID, Scope: c.Scope, MessageType: "text", Text: text,
 		AgentID: c.AgentID, AudienceID: c.AudienceID, Input: input,
 		ReceivedAt: time.Now().UTC(), ReplyExpiresAt: time.Now().Add(time.Hour).UTC()}
 	st := f.store.WithPartition(c.AgentID, c.AudienceID)

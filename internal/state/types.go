@@ -138,17 +138,25 @@ type Run struct {
 	// MemoryPluginDisabled records that this run executed on an engine path
 	// with no memory plugin. It is explicit state; old runs default to false.
 	MemoryPluginDisabled bool `json:"memory_plugin_disabled,omitempty"`
+	// OffloadMemoryMode separates native continuation from optional closeout.
+	OffloadMemoryMode string `json:"offload_memory_mode,omitempty"`
 }
 
 // MemoryPluginDisabledReason is the skip reason of a run whose engine path has
 // no memory plugin. It makes the run resumable without any memory closeout.
 const MemoryPluginDisabledReason = "memory_plugin_disabled"
 
+const OffloadMemoryRecall = "recall"
+const OffloadMemoryProcess = "recall_process"
+
 // AutomaticMemorySkipReason keeps execution independent from whether its
 // results can safely be attributed to one durable memory namespace.
 func (r Run) AutomaticMemorySkipReason() string {
 	if r.MemoryPluginDisabled {
 		return MemoryPluginDisabledReason
+	}
+	if r.OffloadMemoryMode == OffloadMemoryRecall {
+		return "memory_processing_disabled"
 	}
 	if r.Source != nil && r.Source.TaskRootID != "" {
 		return "independent_card_task"
