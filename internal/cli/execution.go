@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"agent-host/internal/harness/acp"
+	"agent-host/internal/memory"
 	"agent-host/internal/offloadchannel"
 	"agent-host/internal/offloadexec"
 )
@@ -13,6 +14,7 @@ func loadExecutionOptions(o *options) error {
 	o.executionFingerprint = ""
 	o.offloadProfile = nil
 	o.offloadClient = nil
+	o.offloadMemory = nil
 	if o.offloadConfig != "" && o.executionConfig != "" {
 		return errors.New("--offload-config and --execution-config are mutually exclusive")
 	}
@@ -25,9 +27,18 @@ func loadExecutionOptions(o *options) error {
 		if err != nil {
 			return err
 		}
-		o.offloadProfile = &profile
-		o.offloadClient = client
-		o.executionFingerprint = fingerprint
+		var plugin *offloadchannel.MemoryPlugin
+		if profile.MemoryEnabled {
+			plugin = &offloadchannel.MemoryPlugin{Timeout: profile.Memory.Timeout}
+			if profile.Memory.Processing {
+				decisionClient, err := newJevClient(profile.Memory.Provider, profile.Memory.Endpoint, profile.Memory.Model)
+				if err != nil {
+					return err
+				}
+				plugin.Decider = memory.New(decisionClient)
+			}
+		}
+		o.offloadProfile, o.offloadClient, o.executionFingerprint, o.offloadMemory = &profile, client, fingerprint, plugin
 		return nil
 	}
 	if o.executionConfig == "" {

@@ -3,11 +3,43 @@
 package offloadchannel
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestMemoryProfileDefaultsAndDisabledFingerprintCompatibility(t *testing.T) {
+	cmd := executable(t)
+	base := `"version":1,"command":"` + cmd + `","profile":"work","timeout":"1m"`
+	p, disabled, err := Parse([]byte(`{` + base + `}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy, _ := json.Marshal(struct {
+		Version int    `json:"version"`
+		Command string `json:"command"`
+		Profile string `json:"profile"`
+		Model   string `json:"model"`
+		Timeout string `json:"timeout"`
+		Memory  bool   `json:"memory"`
+	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), false})
+	sum := sha256.Sum256(legacy)
+	if disabled != FingerprintPrefix+hex.EncodeToString(sum[:]) {
+		t.Fatal("disabled memory changed existing native-session fingerprints")
+	}
+	active, fp, err := Parse([]byte(`{` + base + `,"memory":{"enabled":true}}`))
+	if err != nil || !active.MemoryEnabled || !active.Memory.Processing || active.Memory.Provider != "typesafe" || fp == disabled {
+		t.Fatalf("enabled defaults: %+v %v", active, err)
+	}
+	readOnly, roFP, err := Parse([]byte(`{` + base + `,"memory":{"enabled":true,"processing_enabled":false}}`))
+	if err != nil || readOnly.Memory.Processing || roFP == fp {
+		t.Fatalf("read-only mode not fingerprinted: %+v %v", readOnly, err)
+	}
+}
 
 func writeProfile(t *testing.T, mode os.FileMode, body string) string {
 	t.Helper()
@@ -53,7 +85,7 @@ func TestLoadRejectsUnsafeOrAmbiguousConfiguration(t *testing.T) {
 	cmd := executable(t)
 	ok := `"version":1,"command":"` + cmd + `","profile":"work","timeout":"1m"`
 	for name, body := range map[string]string{
-		"memory enabled":  `{` + ok + `,"memory":{"enabled":true}}`,
+		"memory provider": `{` + ok + `,"memory":{"enabled":true,"provider":"unknown"}}`,
 		"memory implicit": `{` + ok + `,"memory":{}}`,
 		"unknown field":   `{` + ok + `,"tools":["x"]}`,
 		"trailing":        `{` + ok + `} {}`,

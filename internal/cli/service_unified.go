@@ -19,6 +19,7 @@ import (
 	"agent-host/internal/harness/claude"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/mcpstdio"
+	"agent-host/internal/offloadchannel"
 	"agent-host/internal/state"
 )
 
@@ -265,14 +266,24 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 	}
 	c := p.Execution
 	c.OffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.OffloadConfig)
+	usesMemory := c.OffloadConfig == ""
+	if c.OffloadConfig != "" {
+		profile, _, err := offloadchannel.Load(c.OffloadConfig)
+		if err != nil {
+			return layout, c, nil, err
+		}
+		usesMemory = profile.MemoryEnabled
+	}
 	if c.SkillsRoot == "" && c.OffloadConfig == "" {
 		c.SkillsRoot = filepath.Join(filepath.Dir(directory), "managed-skills")
 	}
-	if c.OffloadConfig == "" && host.Memory != nil && host.Memory.Backend == "files" {
+	if usesMemory && host.Memory != nil && host.Memory.Backend == "files" {
 		if _, err := os.Stat(filepath.Join(layout.State, "file-memory.json")); err != nil {
 			return layout, zero, nil, errors.New("file memory requires explicit memory migrate before startup")
 		}
-		c.WorkspaceCache = filepath.Join(filepath.Dir(directory), "cache")
+		if c.OffloadConfig == "" {
+			c.WorkspaceCache = filepath.Join(filepath.Dir(directory), "cache")
+		}
 		store, err := state.OpenForMemoryInspection(layout.State)
 		if err != nil {
 			return layout, zero, nil, err
@@ -282,7 +293,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 			return layout, zero, nil, err
 		}
 	}
-	if c.OffloadConfig == "" && host.Memory != nil && host.Memory.Backend == "sqlite" {
+	if usesMemory && host.Memory != nil && host.Memory.Backend == "sqlite" {
 		if _, err := os.Stat(state.FileMemoryMarker(layout.State)); err == nil {
 			return layout, zero, nil, errors.New("sqlite backend requires explicit memory rollback before startup")
 		} else if !errors.Is(err, os.ErrNotExist) {

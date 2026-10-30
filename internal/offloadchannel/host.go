@@ -16,6 +16,7 @@ import (
 	"agent-host/internal/event"
 	"agent-host/internal/harness"
 	"agent-host/internal/offloadexec"
+	"agent-host/internal/runcompletion"
 	"agent-host/internal/state"
 )
 
@@ -50,6 +51,7 @@ type Host struct {
 	Client *offloadexec.Client
 	Config Config
 	Sink   event.Sink
+	Memory *MemoryPlugin
 }
 
 var _ channel.Host = (*Host)(nil)
@@ -203,6 +205,9 @@ func (h *Host) instructions(m state.ChannelMessage) string {
 	if h.Config.Instructions != "" {
 		text = h.Config.Instructions + "\n\n" + text
 	}
+	if h.Memory != nil {
+		text += "\nAGH supplies a fresh memory snapshot as attributed data. AGH alone handles optional long-term publication after your answer. Do not claim that a memory was saved, verified or deleted merely because you acknowledged it; native conversation continuity is separate. Do not launch a second memory extractor or write AGH memory storage directly."
+	}
 	return text
 }
 
@@ -306,7 +311,10 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 	run := state.Run{AgentID: cur.AgentID, AudienceID: cur.AudienceID, ID: uuid.NewString(), SessionID: cur.ID, Scope: cur.Scope, Input: input,
 		Agent: engineName, RequestedModel: h.Config.Model, NativeSessionID: cur.NativeSessionID, ProjectID: cur.ProjectID, ProjectName: cur.ProjectName,
 		Workspace: cur.Workspace, RuntimeFingerprint: cur.RuntimeFingerprint, Projects: cur.Projects,
-		MemoryPluginDisabled: true, CreatedAt: time.Now().UTC()}
+		MemoryPluginDisabled: h.Memory == nil, CreatedAt: time.Now().UTC()}
+	if h.Memory != nil {
+		run.OffloadMemoryMode = h.Memory.mode()
+	}
 	if err := st.CreateChannelRun(ctx, run, messageID); err != nil {
 		return state.Run{}, err
 	}
@@ -315,16 +323,23 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 		return run, err
 	}
 	j := &journal{h: h, st: st, run: stored}
+	memoryContext := ""
+	if h.Memory != nil {
+		memoryContext, err = h.Memory.recall(ctx, j)
+		if err != nil {
+			return h.finish(ctx, j, nil, err)
+		}
+	}
 	if err := j.emit(event.Event{Type: "run.started", Phase: "request", Component: "host.offload", Status: "running",
 		Message: fmt.Sprintf("run=%s session=%s", run.ID, run.SessionID),
-		Data:    map[string]any{"workspace": run.WorkingDirectory(), "scope": run.Scope, "engine": engineName, "memory_plugin_disabled": true, "resume": resume, "input_bytes": len(input)}}, false); err != nil {
+		Data:    map[string]any{"workspace": run.WorkingDirectory(), "scope": run.Scope, "engine": engineName, "memory_plugin_disabled": h.Memory == nil, "resume": resume, "input_bytes": len(input)}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
 	if err := j.emit(event.Event{Type: "phase.started", Phase: "execute", Component: bindingComponent, Status: "running", Message: "started"}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
 	started := time.Now()
-	req := offloadexec.Request{Prompt: prompt(input, m), Instructions: h.instructions(m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
+	req := offloadexec.Request{Prompt: memoryContext + prompt(input, m), Instructions: h.instructions(m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
 	if resume {
 		req.Session, req.ResumeProfile = cur.NativeSessionID, profile
 	}
@@ -383,7 +398,7 @@ func (h *Host) bind(ctx context.Context, j *journal, cur state.Session, resume b
 
 // finish records the terminal execution outcome and reloads the run.
 // A completed run is execution evidence only; acceptance stays unverified.
-func (h *Host) finish(_ context.Context, j *journal, result *offloadexec.Result, execErr error) (state.Run, error) {
+func (h *Host) finish(requestCtx context.Context, j *journal, result *offloadexec.Result, execErr error) (state.Run, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	status, output, model, text := "completed", "", "", ""
@@ -412,23 +427,45 @@ func (h *Host) finish(_ context.Context, j *journal, result *offloadexec.Result,
 		return j.run, errors.Join(execErr, err)
 	}
 	if status == "completed" {
+		message := "execution completed; no memory plugin is configured"
+		if h.Memory != nil {
+			message = "execution completed; optional memory closeout follows answer delivery"
+		}
 		j.receipt(j.emit(event.Event{Type: "execution.ready", Phase: "execute", Component: "host.offload", Status: "completed", Model: model,
-			Message: "execution completed; no memory plugin is configured"}, false))
+			Message: message}, false))
 	}
 	final, err := j.st.Run(ctx, j.run.ID)
 	if err != nil {
 		return j.run, errors.Join(execErr, err)
 	}
+	var memoryErr error
+	if status == "completed" && h.Memory != nil {
+		if handler := runcompletion.From(requestCtx); handler != nil {
+			if err := handler(requestCtx, final); err != nil {
+				j.receipt(j.emit(event.Event{Type: "execution.ready.handler_failed", Phase: "execute", Component: "host.offload", Status: "failed", Message: err.Error()}, false))
+			}
+		}
+		if h.Memory.Decider != nil && (final.MemoryStatus == "pending" || final.MemoryStatus == "failed") {
+			memoryErr = h.processMemory(runcompletion.Without(requestCtx), j)
+		}
+	}
+	// Processing has its own deadline and can outlive the completion write.
+	readCtx, stopRead := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stopRead()
+	final, err = j.st.Run(readCtx, j.run.ID)
+	if err != nil {
+		return j.run, errors.Join(execErr, memoryErr, err)
+	}
 	j.receipt(j.emit(event.Event{Type: "run.finished", Phase: "receipt", Component: "host.offload", Status: status, Model: model,
 		Message: fmt.Sprintf("run=%s execution=%s acceptance=%s memory=%s", final.ID, final.ExecutionStatus, final.AcceptanceStatus, final.MemoryStatus)}, false))
 	auditErr := j.audit()
-	final, err = j.st.Run(ctx, j.run.ID)
+	final, err = j.st.Run(readCtx, j.run.ID)
 	if err != nil {
-		return j.run, errors.Join(execErr, auditErr, err)
+		return j.run, errors.Join(execErr, memoryErr, auditErr, err)
 	}
 	// Observer and receipt problems are evidence, not the task outcome. Only an
 	// unrecordable problem is returned, alongside the preserved native outcome.
-	return final, errors.Join(execErr, auditErr)
+	return final, errors.Join(execErr, memoryErr, auditErr)
 }
 
 // audit durably records observer and receipt failures as private events, never
