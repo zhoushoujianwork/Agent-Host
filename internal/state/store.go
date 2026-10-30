@@ -382,6 +382,12 @@ func (s *Store) CreateRun(ctx context.Context, run Run) error {
 }
 
 func createRun(ctx context.Context, tx *sql.Tx, run Run) error {
+	if run.OffloadMemoryMode != "" {
+		if run.Agent != "offload" || !strings.HasPrefix(run.RuntimeFingerprint, OffloadFingerprintPrefix) || run.MemoryPluginDisabled ||
+			(run.OffloadMemoryMode != OffloadMemoryRecall && run.OffloadMemoryMode != OffloadMemoryProcess) {
+			return errors.New("invalid Offload memory processing mode")
+		}
+	}
 	if err := validateMemoryAttribution(ctx, tx, run); err != nil {
 		return err
 	}
@@ -596,7 +602,7 @@ func (s *Store) AppendEvent(ctx context.Context, e *event.Event) error {
 	return wrap("append event", err)
 }
 
-func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, errorText string) error {
+func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, errorText string, judgment ...RunJudgment) error {
 	if status != "completed" && status != "failed" && status != "canceled" && status != "unknown" {
 		return fmt.Errorf("invalid execution status %q", status)
 	}
@@ -611,6 +617,13 @@ func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, erro
 		run.ExecutionStatus = status
 		now := time.Now().UTC()
 		run.CompletedAt = &now
+		if len(judgment) > 0 {
+			value := judgment[0]
+			value.JudgedAt = now
+			run.Judgment = &value
+			run.TaskKind = value.TaskKind
+			run.AcceptanceStatus = value.Outcome
+		}
 		run.Output = output
 		run.Model = model
 		run.Error = errorText
@@ -619,6 +632,10 @@ func (s *Store) CompleteRun(ctx context.Context, id, status, output, model, erro
 		if status == "completed" && run.AutomaticMemorySkipReason() == "" {
 			run.MemoryStatus = "pending"
 			run.ExperienceStatus = "pending"
+			if run.OffloadMemoryMode == OffloadMemoryProcess {
+				run.ExperienceStatus = "skipped"
+				run.ExperienceDecision = json.RawMessage(`{"policy":"offload-user-statements-only"}`)
+			}
 		} else if status == "completed" {
 			audit := automaticMemorySkipAudit(run, run.AutomaticMemorySkipReason())
 			run.Decision, run.ExperienceDecision = audit, append(json.RawMessage(nil), audit...)
@@ -744,6 +761,12 @@ func sessionCanResume(ctx context.Context, q rowQuerier, id string) error {
 	}
 	if status != "completed" {
 		return &SessionResumeError{runID, status, memoryStatus}
+	}
+	if run.OffloadMemoryMode == OffloadMemoryProcess && run.Agent == "offload" &&
+		strings.HasPrefix(run.RuntimeFingerprint, OffloadFingerprintPrefix) && run.ExperienceStatus == "skipped" &&
+		(memoryStatus == "pending" || memoryStatus == "failed") {
+		// Closeout is separately retriable; it does not invalidate native context.
+		return nil
 	}
 	if memoryStatus == "skipped" {
 		if run.AutomaticMemorySkipReason() != "" && run.ExperienceStatus == "skipped" {

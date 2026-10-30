@@ -20,17 +20,36 @@ Give AI work continuity across conversations and projects. Send a request throug
 CLI, Web, DingTalk or Feishu; Host selects the Agent and project, assembles authorized
 context, runs the selected execution engine and retains evidence and reusable knowledge locally.
 
-The technical route is **a Go host around native execution engines**. Host owns
+**Humans only hand over tasks.** AI classifies, judges and closes out work end to
+end; people are not required to label tasks or confirm acceptance. Judgments must
+cite concrete evidence, and insufficient evidence means unresolved. Execution,
+business acceptance, delivery and memory persistence remain independent.
+[AI closeout details](reply-closeout-detail.md#ai-task-classification-and-acceptance)
+describe the delivered run metadata and aggregate success-rate contract.
+
+The delivered route is **a Go host around native execution engines**. Host owns
 business tasks, routing, context, delivery and durable memory. Native engines own
-their model/tool loops and conversations. **ACP is the chosen direction for a shared
-execution interface across every channel.** Claude Code can now use the shared
+their model/tool loops and conversations. Claude Code can use the shared
 ACP backend or the existing print/stream-JSON backend through explicit configuration.
-Codex execution remains a scaffold; installing the external memory skill into
-Codex does not implement that adapter.
+The direct Codex Host adapter remains a scaffold; installing the external memory
+skill into Codex does not implement that adapter. Offload independently owns the
+backend selected by an Offload profile.
+
+An opt-in lightweight path delegates execution to **Offload**, with optional
+channel and memory components. It supports DingTalk and Feishu text
+conversations, using Offload profiles and native sessions. Memory is disabled
+by default; the [optional memory plugin](offload-memory-plugin.md) adds local
+retrieval and explicit Jev-based user-statement processing without a legacy
+Claude extractor or another native agent loop.
+Existing execution remains the default until the opt-in prototype is accepted;
+no installed service or conversation is migrated automatically. See
+[Offload channel plugins](offload-channel-plugins.md) for scope and limitations.
 
 ## Core architecture
 
-**目标主链路：所有渠道 → Host → 统一 ACP 接入层 → 可切换的执行引擎。**
+**Current delivered path: channels → Host → shared ACP adapter → native engine.**
+The opt-in Offload prototype above evaluates a lighter execution boundary;
+this diagram describes the existing ACP implementation.
 绿色为现有 Host 职责，蓝色虚线框为待实现或待扩展部分，灰色为迁移期兼容后端。
 Claude ACP 已实现，可按配置启用；Codex、完整交互控件与文件变更视图仍待完成，生产实例未自动切换。
 
@@ -113,7 +132,7 @@ and separately decides whether a useful correction becomes **Memory / a Skill**.
 
 例如：“修复登录测试”从钉钉进入，Host 选择运维助手和目标项目，在项目目录执行。
 执行记录回答“做了什么、结果如何”，长期记忆回答“以后可以复用什么”。
-任务完成、用户验收通过和经验保存成功分别记录。
+任务完成、AI 业务验收和经验保存成功分别记录。
 
 Execution-engine, authorization and storage terms are explained in the
 [bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
@@ -256,11 +275,12 @@ The [managed Skills increment](managed-skills-design.md) is implemented and loca
 validated. Explicit operator adoption and production/platform rollout remain
 separate from the source implementation and isolated native acceptance.
 
-The next execution increment builds on the shared Claude ACP adapter: extend
-owner-private DingTalk/Feishu acceptance to groups and supported channel
-interactions, then connect a second engine. Channel delivery limits and
-existing authorization policy remain explicit. The current print backend stays
-available during this controlled migration; it is not the long-term-only interface.
+The next execution increment evaluates the [Offload channel plugin
+prototype](offload-channel-plugins.md). Both existing channels share one slim
+execution adapter, while their current authentication and delivery remain outside
+the model loop. Optional memory processing now runs after answer delivery;
+richer tool injection still requires an explicitly supported contract.
+Existing ACP and print paths remain available during this opt-in evaluation.
 
 [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md) has a disabled-by-default
 source implementation for selected personal DingTalk chats. It handles supported

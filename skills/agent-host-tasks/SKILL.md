@@ -1,9 +1,15 @@
 ---
 name: agent-host-tasks
-description: Delegate authorized daily operations and business tasks to Agent-Host (agh), inspect results, and continue blocked work through the configured CLI launcher. Use for operational checks, established runbooks and daily reports; development research and coding assistance belong to offload or the current coding agent.
+description: Delegate authorized daily operations and business tasks to Agent-Host (agh), inspect results, and continue blocked work through the configured CLI launcher. Use for operational checks, established runbooks and daily reports; development research and coding assistance belong to offload or the current coding agent. Use for 日常巡检、运维任务、业务执行、日报; not for platform-wide statistics or filing queue issues.
 ---
 
 # Agent-Host task handoff
+
+For platform state use [agent-host-platform](../agent-host-platform/SKILL.md); for filing or queuing work use [agent-host-work-items](../agent-host-work-items/SKILL.md).
+
+Before using commands, check the installed `agent-host --help` and the relevant
+subcommand help; report unsupported capabilities without substituting another runtime.
+Also check the installed launcher with `python3 /absolute/skill/scripts/chat.py --help`.
 
 Prefer Agent-Host for authorized daily operations and business tasks with known
 inputs, scope and completion criteria: service health checks, operational log

@@ -105,7 +105,7 @@ of internal IDs. The external agent retains those references for recovery.
 
 ## First scope
 
-Keep one installed Skill, one saved destination and three operations: **submit,
+The task handoff uses one Skill, one saved destination and three operations: **submit,
 inspect, continue**. Reuse the existing CLI and native sessions. Configuration is
 setup work; ordinary delegation should not require choosing providers or paths.
 
@@ -136,9 +136,21 @@ evidence. Losing the caller never starts a replacement run.
 Use `--caller-pid PID` when a persistent wrapper separates the launcher from the
 actual supervising process. Use `--detach` only for work explicitly intended to
 continue after the caller exits; it does not put the command in the background.
-Each continuation chooses its own lifetime policy.
+Each continuation chooses its own lifetime policy. The launcher must remain alive
+and collected across tool yields; an arbitrary shared application PID does not
+prove ownership. See the [caller binding audit](external-agent-handoff-detail.md#caller-binding-audit-issue-12)
+for wrapper requirements, diagnostic evidence and unresolved historical limits.
 
 Closing a conversation tab is detectable only if its supervising process exits.
 Web and channel services keep their own lifetimes. Cancellation stops owned
 native descendants; already orphaned jobs and remote daemon jobs require their
 own stop controls. Partial effects must still be inspected before continuation.
+
+## Other installed responsibilities
+
+The installer also links [memory intake/recall](../skills/agent-host-memory/SKILL.md),
+[platform status/statistics](../skills/agent-host-platform/SKILL.md), and
+[work-item filing and queue preparation](../skills/agent-host-work-items/SKILL.md)
+for the same supported clients. Platform reads use the installed CLI with an
+explicit runtime destination; filing an issue does not execute its work.
+Development research and implementation stay with the current coding agent.

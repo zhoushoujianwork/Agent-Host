@@ -61,3 +61,7 @@ never blindly replayed.
 Live account permissions and platform receipt evidence remain separate from
 automated integration checks. This document defines the intended behavior;
 the detailed guide records delivered scope and validation limits.
+
+只读运维分诊已支持 `notifications triage`：按年龄、来源和脱敏需求所有者汇总，
+区分待结果、有结果待核查及有证据的历史/测试记录。身份解析和生产投递仍需单独
+授权，详见[分诊与核验清单](task-feedback-detail.md#未解析通知的只读分诊)。

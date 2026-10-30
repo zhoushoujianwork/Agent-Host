@@ -36,6 +36,15 @@ acceptance remain separate checks. Migrated file-memory runtimes automatically
 publish selected execution lessons; legacy SQLite runtimes retain `memory accept`.
 Codex execution and meeting audio are planned.
 
+## Run statistics
+
+Use `agent-host stats --root /absolute/runtime --since 7d --compare --format json`
+to inspect retained runs without changing state. Explicit `--home` directories are
+also supported. Execution, acceptance and memory remain separate; unknown usage
+is null with coverage. See [run statistics](docs/run-statistics.md).
+
+使用 `agent-host status --root /absolute/runtime --format json` 查询只读当前状态与待关注事项，见[平台状态](docs/platform-status.md)。
+
 ## Plugin and integration support
 
 Built-in capabilities use MCP tools or channel adapters:
@@ -136,8 +145,12 @@ External Codex/Claude sessions can use the
 [task handoff skill](skills/agent-host-tasks/SKILL.md) to pass clear routine work
 to a configured daily-task Agent through CLI chat. Keep ambiguous requests and
 design decisions in the external conversation, then hand over a bounded task
-and verify its result. `make install` links this skill alongside the memory
-skill for detected clients; older independent runtime bundles report
+and verify its result. `make install` links four skills for detected clients:
+[knowledge intake/recall](skills/agent-host-memory/SKILL.md),
+[task handoff](skills/agent-host-tasks/SKILL.md),
+[read-only platform status/statistics](skills/agent-host-platform/SKILL.md), and
+[issue filing/queue preparation](skills/agent-host-work-items/SKILL.md).
+Older independent runtime bundles report
 `not-bundled` until explicitly updated. This is agent guidance using existing
 CLI commands; automatic external-agent routing is not implemented.
 For a saved CLI destination, use the skill's `scripts/chat.py` launcher with

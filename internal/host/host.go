@@ -723,7 +723,8 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	}
 	finishCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if saveErr := h.Store.CompleteRun(finishCtx, r.ID, result.Status, result.Text, result.Model, errText); saveErr != nil {
+	answer, judgment := judgeCloseout(r.ID, execution.Agent, result.Status, result.Text)
+	if saveErr := h.Store.CompleteRun(finishCtx, r.ID, result.Status, answer, result.Model, errText, judgment); saveErr != nil {
 		return r, errors.Join(err, saveErr)
 	}
 	if err != nil || result.Status != "completed" {

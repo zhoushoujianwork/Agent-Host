@@ -36,3 +36,6 @@ Run the offline regression checks with:
 ```sh
 python3 -B tools/operations/tencent_key_audit_test.py
 ```
+
+日常只读平台检查使用 `agent-host status --root /absolute/runtime --format json`，
+无需直接查询 SQLite。检查口径和未知项见[平台状态](../../docs/platform-status.md)。

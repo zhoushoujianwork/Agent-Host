@@ -194,7 +194,7 @@ func discoverCLIState(directory string) (string, error) {
 	return cliState, nil
 }
 
-func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser, restart bool, out, errout io.Writer) error {
+func runConfiguredChannels(ctx context.Context, command, directory, fallback, viewerSource, viewerPython string, viewerPort int, noBrowser, restart, noWorkbench bool, out, errout io.Writer) error {
 	channels, err := discoverServiceChannels(directory, fallback)
 	if err != nil {
 		return err
@@ -227,8 +227,10 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 		}
 	}
 	// Read assets before stopping the old instance; write only after locking.
-	if err := validateChannelViewerSource(viewerSource); err != nil {
-		return err
+	if !noWorkbench {
+		if err := validateChannelViewerSource(viewerSource); err != nil {
+			return err
+		}
 	}
 	for _, channel := range channels {
 		lock, err := lockChannelRuntimeForStart(ctx, channel.Root, directory, restart, errout)
@@ -237,28 +239,42 @@ func runConfiguredChannels(ctx context.Context, command, directory, fallback, vi
 		}
 		locks = append(locks, lock)
 	}
-	for _, channel := range channels {
-		if err := prepareChannelViewer(channel.Root, viewerSource); err != nil {
-			return err
+	if !noWorkbench {
+		for _, channel := range channels {
+			if err := prepareChannelViewer(channel.Root, viewerSource); err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, channel := range channels {
+			logs := filepath.Join(channel.Root, "logs")
+			if err := os.MkdirAll(logs, 0700); err != nil {
+				return err
+			}
+			if _, err := privateServicePath(logs, true); err != nil {
+				return err
+			}
 		}
 	}
 	binary, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	layout, _, _, err := loadService(channels[0].Root)
-	if err != nil {
-		return err
-	}
-	cliState, err := discoverCLIState(directory)
-	if err != nil {
-		return err
-	}
-	stop, err := startServiceWorkbenchSources(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL, channels, cliState)
-	if err != nil {
-		fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
-	} else {
-		defer stop()
+	if !noWorkbench {
+		layout, _, _, err := loadService(channels[0].Root)
+		if err != nil {
+			return err
+		}
+		cliState, err := discoverCLIState(directory)
+		if err != nil {
+			return err
+		}
+		stop, err := startServiceWorkbenchSources(ctx, layout, viewerPython, viewerPort, !noBrowser, errout, openWorkbenchURL, channels, cliState)
+		if err != nil {
+			fmt.Fprintf(errout, "Workbench unavailable: %v; channel startup will continue.\n", err)
+		} else {
+			defer stop()
+		}
 	}
 	if filepath.Base(directory) == "config" {
 		backupCtx, cancelBackup := context.WithCancel(ctx)

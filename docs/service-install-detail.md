@@ -1,6 +1,146 @@
 # Runtime implementation and migration details
 
+## 生产只读预检与证据分层
+
+<a id="production-preflight"></a>
+
+先读[主指南](service-install.md)。本节是操作顺序，不是部署脚本；所有路径和 PID
+都必须来自本次检查，禁止复制历史 PID 发信号。
+
+### 1. 确认物理目录和安装来源
+
+本地检查 checkout 的 `.agent-host` 链接和 `production-migration.json`；不存在时
+不创建它们。迁移清单仅定位历史源、目标及归档，目标还须与进程配置路径核对。
+不要打印配置、凭据、完整环境或原始消息。记录只保留路径、PID、时间、提交、
+摘要、状态和计数；完整 receipt、日志及进程参数只在私有终端检查，分享前脱敏。
+
+```sh
+ls -ld .agent-host
+readlink .agent-host
+# 使用已核实的目录；下列变量不是自动发现结果。
+AGH_ROOT=/absolute/verified/runtime
+AGH_BIN=/absolute/verified/bin/agent-host
+"$AGH_BIN" status --root "$AGH_ROOT" --no-http
+```
+
+`status --no-http` 只读展示状态，不判断进程归属；缺少状态或历史 connected 事件
+不能证明当前无人运行或已就绪。不要为查询而启动 workbench。
+旧部署可能没有 `status` 子命令；先核对其帮助，缺失时使用现有只读执行记录，
+或在隔离 checkout 构建支持该命令的查询工具，不能覆盖运行中的部署二进制。
+
+### 2. 确认唯一 supervisor 和管理器
+
+先查看不含参数或环境的进程清单，再针对候选进程及其父子进程在本地核对参数。
+PID 文件、PPID=1、plist 文件存在或端口可用均不能单独证明管理器归属。
+
+```sh
+ps -axo uid,pid,ppid,comm
+# bash/zsh：保留管道中管理器查询的失败退出码。
+set -o pipefail
+# macOS：仅输出状态和 PID，不转储 EnvironmentVariables。
+launchctl print "gui/$(id -u)/com.agent-host.source" | awk '/^[[:space:]]*(state|pid) =/'
+launchctl print "gui/$(id -u)/com.agent-host.production" | awk '/^[[:space:]]*(state|pid) =/'
+# Linux 对应检查；不要在 macOS 执行。
+systemctl --user show agent-host.service -p ActiveState -p SubState -p MainPID
+```
+
+管理器查询失败必须保留退出错误，不能把空输出当成 inactive。未加载服务可能报
+not found；再检查本地服务定义是否会在登录时启动竞争实例。仅在私有终端查看候选
+PID 的 `ps -p PID -o uid=,pid=,ppid=,command=`，核对 `service run`、
+`--config-dir`、`--viewer-source`、工作目录和子 worker 的 runtime root。
+用 `lsof -a -p PID -d txt,cwd` 辅助确认打开的可执行文件及工作目录，
+用 `lsof -nP -iTCP:8765 -sTCP:LISTEN` 确认 viewer 的监听进程（自定义端口需替换）。
+Linux 可核对 `/proc/PID/exe` 和 `/proc/PID/cwd` 的链接。
+不要使用 `ps e`、输出完整环境或公开未经筛选的参数。
+
+把管理器 MainPID/launchd PID 与 supervisor 对齐，并沿父子关系确认所有 channel
+workers、viewer 和订阅子进程。若不是 OS 管理器启动，必须由 rollout 的私有
+启动记录或已知前台会话补足归属；不能仅因 LaunchAgent inactive 就认定 rollout。
+同一渠道身份只能有一个 supervisor。存在未知进程、孤儿订阅锁持有者、另一个
+可自动拉起的管理器或无法核实的归属时停止，不删除锁、不强杀、不试启动。
+
+### 3. 对齐部署快照与就绪证据
+
+在已确认 runtime 的 `deployments/<deployment>/receipt.json` 中本地核对提交、
+部署状态、二进制位置/摘要、viewer 源路径、旧进程退出与新进程证据。
+字段以实际 receipt 为准，不假设迁移清单或目录排序指向活动部署。
+用 `shasum -a 256 /absolute/verified/binary` 对照部署摘要；核对不可变
+`source/tools/run-viewer` 与实际 `--viewer-source` 一致。viewer 的生成副本不等于
+源快照。磁盘二进制若在启动后被覆盖，其当前摘要不能证明运行进程的版本；
+无法从启动证据确认时报告未知，不声称已验证。
+
+证据层次必须分开：安装清单证明来源，实时管理器/进程证明归属，receipt 和摘要
+证明部署制品，启动后的连接事件与稳定 PID 证明启动就绪。旧 receipt 的
+`deployed_verified` 不证明今日健康。当前 HTTP 200 也不证明渠道连接或消息交付。
+
+## 授权重启、排空与回退
+
+<a id="production-restart"></a>
+
+1. 预检通过后，记录唯一 owner、物理 config/state 路径、当前制品摘要与 viewer
+   快照、回退配对和 schema 兼容性。保留渠道账号、native profile/session、配置、
+   memory 和状态；不重新初始化或从开发目录覆盖生产。按既有备份流程保存私有备份。
+2. 安排无新请求的维护窗口，重复只读检查各渠道及 CLI 的 pending/running/claimed
+   工作和交付、memory/experience closeout。可用 `status --no-http` 查看汇总，
+   再用现有执行记录确认未完成项。`execution.ready` 或已发出回答不等于排空：
+   等待 `run.finished` 及交付/closeout 终态。没有通用自动 drain 命令；持续有新工作
+   就延后维护。SIGTERM 会取消原生执行，不是等待业务自然完成的 drain。
+3. 只使用已确认 owner 的既有启停机制。rollout 必须沿用其记录的启动方式、工作目录、
+   日志和二进制/viewer 配对；本仓库没有通用 `rollout` CLI，不能臆造命令或改用
+   LaunchAgent。缺少 rollout 启停记录时停止并取得该记录。确认旧 supervisor、
+   workers、viewer、订阅进程退出且锁已释放，再由同一机制启动一次。
+   停止前用已验证二进制执行 `service check --config-dir "$AGH_ROOT/config"`；
+   它只验证本地配置，不证明平台凭据有效，不创建数据库或发起原生执行。
+4. 记录新启动时间；每个启用渠道必须出现该时间之后的 `channel.connected`，
+   supervisor/worker PID 在观察窗口稳定，且 viewer `/`、`/settings.html` 返回
+   HTTP 200。例如 `curl --fail --silent --output /dev/null http://127.0.0.1:8765/`，
+   对 `/settings.html` 同样检查。不开浏览器，不发合成消息。旧日志、receipt 或
+   单次 HTTP 成功不能替代这些检查；就绪不等于业务验收或持续可用性。
+5. 失败时保留错误和新旧部署证据，不隐式重试任务或改管理器。回退也由同一 owner
+   停止失败实例，再恢复已验证的旧二进制与旧 viewer 快照配对，沿用配置和状态。
+   先确认旧版本支持当前 schema；不支持时停止，按既有备份恢复方案另行处理，
+   不覆盖当前数据库或删除历史。回退后重新检查唯一 owner 和新鲜就绪证据。
+
+以下仅展示通过预检且维护已授权的对应分支；不能连续执行或拿来探测模式：
+
+```sh
+# 源码用户服务：必须在拥有服务定义的 checkout，先验证待部署构建。
+python3 -B -m tools.service.autostart install --config-dir "$AGH_ROOT/config"
+# 独立 bundle 用户服务：已验证 bundle 包含 bin/config/tools/run-viewer。
+python3 -B -m tools.service.autostart install --runtime-dir "$AGH_ROOT"
+# 无管理器的前台实例：make run 会重建并替换同 runtime 实例。
+make run CONFIG_DIR="$AGH_ROOT/config" RUN_ARGS=--no-browser
+# rollout 的既有启动流程可调用此受支持入口；这不是完整 rollout 脚本。
+# 仅在旧 owner 已停止时，使用已核实制品，保留重复实例拒绝行为。
+"$AGH_BIN" service run --config-dir "$AGH_ROOT/config" \
+  --viewer-source /absolute/deployments/verified/source/tools/run-viewer --no-browser
+```
+
+autostart 自带 `--no-browser`；`make run` 默认打开浏览器，必须显式选择上述选项。
+`--restart` 能替换同 runtime 进程，但不能防止另一个外部管理器再次拉起它，
+因此不替代 owner 检查。明确中断产生的 failed/unknown、未完成 closeout 与模糊
+交付分别保留；只在支持的独立恢复路径中处理，不重放原生任务或重复发送答案。
+
+### 证据来源与本次文档核验
+
+[Issue #11](https://github.com/zhoushoujianwork/Agent-Host/issues/11) 记录 2026-10-27
+预检：LaunchAgent 未运行；旧 supervisor 73024 使用 checkout 二进制和
+`deployments/ea4970b0779c/source/tools/run-viewer`；对应 receipt 为
+`ea4970b0779c`、`deployed_verified`。
+[#10 后续部署记录](https://github.com/zhoushoujianwork/Agent-Host/issues/10#issuecomment-6435019503)
+记录部署 `6220307cf76e-20261027T0555Z`、提交
+`6220307cf76ee6f4b8ecfae59efff8450697e048`、二进制摘要
+`6aa130fa4be14adaa704a187526a67ac5a31ed01ac861900f801d8cb10dad1a4`，
+以及 supervisor 69628、workers 69909/69910、LaunchAgent 仍未运行、旧 viewer
+快照与回退二进制保留。均是带时间的历史证据，不是当前 PID 建议。
+
+本次文档核验使用上述公开部署摘要及仓库命令帮助/实现；工作树没有生产迁移清单，
+本机预期目录下也没有部署 receipt，未直接读取私有原件或执行生产重启。
+执行维护的 operator 仍须按上述预检核对实际 receipt 和进程，不得把摘要当实时检查。
+
 ## Reliability observation: 2026-10-25
+
+本节为历史记录；当前操作须先执行上方只读预检，不能据此判定现有管理器。
 
 The bounded review covered 2026-10-23 14:19 UTC through 2026-10-25 14:19 UTC.
 DingTalk had two runs, both completed with memory unchanged; Feishu had no runs
@@ -36,7 +176,7 @@ manually replayed.
 The already registered LaunchAgent then recovered automatically. Feishu emitted
 fresh readiness at 14:30:20 UTC and DingTalk at 14:30:24 UTC. Supervisor PID 7733
 remained stable through 14:31:08 UTC, and `/` and `/settings.html` on port 8765
-returned HTTP 200. Login startup and restart-on-failure now use the existing
+returned HTTP 200. At that observation time, login startup and restart-on-failure used the existing
 source service definition. A full reboot and deliberate forced-crash recovery
 were not exercised. The independent installation bundle was not replaced.
 

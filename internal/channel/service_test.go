@@ -225,7 +225,7 @@ func TestDingTalkServiceMemoryLoopSourceAndExplicitNewSession(t *testing.T) {
 	firstInput := f.message(t, "first", statement, "text", "owner-dm")
 	first := f.process(t, firstInput)
 	firstRun := f.run(t, first)
-	if first.Status != "completed" || first.ReplyStatus != "accepted" || firstRun.MemoryStatus != "saved" || firstRun.AcceptanceStatus != "unverified" {
+	if first.Status != "completed" || first.ReplyStatus != "accepted" || firstRun.MemoryStatus != "saved" || firstRun.AcceptanceStatus != "unresolved" {
 		t.Fatalf("first receipt: %+v run=%+v", first, firstRun)
 	}
 	if !first.SentAt.Equal(firstInput.CreatedAt) {
@@ -364,7 +364,7 @@ func TestDingTalkServiceDeliveryFailureIsSeparateAndNeverReplayed(t *testing.T) 
 			input := f.message(t, "delivery", "Explain this project.", "text", "owner-dm")
 			m := f.process(t, input)
 			r := f.run(t, m)
-			if m.Status != "completed" || m.ReplyStatus != outcome || m.ReplyError == "" || r.ExecutionStatus != "completed" || r.MemoryStatus != "unchanged" || r.AcceptanceStatus != "unverified" {
+			if m.Status != "completed" || m.ReplyStatus != outcome || m.ReplyError == "" || r.ExecutionStatus != "completed" || r.MemoryStatus != "unchanged" || r.AcceptanceStatus != "unresolved" {
 				t.Fatalf("delivery changed execution: message=%+v run=%+v", m, r)
 			}
 			f.receive(t, input)

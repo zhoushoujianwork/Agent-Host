@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -57,7 +59,7 @@ func TestChatCallerLifecycle(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(root, "done"), []byte(fmt.Sprint(err)), 0600)
 		return
 	}
-	for _, mode := range []string{"parent-exit", "parent-killed", "explicit-caller", "detached"} {
+	for _, mode := range []string{"parent-exit", "parent-killed", "explicit-caller", "alive-owner", "detached"} {
 		t.Run(mode, func(t *testing.T) {
 			fixture, args, _ := fileResumeFixture(t)
 			root := t.TempDir()
@@ -67,6 +69,9 @@ func TestChatCallerLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = unrelated.Process.Kill(); _ = unrelated.Wait() })
+			if mode == "alive-owner" {
+				args = append(args, "--caller-pid", strconv.Itoa(os.Getpid()))
+			}
 			if mode == "explicit-caller" {
 				args = append(args, "--caller-pid", strconv.Itoa(unrelated.Process.Pid))
 			}
@@ -123,21 +128,26 @@ wait "$descendant" 2>/dev/null || true`, 1)
 				_ = unrelated.Process.Kill()
 				// Leave a zombie until after cancellation: PID existence is not liveness.
 			}
-			if mode == "detached" {
-				time.Sleep(1500 * time.Millisecond)
+			if mode == "detached" || mode == "alive-owner" {
+				time.Sleep(2500 * time.Millisecond)
 				if _, err := os.Stat(filepath.Join(root, "done")); !os.IsNotExist(err) {
-					t.Fatal("detached worker stopped with its parent", err)
+					t.Fatalf("%s worker stopped before release: %v", mode, err)
 				}
 				_ = os.WriteFile(filepath.Join(root, "release"), nil, 0600)
 			}
 			done := string(waitCallerFile(t, filepath.Join(root, "done")))
+			if mode == "alive-owner" {
+				if err := parent.Wait(); err != nil {
+					t.Fatalf("owner could not collect wrapper exit: %v", err)
+				}
+			}
 			runs := fileResumeRuns(t, fixture.home)
 			if len(runs) != 1 {
 				t.Fatalf("unexpected run count: %+v", runs)
 			}
-			if mode == "detached" {
+			if mode == "detached" || mode == "alive-owner" {
 				if done != "<nil>" || runs[0].ExecutionStatus != "completed" {
-					t.Fatalf("detached run failed: %s %+v", done, runs[0])
+					t.Fatalf("%s run failed: %s %+v", mode, done, runs[0])
 				}
 			} else if !strings.Contains(done, "caller exited") || runs[0].ExecutionStatus != "canceled" || !strings.Contains(runs[0].Error, "caller exited") || runs[0].MemoryStatus != "skipped" {
 				t.Fatalf("caller loss did not retain canceled evidence: %s %+v", done, runs[0])
@@ -181,5 +191,75 @@ func TestChatCallerRejectsInvalidOwnership(t *testing.T) {
 	}
 	if _, _, err := chatCallerContext(t.Context(), os.Getppid(), 1<<30, false); err == nil {
 		t.Fatal("accepted missing caller")
+	}
+}
+
+// Fake identities reproduce PID reuse and transient verification failure without
+// relying on PID recycling or changing the production fail-closed policy.
+func TestChatCallerProbeEvidence(t *testing.T) {
+	for _, tc := range []struct {
+		name, current, reason string
+		err                   error
+	}{
+		{"changed", "new-start", "start identity changed", nil},
+		{"timeout", "", "context deadline exceeded", context.DeadlineExceeded},
+		{"unverifiable", "", "probe unavailable", errors.New("probe unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			ctx, cancel, err := chatCallerContextWithProbe(t.Context(), os.Getppid(), 1<<29, false, func(context.Context, int) (string, error) {
+				calls++
+				if calls == 1 {
+					return "original-start", nil
+				}
+				return tc.current, tc.err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer cancel()
+			cause := fmt.Sprint(context.Cause(ctx))
+			for _, want := range []string{"supervising process 536870912", "selected by caller-pid", "original-start", tc.reason} {
+				if !strings.Contains(cause, want) {
+					t.Fatalf("missing %q in %s", want, cause)
+				}
+			}
+			if calls != 2 {
+				t.Fatalf("unexpected retry: %d probes", calls)
+			}
+		})
+	}
+}
+
+func TestChatCallerStableIdentityAcrossPolls(t *testing.T) {
+	var calls atomic.Int32
+	ctx, cancel, err := chatCallerContextWithProbe(t.Context(), os.Getppid(), 1<<29, false, func(context.Context, int) (string, error) {
+		calls.Add(1)
+		return "stable-start", nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancel()
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for calls.Load() < 4 {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("live owner lost: %v", context.Cause(ctx))
+		case <-deadline.C:
+			t.Fatal("caller was not checked across polls")
+		case <-tick.C:
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("live owner lost: %v", context.Cause(ctx))
+	}
+	cancel()
+	<-ctx.Done()
+	if !errors.Is(context.Cause(ctx), context.Canceled) {
+		t.Fatal(context.Cause(ctx))
 	}
 }

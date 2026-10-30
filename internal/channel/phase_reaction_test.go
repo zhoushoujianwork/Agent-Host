@@ -111,7 +111,7 @@ func TestHostPhasesRemainLocalWhilePublicProgressStaysGeneric(t *testing.T) {
 		t.Fatalf("phase labels: got=%v want=%v", got, wantLabels)
 	}
 	run := f.run(t, m)
-	if run.ExecutionStatus != "completed" || run.MemoryStatus != "saved" || run.AcceptanceStatus != "unverified" || m.ReplyStatus != "accepted" {
+	if run.ExecutionStatus != "completed" || run.MemoryStatus != "saved" || run.AcceptanceStatus != "unresolved" || m.ReplyStatus != "accepted" {
 		t.Fatalf("independent outcomes changed: run=%+v message=%+v", run, m)
 	}
 }

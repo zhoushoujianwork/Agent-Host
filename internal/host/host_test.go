@@ -97,7 +97,7 @@ func runOK(t *testing.T, h *Host, s state.Session, input string) state.Run {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.ExecutionStatus != "completed" || r.AcceptanceStatus != "unverified" {
+	if r.ExecutionStatus != "completed" || r.AcceptanceStatus != "unresolved" {
 		t.Fatalf("unexpected completion/acceptance: %+v", r)
 	}
 	return r

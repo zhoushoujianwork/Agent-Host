@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"agent-host/internal/harness/claude"
+	"agent-host/internal/offloadchannel"
 )
 
 const serviceUsage = `Managed channel runtime (DingTalk by default).
@@ -60,6 +61,7 @@ It observes ROOT/cli-state; use chat --home ABSOLUTE_ROOT/cli-state for the same
 type serviceConfig struct {
 	SkillsRoot                 string   `json:"skills_root,omitempty"`
 	ExecutionConfig            string   `json:"execution_config,omitempty"`
+	OffloadConfig              string   `json:"offload_config,omitempty"`
 	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
 	KnowledgeChannel           string   `json:"-"`
@@ -162,10 +164,10 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 		if channelsDirectory != "" || root != "" {
 			return errors.New("config-dir cannot be combined with root or channels-dir")
 		}
-		return runConfiguredChannels(ctx, command, configDirectory, "", viewerSource, viewerPython, viewerPort, noBrowser, restart, out, errout)
+		return runConfiguredChannels(ctx, command, configDirectory, "", viewerSource, viewerPython, viewerPort, noBrowser, restart, noWorkbench, out, errout)
 	}
 	if channelsDirectory != "" || viewerSource != "" {
-		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, restart, out, errout)
+		return runConfiguredChannels(ctx, command, channelsDirectory, root, viewerSource, viewerPython, viewerPort, noBrowser, restart, noWorkbench, out, errout)
 	}
 	layout, config, environment, err := loadService(root)
 	if err != nil {
@@ -179,7 +181,7 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 			defer stop()
 		}
 	}
-	return withServiceEnvironment(layout.Native, environment, func() error {
+	runExecution := func() error {
 		if config.DWSOnly {
 			return runDWSChannel(ctx, command, layout, config, out, errout)
 		}
@@ -204,9 +206,15 @@ func runService(ctx context.Context, args []string, out, errout io.Writer) (runE
 		report["config_directory"] = layout.Config
 		report["state_directory"] = layout.State
 		report["workspace"] = layout.Workspace
-		report["native_config_directory"] = layout.Native
+		if config.OffloadConfig == "" {
+			report["native_config_directory"] = layout.Native
+		}
 		return json.NewEncoder(out).Encode(report)
-	})
+	}
+	if config.OffloadConfig != "" {
+		return runExecution()
+	}
+	return withServiceEnvironment(layout.Native, environment, runExecution)
 }
 
 func loadService(root string) (serviceLayout, serviceConfig, map[string]string, error) {
@@ -241,24 +249,26 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 		return layout, config, nil, err
 	}
 	var environment map[string]string
-	environmentPath, err := serviceConfigurationPath(layout.Config, "component-environment.json", "environment.json")
-	if err != nil {
-		return layout, config, nil, err
-	}
-	if err := readServiceJSON(environmentPath, &environment); err != nil {
-		return layout, config, nil, fmt.Errorf("service environment: %w", err)
-	}
-	for key, value := range environment {
-		allowed := false
-		for _, known := range serviceEnvironmentKeys {
-			allowed = allowed || key == known
+	if config.OffloadConfig == "" {
+		environmentPath, err := serviceConfigurationPath(layout.Config, "component-environment.json", "environment.json")
+		if err != nil {
+			return layout, config, nil, err
 		}
-		if !allowed || strings.TrimSpace(value) == "" || strings.ContainsAny(value, "\x00\r\n") || value != strings.TrimSpace(value) {
-			return layout, config, nil, errors.New("service environment must contain only documented provider or native stream keys with nonempty single-line string values")
+		if err := readServiceJSON(environmentPath, &environment); err != nil {
+			return layout, config, nil, fmt.Errorf("service environment: %w", err)
 		}
-	}
-	if _, err := claude.NativeStreamEnvironment(environment); err != nil {
-		return layout, config, nil, fmt.Errorf("service native stream configuration: %w", err)
+		for key, value := range environment {
+			allowed := false
+			for _, known := range serviceEnvironmentKeys {
+				allowed = allowed || key == known
+			}
+			if !allowed || strings.TrimSpace(value) == "" || strings.ContainsAny(value, "\x00\r\n") || value != strings.TrimSpace(value) {
+				return layout, config, nil, errors.New("service environment must contain only documented provider or native stream keys with nonempty single-line string values")
+			}
+		}
+		if _, err := claude.NativeStreamEnvironment(environment); err != nil {
+			return layout, config, nil, fmt.Errorf("service native stream configuration: %w", err)
+		}
 	}
 	if config.Channel == "feishu-meeting" || config.Channel == "feishu" {
 		filename := "feishu-meeting.json"
@@ -294,6 +304,33 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
+	if c.OffloadConfig != "" {
+		if c.ExecutionConfig != "" {
+			return errors.New("offload_config and execution_config are mutually exclusive")
+		}
+		if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu" {
+			return errors.New("Offload supports DingTalk and Feishu IM channels only")
+		}
+		if c.NoTools || len(c.AllowedTools) != 0 || c.AgentsConfig != "" || c.EmailConfig != "" || c.KnowledgeConfig != "" || len(c.KnowledgeConfigs) != 0 || c.DiscoveryConfig != "" || c.SkillsRoot != "" || c.DWSConfig != "" || c.DWSOnly {
+			return errors.New("Offload service does not support Host tool restrictions, Agent catalogs or managed plugins yet")
+		}
+		if c.Claude != "" || c.Model != "" || c.JevProvider != "" || c.JevModel != "" || c.JevEndpoint != "" {
+			return errors.New("Offload service execution and provider settings belong in its Offload profile")
+		}
+		if c.MemoryScope != "" && (strings.TrimSpace(c.MemoryScope) != c.MemoryScope || len(c.MemoryScope) > 4096 || strings.ContainsAny(c.MemoryScope, "\x00\r\n")) {
+			return errors.New("service memory_scope must be a single-line identity")
+		}
+		if c.MaxConcurrentConversations < 0 || c.MaxConcurrentConversations > 32 {
+			return errors.New("service max_concurrent_conversations must be between 1 and 32, or omitted for 4")
+		}
+		if c.Timeout != "" {
+			if timeout, err := time.ParseDuration(c.Timeout); err != nil || timeout <= 0 {
+				return errors.New("service timeout must be positive")
+			}
+		}
+		_, _, err := offloadchannel.Load(c.OffloadConfig)
+		return err
+	}
 	if c.SkillsRoot != "" && (!filepath.IsAbs(c.SkillsRoot) || filepath.Clean(c.SkillsRoot) != c.SkillsRoot || strings.ContainsAny(c.SkillsRoot, "\x00\r\n")) {
 		return errors.New("service skills_root must be a clean absolute path")
 	}
@@ -365,6 +402,22 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	path := c.channelConfigPath
 	if path == "" {
 		path = filepath.Join(layout.Config, "channel-"+filename)
+	}
+	if c.OffloadConfig != "" {
+		args := []string{command, "--config", path, "--home", layout.State, "--workspace", layout.Workspace,
+			"--offload-config", c.OffloadConfig, "--format", "json"}
+		concurrency := c.MaxConcurrentConversations
+		if concurrency == 0 {
+			concurrency = 4
+		}
+		args = append(args, "--max-concurrent-conversations", fmt.Sprint(concurrency))
+		if c.Timeout != "" {
+			args = append(args, "--timeout", c.Timeout)
+		}
+		if c.MemoryScope != "" {
+			args = append(args, "--memory-scope", c.MemoryScope)
+		}
+		return args
 	}
 	args := []string{command, "--config", path, "--home", layout.State,
 		"--workspace", layout.Workspace, "--claude", c.Claude, "--model", c.Model,

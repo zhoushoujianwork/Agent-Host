@@ -91,3 +91,70 @@ test("standalone and archive sources retain distinct entry options",()=>{
   h.renderEntryOptions();assert.deepEqual(h.$("source-filter").children.map(o=>o.textContent),["全部入口","本机记录","归档报告"]);
   h.$("source-filter").value="report";h.changeEntry();assert.deepEqual(h.selected,["2"]);
 });
+
+function detailSetup(records, requested = null, missing = false) {
+  const nodes = new Map(), calls = [], rendered = [];
+  const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:"all"}); return nodes.get(id); };
+  const location = {href: "http://localhost/executions.html" + (requested ? `?key=${encodeURIComponent(requested)}` : "")};
+  const context = {$, location, URL, Date, json:JSON.stringify,
+    state:{key:null, record:null, generation:0, busy:false},
+    history:{replaceState(_state, _unused, url){location.href=String(url);}},
+    window:{parent:{document:{dispatchEvent(){}}}}, CustomEvent:class {},
+    renderSources(){}, renderList(){}, matchesEntry(){return true;},
+    renderRecord(){rendered.push(context.state.record.key);},
+    fetch:async path => {
+      calls.push(path);
+      if (path === "/api/records") return {ok:true, json:async()=>({records, default_key:records[0]?.key})};
+      const key = new URL(path, location.href).searchParams.get("key");
+      return {ok:!missing, json:async()=>missing ? {error:"run not found or outside configured scope"} : {key, run:{id:key}}};
+    }};
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf("async function api("), source.indexOf("function renderSources(")), context);
+  return {...context, calls, rendered};
+}
+test("attention deep links load the exact record beyond the 200-row index and retain it on refresh", async () => {
+  const records = Array.from({length:200}, (_, i) => row(`db:new-${199-i}`));
+  const h = detailSetup(records, "cli:db:old-failed");
+  await h.refresh();
+  await h.refresh();
+  assert.equal(h.state.key, "cli:db:old-failed");
+  assert.equal(h.state.record.key, "cli:db:old-failed");
+  assert.deepEqual(h.rendered, ["cli:db:old-failed"]);
+  assert.equal(h.calls.filter(path => path === "/api/record?key=cli%3Adb%3Aold-failed").length, 2);
+});
+test("explicit deep links work with an empty index and missing links fail without selecting another run", async () => {
+  const empty = detailSetup([], "db:old-failed");
+  await empty.refresh();
+  assert.equal(empty.state.record.key, "db:old-failed");
+  assert.equal(empty.$("empty").hidden, true);
+  const missing = detailSetup([row("db:new")], "db:missing", true);
+  await missing.refresh();
+  await missing.refresh();
+  assert.equal(missing.state.key, "db:missing");
+  assert.equal(missing.state.record, null);
+  assert.deepEqual(missing.rendered, []);
+  assert.match(missing.$("error").textContent, /run not found/);
+  assert.equal(missing.$("error").hidden, false);
+  assert.ok(missing.calls.filter(path => path.startsWith("/api/record?")).every(path => path.endsWith("db%3Amissing")));
+});
+test("an already selected record remains selected when it ages out of the index", async () => {
+  const records = [row("db:old")];
+  const h = detailSetup(records);
+  await h.refresh();
+  records.splice(0, 1, row("db:new"));
+  await h.refresh();
+  assert.equal(h.state.record.key, "db:old");
+});
+
+test("refresh does not restore the initial deep link after an explicit empty-entry selection", async () => {
+  const h = detailSetup([row("db:new")], "db:old");
+  await h.refresh();
+  h.state.key = null;
+  h.state.record = null;
+  h.state.index.records.length = 0;
+  await h.refresh();
+  assert.equal(h.state.key, null);
+  assert.equal(h.state.record, null);
+  assert.equal(h.$("empty").hidden, false);
+  assert.equal(h.calls.filter(path => path.startsWith("/api/record?")).length, 1);
+});
