@@ -59,7 +59,8 @@ type Request struct {
 	CallerRunID string
 	// Prompt is the task text. It is sent on stdin, never argv.
 	Prompt string
-	// Instructions is optional text sent before Prompt on stdin.
+	// Instructions is optional internal context sent through a private file.
+	// It is never concatenated with the visible task on stdin.
 	Instructions string
 	// Workspace is an absolute path to an existing directory (-d).
 	Workspace string
@@ -131,7 +132,7 @@ func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err
 		return nil, "", err
 	}
 	if len(req.Instructions) > 0 {
-		if err := checkText("Instructions", req.Instructions, MaxInputBytes, true); err != nil {
+		if err := checkText("Instructions", req.Instructions, MaxInstructionsBytes, true); err != nil {
 			return nil, "", err
 		}
 	}
@@ -161,14 +162,9 @@ func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err
 			profile = req.ResumeProfile
 		}
 	}
-	if req.Instructions != "" {
-		stdin = []byte(req.Instructions + "\n\n" + req.Prompt)
-	} else {
-		stdin = []byte(req.Prompt)
-	}
-	// The limit applies to the bytes actually sent, including the separator.
-	if len(stdin) > MaxInputBytes {
-		return nil, "", fmt.Errorf("offloadexec: stdin input exceeds %d bytes", MaxInputBytes)
+	stdin = []byte(req.Prompt)
+	if len(stdin)+len(req.Instructions) > MaxInputBytes {
+		return nil, "", fmt.Errorf("offloadexec: combined input exceeds %d bytes", MaxInputBytes)
 	}
 	return stdin, profile, nil
 }
@@ -240,7 +236,20 @@ func (c *Client) Run(ctx context.Context, req Request) (Result, error) {
 	runCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout+c.waitGrace)
 	defer cancel()
 
-	cmd := exec.Command(c.cfg.Command, c.args(req, profile)...)
+	args := c.args(req, profile)
+	if req.Instructions != "" {
+		directory, err := os.MkdirTemp("", "agh-offload-instructions-")
+		if err != nil {
+			return fail(KindStart, StatusError, -1, err, "cannot prepare private instructions")
+		}
+		defer os.RemoveAll(directory)
+		path := filepath.Join(directory, "instructions.txt")
+		if err = os.WriteFile(path, []byte(req.Instructions), 0o600); err != nil {
+			return fail(KindStart, StatusError, -1, err, "cannot write private instructions")
+		}
+		args = append(args, "--instructions-file", path)
+	}
+	cmd := exec.Command(c.cfg.Command, args...)
 	configureProcess(cmd)
 	overflow := make(chan struct{})
 	stdout := &limitWriter{keep: true, max: MaxOutputBytes, overflow: overflow}

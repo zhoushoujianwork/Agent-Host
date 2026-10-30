@@ -79,3 +79,26 @@ binding checks. Existing ACP/channel behavior and launcher validation retain
 regressions. Automated fixtures use no real native provider, desktop or production activation.
 The [isolated live canary](offload-canary-acceptance-2026-10-30.md) separately
 records bounded real execution, continuation and memory evidence.
+
+## User tasks and internal context
+
+The visible Offload task is exactly the current user input. Host instructions,
+nonempty memory, quoted source material and necessary room history travel through
+Offload's `--instructions-file`, never by concatenating them into that task.
+No memory block is emitted when recall selects zero records. Empty room envelopes
+and history already inherited by native continuation are omitted. The complete
+receipts and retrieval decisions remain recorded for inspection.
+
+Instruction files use a private temporary directory (`0700`) and file (`0600`),
+remain available through owned process cleanup and are then removed. Context is
+bounded by Offload's 256 KiB file contract and the combined 1 MiB input budget.
+Oversized or unsupported requests fail explicitly; there is no concatenation fallback.
+This integration requires an Offload build supporting `--instructions-file` (the
+live baseline is 0.4.0).
+
+Claude maps these instructions to its appended system prompt. The current
+Offload Codex adapter still wraps them internally on native stdin; this change
+separates the public task/history surface, not that upstream role implementation.
+Attributed memory remains source data and does not grant permissions. Existing
+native history is preserved; begin a fresh conversation to validate a clean
+visible task after upgrading.

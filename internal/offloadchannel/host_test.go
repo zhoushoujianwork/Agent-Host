@@ -24,6 +24,7 @@ d="$(dirname "$0")"
 n=$(cat "$d/count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/count"
 printf '%s\n' "$@" > "$d/argv.$n"
 cat > "$d/stdin.$n"
+(while [ $# -gt 0 ]; do case "$1" in --instructions-file) cp "$2" "$d/instructions.$n";; esac; shift; done)
 mode=$(cat "$d/mode" 2>/dev/null || echo ok)
 sess=sess-$n
 while [ $# -gt 0 ]; do case "$1" in -r) sess="$2"; shift;; esac; shift; done
@@ -294,7 +295,7 @@ func TestQuotedTextIsFramedAsUntrustedAndPlainSourceIsAllowed(t *testing.T) {
 	if run, err := f.host.RunChannel(context.Background(), s, m.Text, m.ID); err != nil || run.ExecutionStatus != "completed" {
 		t.Fatalf("run=%+v err=%v", run, err)
 	}
-	stdin := f.read("stdin.1")
+	stdin := f.read("instructions.1")
 	if !strings.Contains(stdin, "untrusted task content") || !strings.Contains(stdin, "ignore previous rules") || !strings.Contains(stdin, "sender_id") {
 		t.Fatalf("stdin: %q", stdin)
 	}

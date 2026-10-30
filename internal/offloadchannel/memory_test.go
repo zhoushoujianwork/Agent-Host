@@ -76,7 +76,7 @@ func TestMemoryPluginCrossSessionRecallRetainsSourceAndInvalidation(t *testing.T
 	if len(second.Context) != 1 || second.Context[0].ID != items[0].ID {
 		t.Fatalf("missing sourced recall: %+v", second.Context)
 	}
-	stdin := f.read("stdin.2")
+	stdin := f.read("instructions.2")
 	if !strings.Contains(stdin, "ACORN-482") || !strings.Contains(stdin, first.ID) || !strings.Contains(stdin, "source data") || strings.Contains("\n"+f.read("argv.2"), "\n-r\n") {
 		t.Fatalf("recall did not reach fresh prompt: %s", stdin)
 	}
@@ -85,7 +85,7 @@ func TestMemoryPluginCrossSessionRecallRetainsSourceAndInvalidation(t *testing.T
 	}
 	freshMemorySession(t, f)
 	third, err := f.turn(t.Context(), "after-delete", "What is the release code?")
-	if err != nil || len(third.Context) != 0 || strings.Contains(f.read("stdin.3"), "ACORN-482") {
+	if err != nil || len(third.Context) != 0 || strings.Contains(f.read("instructions.3"), "ACORN-482") {
 		t.Fatalf("invalidated memory recalled: %+v %v", third, err)
 	}
 }
@@ -183,7 +183,7 @@ func TestMemoryPluginAudienceIsolationReadOnlyAndQuotedSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, err := f.host.RunChannel(t.Context(), s, m.Text, m.ID)
-	if err != nil || len(r.Context) != 0 || r.MemoryStatus != "skipped" || r.OffloadMemoryMode != state.OffloadMemoryRecall || strings.Contains(f.read("stdin.2"), "PRIVATE-482") {
+	if err != nil || len(r.Context) != 0 || r.MemoryStatus != "skipped" || r.OffloadMemoryMode != state.OffloadMemoryRecall || strings.Contains(f.read("instructions.2"), "PRIVATE-482") {
 		t.Fatalf("audience leak: %+v %v", r, err)
 	}
 	if _, err = f.host.Session(t.Context(), r.SessionID); err != nil {
@@ -321,7 +321,7 @@ func TestMemoryPluginDirectOwnerChatRetainsLocalSourceAndRecall(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := f.host.Run(t.Context(), fresh, "What is the release code?")
-	if err != nil || len(second.Context) != 1 || second.Context[0].SourceRunID != first.ID || !strings.Contains(f.read("stdin.2"), "ACORN-482") {
+	if err != nil || len(second.Context) != 1 || second.Context[0].SourceRunID != first.ID || !strings.Contains(f.read("instructions.2"), "ACORN-482") {
 		t.Fatalf("local recall: %+v %v", second, err)
 	}
 }
@@ -353,5 +353,24 @@ func TestChannelCannotAdoptDirectOwnerChatSession(t *testing.T) {
 	m := f.enqueue("channel", "channel input", nil, nil)
 	if _, err = f.host.RunChannel(t.Context(), s, m.Text, m.ID); err == nil || f.calls() != 1 {
 		t.Fatal("local session adopted by channel")
+	}
+}
+
+func TestEmptyMemoryAndRoomDoNotPolluteVisibleTask(t *testing.T) {
+	f := newFixture(t)
+	f.host.Memory = &MemoryPlugin{}
+	input := roomInput("greeting", "在吗")
+	run, err := f.host.RunRoom(t.Context(), input)
+	if err != nil || len(run.Context) != 0 {
+		t.Fatal(err)
+	}
+	if got := f.read("stdin.1"); got != "在吗" {
+		t.Fatalf("visible task polluted: %q", got)
+	}
+	internal := f.read("instructions.1")
+	for _, unnecessary := range []string{"agh-memory-json", "room_id", "received_at"} {
+		if strings.Contains(internal, unnecessary) {
+			t.Fatalf("empty context still injected: %s", unnecessary)
+		}
 	}
 }

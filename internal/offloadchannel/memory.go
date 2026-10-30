@@ -79,6 +79,9 @@ func (p *MemoryPlugin) recall(ctx context.Context, j *journal) (string, error) {
 		Data: map[string]any{"count": len(items), "excluded_ids": excluded, "decisions": retrieval.Decisions}}, false); err != nil {
 		return "", err
 	}
+	if len(items) == 0 {
+		return "", nil
+	}
 	raw, err := json.Marshal(items)
 	if err != nil {
 		return "", err

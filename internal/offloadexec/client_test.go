@@ -21,7 +21,8 @@ func fake(t *testing.T, body string) (cmd, dir string) {
 	t.Helper()
 	dir = t.TempDir()
 	cmd = filepath.Join(dir, "offload")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + dir + "/argv'\ncat > '" + dir + "/stdin'\n" + body + "\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + dir + "/argv'\ncat > '" + dir + "/stdin'\n" + `(while [ $# -gt 0 ]; do case "$1" in --instructions-file) cp "$2" '` + dir + `/instructions';; esac; shift; done)
+` + body + "\n"
 	if err := os.WriteFile(cmd, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +70,22 @@ func TestRunSuccessFlagsAndStdin(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	argv := readFile(t, dir+"/argv")
-	want := []string{"-json", "-no-salvage", "-p", "alias", "-d", ws, "-t", "1m0s", "-m", "mm", "-w"}
+	fields := strings.Split(strings.TrimSpace(argv), "\n")
+	instructionPath := fields[len(fields)-1]
+	want := []string{"-json", "-no-salvage", "-p", "alias", "-d", ws, "-t", "1m0s", "-m", "mm", "-w", "--instructions-file", instructionPath}
+	if !filepath.IsAbs(instructionPath) || readFile(t, dir+"/instructions") != "INSTR" {
+		t.Fatal("private instructions missing")
+	}
+	if _, err := os.Stat(instructionPath); !os.IsNotExist(err) {
+		t.Fatal("private instruction file was retained")
+	}
 	if got := strings.Split(strings.TrimSpace(argv), "\n"); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("argv = %q", got)
 	}
 	if strings.Contains(argv, "SECRET-PROMPT") || strings.Contains(argv, "INSTR") {
 		t.Fatal("task text leaked into argv")
 	}
-	if got := readFile(t, dir+"/stdin"); got != "INSTR\n\nSECRET-PROMPT" {
+	if got := readFile(t, dir+"/stdin"); got != "SECRET-PROMPT" {
 		t.Fatalf("stdin = %q", got)
 	}
 }
@@ -88,7 +97,7 @@ func TestRunPromptOnlyAndNoOptionalFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	argv := readFile(t, dir+"/argv")
-	for _, f := range []string{"-m", "-w", "-r", "--caller-run-id"} {
+	for _, f := range []string{"-m", "-w", "-r", "--caller-run-id", "--instructions-file"} {
 		if strings.Contains("\n"+argv, "\n"+f+"\n") {
 			t.Fatalf("unexpected %s in %q", f, argv)
 		}
@@ -163,7 +172,7 @@ func TestRequestValidation(t *testing.T) {
 	}
 }
 
-func TestStdinLimitIncludesSeparator(t *testing.T) {
+func TestSeparateTaskAndInstructionBudgets(t *testing.T) {
 	cmd, dir := fake(t, okBody("s1", "canon"))
 	c := newClient(t, cmd, nil)
 	ws := t.TempDir()
@@ -181,17 +190,23 @@ func TestStdinLimitIncludesSeparator(t *testing.T) {
 	if err := run("", strings.Repeat("a", MaxInputBytes+1)); err == nil {
 		t.Fatal("prompt over limit accepted")
 	}
-	// With instructions the two separator bytes count: 1+2+(Max-3) fits exactly.
-	if err := run("i", strings.Repeat("a", MaxInputBytes-3)); err != nil {
+	if err := run(strings.Repeat("i", MaxInstructionsBytes), "p"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(strings.Repeat("i", MaxInstructionsBytes+1), "p"); err == nil {
+		t.Fatal("oversized instruction file accepted")
+	}
+	// Internal context has its own channel; the combined budget remains bounded.
+	if err := run("i", strings.Repeat("a", MaxInputBytes-1)); err != nil {
 		t.Fatalf("combined at limit: %v", err)
 	}
-	if got := len(readFile(t, dir+"/stdin")); got != MaxInputBytes {
+	if got := len(readFile(t, dir+"/stdin")); got != MaxInputBytes-1 {
 		t.Fatalf("stdin = %d bytes", got)
 	}
-	err := run("i", strings.Repeat("a", MaxInputBytes-2))
+	err := run("i", strings.Repeat("a", MaxInputBytes))
 	var re *RunError
 	if !errors.As(err, &re) || re.Kind != KindInvalidRequest {
-		t.Fatalf("one byte over via separator accepted: %v", err)
+		t.Fatalf("combined input over limit accepted: %v", err)
 	}
 }
 
@@ -542,5 +557,64 @@ func TestCallerRunCorrelationResultValidation(t *testing.T) {
 				t.Fatal("unexpected replay")
 			}
 		})
+	}
+}
+
+func TestPrivateInstructionFileModeAndCancellationCleanup(t *testing.T) {
+	cmd, dir := fake(t, "exec sleep 60")
+	client := newClient(t, cmd, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Run(ctx, Request{Prompt: "user text", Instructions: "private context", Workspace: dir})
+		done <- err
+	}()
+	var path string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		raw, _ := os.ReadFile(dir + "/argv")
+		parts := strings.Split(strings.TrimSpace(string(raw)), "\n")
+		for i, p := range parts {
+			if p == "--instructions-file" && i+1 < len(parts) {
+				path = parts[i+1]
+			}
+		}
+		if path != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if path == "" {
+		t.Fatal("instructions not passed separately")
+	}
+	file, err := os.Stat(path)
+	if err != nil || file.Mode().Perm() != 0o600 {
+		t.Fatalf("instruction permissions: %v %v", file, err)
+	}
+	directory, err := os.Stat(filepath.Dir(path))
+	if err != nil || directory.Mode().Perm() != 0o700 {
+		t.Fatal("instruction directory is not private")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("owned invocation did not stop")
+	}
+	if _, err = os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatal("private context retained after cancellation")
+	}
+}
+
+func TestPrivateInstructionFileCleanupOnStartFailure(t *testing.T) {
+	temp := t.TempDir()
+	t.Setenv("TMPDIR", temp)
+	client := newClient(t, filepath.Join(t.TempDir(), "missing"), nil)
+	if _, err := client.Run(t.Context(), Request{Prompt: "task", Instructions: "context", Workspace: t.TempDir()}); err == nil {
+		t.Fatal("missing command accepted")
+	}
+	files, err := os.ReadDir(temp)
+	if err != nil || len(files) != 0 {
+		t.Fatal("context retained after start failure")
 	}
 }
