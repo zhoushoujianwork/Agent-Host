@@ -399,7 +399,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 			instructions += "\nAGH supplies attributed memory and handles optional publication after your answer. Do not claim memory was saved merely because you acknowledged it. Native history is separate."
 		}
 	}
-	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: memoryContext + roomPrompt(cur.Room) + prompt(input, m), Instructions: instructions, Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
+	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: input, Instructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
 	if resume {
 		req.Session, req.ResumeProfile = cur.NativeSessionID, profile
 		if room {

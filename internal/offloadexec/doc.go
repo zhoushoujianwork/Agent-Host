@@ -14,6 +14,8 @@
 // Observed Offload CLI contract (cli.go cmdRun, history.Record):
 //
 //   - The task is read from stdin when no positional argument is given.
+//   - Internal context uses an owner-private --instructions-file (<=256KiB),
+//     which is removed after the owned invocation finishes.
 //   - With -json, stdout carries exactly one history.Record object and the
 //     process exit code equals the record's exit_code.
 //   - status is one of ok, error or timeout.

@@ -36,8 +36,10 @@ requires the existing explicit migration; it never silently falls back to SQLite
 The internal `MemoryPlugin` uses `Store.Retrieve` and `SaveContext`, with at most
 16 unique records and a 16 KiB JSON context budget. Source IDs, revisions, authors
 and exact text are retained. Oversized records are excluded rather than edited.
-The native prompt frames memory as attributed data, never permission grants or
-verified operational success. Personal preferences/constraints in group recall
+The private instruction context frames nonempty memory as attributed data, never
+permission grants or verified operational success. Empty recall emits no memory
+snapshot, while its zero-count receipt remains available. The visible native task
+retains only the current user input. Personal preferences/constraints in group recall
 are limited to their recorded author. Partition and scope filters precede search.
 
 Processing reuses `memory.Decider` and `Store.FinalizeMemory`; it does not add a

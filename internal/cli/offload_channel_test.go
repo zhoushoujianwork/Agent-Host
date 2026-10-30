@@ -36,6 +36,7 @@ n=$((n+1))
 echo $n > "$dir/count"
 printf '%s\n' "$@" > "$dir/argv.$n"
 cat > "$dir/stdin.$n"
+(while [ $# -gt 0 ]; do case "$1" in --instructions-file) cp "$2" "$dir/instructions.$n";; esac; shift; done)
 session="native-$n"
 caller=""
 while [ $# -gt 0 ]; do
@@ -95,6 +96,14 @@ func (r *offloadRig) stdin(n int) string {
 	b, err := os.ReadFile(filepath.Join(r.dir, fmt.Sprintf("stdin.%d", n)))
 	if err != nil {
 		r.t.Fatalf("offload call %d has no stdin: %v", n, err)
+	}
+	return string(b)
+}
+
+func (r *offloadRig) instructions(n int) string {
+	b, err := os.ReadFile(filepath.Join(r.dir, fmt.Sprintf("instructions.%d", n)))
+	if err != nil {
+		r.t.Fatal(err)
 	}
 	return string(b)
 }
@@ -387,10 +396,10 @@ func TestOffloadChannelGroupAudienceIsDistinctAndOwnerEquivalent(t *testing.T) {
 				t.Fatal("group and private conversations shared a session")
 			}
 			// Partition is not a restriction: a non-owner group sender is owner-equivalent.
-			if in := r.stdin(2); !strings.Contains(in, `"is_owner":false`) || !strings.Contains(in, `"execution_access":"owner-equivalent"`) || !strings.Contains(in, "member-2") {
+			if in := r.instructions(2); !strings.Contains(in, `"is_owner":false`) || !strings.Contains(in, `"execution_access":"owner-equivalent"`) || !strings.Contains(in, "member-2") {
 				t.Fatalf("group stdin lacks authenticated provenance: %q", in)
 			}
-			if in := r.stdin(1); !strings.Contains(in, `"is_owner":true`) {
+			if in := r.instructions(1); !strings.Contains(in, `"is_owner":true`) {
 				t.Fatalf("owner stdin lacks owner provenance: %q", in)
 			}
 		})
