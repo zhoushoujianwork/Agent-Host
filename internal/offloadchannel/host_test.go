@@ -371,3 +371,30 @@ func TestUnrecordableObserverAndReceiptFailuresAreReturnedNotHidden(t *testing.T
 		}
 	}
 }
+
+func TestOffloadJournalElapsedUsesRecordedRunClock(t *testing.T) {
+	f := newFixture(t)
+	run, err := f.turn(t.Context(), "elapsed", "clock fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := &journal{h: f.host, st: f.host.store(), run: run}
+	for _, offset := range []time.Duration{2345 * time.Millisecond, -time.Second} {
+		if err = j.emit(event.Event{Type: "fixture.clock", At: run.CreatedAt.Add(offset)}, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := f.host.store().Run(t.Context(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var elapsed []int64
+	for _, e := range stored.Events {
+		if e.Type == "fixture.clock" {
+			elapsed = append(elapsed, e.ElapsedMS)
+		}
+	}
+	if len(elapsed) != 2 || elapsed[0] != 2345 || elapsed[1] != 0 {
+		t.Fatalf("incorrect observed durations: %v", elapsed)
+	}
+}

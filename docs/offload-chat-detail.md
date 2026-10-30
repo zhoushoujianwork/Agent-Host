@@ -76,4 +76,6 @@ native executable: new room, continuation, accepted retry, persisted reload and
 owned-process cancellation. Host/state fixtures cover concurrent rooms, busy
 rooms, overlapping intake, unfinished receipts, memory failure, provenance and
 binding checks. Existing ACP/channel behavior and launcher validation retain
-regressions. No real native provider, desktop or production activation is used.
+regressions. Automated fixtures use no real native provider, desktop or production activation.
+The [isolated live canary](offload-canary-acceptance-2026-10-30.md) separately
+records bounded real execution, continuation and memory evidence.
