@@ -37,11 +37,12 @@ echo $n > "$dir/count"
 printf '%s\n' "$@" > "$dir/argv.$n"
 cat > "$dir/stdin.$n"
 session="native-$n"
+caller=""
 while [ $# -gt 0 ]; do
-  case "$1" in -r) session="$2"; shift ;; esac
+  case "$1" in -r) session="$2"; shift ;; --caller-run-id) caller="$2"; shift ;; esac
   shift
 done
-printf '{"status":"ok","exit_code":0,"profile":"canonical","backend":"b","model":"m","session":"%s","result":"answer-%s","usage":{}}\n' "$session" "$n"
+printf '{"status":"ok","exit_code":0,"profile":"canonical","backend":"b","model":"m","session":"%s","result":"answer-%s","usage":{},"run_id":"offload-%s","caller_run_id":"%s"}\n' "$session" "$n" "$n" "$caller"
 `
 }
 
@@ -325,7 +326,25 @@ func TestOffloadChannelTwoTurnsReuseNativeSessionAndCanonicalProfile(t *testing.
 					t.Fatalf("run state = exec %q accept %q memory %q disabled %v agent %q", run.ExecutionStatus, run.AcceptanceStatus, run.MemoryStatus, run.MemoryPluginDisabled, run.Agent)
 				}
 			}
+
+			for index, run := range []state.Run{run1, run2} {
+				dispatched, returned := false, false
+				for _, e := range run.Events {
+					if e.Type == "agent.dispatched" && e.Data["caller_run_id"] == "agh:"+run.ID {
+						dispatched = true
+					}
+					if e.Type == "offload.result" && e.Data["caller_run_id"] == "agh:"+run.ID && e.Data["reported_caller_run_id"] == "agh:"+run.ID && e.Data["offload_run_id"] == fmt.Sprintf("offload-%d", index+1) && e.Data["raw"] != nil {
+						returned = true
+					}
+				}
+				if !dispatched || !returned {
+					t.Fatal("correlation missing from durable dispatch/result evidence")
+				}
+			}
 			first1, second1 := r.argv(1), r.argv(2)
+			if run1.ID == run2.ID || !strings.Contains(first1, "\n--caller-run-id\nagh:"+run1.ID+"\n") || !strings.Contains(second1, "\n--caller-run-id\nagh:"+run2.ID+"\n") {
+				t.Fatal("missing distinct per-turn correlation")
+			}
 			if !strings.Contains(first1, "\n-p\nalias\n") || !strings.Contains(first1, "\n-w\n") || strings.Contains(first1, "\n-r\n") || !strings.Contains(first1, "\n-no-salvage\n") {
 				t.Fatalf("first argv = %q", first1)
 			}

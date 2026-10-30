@@ -36,7 +36,9 @@ unsupported combination gives an explicit configuration or input error.
 
 Implementation order: build the shared Offload client, connect both channel
 components to a slim host, verify isolated end-to-end delivery and continuation,
-then open a PR. Caller attribution is tracked in
+then open a PR. Each invocation now supplies `agh:<run-id>` through Offload's
+`--caller-run-id` for per-turn correlation with private execution evidence.
+Caller-category attribution is tracked in
 [Offload #31](https://github.com/zhoushoujianwork/offload/issues/31); caller-based
 statistics and monitor views follow in
 [Offload #32](https://github.com/zhoushoujianwork/offload/issues/32) after their

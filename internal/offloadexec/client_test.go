@@ -88,7 +88,7 @@ func TestRunPromptOnlyAndNoOptionalFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	argv := readFile(t, dir+"/argv")
-	for _, f := range []string{"-m", "-w", "-r"} {
+	for _, f := range []string{"-m", "-w", "-r", "--caller-run-id"} {
 		if strings.Contains("\n"+argv, "\n"+f+"\n") {
 			t.Fatalf("unexpected %s in %q", f, argv)
 		}
@@ -483,4 +483,64 @@ wait $child
 		t.Fatalf("Run took %s, want the wrapper's ~6s cleanup, bounded under 10s", elapsed)
 	}
 	waitDead(t, pidFrom(t, dir+"/child.pid"))
+}
+
+func TestCallerRunCorrelation(t *testing.T) {
+	for _, resumed := range []bool{false, true} {
+		t.Run(strconv.FormatBool(resumed), func(t *testing.T) {
+			cmd, dir := fake(t, `printf '%s\n' '{"status":"ok","exit_code":0,"profile":"canon","session":"s1","result":"done","run_id":"offload-123","caller_run_id":"agh:turn-1"}'`)
+			req := Request{CallerRunID: "agh:turn-1", Prompt: "PRIVATE", Workspace: t.TempDir()}
+			if resumed {
+				req.Session = "s1"
+				req.ResumeProfile = "canon"
+			}
+			res, err := newClient(t, cmd, nil).Run(t.Context(), req)
+			if err != nil || res.RunID != "offload-123" || res.CallerRunID != req.CallerRunID {
+				t.Fatalf("identity: %+v %v", res, err)
+			}
+			if !strings.Contains(readFile(t, dir+"/argv"), "--caller-run-id\nagh:turn-1\n") || readFile(t, dir+"/stdin") != "PRIVATE" {
+				t.Fatal("correlation missing or prompt changed")
+			}
+		})
+	}
+}
+
+func TestCallerRunCorrelationRejectsInvalidMetadata(t *testing.T) {
+	for _, id := range []string{"bad id", "-flag", "a\nsecret", strings.Repeat("x", 129), "中文"} {
+		t.Run(id, func(t *testing.T) {
+			cmd, dir := fake(t, okBody("s1", "canon"))
+			res, err := newClient(t, cmd, nil).Run(t.Context(), Request{CallerRunID: id, Prompt: "p", Workspace: t.TempDir()})
+			if err == nil || res.ErrorKind != KindInvalidRequest {
+				t.Fatalf("accepted invalid metadata: %+v %v", res, err)
+			}
+			if _, err = os.Stat(dir + "/argv"); !os.IsNotExist(err) {
+				t.Fatal("invalid metadata launched process")
+			}
+		})
+	}
+}
+
+func TestCallerRunCorrelationResultValidation(t *testing.T) {
+	for name, extra := range map[string]string{
+		"legacy": "", "wrong-caller": `,"caller_run_id":"agh:other"`, "invalid-run": `,"run_id":"bad id"`,
+		"wrong-type": `,"caller_run_id":123`, "empty-run": `,"run_id":""`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := `{"status":"ok","exit_code":0,"profile":"canon","session":"s1","result":"done"` + extra + `}`
+			cmd, dir := fake(t, "printf '%s\\n' '"+raw+"'")
+			res, err := newClient(t, cmd, nil).Run(t.Context(), Request{CallerRunID: "agh:turn-1", Prompt: "p", Workspace: t.TempDir()})
+			if name == "legacy" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || res.ErrorKind != KindInvalidOutput || res.Text != "" || res.Session != "" {
+				t.Fatalf("untrusted identity accepted: %+v %v", res, err)
+			}
+			if strings.Count(readFile(t, dir+"/argv"), "--caller-run-id") != 1 {
+				t.Fatal("unexpected replay")
+			}
+		})
+	}
 }
