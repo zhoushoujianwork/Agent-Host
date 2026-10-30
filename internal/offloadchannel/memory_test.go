@@ -77,7 +77,7 @@ func TestMemoryPluginCrossSessionRecallRetainsSourceAndInvalidation(t *testing.T
 		t.Fatalf("missing sourced recall: %+v", second.Context)
 	}
 	stdin := f.read("stdin.2")
-	if !strings.Contains(stdin, "ACORN-482") || !strings.Contains(stdin, first.ID) || !strings.Contains(stdin, "source data") || strings.Contains(f.read("argv.2"), "-r") {
+	if !strings.Contains(stdin, "ACORN-482") || !strings.Contains(stdin, first.ID) || !strings.Contains(stdin, "source data") || strings.Contains("\n"+f.read("argv.2"), "\n-r\n") {
 		t.Fatalf("recall did not reach fresh prompt: %s", stdin)
 	}
 	if err := f.store.InvalidateMemory(t.Context(), items[0].ID, "user withdrew the code"); err != nil {

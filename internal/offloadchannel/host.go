@@ -339,17 +339,23 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 		return h.finish(ctx, j, nil, err)
 	}
 	started := time.Now()
-	req := offloadexec.Request{Prompt: memoryContext + prompt(input, m), Instructions: h.instructions(m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
+	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: memoryContext + prompt(input, m), Instructions: h.instructions(m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
 	if resume {
 		req.Session, req.ResumeProfile = cur.NativeSessionID, profile
 	}
 	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through exec",
-		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.Write, "profile": profile}}, false); err != nil {
+		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.Write, "profile": profile, "caller_run_id": req.CallerRunID}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
 	result, runErr := h.Client.Run(ctx, req)
 	if len(result.Raw) > 0 || len(result.Usage) > 0 {
-		data := map[string]any{"status": result.Status, "exit_code": result.ExitCode, "error_kind": result.ErrorKind}
+		data := map[string]any{"status": result.Status, "exit_code": result.ExitCode, "error_kind": result.ErrorKind, "caller_run_id": req.CallerRunID}
+		if result.RunID != "" {
+			data["offload_run_id"] = result.RunID
+		}
+		if result.CallerRunID != "" {
+			data["reported_caller_run_id"] = result.CallerRunID
+		}
 		if len(result.Raw) > 0 {
 			data["raw"] = result.Raw
 		}

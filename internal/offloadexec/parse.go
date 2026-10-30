@@ -12,14 +12,16 @@ const maxJSONDepth = 64
 // record holds the fields the client relies on. Unknown fields are ignored so
 // Offload can add fields without breaking the client.
 type record struct {
-	Status   *string         `json:"status"`
-	ExitCode *int            `json:"exit_code"`
-	Profile  *string         `json:"profile"`
-	Session  *string         `json:"session"`
-	Model    string          `json:"model"`
-	Backend  string          `json:"backend"`
-	Result   string          `json:"result"`
-	Usage    json.RawMessage `json:"usage"`
+	RunID       *string         `json:"run_id"`
+	CallerRunID *string         `json:"caller_run_id"`
+	Status      *string         `json:"status"`
+	ExitCode    *int            `json:"exit_code"`
+	Profile     *string         `json:"profile"`
+	Session     *string         `json:"session"`
+	Model       string          `json:"model"`
+	Backend     string          `json:"backend"`
+	Result      string          `json:"result"`
+	Usage       json.RawMessage `json:"usage"`
 }
 
 // parseRecord validates that data is exactly one JSON object without duplicate
