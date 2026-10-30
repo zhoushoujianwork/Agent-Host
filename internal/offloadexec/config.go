@@ -15,9 +15,10 @@ const (
 	maxNameLen    = 256
 	maxPathLen    = 4096
 	maxTimeout    = 24 * time.Hour
-	// MaxInputBytes bounds the stdin payload: Instructions, the two-byte
-	// separator that follows them when present, and Prompt.
+	// MaxInputBytes bounds the combined task and internal context budget.
 	MaxInputBytes = 1 << 20
+	// MaxInstructionsBytes matches Offload's private instruction-file contract.
+	MaxInstructionsBytes = 256 << 10
 	// MaxOutputBytes bounds stdout and stderr each.
 	MaxOutputBytes = 4 << 20
 )

@@ -6,7 +6,9 @@ request receipts and durable outcomes. The Mac app presents the same workspace.
 
 Select a private Offload profile in the workspace's `config/web-chat.json`, or
 use `chat -m --offload-config PATH` directly. Optional memory uses that same
-profile. Answers appear before memory closeout, whose failure remains separate.
+profile. Answers appear before memory closeout, whose failure remains separate. User
+messages display only their original text; internal context uses a separate
+instruction channel, and empty memory adds no snapshot.
 
 Web room/request IDs are now supported. Accepted retries return recorded results
 without repeating work. Each room runs one request at a time; different rooms
