@@ -245,3 +245,8 @@ Stats 使用 `--host-binary` 指定的 Host `stats --format json`，统计所有
 每 5 秒刷新，同一查询缓存 8 秒；Host 失败会清空旧结果并显示错误。
 API 接受 `since=24h|7d|30d|YYYY-MM-DD`、`until=YYYY-MM-DD`、安全标识符
 `agent` / `channel`、`task-kind=[a-z0-9-]{1,32}` 和 `compare=0|1`；日期按 UTC 解释。
+
+Chat hides the terminal `<agh-closeout>` bookkeeping block from streamed and
+restored answers and reply copying, including incomplete opening delimiters.
+Raw execution evidence and separate execution, memory and acceptance outcomes
+remain unchanged. Fenced and inline code examples remain visible.
