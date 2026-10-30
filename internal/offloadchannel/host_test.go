@@ -173,7 +173,7 @@ func TestTwoTurnContinuationUsesActualSessionAndCanonicalProfile(t *testing.T) {
 		t.Fatalf("binding events: %d", binding)
 	}
 	for _, e := range f.events {
-		if e.Type == "offload.result" || e.Delta != "" {
+		if e.Type == "offload.result" || e.Delta != "" || e.Data["output"] != nil {
 			t.Fatalf("private raw evidence or streaming reached the sink: %+v", e)
 		}
 	}

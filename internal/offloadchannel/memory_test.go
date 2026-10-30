@@ -300,3 +300,58 @@ func TestMemoryPluginGroupPreferencesKeepTheirAuthorAndAgent(t *testing.T) {
 		}
 	}
 }
+
+func TestMemoryPluginDirectOwnerChatRetainsLocalSourceAndRecall(t *testing.T) {
+	f := newFixture(t)
+	f.host.Memory = &MemoryPlugin{Decider: decisionFunc(statementDecider)}
+	s, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.host.Run(t.Context(), s, "The release code is ACORN-482.")
+	if err != nil || first.MemoryStatus != "saved" || first.Source != nil {
+		t.Fatalf("local publication: %+v %v", first, err)
+	}
+	items := memoryItems(t, f)
+	if len(items) != 1 || items[0].SourceRunID != first.ID || items[0].SenderID != "" {
+		t.Fatal("local source attribution changed")
+	}
+	fresh, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.host.Run(t.Context(), fresh, "What is the release code?")
+	if err != nil || len(second.Context) != 1 || second.Context[0].SourceRunID != first.ID || !strings.Contains(f.read("stdin.2"), "ACORN-482") {
+		t.Fatalf("local recall: %+v %v", second, err)
+	}
+}
+
+func TestDirectOwnerChatCannotAdoptChannelSession(t *testing.T) {
+	f := newFixture(t)
+	first, err := f.turn(t.Context(), "channel", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := f.host.Session(t.Context(), first.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), s, "take over"); err == nil || f.calls() != 1 {
+		t.Fatal("channel session adopted or replayed")
+	}
+}
+
+func TestChannelCannotAdoptDirectOwnerChatSession(t *testing.T) {
+	f := newFixture(t)
+	s, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), s, "local input"); err != nil {
+		t.Fatal(err)
+	}
+	m := f.enqueue("channel", "channel input", nil, nil)
+	if _, err = f.host.RunChannel(t.Context(), s, m.Text, m.ID); err == nil || f.calls() != 1 {
+		t.Fatal("local session adopted by channel")
+	}
+}

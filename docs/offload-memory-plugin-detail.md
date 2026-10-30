@@ -42,8 +42,10 @@ are limited to their recorded author. Partition and scope filters precede search
 
 Processing reuses `memory.Decider` and `Store.FinalizeMemory`; it does not add a
 model/tool loop or a public plugin loader. Only exact authenticated user input
-can become a user statement. Quotes, supplements and missing sender attribution
-are excluded. Assistant output is not classified or used as evidence. Existing
+can become a user statement. Quotes, supplements and missing channel-sender attribution
+are excluded. [One-shot local Chat](offload-chat.md) uses the existing CLI
+owner convention: exact input with a source run, without a fabricated channel
+sender. It is restricted to the owner partition and cannot adopt channel sessions. Assistant output is not classified or used as evidence. Existing
 duplicate evidence, conflict quarantine and invalidation rules remain in force.
 Comparison is bounded by the classifier's existing 100-record budget; overflow
 excludes publication with a failure receipt rather than silently dropping checks.

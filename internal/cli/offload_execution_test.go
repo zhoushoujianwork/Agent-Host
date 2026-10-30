@@ -43,8 +43,8 @@ func TestOffloadExecutionSelectorLoadsProfile(t *testing.T) {
 
 func TestOffloadExecutionRejectsUnwiredEntriesAndLegacyOverrides(t *testing.T) {
 	path := offloadProfileFixture(t)
-	if _, _, err := parse("chat", []string{"--offload-config", path}, io.Discard); err == nil {
-		t.Fatal("chat silently accepted an unwired execution engine")
+	if _, _, err := parse("run retry-experience", []string{"--offload-config", path}, io.Discard); err == nil {
+		t.Fatal("experience retry silently accepted an unwired execution engine")
 	}
 	for _, flag := range []string{"--model", "--claude", "--native-profile", "--jev-provider", "--jev-model", "--jev-endpoint"} {
 		if _, _, err := parse("dingtalk check", []string{"--offload-config", path, flag, "ignored"}, io.Discard); err == nil {
