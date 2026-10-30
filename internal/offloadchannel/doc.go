@@ -1,10 +1,10 @@
-// Package offloadchannel runs channel conversations directly on the Offload
-// CLI. Host implements channel.Host without the native Host, harness.Runner,
-// Jev decision client or learned-memory closeout.
+// Package offloadchannel shares direct Offload execution between authenticated
+// channel conversations and local-owner one-shot Chat. Host implements
+// channel.Host; optional AGH memory reuses existing retrieval and publication.
 //
-// Offload owns its model and tool loop. This package records the Host-side
-// evidence: the channel-linked run, the actual Offload session and canonical
-// profile, and the execution outcome. A successful run is execution evidence
-// only; it is not business acceptance. A failed or canceled run is never
-// retried, replayed or sent to another engine.
+// Offload owns its model and tool loop. This package records Host-side evidence:
+// source provenance, actual native session and canonical profile, and separate
+// execution and memory outcomes. A successful run is execution evidence only,
+// not business acceptance. Native work is never retried, replayed or sent to
+// another engine implicitly.
 package offloadchannel

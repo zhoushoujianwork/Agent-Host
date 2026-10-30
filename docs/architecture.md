@@ -37,7 +37,8 @@ backend selected by an Offload profile.
 
 An opt-in lightweight path delegates execution to **Offload**, with optional
 channel and memory components. It supports DingTalk and Feishu text
-conversations, using Offload profiles and native sessions. Memory is disabled
+conversations and [one-shot local Chat](offload-chat.md), using Offload profiles
+and native sessions. Web room integration remains pending. Memory is disabled
 by default; the [optional memory plugin](offload-memory-plugin.md) adds local
 retrieval and explicit Jev-based user-statement processing without a legacy
 Claude extractor or another native agent loop.

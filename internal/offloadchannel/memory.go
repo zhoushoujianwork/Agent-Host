@@ -106,7 +106,8 @@ func (p *MemoryPlugin) process(ctx context.Context, st *state.Store, run state.R
 		return errors.New("run has no pending memory processing")
 	}
 	// A quote can change who asserted a statement. Do not strip or promote it.
-	if run.Source == nil || run.Source.SenderID == "" || run.Source.Input != nil && run.Source.Input.Quote != nil || len(run.Supplements) != 0 {
+	localOwner := run.Source == nil && run.Room == nil && run.AudienceID == state.OwnerAudienceID
+	if !localOwner && (run.Source == nil || run.Source.SenderID == "" || run.Source.Input != nil && run.Source.Input.Quote != nil) || len(run.Supplements) != 0 {
 		return st.FinalizeMemory(ctx, run.ID, nil, json.RawMessage(`{"policy":"offload-user-statements-v1","reason":"ambiguous_or_quoted_source"}`))
 	}
 	generation, err := st.MemoryFingerprint(ctx, []string{run.Scope})
@@ -136,7 +137,11 @@ func (p *MemoryPlugin) process(ctx context.Context, st *state.Store, run state.R
 	if len(comparison) > memory.MaxExisting {
 		return errors.New("memory comparison budget exceeded; publication excluded")
 	}
-	d, err := p.Decider.Decide(memory.WithActor(ctx, run.Source.SenderID), run.Input, comparison)
+	actor := ""
+	if run.Source != nil {
+		actor = run.Source.SenderID
+	}
+	d, err := p.Decider.Decide(memory.WithActor(ctx, actor), run.Input, comparison)
 	if err != nil {
 		return err
 	}
