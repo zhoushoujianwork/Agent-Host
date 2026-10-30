@@ -57,6 +57,45 @@
     const current = Array.from(parent.children);
     if (current.length !== children.length || current.some((child,index) => child !== children[index])) parent.replaceChildren(...children);
   }
+  // Presentation only: keep original snapshots and execution evidence intact.
+  function replyRows(rows, active) {
+    const lastTool = rows.findLastIndex(row => row.kind === "tool");
+    const text = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("");
+    const marker = "<agh-closeout>";
+    let cut = text.length, fence = null, inline = null;
+    const tokens = /(`{3,}|~{3,})|(`+)|<agh-closeout>/g;
+    for (const match of text.matchAll(tokens)) {
+      const token = match[0], start = match.index;
+      if (match[1] && /^[ \t]*$/.test(text.slice(text.lastIndexOf("\n",start - 1) + 1,start))) {
+        if (!fence) fence = token;
+        else if (token[0] === fence[0] && token.length >= fence.length) fence = null;
+      } else if (!fence && (match[2] || token.startsWith("`"))) {
+        if (!inline) inline = token;
+        else if (inline === token) inline = null;
+      } else if (!fence && !inline && token === marker) {
+        const suffix = text.slice(start + marker.length).trimStart();
+        const end = suffix.indexOf("</agh-closeout>");
+        if (end >= 0 && suffix.slice(end + "</agh-closeout>".length).trim()) continue;
+        if ((!suffix && active) || suffix.startsWith("{")) { cut = start; break; }
+      }
+    }
+    if (active && cut === text.length && !fence && !inline) {
+      // Hold an incomplete opening delimiter until the next stream snapshot.
+      for (let length = 1; length < marker.length; length++) {
+        if (text.endsWith(marker.slice(0,length))) {
+          cut = text.length - length;
+        }
+      }
+    }
+    if (cut < text.length) cut = text.slice(0,cut).trimEnd().length;
+    let offset = 0;
+    return rows.map((row,index) => {
+      if (row.kind !== "text" || index <= lastTool) return row;
+      const content = (row.content || "").slice(0,Math.max(0,cut - offset));
+      offset += (row.content || "").length;
+      return {...row,content};
+    });
+  }
   function render() {
     const context = state.context_id || state.room_id || state.selected_agent;
     if (selectedContext !== context) {
@@ -106,8 +145,8 @@
         work.open = ["starting","running","stopping"].includes(turn.status);
         item = {root,work,summary,activity,output,status,memoryStatus,error,record,answerActions,copyAnswer,stop,blocks:new Map()}; rendered.set(turn.id,item);
       }
-      const rows = turn.output?.length ? turn.output : (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []);
       const active = ["starting","running","stopping"].includes(turn.status);
+      const rows = replyRows(turn.output?.length ? turn.output : (turn.text ? [{id:"answer",kind:"text",content:turn.text}] : []),active);
       const executionStatus = turn.execution_status || turn.status;
       const calls = rows.filter(row => row.kind === "tool" && row.stage === "call");
       const lastTool = rows.findLastIndex(row => row.kind === "tool");
@@ -157,7 +196,7 @@
       reconcile(item.activity,workNodes);
       reconcile(item.output,answerNodes);
       item.output.hidden = !rows.some((row,index) => row.kind === "text" && index > lastTool);
-      item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).map(row => row.content || "").join("\n\n");
+      item.reply = rows.filter((row,index) => row.kind === "text" && index > lastTool).filter(row => row.content).map(row => row.content).join("\n\n");
       item.answerActions.hidden = !item.reply;
       item.copyAnswer.disabled = active;
       item.stop.hidden = !active || Boolean(turn.read_only && !turn.can_stop);
