@@ -119,3 +119,19 @@ before native execution. Preserve the legacy path in regression tests.
 Run repository checks and create local commits before the feature-branch PR.
 Real account messages, production switching and desktop changes are separate
 operator actions, not part of these headless checks.
+
+## Per-run correlation
+
+Every channel invocation passes `--caller-run-id agh:<AGH run UUID>` to Offload.
+A resumed native conversation keeps its native session but gets a new caller
+correlation for each turn. Dispatch evidence records the requested correlation;
+private result evidence also records Offload's `run_id` and echoed
+`caller_run_id` when returned. These identifiers contain no user text or account
+identities and grant no authority.
+
+The client validates bounded safe identifiers and rejects a supplied caller echo
+that differs from the request. It does not replay the task. Older result records
+without these additive fields remain readable. Use an Offload build supporting
+`--caller-run-id`; unsupported arguments fail explicitly without fallback.
+This supplies per-run correlation only; caller-category grouping and aggregate
+monitor views remain owned by Offload #31/#32.

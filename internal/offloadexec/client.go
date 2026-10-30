@@ -54,6 +54,9 @@ const (
 
 // Request describes one Offload run.
 type Request struct {
+	// CallerRunID optionally correlates this invocation with its owning task.
+	// It is metadata, never a native session or a permission grant.
+	CallerRunID string
 	// Prompt is the task text. It is sent on stdin, never argv.
 	Prompt string
 	// Instructions is optional text sent before Prompt on stdin.
@@ -73,16 +76,18 @@ type Request struct {
 // no exit status. Raw is the validated stdout record. It echoes the task text
 // and must be treated as sensitive evidence.
 type Result struct {
-	Status    string
-	Text      string
-	Session   string
-	Profile   string
-	Model     string
-	Backend   string
-	ErrorKind string
-	ExitCode  int
-	Usage     json.RawMessage
-	Raw       json.RawMessage
+	RunID       string
+	CallerRunID string
+	Status      string
+	Text        string
+	Session     string
+	Profile     string
+	Model       string
+	Backend     string
+	ErrorKind   string
+	ExitCode    int
+	Usage       json.RawMessage
+	Raw         json.RawMessage
 }
 
 // RunError describes a failed run. Its message never contains stderr, stdout
@@ -119,6 +124,9 @@ func fail(kind, status string, code int, cause error, format string, args ...any
 }
 
 func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err error) {
+	if req.CallerRunID != "" && !correlationIDPattern.MatchString(req.CallerRunID) {
+		return nil, "", errors.New("offloadexec: invalid CallerRunID")
+	}
 	if err := checkText("Prompt", req.Prompt, MaxInputBytes, true); err != nil {
 		return nil, "", err
 	}
@@ -167,6 +175,9 @@ func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err
 
 func (c *Client) args(req Request, profile string) []string {
 	a := []string{"-json", "-no-salvage", "-p", profile, "-d", filepath.Clean(req.Workspace), "-t", c.cfg.Timeout.String()}
+	if req.CallerRunID != "" {
+		a = append(a, "--caller-run-id", req.CallerRunID)
+	}
 	if c.cfg.Model != "" {
 		a = append(a, "-m", c.cfg.Model)
 	}
@@ -350,6 +361,14 @@ func (c *Client) interpret(req Request, profile string, out []byte, exitCode int
 		return invalid("offload reported unknown status")
 	}
 
+	for _, id := range []*string{rec.RunID, rec.CallerRunID} {
+		if id != nil && !correlationIDPattern.MatchString(*id) {
+			return invalid("offload result has invalid correlation identity")
+		}
+	}
+	if req.CallerRunID != "" && rec.CallerRunID != nil && *rec.CallerRunID != req.CallerRunID {
+		return invalid("offload result caller_run_id differs from request")
+	}
 	res := Result{
 		Status:   status,
 		Text:     rec.Result,
@@ -360,6 +379,12 @@ func (c *Client) interpret(req Request, profile string, out []byte, exitCode int
 		ExitCode: exitCode,
 		Usage:    rec.Usage,
 		Raw:      raw,
+	}
+	if rec.RunID != nil {
+		res.RunID = *rec.RunID
+	}
+	if rec.CallerRunID != nil {
+		res.CallerRunID = *rec.CallerRunID
 	}
 	if status != StatusOK {
 		res.ErrorKind = KindOffloadError

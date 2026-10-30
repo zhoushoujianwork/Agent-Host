@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -20,6 +21,8 @@ const (
 	// MaxOutputBytes bounds stdout and stderr each.
 	MaxOutputBytes = 4 << 20
 )
+
+var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 // Config selects the Offload executable and the default profile.
 type Config struct {
