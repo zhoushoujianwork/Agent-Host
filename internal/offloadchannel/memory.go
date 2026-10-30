@@ -106,7 +106,7 @@ func (p *MemoryPlugin) process(ctx context.Context, st *state.Store, run state.R
 		return errors.New("run has no pending memory processing")
 	}
 	// A quote can change who asserted a statement. Do not strip or promote it.
-	localOwner := run.Source == nil && run.Room == nil && run.AudienceID == state.OwnerAudienceID
+	localOwner := run.Source == nil && (run.Room == nil || run.Room.SenderID == "local-owner" && (run.Room.NativeContinuation == state.OffloadRoomFresh || run.Room.NativeContinuation == state.OffloadRoomResume)) && run.AudienceID == state.OwnerAudienceID
 	if !localOwner && (run.Source == nil || run.Source.SenderID == "" || run.Source.Input != nil && run.Source.Input.Quote != nil) || len(run.Supplements) != 0 {
 		return st.FinalizeMemory(ctx, run.ID, nil, json.RawMessage(`{"policy":"offload-user-statements-v1","reason":"ambiguous_or_quoted_source"}`))
 	}

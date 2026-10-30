@@ -42,6 +42,23 @@ class HandoffTests(unittest.TestCase):
         self.config.write_text(json.dumps(self.value))
         self.config.chmod(0o600)
 
+    def test_offload_destination_separates_native_and_classifier_credentials(self):
+        profile=self.root/"offload.json"
+        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"local"}));profile.chmod(0o600)
+        self.value["args"]=["--home",str(self.root/"cli-state"),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]
+        self.value.pop("environment_file")
+        self.save()
+        with patch.dict(os.environ,{"ANTHROPIC_API_KEY":"inherited-native","JEV_API_KEY":"inherited-classifier"}):
+            command,_,env=CHAT.configured_command(self.config)
+        self.assertIn("--offload-config",command)
+        self.assertNotIn("ANTHROPIC_API_KEY",env)
+        self.assertNotIn("JEV_API_KEY",env)
+        self.credentials.write_text(json.dumps({"JEV_API_KEY":"selected-classifier"}))
+        self.value["environment_file"]=str(self.credentials);self.save()
+        self.assertEqual(CHAT.configured_command(self.config)[2]["JEV_API_KEY"],"selected-classifier")
+        self.credentials.write_text(json.dumps({"ANTHROPIC_API_KEY":"not-allowed"}))
+        with self.assertRaises(ValueError):CHAT.configured_command(self.config)
+
     def test_exact_message_and_resume_preserve_failure_without_replay(self):
         message = "Read $HOME; $(touch never); `literal`\nNo writes."
         with patch.object(CHAT.subprocess, "run", return_value=subprocess.CompletedProcess([], 7)) as run:

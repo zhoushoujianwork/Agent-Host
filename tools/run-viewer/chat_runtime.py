@@ -74,6 +74,18 @@ def agent_destination(path):
         if args.count(flag) != 1 or args.index(flag) + 1 >= len(args):
             raise ValueError("Chat 连接缺少明确的智能体配置。")
         return args[args.index(flag) + 1]
+    if "--offload-config" in args:
+        allowed={"--home","--workspace","--agent","--offload-config","--memory-scope","--timeout"}
+        if len(args)%2 or any(args[i] not in allowed for i in range(0,len(args),2)) or len(set(args[::2]))!=len(args)//2:
+            raise ValueError("Offload Chat 连接包含不支持或重复的参数。")
+        selected=option("--agent")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}",selected):
+            raise ValueError("Offload Agent 标识无效。")
+        profile_path=Path(option("--offload-config"))
+        raw=private_bytes(profile_path)
+        return {"agents":[{"id":selected,"name":selected}],"selected_agent":selected,"agents_path":None,
+                "catalog_digest":hashlib.sha256(raw).hexdigest(),"state_home":option("--home"),
+                "execution":{"workspace":option("--workspace"),"offload_config":str(profile_path)}}
     catalog_path = Path(option("--agents-config"))
     if not catalog_path.is_absolute():
         raise ValueError("Chat 智能体目录必须使用绝对路径。")
@@ -123,17 +135,21 @@ def configured_launch(path, agent_id=None):
         raise ValueError("Chat 配置已变化，请检查后重新发送。")
     if agent_destination(path) != destination:
         raise ValueError("智能体目录已变化，请重新选择后发送。")
-    managed = json.loads(private_bytes(Path(value["environment_file"])))
-    if not managed.keys() <= PROVIDER_KEYS or not all(isinstance(v, str) and v and
+    offload = "--offload-config" in value["args"]
+    managed = json.loads(private_bytes(Path(value["environment_file"]))) if value.get("environment_file") else {}
+    allowed = {"TYPESAFE_API_KEY", "JEV_API_KEY"} if offload else PROVIDER_KEYS
+    if not managed.keys() <= allowed or not all(isinstance(v, str) and v and
             v.strip() == v and not any(c in v for c in "\x00\r\n") for v in managed.values()):
         raise ValueError("Chat 模型环境配置无效。")
     env = {k: v for k, v in os.environ.items() if k not in PROVIDER_KEYS and
            not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and k not in ("CLAUDE_CONFIG_DIR", "CLAUDECODE")}
     env.update(managed)
-    command, cwd = [*result["command"], "--renew-runtime", "--feedback-other-users-only=true"], result["cwd"]
+    command, cwd = result["command"], result["cwd"]
+    if not offload:
+        command = [*command,"--renew-runtime","--feedback-other-users-only=true"]
     if agent_id is not None:
         command[command.index("--agent") + 1] = agent_id
-    identity = hashlib.sha256(json.dumps([command, cwd, managed], sort_keys=True).encode()).hexdigest()
+    identity = hashlib.sha256(json.dumps([command, cwd, managed, destination], sort_keys=True).encode()).hexdigest()
     return command, cwd, env, identity
 
 
@@ -254,6 +270,14 @@ class ChatRuntime:
         self.config = Path(config) if config else None
         self.launcher = launcher
         self.lock = threading.RLock()
+        self.max_concurrent = 4
+        if self.config:
+            try:
+                configured_args = json.loads(private_bytes(self.config)).get("args", [])
+                if isinstance(configured_args,list) and "--offload-config" in configured_args:
+                    self.max_concurrent = 1
+            except (OSError,ValueError,TypeError,AttributeError):
+                pass  # Launch validation remains authoritative; no execution here.
         self.turns = []
         self.children = {}
         self.workers = {}
@@ -319,7 +343,7 @@ class ChatRuntime:
                 "notice": "" if self.config else "尚未配置 Chat 执行环境，请配置此 Host 的 CLI 连接。",
                 "room_id": self.room_id, "active_id": self.active,
                 "active_ids": [t["id"] for t in self.turns if t["status"] in ("starting", "running", "stopping")],
-                "max_concurrent": 4, "needs_new": False, "turns": self.turns}))
+                "max_concurrent": self.max_concurrent, "needs_new": False, "turns": self.turns}))
             for turn in snapshot["turns"]:
                 started = turn.pop("started_at", None)
                 if turn["status"] in ("starting", "running", "stopping") and started:
@@ -376,8 +400,8 @@ class ChatRuntime:
                 return previous["id"]
             if self.closed or not self.config:
                 raise ChatConflict("Chat 执行环境尚不可用。")
-            if sum(t["status"] in ("starting", "running", "stopping") for t in self.turns) >= 4:
-                raise ChatConflict("此房间已有 4 条消息正在执行，请稍后发送。")
+            if sum(t["status"] in ("starting", "running", "stopping") for t in self.turns) >= self.max_concurrent:
+                raise ChatConflict(f"此房间已有 {self.max_concurrent} 条消息正在执行，请稍后发送。")
             if len(self.turns) >= 20:
                 raise ChatConflict("此对话已达 20 轮，请开启新对话。")
             turn = {"id": uuid.uuid4().hex, "request_id": request_id, "input": message,
@@ -537,6 +561,8 @@ class ChatRuntime:
                 return event.get("status") if kind == "run.finished" else None
             if event.get("component") == "harness.acp" and event.get("model") and (kind in {"text.delta", "agent.result"} or (event.get("data") or {}).get("native_type") == "native_configuration"):
                 turn["model"] = str(event["model"])
+            if event.get("component")=="host.offload" and kind=="execution.ready" and event.get("model"):
+                turn["model"]=str(event["model"])
             if kind == "text.delta":
                 self._text(turn, event.get("delta", ""))
             if kind == "execution.ready":

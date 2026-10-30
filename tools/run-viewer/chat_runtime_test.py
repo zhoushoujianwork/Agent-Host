@@ -181,6 +181,24 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotEqual(identity_a,identity_b)
         with self.assertRaises(ValueError):configured_launch(config,"unconfigured")
 
+    def test_offload_launcher_uses_profile_without_legacy_agent_or_provider(self):
+        profile=self.root/"offload.json"
+        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"fixture"}));profile.chmod(0o600)
+        config=self.root/"offload-web.json"
+        value={"binary":sys.executable,"cwd":str(self.root),"args":["--home",str(self.root),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]}
+        config.write_text(json.dumps(value));config.chmod(0o600)
+        command,_,env,identity=configured_launch(config,"daily")
+        self.assertNotIn("--renew-runtime",command)
+        self.assertNotIn("--feedback-other-users-only=true",command)
+        self.assertNotIn("ANTHROPIC_API_KEY",env)
+        self.assertNotIn("JEV_API_KEY",env)
+        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"changed"}))
+        self.assertNotEqual(configured_launch(config,"daily")[3],identity)
+        with self.assertRaises(ValueError):configured_launch(config,"other")
+        value["args"] += ["--no-tools","true"]
+        config.write_text(json.dumps(value))
+        with self.assertRaises(ValueError):configured_launch(config)
+
     def test_native_final_duration_survives_phase_filter(self):
         turn = {"id":"native", "text":"", "output":[]}
         self.runtime._event(turn, {"type":"run.finished", "phase":"memory", "status":"completed", "elapsed_ms":87234})

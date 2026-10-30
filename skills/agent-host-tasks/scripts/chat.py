@@ -43,6 +43,33 @@ def private_json(path):
     return value
 
 
+
+def offload_destination(config):
+    """Validate the narrow Offload destination without a legacy Agent catalog."""
+    args = config["args"]
+    allowed = {"--home", "--workspace", "--agent", "--offload-config", "--memory-scope", "--timeout"}
+    if len(args) % 2 or any(args[i] not in allowed for i in range(0, len(args), 2)):
+        raise ValueError("unsupported Offload destination arguments")
+    selected = dict(zip(args[::2], args[1::2]))
+    if len(selected) != len(args) // 2 or not {"--home", "--workspace", "--agent", "--offload-config"} <= selected.keys():
+        raise ValueError("Offload destination requires explicit unique home, workspace, Agent and profile")
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", selected["--agent"]):
+        raise ValueError("invalid Offload Agent identity")
+    for key in ("--home", "--workspace", "--offload-config"):
+        if not Path(selected[key]).is_absolute():
+            raise ValueError("Offload destination paths must be absolute")
+    if not Path(selected["--workspace"]).is_dir():
+        raise ValueError("Offload workspace unavailable")
+    profile = private_json(selected["--offload-config"])
+    if profile.get("version") != 1 or not isinstance(profile.get("profile"), str) or not profile["profile"]:
+        raise ValueError("invalid Offload profile")
+    native = profile.get("command")
+    if not isinstance(native,str) or not Path(native).is_absolute() or not os.access(native,os.X_OK):
+        raise ValueError("Offload executable unavailable")
+    return selected
+
+
 def configured_command(path):
     config = private_json(path)
     binary, cwd, args = config["binary"], config["cwd"], config["args"]
@@ -52,6 +79,14 @@ def configured_command(path):
         raise ValueError("configured workspace is unavailable")
     if not isinstance(args, list) or not all(isinstance(a, str) and a and "\x00" not in a for a in args):
         raise ValueError("args must contain nonempty strings")
+    if "--offload-config" in args:
+        offload_destination(config)
+        managed = private_json(config["environment_file"]) if config.get("environment_file") else {}
+        if not managed.keys() <= {"TYPESAFE_API_KEY", "JEV_API_KEY"} or not all(isinstance(v,str) and v and v.strip()==v and not any(c in v for c in "\x00\r\n") for v in managed.values()):
+            raise ValueError("Offload classifier environment must contain only explicit Jev keys")
+        env = {k:v for k,v in os.environ.items() if k not in PROVIDER_KEYS and not k.startswith(("ANTHROPIC_","CLAUDE_CODE_")) and k not in ("CLAUDE_CONFIG_DIR","CLAUDECODE")}
+        env.update(managed)
+        return [binary,"chat",*args],cwd,env
     required = ("--home", "--agents-config", "--agent", "--workspace", "--native-profile")
     for arg in args:
         normalized = "--" + arg.lstrip("-").split("=", 1)[0]
