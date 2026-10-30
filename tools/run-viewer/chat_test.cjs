@@ -231,3 +231,39 @@ test("polling does not scroll away selected text and busy launch remains sendabl
   h.snapshot.turns[0].error="此对话忙，独立对话可并发";
   await h.poll();assert.equal(h.el("chat-state").textContent,"此对话忙，独立对话可并发");
 });
+
+function visibleText(node) {
+  if (node.hidden) return "";
+  return node.textContent + node.children.map(visibleText).join("");
+}
+test("closeout suffix never flashes while streaming and is excluded from copied replies",async()=>{
+  const h=await setup(), answer="AGH_LOCAL_ACP_OK";
+  const protocol='<agh-closeout>{"run_id":"run","outcome":"resolved"}</agh-closeout>';
+  h.snapshot.turns=[{id:"closeout",input:"smoke",status:"running",output:[{id:"answer",kind:"text",content:answer}]}];
+  for(let end=1;end<=protocol.length;end++){
+    h.snapshot.turns[0].output[0].content=answer+"\n\n"+protocol.slice(0,end);
+    await h.poll();
+    const output=h.el("chat-messages").children[0].children[2];
+    assert.equal(visibleText(output).trim(),answer,`stream boundary ${end}`);
+  }
+  h.snapshot.turns[0].status="completed";await h.poll();
+  const turn=h.el("chat-messages").children[0];
+  await turn.children[8].children[0].onclick();assert.equal(h.copied.at(-1),answer);
+  assert.equal(h.snapshot.turns[0].output[0].content,answer+"\n\n"+protocol);
+});
+test("restored replies and delimiters split across text rows use the same presentation filter",async()=>{
+  const h=await setup();
+  h.snapshot.turns=[{id:"restored",status:"completed",text:'AGH_LOCAL_ACP_OK\n<agh-closeout>{"outcome":"resolved"}</agh-closeout>',read_only:true}];
+  await h.poll();let turn=h.el("chat-messages").children[0];
+  assert.equal(visibleText(turn.children[2]).trim(),"AGH_LOCAL_ACP_OK");
+  h.snapshot.turns[0].output=[{id:"a",kind:"text",content:"AGH_LOCAL_ACP_OK\n<agh-"},{id:"b",kind:"text",content:'closeout>{"outcome":"resolved"}</agh-closeout>'}];
+  await h.poll();turn=h.el("chat-messages").children[0];
+  assert.equal(visibleText(turn.children[2]).trim(),"AGH_LOCAL_ACP_OK");
+  await turn.children[8].children[0].onclick();assert.equal(h.copied.at(-1),"AGH_LOCAL_ACP_OK");
+});
+test("ordinary reply text and fenced or inline protocol examples remain copyable",async()=>{
+  for(const answer of ["Use <agh-closeout> as the tag name.","The <agh-closeout>{}</agh-closeout> example is ordinary prose.","Keep trailing whitespace.  ","Example: `<agh-closeout>{}</agh-closeout>`","Example: ``<agh-closeout>{}</agh-closeout>``",'```xml\n<agh-closeout>{}</agh-closeout>\n```',"~~~xml\n<agh-closeout>{}</agh-closeout>\n~~~","A < B and <img src=x>"]){
+    const h=await setup();h.snapshot.turns=[{id:"example",status:"completed",text:answer}];await h.poll();
+    await h.el("chat-messages").children[0].children[8].children[0].onclick();assert.equal(h.copied.at(-1),answer);
+  }
+});
