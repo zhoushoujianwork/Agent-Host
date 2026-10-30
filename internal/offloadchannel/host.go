@@ -74,6 +74,18 @@ func (h *Host) store() *state.Store {
 	return h.Store.WithPartition(h.Config.AgentID, h.Config.AudienceID)
 }
 
+func (h *Host) newSession() state.Session {
+	agent, audience := h.store().Partition()
+	c := h.Config
+	s := state.Session{AgentID: agent, AudienceID: audience, ID: uuid.NewString(), Scope: c.Scope, ProjectID: c.ProjectID, ProjectName: c.ProjectName,
+		Workspace: c.Workspace, RuntimeFingerprint: c.RuntimeFingerprint, Model: c.Model,
+		NativeSessionID: state.OffloadPendingPrefix + uuid.NewString(), CreatedAt: time.Now().UTC()}
+	if c.ProjectID != "" {
+		s.Projects = []state.ProjectRef{{ID: c.ProjectID, Name: c.ProjectName, Scope: c.Scope, Workspace: c.Workspace}}
+	}
+	return s
+}
+
 // Session creates a fresh session when id is empty, otherwise it validates the
 // stored session for continuation. A session created by another engine or
 // runtime is an explicit error; it is never reinterpreted.
@@ -83,14 +95,7 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 	}
 	st := h.store()
 	if id == "" {
-		agent, audience := st.Partition()
-		c := h.Config
-		s := state.Session{AgentID: agent, AudienceID: audience, ID: uuid.NewString(), Scope: c.Scope, ProjectID: c.ProjectID, ProjectName: c.ProjectName,
-			Workspace: c.Workspace, RuntimeFingerprint: c.RuntimeFingerprint, Model: c.Model,
-			NativeSessionID: state.OffloadPendingPrefix + uuid.NewString(), CreatedAt: time.Now().UTC()}
-		if c.ProjectID != "" {
-			s.Projects = []state.ProjectRef{{ID: c.ProjectID, Name: c.ProjectName, Scope: c.Scope, Workspace: c.Workspace}}
-		}
+		s := h.newSession()
 		return s, st.CreateSession(ctx, s)
 	}
 	s, err := st.Session(ctx, id)
@@ -117,8 +122,8 @@ func (h *Host) checkSession(s state.Session) error {
 	if s.RuntimeFingerprint != c.RuntimeFingerprint || s.Scope != c.Scope || s.WorkingDirectory() != c.Workspace || s.ProjectID != c.ProjectID || s.Model != c.Model {
 		return errors.New("session differs from the current Offload configuration; start a new session")
 	}
-	if s.Room != nil {
-		return errors.New("Offload does not support room fork sessions")
+	if s.Room != nil && (s.AudienceID != state.OwnerAudienceID || s.Room.SenderID != "local-owner" || s.Room.NativeContinuation != state.OffloadRoomFresh && s.Room.NativeContinuation != state.OffloadRoomResume) {
+		return errors.New("unsupported Offload room provenance")
 	}
 	if len(s.AdditionalDirectories) > 0 || len(s.Projects) > 1 {
 		return errors.New("Offload supports one working directory; additional directories and multi-project sessions are unsupported")
@@ -280,16 +285,16 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 	if messageID == "" {
 		return state.Run{}, errors.New("channel message ID is required")
 	}
-	return h.run(ctx, s, input, messageID)
+	return h.run(ctx, s, input, messageID, false)
 }
 
 // Run accepts direct local-owner input without fabricating channel provenance.
 // Room/fork continuations require their own explicit integration.
 func (h *Host) Run(ctx context.Context, s state.Session, input string) (state.Run, error) {
-	return h.run(ctx, s, input, "")
+	return h.run(ctx, s, input, "", false)
 }
 
-func (h *Host) run(ctx context.Context, s state.Session, input, messageID string) (state.Run, error) {
+func (h *Host) run(ctx context.Context, s state.Session, input, messageID string, room bool) (state.Run, error) {
 	if err := h.validate(); err != nil {
 		return state.Run{}, err
 	}
@@ -317,11 +322,27 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 	if err := h.checkSession(cur); err != nil {
 		return state.Run{}, err
 	}
+	if room != (cur.Room != nil) {
+		return state.Run{}, errors.New("use the room entry for room sessions")
+	}
 	resume, profile, err := h.continuation(ctx, st, cur)
 	if err != nil {
 		return state.Run{}, err
 	}
-	if resume {
+	if room && cur.Room.ParentSessionID != "" {
+		parent, e := st.Session(ctx, cur.Room.ParentSessionID)
+		if e != nil {
+			return state.Run{}, e
+		}
+		if e = st.SessionCanResume(ctx, parent.ID); e != nil {
+			return state.Run{}, e
+		}
+		resume, profile, err = h.continuation(ctx, st, parent)
+		if err != nil || !resume {
+			return state.Run{}, errors.Join(err, errors.New("room parent has no canonical Offload binding"))
+		}
+	}
+	if resume && !room {
 		last, err := st.LatestSessionRun(ctx, cur.ID)
 		if err != nil {
 			return state.Run{}, err
@@ -375,12 +396,15 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 			instructions += "\nAGH supplies attributed memory and handles optional publication after your answer. Do not claim memory was saved merely because you acknowledged it. Native history is separate."
 		}
 	}
-	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: memoryContext + prompt(input, m), Instructions: instructions, Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
+	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: memoryContext + roomPrompt(cur.Room) + prompt(input, m), Instructions: instructions, Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
 	if resume {
 		req.Session, req.ResumeProfile = cur.NativeSessionID, profile
+		if room {
+			req.Session = cur.Room.ForkFromNativeSessionID
+		}
 	}
 	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through exec",
-		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.Write, "profile": profile, "caller_run_id": req.CallerRunID}}, false); err != nil {
+		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.Write, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": "exec"}}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
 	result, runErr := h.Client.Run(ctx, req)
@@ -425,7 +449,11 @@ func (h *Host) bind(ctx context.Context, j *journal, cur state.Session, resume b
 	if r.Session == "" || r.Profile == "" {
 		return errors.New("offload result lacks a session or canonical profile")
 	}
-	if resume && r.Session != cur.NativeSessionID {
+	expected := cur.NativeSessionID
+	if cur.Room != nil && resume {
+		expected = cur.Room.ForkFromNativeSessionID
+	}
+	if resume && r.Session != expected {
 		return errors.New("offload resumed a different session than requested")
 	}
 	bindCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -474,7 +502,7 @@ func (h *Host) finish(requestCtx context.Context, j *journal, result *offloadexe
 			message = "execution completed; optional memory closeout follows answer delivery"
 		}
 		var data map[string]any
-		if j.run.Source == nil && j.run.Room == nil {
+		if j.run.Source == nil {
 			data = map[string]any{"output": output}
 		}
 		j.receipt(j.emit(event.Event{Type: "execution.ready", Phase: "execute", Component: "host.offload", Status: "completed", Model: model,
@@ -503,7 +531,7 @@ func (h *Host) finish(requestCtx context.Context, j *journal, result *offloadexe
 		return j.run, errors.Join(execErr, memoryErr, err)
 	}
 	j.receipt(j.emit(event.Event{Type: "run.finished", Phase: "receipt", Component: "host.offload", Status: status, Model: model,
-		Message: fmt.Sprintf("run=%s execution=%s acceptance=%s memory=%s", final.ID, final.ExecutionStatus, final.AcceptanceStatus, final.MemoryStatus)}, false))
+		Message: fmt.Sprintf("run=%s execution=%s acceptance=%s memory=%s", final.ID, final.ExecutionStatus, final.AcceptanceStatus, final.MemoryStatus), Data: map[string]any{"execution_status": final.ExecutionStatus, "memory_status": final.MemoryStatus, "memory_error": final.MemoryError, "experience_error": final.ExperienceError, "error": final.Error}}, false))
 	auditErr := j.audit()
 	final, err = j.st.Run(readCtx, j.run.ID)
 	if err != nil {

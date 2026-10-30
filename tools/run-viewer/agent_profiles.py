@@ -11,6 +11,8 @@ import hashlib
 
 
 def execution_engine(store, agent, execution, assigned, origin=None):
+    if execution.get("offload_config"):
+        return {"engine":"Offload","transport":"exec"}
     reference = agent.get("execution_config") or execution.get("execution_config")
     if not reference:
         return {"engine": "Claude Code", "transport": "print / stream-json"} if assigned else {"engine": None, "transport": None}
@@ -214,7 +216,12 @@ def profiles(store, catalog=None, web_config=None, web_agent=None):
             web = agent_destination(web_config)
             web_options = store.agent_options() if hasattr(store, "agent_options") else None
             destinations.insert(0, {"channel": "web", "enabled": True, "account": "", "tenant": "", **web})
-            if not any(row["category"] == "agents" and row["path"] == web["agents_path"] for row in rows):
+            if web["agents_path"] is None:
+                path=str(web_config)
+                destinations[0]["agents_path"]=path
+                virtual_files.append({"id":"web-offload","category":"agents","read_only":True,"path":path,
+                    "title":"Web Chat · Offload","revision":None,"value":{"default_agent":web["selected_agent"],"agents":web["agents"]}})
+            elif not any(row["category"] == "agents" and row["path"] == web["agents_path"] for row in rows):
                 path = Path(web["agents_path"])
                 virtual_files.append({"id": "web-agents-" + hashlib.sha256(str(path).encode()).hexdigest()[:12],
                     "category": "agents", "read_only": True, "path": str(path), "title": "Web Chat 智能体",
@@ -276,9 +283,9 @@ def profiles(store, catalog=None, web_config=None, web_agent=None):
                                "projects": agent.get("projects"),
                                "instructions": instruction_sources(store, agent),
                                "configured_skills": agent.get("native_skills"),
-                               "platform_policy": "automatic_default" if agent["id"] == "default" and destination["channel"] != "unassigned" else "existing_selection",
+                               "platform_policy": "offload_native" if execution.get("offload_config") else "automatic_default" if agent["id"] == "default" and destination["channel"] != "unassigned" else "existing_selection",
                                "configured_knowledge": agent.get("knowledge_sources"),
-                               "groups": groups, "connectors": ([{"name": source["name"], "origin": "当前 Web 连接", "state": "configured", "scope": "agent_selection"}
+                               "groups": groups, "connectors": [] if execution.get("offload_config") else ([{"name": source["name"], "origin": "当前 Web 连接", "state": "configured", "scope": "agent_selection"}
                                    for source in web_options["knowledge_sources"] if agent.get("knowledge_sources") is None or source["id"] in agent["knowledge_sources"]]
                                    if destination["channel"] == "web" and web_options else connectors),
                                **execution_engine(store, agent, execution, destination["channel"] != "unassigned", row["path"]), **evidence})

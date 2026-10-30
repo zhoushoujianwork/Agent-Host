@@ -2,57 +2,78 @@
 
 [User-facing design](offload-chat.md).
 
-## Configuration and usage
+## Workspace configuration
 
-Use the existing private [Offload profile](offload-channel-plugins-detail.md).
-No new execution configuration schema or plugin loader is introduced.
+The existing workspace `config/web-chat.json` accepts a private owner-only file:
 
-```sh
-agent-host chat --offload-config /absolute/offload.json \
-  --home /absolute/cli-state --workspace /absolute/project \
-  --format json -m 'Check the current task'
-agent-host chat --offload-config /absolute/offload.json \
-  --home /absolute/cli-state --workspace /absolute/project \
-  --resume HOST_SESSION_ID -m 'Continue the task'
+```json
+{
+  "binary": "/absolute/agent-host",
+  "cwd": "/absolute/project",
+  "args": [
+    "--home", "/absolute/runtime/cli-state",
+    "--workspace", "/absolute/project",
+    "--agent", "default",
+    "--offload-config", "/absolute/config/offload.json"
+  ]
+}
 ```
 
-Use the Host session ID from `run.started`, not the native Offload session ID.
-The existing `--memory-scope` can select a durable scope. Memory disabled and
-retrieval-only modes require no Jev key; processing uses the profile's selected
-provider and existing credential variables. Per-turn caller IDs remain
-`agh:<run UUID>`. Native capabilities and credentials remain owned by Offload.
-Changing an incompatible runtime requires an explicit fresh session; no native
-history conversion, fallback or automatic replay occurs.
+Use the existing private [Offload profile](offload-channel-plugins-detail.md).
+Offload owns native credentials; no legacy Agent catalog/native profile is
+required. Optional `environment_file` may contain only `TYPESAFE_API_KEY` and/or
+`JEV_API_KEY` for memory classification. Disabled and retrieval-only memory need
+no environment file. The launcher clears inherited native and Jev provider
+variables before adding explicitly selected classifier keys. Unsupported,
+duplicate or task/session arguments in saved destinations fail validation.
+The command, provider selection and profile digest participate in launch identity.
+A changed destination requires a new conversation, without automatic replay.
 
-## Shared execution and evidence
+CLI one-shot and explicit `--resume HOST_SESSION_ID` remain available. Web uses
+`--room`, `--request-id` and `--received-at`. It does not add legacy renewal or
+notification flags to Offload commands. Agent settings show Offload execution
+without claiming legacy tools or datasource mounts.
 
-`offloadchannel.Host.Run` and `RunChannel` share one execution/recall/closeout
-implementation. Local Chat uses `Store.CreateRun`; channels continue using
-`CreateChannelRun`. Entry provenance cannot change when resuming a native
-session. Room sessions remain rejected. Local Chat is owner-partition only.
+## Room ownership and native continuity
 
-Source-less owner runs use the existing CLI user-statement convention: exact
-input and source run ID, no fabricated channel sender. Classifier eligibility,
-duplicate/conflict handling and transactional publication remain unchanged.
-Non-owner or ambiguous/quoted channel sources retain their previous exclusions.
+`RunRoom` owns an OS room lease across admission, execution and closeout, plus
+the existing session lease for active-run recovery. Independent rooms retain
+concurrency. Busy rooms fail before accepting another request. Source intake is
+owner-local; no channel message is fabricated. State records the same immutable
+room/request receipt used by the workspace.
 
-The existing chat-state lock permits independent conversations; the existing
-per-session lease prevents concurrent execution of one native session. Caller
-process cancellation and per-turn deadlines remain in force. Offline memory
-retry is the existing command and never invokes native work.
+Offload provides resume, not native forks. Its explicit state admission selects
+only the latest receipt as a possible parent, provided it completed and sealed
+before the new input arrived and matches the runtime. Other history remains
+bounded attributed source data. An overlapping/unfinished latest receipt prevents
+resuming older, subsequently mutated native history. It starts fresh instead.
+Legacy ACP room selection is unchanged.
 
-`execution.ready` carries the durably completed answer for text and NDJSON
-renderers before optional processing. Raw Offload results remain private event
-evidence. Execution, acceptance and memory outcomes remain separate.
+A completed linear child may bind the parent's native ID only within the same
+Offload room/runtime and owner partition. Binding verifies the latest parent,
+its seal and all existing owners of that ID. The generic
+`fork_from_native_session_id` field holds the resume source; the explicit
+`offload_serial_continuation` policy identifies linear use, not a fork.
+Direct CLI/channel entries cannot adopt room native sessions.
 
-## Acceptance and next slice
+Duplicate IDs with identical input return their original receipt. Only sealed
+terminal runs replay public events; raw Offload records and private receipts are
+excluded. Replayed closeout projects the latest saved run state, including a
+separate memory-only retry, without changing original event evidence.
+Failed execution or memory retains its error and does not rerun either
+component. Accepted requests with no run, running/unknown outcomes and changed
+content/runtime are refused. Offline memory-only retry remains explicit.
 
-Headless fixtures cover one-shot/resume, exact argv correlation, original-session
-preservation, text/NDJSON visibility, local memory publication and fresh-session
-recall, state/session locks and refusal of unsupported flags/provenance. Existing
-channel tests exercise the same host. No real native worker or account is used.
+## Memory, output and validation
 
-Web still sends room/request IDs. Connecting that entry requires its actual room
-contract, stable request deduplication, completed-response replay from evidence,
-fork compatibility and cancellation tests. This step does not remove those
-requirements by pretending Web messages are channel intake.
+Owner-local room inputs use the existing CLI exact-input memory convention.
+Historical text never becomes a new assertion. `execution.ready` exposes the
+saved answer before optional closeout. `run.finished` projects execution and
+memory outcomes independently. Raw evidence remains in the execution record.
+
+Headless tests include a real Go CLI behind the Python Web bridge with a fake
+native executable: new room, continuation, accepted retry, persisted reload and
+owned-process cancellation. Host/state fixtures cover concurrent rooms, busy
+rooms, overlapping intake, unfinished receipts, memory failure, provenance and
+binding checks. Existing ACP/channel behavior and launcher validation retain
+regressions. No real native provider, desktop or production activation is used.

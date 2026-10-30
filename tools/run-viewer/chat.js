@@ -202,7 +202,7 @@
       item.stop.hidden = !active || Boolean(turn.read_only && !turn.can_stop);
       item.stop.disabled = pending || selecting > 0 || selectionFailed || turn.status === "stopping";
       item.root.dataset.status = turn.status;
-      const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.transport === "acp" ? "模型未确认" : "Claude");
+      const model = [turn.model, rows.find(row => row.kind === "status" && row.label === "init")?.content].find(value => value && value !== "default") || (turn.engine === "offload" ? "Offload" : turn.transport === "acp" ? "模型未确认" : "Claude");
       item.status.textContent = `${model}${turn.transport === "acp" ? " · ACP" : ""} · ${statusNames[executionStatus] || executionStatus}`;
       item.status.dataset.status = executionStatus;
       const memoryState = turn.memory_status || (active && executionStatus === "completed" ? "running" : active ? "pending" : "unknown");
