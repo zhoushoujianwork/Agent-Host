@@ -15,7 +15,7 @@ import (
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
 
-const LibraryVersion = "v0.6.0"
+const LibraryVersion = "v0.6.1"
 
 // Library snapshots an explicit native profile and calls Offload's public Go
 // package. It never starts the Offload CLI or falls back to the CLI client.
@@ -107,10 +107,18 @@ func (c *Library) Run(ctx context.Context, req Request) (Result, error) {
 	defer cancel()
 	r, runErr := c.client.Run(runCtx, execution.Request{Caller: "agh", CallerRunID: req.CallerRunID,
 		Task: req.Prompt, Instructions: []byte(req.Instructions), Directory: req.Workspace,
-		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout})
+		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true})
 	result := Result{RunID: r.RunID, CallerRunID: r.CallerRunID, Status: r.Status, Text: r.Report,
 		Session: r.NativeSessionID, Profile: r.Profile, Model: r.Model, Backend: r.Backend,
 		ExitCode: r.ExitCode, Usage: r.Usage, Raw: r.RawRecord}
+	if r.HistoryRecorded {
+		result.HistoryStatus = "saved"
+	} else if r.HistoryError != nil {
+		result.HistoryStatus = "failed"
+		// The SDK error can contain a private filesystem path. Preserve it only
+		// in private evidence; public events report the independent sync status.
+		result.HistoryError = r.HistoryError.Error()
+	}
 	if len(r.RawRecord) > MaxOutputBytes {
 		// Keep the typed outcome but do not persist an oversized raw record.
 		result.Raw = nil

@@ -45,6 +45,51 @@ type fixture struct {
 	seq    int
 }
 
+type historyExecutor struct{ status string }
+
+func (c historyExecutor) Run(_ context.Context, req offloadexec.Request) (offloadexec.Result, error) {
+	r := offloadexec.Result{Status: "ok", Text: "answer", Profile: "canon", Session: "history-session",
+		RunID: "history-run", CallerRunID: req.CallerRunID, Raw: []byte(`{"status":"ok"}`), HistoryStatus: c.status}
+	if c.status == "failed" {
+		r.HistoryError = "secret-log-path: permission denied"
+	}
+	return r, nil
+}
+
+func TestHistorySyncIsVisibleAndIndependentOfExecution(t *testing.T) {
+	for _, status := range []string{"saved", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			f := newFixture(t)
+			f.host.Client = historyExecutor{status: status}
+			run, err := f.turn(context.Background(), "history-message", "inspect")
+			if err != nil || run.ExecutionStatus != "completed" || run.Output != "answer" {
+				t.Fatalf("%+v %v", run, err)
+			}
+			seen := false
+			for _, e := range f.events {
+				if e.Type == "offload.history" {
+					seen = e.Status == status && e.Data["offload_run_id"] == "history-run"
+				}
+				if strings.Contains(e.Message, "secret-log-path") || e.Data["history_error"] != nil {
+					t.Fatal("private history error leaked")
+				}
+			}
+			if !seen {
+				t.Fatal("history sync not projected")
+			}
+			if status == "failed" {
+				private := false
+				for _, e := range run.Events {
+					private = private || e.Type == "offload.result" && e.Data["history_error"] == "secret-log-path: permission denied"
+				}
+				if !private {
+					t.Fatal("history failure evidence lost")
+				}
+			}
+		})
+	}
+}
+
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	dir := t.TempDir()

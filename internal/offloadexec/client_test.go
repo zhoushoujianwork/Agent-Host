@@ -426,13 +426,32 @@ func TestDeadlineTerminatesGroup(t *testing.T) {
 func TestClientTimeoutIsNotCancellation(t *testing.T) {
 	cmd, dir := fake(t, "")
 	_ = os.WriteFile(cmd, []byte("#!/bin/sh\ncat >/dev/null\n"+stubbornBody(dir)+"\n"), 0o700)
-	c := newClient(t, cmd, func(c *Config) { c.Timeout = time.Second })
+	// Leave a separate startup budget, as in the caller-deadline test. A short
+	// timer can stop the shell before its child PID exists under build load.
+	c := newClient(t, cmd, func(c *Config) { c.Timeout = 10 * time.Second })
 	c.waitGrace = 200 * time.Millisecond
-	res, err := c.Run(context.Background(), Request{Prompt: "p", Workspace: t.TempDir()})
+	type outcome struct {
+		result Result
+		err    error
+	}
+	done := make(chan outcome, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	workspace := t.TempDir()
+	go func() { res, err := c.Run(ctx, Request{Prompt: "p", Workspace: workspace}); done <- outcome{res, err} }()
+	pid := pidFrom(t, dir+"/child.pid")
+	var res Result
+	var err error
+	select {
+	case result := <-done:
+		res, err = result.result, result.err
+	case <-time.After(15 * time.Second):
+		t.Fatal("client deadline did not stop the owned process group")
+	}
 	if res.Status != StatusTimeout || res.ErrorKind != KindClientTimeout || err == nil {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
-	waitDead(t, pidFrom(t, dir+"/child.pid"))
+	waitDead(t, pid)
 }
 
 func TestAlreadyCanceledDoesNotStart(t *testing.T) {

@@ -92,14 +92,16 @@ type Result struct {
 // normalized outcome. Raw may contain task text and belongs in private storage,
 // never an unfiltered UI observation or a business acceptance judgment.
 type ExecutionEvidence struct {
-	RunID       string          `json:"run_id,omitempty"`
-	CallerRunID string          `json:"caller_run_id,omitempty"`
-	Profile     string          `json:"profile,omitempty"`
-	Backend     string          `json:"backend,omitempty"`
-	Status      string          `json:"status,omitempty"`
-	ErrorKind   string          `json:"error_kind,omitempty"`
-	Usage       json.RawMessage `json:"usage,omitempty"`
-	Raw         json.RawMessage `json:"raw,omitempty"`
+	RunID         string          `json:"run_id,omitempty"`
+	CallerRunID   string          `json:"caller_run_id,omitempty"`
+	Profile       string          `json:"profile,omitempty"`
+	Backend       string          `json:"backend,omitempty"`
+	Status        string          `json:"status,omitempty"`
+	ErrorKind     string          `json:"error_kind,omitempty"`
+	Usage         json.RawMessage `json:"usage,omitempty"`
+	Raw           json.RawMessage `json:"raw,omitempty"`
+	HistoryStatus string          `json:"history_status,omitempty"`
+	HistoryError  string          `json:"history_error,omitempty"`
 }
 
 type Runner interface {

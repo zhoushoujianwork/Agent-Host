@@ -403,9 +403,24 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 	backend := ""
 	if evidence != nil {
 		backend = evidence.Backend
+		if evidence.HistoryStatus != "" {
+			message := "Offload history saved"
+			if evidence.HistoryStatus == "failed" {
+				message = "Offload history was not saved; execution outcome is unchanged"
+			}
+			j.receipt(j.emit(event.Event{Type: "offload.history", Phase: "execute", Component: bindingComponent,
+				Status: evidence.HistoryStatus, Message: message,
+				Data: map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": req.CallerRunID}}, false))
+		}
 	}
 	if evidence != nil && (len(evidence.Raw) > 0 || len(evidence.Usage) > 0) {
 		data := map[string]any{"status": evidence.Status, "exit_code": result.ExitCode, "error_kind": evidence.ErrorKind, "caller_run_id": req.CallerRunID}
+		if evidence.HistoryStatus != "" {
+			data["history_status"] = evidence.HistoryStatus
+		}
+		if evidence.HistoryError != "" {
+			data["history_error"] = evidence.HistoryError
+		}
 		if evidence.RunID != "" {
 			data["offload_run_id"] = evidence.RunID
 		}

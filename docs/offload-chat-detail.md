@@ -97,7 +97,10 @@ files use a private temporary directory (`0700`) and file (`0600`), remain
 available through owned cleanup and are then removed. Both paths enforce a
 256 KiB internal-context limit and the combined 1 MiB input budget.
 Oversized or unsupported requests fail explicitly; there is no concatenation fallback.
-Version 2 links the published Go package `v0.6.0` and requires no Offload CLI.
+Version 2 links the published Go package `v0.6.1` and requires no Offload CLI.
+It explicitly records terminal calls in Offload history for Monitor, and emits
+an independent `offload.history` sync status; a history write failure does not
+repeat native work or relabel execution. Historical calls are not backfilled.
 Version 1 requires a CLI supporting `--instructions-file` (the historical live
 baseline is 0.4.0); that canary does not establish package-path live acceptance.
 

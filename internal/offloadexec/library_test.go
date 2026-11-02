@@ -80,6 +80,34 @@ func TestLibraryExecutesAndResumesWithoutOffloadCLI(t *testing.T) {
 	if c.Transport() != "go-package" {
 		t.Fatal("incorrect transport identity")
 	}
+	if first.HistoryStatus != "saved" || second.HistoryStatus != "saved" || first.HistoryError != "" {
+		t.Fatalf("history sync missing: %+v %+v", first, second)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "state", "offload", "runs.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("history count %d", len(lines))
+	}
+	for i, want := range []Result{first, second} {
+		var got map[string]any
+		if json.Unmarshal([]byte(lines[i]), &got) != nil || got["run_id"] != want.RunID || got["caller_run_id"] != want.CallerRunID {
+			t.Fatalf("history correlation lost: %s", lines[i])
+		}
+	}
+}
+
+func TestLibraryHistoryFailureDoesNotChangeNativeSuccess(t *testing.T) {
+	c, dir, _ := libraryFixture(t)
+	if err := os.MkdirAll(filepath.Join(dir, "state", "offload", "runs.jsonl"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r, err := c.Run(t.Context(), Request{Prompt: "inspect", Workspace: dir})
+	if err != nil || r.Status != StatusOK || r.Text != "SDK answer" || r.HistoryStatus != "failed" || r.HistoryError == "" || len(r.Raw) == 0 {
+		t.Fatalf("history failure obscured native execution: %+v %v", r, err)
+	}
 }
 
 func TestLibraryCancellationFailureAndNoReplay(t *testing.T) {

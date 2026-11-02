@@ -25,7 +25,7 @@ calling the execution client directly. It retains private raw evidence, canonica
 continuation bindings and independent execution/memory outcomes. Unsupported
 request controls fail explicitly before native dispatch.
 
-Version 2 execution profiles now call Offload's published `v0.6.0/pkg/execution`
+Version 2 execution profiles now call Offload's published `v0.6.1/pkg/execution`
 in process, without launching the Offload CLI. Explicit version 1 profiles retain
 CLI compatibility. There is no fallback between them and no automatic adoption
 of an old session. [Configuration details](offload-channel-plugins-detail.md#configuration-and-compatibility)

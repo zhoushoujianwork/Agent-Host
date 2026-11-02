@@ -77,18 +77,20 @@ type Request struct {
 // no exit status. Raw is the validated stdout record. It echoes the task text
 // and must be treated as sensitive evidence.
 type Result struct {
-	RunID       string
-	CallerRunID string
-	Status      string
-	Text        string
-	Session     string
-	Profile     string
-	Model       string
-	Backend     string
-	ErrorKind   string
-	ExitCode    int
-	Usage       json.RawMessage
-	Raw         json.RawMessage
+	RunID         string
+	CallerRunID   string
+	Status        string
+	Text          string
+	Session       string
+	Profile       string
+	Model         string
+	Backend       string
+	ErrorKind     string
+	ExitCode      int
+	Usage         json.RawMessage
+	Raw           json.RawMessage
+	HistoryStatus string
+	HistoryError  string
 }
 
 // RunError describes a failed run. Its message never contains stderr, stdout

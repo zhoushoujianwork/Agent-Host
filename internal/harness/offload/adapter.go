@@ -83,7 +83,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, observe func(har
 		NativeSessionID: r.Session, ExitCode: r.ExitCode,
 		Evidence: &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID,
 			Profile: r.Profile, Backend: r.Backend, Status: r.Status, ErrorKind: r.ErrorKind,
-			Usage: r.Usage, Raw: r.Raw}}
+			Usage: r.Usage, Raw: r.Raw, HistoryStatus: r.HistoryStatus, HistoryError: r.HistoryError}}
 	if err != nil {
 		result.Error = err.Error()
 		err = &harness.ExecutionError{Kind: failureKind(r.ErrorKind, r.Status, err), Cause: err}
