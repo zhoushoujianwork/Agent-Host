@@ -8,6 +8,9 @@ import (
 // Request carries explicit native execution policy. An empty PermissionMode
 // preserves native defaults; business instances may explicitly select bypass.
 type Request struct {
+	CallerRunID             string // Owning Host run correlation, never execution authority.
+	NativeSessionProfile    string // Canonical execution profile recorded by the previous turn.
+	WriteIntent             bool   // Task intent only; does not grant permissions or provide a sandbox.
 	NativeProfile           string
 	PermissionMode          string
 	HostInstructions        string
@@ -75,13 +78,28 @@ type ToolObservation struct {
 }
 
 type Result struct {
-	Status           string          `json:"status"` // completed, failed, canceled, unknown
-	Text             string          `json:"text"`
-	Model            string          `json:"model"`
-	NativeSessionID  string          `json:"native_session_id"`
-	ExitCode         int             `json:"exit_code"`
-	Error            string          `json:"error,omitempty"`
-	StructuredOutput json.RawMessage `json:"structured_output,omitempty"`
+	Status           string             `json:"status"` // completed, failed, canceled, unknown
+	Text             string             `json:"text"`
+	Model            string             `json:"model"`
+	NativeSessionID  string             `json:"native_session_id"`
+	ExitCode         int                `json:"exit_code"`
+	Error            string             `json:"error,omitempty"`
+	StructuredOutput json.RawMessage    `json:"structured_output,omitempty"`
+	Evidence         *ExecutionEvidence `json:"execution_evidence,omitempty"`
+}
+
+// ExecutionEvidence preserves attributed executor records separately from the
+// normalized outcome. Raw may contain task text and belongs in private storage,
+// never an unfiltered UI observation or a business acceptance judgment.
+type ExecutionEvidence struct {
+	RunID       string          `json:"run_id,omitempty"`
+	CallerRunID string          `json:"caller_run_id,omitempty"`
+	Profile     string          `json:"profile,omitempty"`
+	Backend     string          `json:"backend,omitempty"`
+	Status      string          `json:"status,omitempty"`
+	ErrorKind   string          `json:"error_kind,omitempty"`
+	Usage       json.RawMessage `json:"usage,omitempty"`
+	Raw         json.RawMessage `json:"raw,omitempty"`
 }
 
 type Runner interface {

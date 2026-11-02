@@ -273,16 +273,24 @@ for a particular approval, message or mutation. See the
 
 ## Next direction
 
+The [2026-11-02 execution boundary](offload-execution-boundary.md) sets the
+migration direction: use Offload as the execution component behind Host's shared
+harness interface, replacing the direct ACP integration while keeping one Host
+task flow. The prototype now uses that adapter; consolidating its orchestration
+into the common Host and closing capability gaps remain pending. This direction
+supersedes treating the lightweight prototype as a separate long-term Host.
+
 The [managed Skills increment](managed-skills-design.md) is implemented and locally
 validated. Explicit operator adoption and production/platform rollout remain
 separate from the source implementation and isolated native acceptance.
 
-The next execution increment evaluates the [Offload channel plugin
-prototype](offload-channel-plugins.md). Both existing channels share one slim
-execution adapter, while their current authentication and delivery remain outside
-the model loop. Optional memory processing now runs after answer delivery;
-richer tool injection still requires an explicitly supported contract.
-Existing ACP and print paths remain available during this opt-in evaluation.
+The [Offload channel plugin prototype](offload-channel-plugins.md) is the
+migration starting point. Its entries now share a harness adapter; their separate
+Host orchestration must converge on the common task flow rather than grow into
+another platform. Authentication and delivery remain outside the model loop.
+Optional memory processing runs after answer delivery; richer tool injection
+still requires an explicitly supported contract. Existing ACP and print paths
+remain available until capability parity and migration acceptance are complete.
 
 [Owner Answering Beta / Owner 代答 BETA](owner-answering-beta.md) has a disabled-by-default
 source implementation for selected personal DingTalk chats. It handles supported

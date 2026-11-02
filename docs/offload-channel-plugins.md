@@ -1,5 +1,11 @@
 # Offload execution and channel plugins
 
+This document describes the delivered prototype. The
+[execution-component direction](offload-execution-boundary.md) now governs its
+next steps: converge on the common Host instead of maintaining a second Host
+flow. The prototype already invokes Offload through the shared harness adapter;
+common Host composition and capability parity remain pending.
+
 Give Agent-Host a lighter execution path: Offload runs the local Agent, while
 enabled channel plugins receive messages and deliver results. Reuse Offload's
 profiles, native sessions and execution monitoring. Agent-Host keeps channel

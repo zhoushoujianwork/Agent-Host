@@ -1,5 +1,10 @@
 # Chat through Offload
 
+The [execution-component direction](offload-execution-boundary.md) defines the
+next migration: retain one Agent-Host task flow and use Offload behind its shared
+harness interface. This guide describes the current prototype, whose execution
+now uses that adapter; common Host orchestration is not yet consolidated.
+
 Use one execution host for Web/Mac Chat, local CLI and DingTalk/Feishu plugins.
 Offload owns native execution and conversation history; AGH owns scoped memory,
 request receipts and durable outcomes. The Mac app presents the same workspace.

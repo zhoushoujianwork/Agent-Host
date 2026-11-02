@@ -15,6 +15,7 @@ import (
 	"agent-host/internal/channel"
 	"agent-host/internal/event"
 	"agent-host/internal/harness"
+	"agent-host/internal/harness/offload"
 	"agent-host/internal/offloadexec"
 	"agent-host/internal/runcompletion"
 	"agent-host/internal/state"
@@ -266,21 +267,6 @@ func (j *journal) emit(e event.Event, private bool) error {
 	return nil
 }
 
-func failureKind(kind string, status string) harness.FailureKind {
-	switch kind {
-	case offloadexec.KindCanceled:
-		return harness.FailureCanceled
-	case offloadexec.KindDeadline, offloadexec.KindClientTimeout, offloadexec.KindOffloadTimeout:
-		return harness.FailureDeadline
-	case offloadexec.KindStart, offloadexec.KindInvalidRequest:
-		return harness.FailureStartup
-	}
-	if status == offloadexec.StatusCanceled {
-		return harness.FailureCanceled
-	}
-	return harness.FailureProcess
-}
-
 // RunChannel executes one channel message. Unsupported input is rejected
 // before any run exists or Offload starts. After the run is linked, every
 // outcome is recorded; there are no retries, replays or fallbacks.
@@ -399,38 +385,44 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 			instructions += "\nAGH supplies attributed memory and handles optional publication after your answer. Do not claim memory was saved merely because you acknowledged it. Native history is separate."
 		}
 	}
-	req := offloadexec.Request{CallerRunID: "agh:" + run.ID, Prompt: input, Instructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), Write: h.Config.Write}
+	req := harness.Request{CallerRunID: "agh:" + run.ID, Prompt: input, HostInstructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), WriteIntent: h.Config.Write, Resume: resume}
 	if resume {
-		req.Session, req.ResumeProfile = cur.NativeSessionID, profile
+		req.NativeSessionID, req.NativeSessionProfile = cur.NativeSessionID, profile
 		if room {
-			req.Session = cur.Room.ForkFromNativeSessionID
+			req.NativeSessionID = cur.Room.ForkFromNativeSessionID
 		}
 	}
 	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through exec",
-		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.Write, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": "exec"}}}, false); err != nil {
+		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": "exec"}}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
-	result, runErr := h.Client.Run(ctx, req)
-	if len(result.Raw) > 0 || len(result.Usage) > 0 {
-		data := map[string]any{"status": result.Status, "exit_code": result.ExitCode, "error_kind": result.ErrorKind, "caller_run_id": req.CallerRunID}
-		if result.RunID != "" {
-			data["offload_run_id"] = result.RunID
+	var runner harness.Runner = offload.New(h.Client)
+	result, runErr := runner.Run(ctx, req, nil)
+	evidence := result.Evidence
+	backend := ""
+	if evidence != nil {
+		backend = evidence.Backend
+	}
+	if evidence != nil && (len(evidence.Raw) > 0 || len(evidence.Usage) > 0) {
+		data := map[string]any{"status": evidence.Status, "exit_code": result.ExitCode, "error_kind": evidence.ErrorKind, "caller_run_id": req.CallerRunID}
+		if evidence.RunID != "" {
+			data["offload_run_id"] = evidence.RunID
 		}
-		if result.CallerRunID != "" {
-			data["reported_caller_run_id"] = result.CallerRunID
+		if evidence.CallerRunID != "" {
+			data["reported_caller_run_id"] = evidence.CallerRunID
 		}
-		if len(result.Raw) > 0 {
-			data["raw"] = result.Raw
+		if len(evidence.Raw) > 0 {
+			data["raw"] = evidence.Raw
 		}
-		if len(result.Usage) > 0 {
-			data["usage"] = result.Usage
+		if len(evidence.Usage) > 0 {
+			data["usage"] = evidence.Usage
 		}
-		if err := j.emit(event.Event{Type: "offload.result", Phase: "execute", Component: bindingComponent, Status: result.Status, Data: data}, true); err != nil {
+		if err := j.emit(event.Event{Type: "offload.result", Phase: "execute", Component: bindingComponent, Status: evidence.Status, Data: data}, true); err != nil {
 			runErr = errors.Join(runErr, err)
 		}
 	}
 	execErr := runErr
-	if execErr == nil && result.Status != offloadexec.StatusOK {
+	if execErr == nil && result.Status != "completed" {
 		execErr = fmt.Errorf("offload returned status %q without an error", result.Status)
 	}
 	if execErr == nil {
@@ -442,36 +434,36 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		status = "failed"
 	}
 	j.receipt(j.emit(event.Event{Type: "phase.finished", Phase: "execute", Component: bindingComponent, Status: status, Model: result.Model, Message: status,
-		Data: map[string]any{"duration_ms": elapsed, "backend": result.Backend}}, false))
+		Data: map[string]any{"duration_ms": elapsed, "backend": backend}}, false))
 	return h.finish(ctx, j, &result, execErr)
 }
 
 // bind records the actual Offload session and canonical profile. It runs
 // before the run completes so that a resumable session always has evidence.
-func (h *Host) bind(ctx context.Context, j *journal, cur state.Session, resume bool, r offloadexec.Result) error {
-	if r.Session == "" || r.Profile == "" {
+func (h *Host) bind(ctx context.Context, j *journal, cur state.Session, resume bool, r harness.Result) error {
+	if r.NativeSessionID == "" || r.Evidence == nil || r.Evidence.Profile == "" {
 		return errors.New("offload result lacks a session or canonical profile")
 	}
 	expected := cur.NativeSessionID
 	if cur.Room != nil && resume {
 		expected = cur.Room.ForkFromNativeSessionID
 	}
-	if resume && r.Session != expected {
+	if resume && r.NativeSessionID != expected {
 		return errors.New("offload resumed a different session than requested")
 	}
 	bindCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := j.st.BindOffloadSession(bindCtx, j.run.ID, cur.NativeSessionID, r.Session); err != nil {
+	if err := j.st.BindOffloadSession(bindCtx, j.run.ID, cur.NativeSessionID, r.NativeSessionID); err != nil {
 		return fmt.Errorf("bind offload session: %w", err)
 	}
 	return j.emit(event.Event{Type: BindingEventType, Phase: "execute", Component: bindingComponent, Status: "completed", Model: r.Model, Message: "offload session bound",
-		Data: map[string]any{"session": r.Session, "profile": r.Profile, "backend": r.Backend, "model": r.Model,
+		Data: map[string]any{"session": r.NativeSessionID, "profile": r.Evidence.Profile, "backend": r.Evidence.Backend, "model": r.Model,
 			"workspace": cur.WorkingDirectory(), "fingerprint": cur.RuntimeFingerprint}}, false)
 }
 
 // finish records the terminal execution outcome and reloads the run.
 // A completed run is execution evidence only; acceptance stays unverified.
-func (h *Host) finish(requestCtx context.Context, j *journal, result *offloadexec.Result, execErr error) (state.Run, error) {
+func (h *Host) finish(requestCtx context.Context, j *journal, result *harness.Result, execErr error) (state.Run, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	status, output, model, text := "completed", "", "", ""
@@ -480,12 +472,12 @@ func (h *Host) finish(requestCtx context.Context, j *journal, result *offloadexe
 	}
 	if execErr != nil {
 		status, output = "failed", ""
-		var runErr *offloadexec.RunError
+		var executionErr *harness.ExecutionError
 		kind := harness.FailureProcess
 		switch {
-		case errors.As(execErr, &runErr):
-			kind = failureKind(runErr.Kind, runErr.Status)
-			if runErr.Status == offloadexec.StatusCanceled {
+		case errors.As(execErr, &executionErr):
+			kind = executionErr.Kind
+			if kind == harness.FailureCanceled {
 				status = "canceled"
 			}
 		case errors.Is(execErr, context.Canceled):
