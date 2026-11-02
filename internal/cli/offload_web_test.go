@@ -38,7 +38,7 @@ func TestOffloadWebBridgeActualCLIAndFakeNative(t *testing.T) {
 	script := offloadFakeScript(dir)
 	script = strings.Replace(script, `session="native-$n"`, `case "$(cat "$dir/stdin.$n")" in *slow-room*) exec sleep 60;; esac
 session="native-$n"`, 1)
-	if err := os.WriteFile(o.offloadProfile.Command, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(filepath.Dir(o.offloadConfig), "offload"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	runOffloadWebBridge(t, o, "answer-1", "answer-2")

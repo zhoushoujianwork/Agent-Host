@@ -3,9 +3,6 @@
 package offloadchannel
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,23 +10,10 @@ import (
 )
 
 func TestMemoryProfileDefaultsAndDisabledFingerprintCompatibility(t *testing.T) {
-	cmd := executable(t)
-	base := `"version":1,"command":"` + cmd + `","profile":"work","timeout":"1m"`
-	p, disabled, err := Parse([]byte(`{` + base + `}`))
+	base := profileBase(t)
+	_, disabled, err := Parse([]byte(`{` + base + `}`))
 	if err != nil {
 		t.Fatal(err)
-	}
-	legacy, _ := json.Marshal(struct {
-		Version int    `json:"version"`
-		Command string `json:"command"`
-		Profile string `json:"profile"`
-		Model   string `json:"model"`
-		Timeout string `json:"timeout"`
-		Memory  bool   `json:"memory"`
-	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), false})
-	sum := sha256.Sum256(legacy)
-	if disabled != FingerprintPrefix+hex.EncodeToString(sum[:]) {
-		t.Fatal("disabled memory changed existing native-session fingerprints")
 	}
 	active, fp, err := Parse([]byte(`{` + base + `,"memory":{"enabled":true}}`))
 	if err != nil || !active.MemoryEnabled || !active.Memory.Processing || active.Memory.Provider != "typesafe" || fp == disabled {
@@ -63,15 +47,12 @@ func executable(t *testing.T) string {
 }
 
 func TestLoadAcceptsExplicitProfileAndDefaultsMemoryOff(t *testing.T) {
-	cmd := executable(t)
-	body := `{"version":1,"command":"` + cmd + `","profile":"work","model":"m","timeout":"30m","memory":{"enabled":false}}`
+	body := `{` + profileBase(t) + `,"model":"m","memory":{"enabled":false}}`
 	p, fp, err := Load(writeProfile(t, 0o600, body))
 	if err != nil || p.Profile != "work" || p.MemoryEnabled || !strings.HasPrefix(fp, FingerprintPrefix) {
 		t.Fatalf("%+v %q %v", p, fp, err)
 	}
-	if cfg := p.ClientConfig(); cfg.Profile != "work" || cfg.Model != "m" || cfg.Timeout.Minutes() != 30 {
-		t.Fatalf("%+v", cfg)
-	}
+
 	other := strings.Replace(body, `"work"`, `"other"`, 1)
 	if _, fp2, err := Parse([]byte(other)); err != nil || fp2 == fp {
 		t.Fatalf("fingerprint ignores profile: %v", err)
@@ -83,7 +64,7 @@ func TestLoadAcceptsExplicitProfileAndDefaultsMemoryOff(t *testing.T) {
 
 func TestLoadRejectsUnsafeOrAmbiguousConfiguration(t *testing.T) {
 	cmd := executable(t)
-	ok := `"version":1,"command":"` + cmd + `","profile":"work","timeout":"1m"`
+	ok := profileBase(t)
 	for name, body := range map[string]string{
 		"memory provider": `{` + ok + `,"memory":{"enabled":true,"provider":"unknown"}}`,
 		"memory implicit": `{` + ok + `,"memory":{}}`,
@@ -132,7 +113,7 @@ func TestLibraryProfileSelectsExplicitTransportAndChangesIdentity(t *testing.T) 
 	}
 	body := `{"version":2,"config_path":"` + native + `","profile":"alias","timeout":"1m"}`
 	p, fp, err := Parse([]byte(body))
-	if err != nil || p.Version != 2 || p.Command != "" || p.ConfigPath != native {
+	if err != nil || p.Version != 2 || p.ConfigPath != native {
 		t.Fatalf("%+v %v", p, err)
 	}
 	client, err := p.NewClient()
@@ -158,4 +139,13 @@ func TestLibraryProfileSelectsExplicitTransportAndChangesIdentity(t *testing.T) 
 	if err != nil || changed == fp {
 		t.Fatal("changed native configuration reused the old runtime identity")
 	}
+}
+
+func profileBase(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "native.json")
+	if err := os.WriteFile(path, []byte(`{"profiles":{"work":{"backend":"codex","model":"fixture"},"other":{"backend":"codex","model":"other"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return `"version":2,"config_path":"` + path + `","profile":"work","timeout":"1m"`
 }

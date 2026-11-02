@@ -60,7 +60,7 @@ only the latest receipt as a possible parent, provided it completed and sealed
 before the new input arrived and matches the runtime. Other history remains
 bounded attributed source data. An overlapping/unfinished latest receipt prevents
 resuming older, subsequently mutated native history. It starts fresh instead.
-Legacy ACP room selection is unchanged.
+Historical ACP room bindings remain readable but cannot be continued by the removed adapter.
 
 A completed linear child may bind the parent's native ID only within the same
 Offload room/runtime and owner partition. Binding verifies the latest parent,
@@ -88,7 +88,7 @@ Headless tests include a real Go CLI behind the Python Web bridge with a fake
 native executable: new room, continuation, accepted retry, persisted reload and
 owned-process cancellation. Host/state fixtures cover concurrent rooms, busy
 rooms, overlapping intake, unfinished receipts, memory failure, provenance and
-binding checks. Existing ACP/channel behavior and launcher validation retain
+binding checks. Historical channel evidence and launcher validation retain
 regressions. Automated fixtures use no real native provider, desktop or production activation.
 The [isolated live canary](offload-canary-acceptance-2026-10-30.md) separately
 records bounded real execution, continuation and memory evidence.
@@ -97,23 +97,18 @@ records bounded real execution, continuation and memory evidence.
 
 The visible Offload task is exactly the current user input. Host instructions,
 nonempty memory, quoted source material and necessary room history travel through
-the Go package's `Instructions` bytes for version 2, or Offload's private
-`--instructions-file` for version 1, never by concatenating them into that task.
+the Go package's `Instructions` bytes, without concatenating them into that task.
 No memory block is emitted when recall selects zero records. Empty room envelopes
 and history already inherited by native continuation are omitted. The complete
 receipts and retrieval decisions remain recorded for inspection.
 
-The package owns its native prompt-file lifecycle. CLI compatibility instruction
-files use a private temporary directory (`0700`) and file (`0600`), remain
-available through owned cleanup and are then removed. Both paths enforce a
-256 KiB internal-context limit and the combined 1 MiB input budget.
-Oversized or unsupported requests fail explicitly; there is no concatenation fallback.
-Version 2 links the published Go package `v0.6.1` and requires no Offload CLI.
-It explicitly records terminal calls in Offload history for Monitor, and emits
-an independent `offload.history` sync status; a history write failure does not
-repeat native work or relabel execution. Historical calls are not backfilled.
-Version 1 requires a CLI supporting `--instructions-file` (the historical live
-baseline is 0.4.0); that canary does not establish package-path live acceptance.
+The package owns private native prompt-file lifecycle and cleanup. Host enforces
+a 256 KiB internal-context limit and the combined 1 MiB input budget. Oversized
+or unsupported requests fail explicitly, without a concatenation fallback.
+The published Go package v0.7.0 requires no Offload CLI. Every call carries
+`Caller=agh` and its Host/internal correlation ID and records terminal history.
+Independent `offload.history` status reports persistence; write failure does not
+repeat work or relabel execution. Historical calls are not backfilled.
 
 Claude maps these instructions to its appended system prompt. The current
 Offload Codex adapter still wraps them internally on native stdin; this change

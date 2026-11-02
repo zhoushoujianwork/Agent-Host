@@ -15,11 +15,14 @@ import (
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
 
-const LibraryVersion = "v0.6.1"
+const LibraryVersion = "v0.7.0"
 
 // Library snapshots an explicit native profile and calls Offload's public Go
 // package. It never starts the Offload CLI or falls back to the CLI client.
 type Library struct {
+	path        string
+	nativeModel string
+	backend     string
 	client      *execution.Client
 	profile     string
 	model       string
@@ -87,7 +90,16 @@ func NewLibrary(path, profile, model string, timeout time.Duration) (*Library, e
 		return nil, errors.New("offloadexec: cannot fingerprint native profile")
 	}
 	sum := sha256.Sum256(raw)
-	return &Library{client: client, profile: cfg.ProfileName, model: model, timeout: timeout, fingerprint: hex.EncodeToString(sum[:])}, nil
+	return &Library{path: path, nativeModel: cfg.Profile.Model, client: client, backend: cfg.Profile.Backend, profile: cfg.ProfileName, model: model, timeout: timeout, fingerprint: hex.EncodeToString(sum[:])}, nil
+}
+
+func (c *Library) ConfigPath() string  { return c.path }
+func (c *Library) ProfileName() string { return c.profile }
+func (c *Library) Model() string {
+	if c.model != "" {
+		return c.model
+	}
+	return c.nativeModel
 }
 
 func (c *Library) Run(ctx context.Context, req Request) (Result, error) {
@@ -105,9 +117,13 @@ func (c *Library) Run(ctx context.Context, req Request) (Result, error) {
 	// and group cleanup; Run waits for that cleanup rather than killing the Host.
 	runCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	r, runErr := c.client.Run(runCtx, execution.Request{Caller: "agh", CallerRunID: req.CallerRunID,
+	sdkRequest := execution.Request{Caller: Caller, CallerRunID: req.CallerRunID,
 		Task: req.Prompt, Instructions: []byte(req.Instructions), Directory: req.Workspace,
-		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true})
+		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true}
+	if c.backend == "" || c.backend == "claude" {
+		sdkRequest.Native = &execution.NativeControls{CallerContext: true, PermissionMode: "bypassPermissions"}
+	}
+	r, runErr := c.client.Run(runCtx, sdkRequest)
 	result := Result{RunID: r.RunID, CallerRunID: r.CallerRunID, Status: r.Status, Text: r.Report,
 		Session: r.NativeSessionID, Profile: r.Profile, Model: r.Model, Backend: r.Backend,
 		ExitCode: r.ExitCode, Usage: r.Usage, Raw: r.RawRecord}

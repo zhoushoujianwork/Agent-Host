@@ -206,16 +206,18 @@ type journal struct {
 }
 
 func (j *journal) emit(e event.Event) error {
-	return j.emitEvent(e, false)
+	return j.emitEvent(e, false, false)
 }
 
 // Progress is an optional observation. Its persistence/rendering failure must
 // not poison later tool evidence or cancel the native task.
 func (j *journal) emitProgress(e event.Event) error {
-	return j.emitEvent(e, true)
+	return j.emitEvent(e, true, false)
 }
 
-func (j *journal) emitEvent(e event.Event, optional bool) error {
+func (j *journal) emitPrivate(e event.Event) error { return j.emitEvent(e, false, true) }
+
+func (j *journal) emitEvent(e event.Event, optional, private bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	e.Version = event.Version
@@ -240,6 +242,9 @@ func (j *journal) emitEvent(e event.Event, optional bool) error {
 	defer cancel()
 	if err := j.h.Store.AppendEvent(ctx, &e); err != nil {
 		return fmt.Errorf("persist event %s: %w", e.Type, err)
+	}
+	if private {
+		return nil
 	}
 	if j.sinkErr != nil {
 		return j.sinkErr
@@ -674,7 +679,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
@@ -697,6 +702,17 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			}
 			return activity.observe(e, o.Tool)
 		})
+		if evidence := result.Evidence; evidence != nil {
+			data := map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": evidence.CallerRunID, "profile": evidence.Profile, "backend": evidence.Backend, "status": evidence.Status, "history_status": evidence.HistoryStatus, "history_error": evidence.HistoryError, "raw": evidence.Raw, "usage": evidence.Usage}
+			runErr = errors.Join(runErr, j.emitPrivate(event.Event{Type: "offload.result", Phase: "execute", Component: execution.Component, Status: evidence.Status, Data: data}))
+			if evidence.HistoryStatus != "" {
+				message := "Offload history saved"
+				if evidence.HistoryStatus == "failed" {
+					message = "Offload history was not saved; execution outcome is unchanged"
+				}
+				runErr = errors.Join(runErr, j.emit(event.Event{Type: "offload.history", Phase: "execute", Component: execution.Component, Status: evidence.HistoryStatus, Message: message, Data: map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": evidence.CallerRunID}}))
+			}
+		}
 		return errors.Join(runErr, activity.finish(result.Status))
 	})
 	if result.Status == "" {

@@ -11,18 +11,20 @@ import hashlib
 
 
 def execution_engine(store, agent, execution, assigned, origin=None):
-    if execution.get("offload_config"):
+    if agent.get("offload_config") or execution.get("offload_config"):
         try:
-            value = json.loads(private_bytes(store.config / execution["offload_config"]))
+            reference=agent.get("offload_config") or execution["offload_config"]
+            base=Path(origin).parent if agent.get("offload_config") and origin else store.config
+            value = json.loads(private_bytes(base / reference))
             if not isinstance(value, dict):
                 raise ValueError("Offload profile must be an object")
-            transport = {1: "exec", 2: "go-package"}.get(value.get("version")) if type(value.get("version")) is int else None
+            transport = {2: "go-package"}.get(value.get("version")) if type(value.get("version")) is int else None
         except (OSError, ValueError, TypeError):
             transport = None
         return {"engine":"Offload","transport":transport}
     reference = agent.get("execution_config") or execution.get("execution_config")
     if not reference:
-        return {"engine": "Claude Code", "transport": "print / stream-json"} if assigned else {"engine": None, "transport": None}
+        return {"engine": "Offload", "transport": "go-package"} if assigned else {"engine": None, "transport": None}
     base = Path(origin).parent if agent.get("execution_config") and origin else store.config
     path = base / reference
     try:
@@ -175,7 +177,7 @@ def observations(catalog, destination, agent_id):
                     events = conn.execute(
                         "SELECT payload FROM events WHERE run_id=? "
                         "AND json_extract(payload,'$.phase')='execute' "
-                        "AND json_extract(payload,'$.component') IN ('harness.acp','harness.claude') "
+                        "AND json_extract(payload,'$.component') IN ('harness.acp','harness.claude','harness.offload') "
                         "AND (json_extract(payload,'$.data.raw.native_initialization') "
                         "OR (json_extract(payload,'$.data.raw.type')='system' "
                         "AND json_extract(payload,'$.data.raw.subtype')='init')) ORDER BY seq DESC",
@@ -183,7 +185,7 @@ def observations(catalog, destination, agent_id):
                     for (payload,) in events:
                         event = json.loads(payload)
                         raw = (event.get("data") or {}).get("raw") or {}
-                        if event.get("phase") != "execute" or event.get("component") not in {"harness.acp", "harness.claude"} or not isinstance(raw, dict):
+                        if event.get("phase") != "execute" or event.get("component") not in {"harness.acp", "harness.claude", "harness.offload"} or not isinstance(raw, dict):
                             continue
                         if not (raw.get("native_initialization") or raw.get("type") == "system" and raw.get("subtype") == "init"):
                             continue
@@ -192,7 +194,7 @@ def observations(catalog, destination, agent_id):
                         result["native_inventory"] = {"skills": [name[:200] for name in raw.get("skills") or [] if isinstance(name, str)],
                             "services": [{"name": str(s.get("name", ""))[:200], "status": str(s.get("status", "unknown"))[:40]} for s in raw.get("mcp_servers") or [] if isinstance(s, dict)],
                             "skills_observed": isinstance(raw.get("skills"), list), "model": event.get("model"),
-                            "transport": "acp" if event["component"] == "harness.acp" else "print / stream-json",
+                            "transport": "acp" if event["component"] == "harness.acp" else ("go-package" if event["component"] == "harness.offload" else "print / stream-json"),
                             "observed_at": event.get("at") or run.get("created_at"), "run_key": key}
                         break
                 for raw, in conn.execute("SELECT payload FROM events WHERE run_id=? AND json_extract(payload,'$.type')='workspace.assembled' ORDER BY seq", (run["id"],)):

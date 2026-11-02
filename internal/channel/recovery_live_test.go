@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/state"
 )
 
@@ -62,7 +62,7 @@ func TestLiveNativeAfterAutomaticSessionRecovery(t *testing.T) {
 	if failed.Status != "failed" {
 		t.Fatal("failed-session precondition absent")
 	}
-	f.host.Runner = claude.New(config.Claude)
+	f.host.Runner = nativepolicy.New(config.Claude)
 	recovered := f.process(t, f.message(t, "fresh-message", "你好，请用一句中文介绍你可以帮我做什么，不要调用工具。", "text", "dm"))
 	run := f.run(t, recovered)
 	if recovered.Status != "completed" || recovered.SessionID == failed.SessionID || !strings.Contains(recovered.ReplyText, "本条消息") || strings.Contains(recovered.ReplyText, "/new") || run.Output == "" {

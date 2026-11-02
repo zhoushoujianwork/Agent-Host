@@ -49,7 +49,7 @@ func (h *Host) finalizeExperience(ctx context.Context, j *journal) error {
 	err = j.phase(ctx, "extract", "memory.extractor", h.Config.Model, func(ctx context.Context) error {
 		var err error
 		extraction, err = h.Extractor.Extract(ctx, run, evidence, func(o harness.Observation) error {
-			e := event.Event{Type: "extraction.evidence", Phase: "extract", Component: "harness.claude.extractor", Status: "running", Agent: "memory-extractor", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
+			e := event.Event{Type: "extraction.evidence", Phase: "extract", Component: "harness.offload.extractor", Status: "running", Agent: "memory-extractor", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Type == "text_delta" {
 				e.Type = "text.delta"
 				e.Delta = o.Delta

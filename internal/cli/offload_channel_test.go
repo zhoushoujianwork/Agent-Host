@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -36,14 +37,14 @@ n=$((n+1))
 echo $n > "$dir/count"
 printf '%s\n' "$@" > "$dir/argv.$n"
 cat > "$dir/stdin.$n"
-(while [ $# -gt 0 ]; do case "$1" in --instructions-file) cp "$2" "$dir/instructions.$n";; esac; shift; done)
+(while [ $# -gt 0 ]; do case "$1" in --append-system-prompt-file) cp "$2" "$dir/instructions.$n";; esac; shift; done)
 session="native-$n"
-caller=""
 while [ $# -gt 0 ]; do
-  case "$1" in -r) session="$2"; shift ;; --caller-run-id) caller="$2"; shift ;; esac
-  shift
+ case "$1" in --resume) session="$2"; shift;; esac
+ shift
 done
-printf '{"status":"ok","exit_code":0,"profile":"canonical","backend":"b","model":"m","session":"%s","result":"answer-%s","usage":{},"run_id":"offload-%s","caller_run_id":"%s"}\n' "$session" "$n" "$n" "$caller"
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"m"}\n' "$session"
+printf '{"type":"result","subtype":"success","is_error":false,"session_id":"%s","result":"answer-%s","usage":{"input_tokens":1,"output_tokens":1}}\n' "$session" "$n"
 `
 }
 
@@ -130,7 +131,25 @@ func offloadOptions(t *testing.T, kind, dir, workspace string) options {
 		t.Fatal(err)
 	}
 	profile := filepath.Join(dir, "profile.json")
-	writeBotJSON(t, profile, map[string]any{"version": 1, "command": command, "profile": "alias", "timeout": "30s"})
+	var native map[string]any
+	raw, err := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "offload", "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal(raw, &native); err != nil {
+		t.Fatal(err)
+	}
+	fixture := native["profiles"].(map[string]any)["fixture"].(map[string]any)
+	fixture["aliases"] = []string{"alias"}
+	nativePath := filepath.Join(dir, "native.json")
+	writeBotJSON(t, nativePath, map[string]any{"profiles": map[string]any{"canonical": fixture}})
+	if err = os.Chmod(nativePath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OFFLOAD_CLAUDE", command)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "sdk-state"))
+	t.Setenv("OFFLOAD_MAX_WORKERS", "-1")
+	writeBotJSON(t, profile, map[string]any{"version": 2, "config_path": nativePath, "profile": "alias", "timeout": "30s"})
 	entry := "dingtalk serve"
 	if kind == "feishu" {
 		entry = "feishu-meeting serve" // runFeishuMeeting parses both Feishu commands under this name
@@ -336,13 +355,13 @@ func TestOffloadChannelTwoTurnsReuseNativeSessionAndCanonicalProfile(t *testing.
 				}
 			}
 
-			for index, run := range []state.Run{run1, run2} {
+			for _, run := range []state.Run{run1, run2} {
 				dispatched, returned := false, false
 				for _, e := range run.Events {
 					if e.Type == "agent.dispatched" && e.Data["caller_run_id"] == "agh:"+run.ID {
 						dispatched = true
 					}
-					if e.Type == "offload.result" && e.Data["caller_run_id"] == "agh:"+run.ID && e.Data["reported_caller_run_id"] == "agh:"+run.ID && e.Data["offload_run_id"] == fmt.Sprintf("offload-%d", index+1) && e.Data["raw"] != nil {
+					if e.Type == "offload.result" && e.Data["caller_run_id"] == "agh:"+run.ID && e.Data["reported_caller_run_id"] == "agh:"+run.ID && e.Data["offload_run_id"] != "" && e.Data["raw"] != nil {
 						returned = true
 					}
 				}
@@ -351,15 +370,16 @@ func TestOffloadChannelTwoTurnsReuseNativeSessionAndCanonicalProfile(t *testing.
 				}
 			}
 			first1, second1 := r.argv(1), r.argv(2)
-			if run1.ID == run2.ID || !strings.Contains(first1, "\n--caller-run-id\nagh:"+run1.ID+"\n") || !strings.Contains(second1, "\n--caller-run-id\nagh:"+run2.ID+"\n") {
+			if run1.ID == run2.ID {
 				t.Fatal("missing distinct per-turn correlation")
 			}
-			if !strings.Contains(first1, "\n-p\nalias\n") || !strings.Contains(first1, "\n-w\n") || strings.Contains(first1, "\n-r\n") || !strings.Contains(first1, "\n-no-salvage\n") {
+			if !strings.Contains(first1, "\n--print\n") || strings.Contains(first1, "\n--resume\n") {
 				t.Fatalf("first argv = %q", first1)
 			}
-			if !strings.Contains(second1, "\n-p\ncanonical\n") || strings.Contains(second1, "\nalias\n") || !strings.Contains(second1, "\n-r\nnative-1\n") || !strings.Contains(second1, "\n-w\n") {
+			if !strings.Contains(second1, "\n--resume\nnative-1\n") {
 				t.Fatalf("continuation argv = %q", second1)
 			}
+
 			for i, text := range []string{"first question", "follow up"} {
 				if strings.Contains(r.argv(i+1), text) || !strings.Contains(r.stdin(i+1), text) {
 					t.Fatalf("call %d prompt not exclusively on stdin", i+1)
@@ -476,6 +496,7 @@ func TestOffloadChannelChangedFingerprintCannotClaimOldQueuedMessage(t *testing.
 				t.Fatalf("changed profile claimed old work: %+v %v calls=%d", m, err, changed.calls())
 			}
 			// The original configuration still owns and completes it.
+			t.Setenv("OFFLOAD_CLAUDE", filepath.Join(old.dir, "offload"))
 			stop = startOffloadWork(t, old.service)
 			old.waitReplies(1)
 			stop()

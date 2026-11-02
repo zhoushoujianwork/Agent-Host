@@ -44,7 +44,8 @@ class HandoffTests(unittest.TestCase):
 
     def test_offload_destination_separates_native_and_classifier_credentials(self):
         profile=self.root/"offload.json"
-        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"local"}));profile.chmod(0o600)
+        native=self.root/"native.json";native.write_text(json.dumps({"profiles":{"local":{"backend":"codex"}}}));native.chmod(0o600)
+        profile.write_text(json.dumps({"version":2,"config_path":str(native),"profile":"local"}));profile.chmod(0o600)
         self.value["args"]=["--home",str(self.root/"cli-state"),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]
         self.value.pop("environment_file")
         self.save()

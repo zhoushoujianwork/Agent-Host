@@ -1,5 +1,7 @@
 # Agent-Host implementation notes
 
+Current source uses only the Offload package; see [current execution contract](offload-execution-boundary-detail.md). ACP and print-backend sections below are historical implementation notes.
+
 The [managed Skills contract](managed-skills-design-detail.md) adds the proposed
 agh catalog, proactive default-Agent loading and enabled-plugin usage guidance.
 Its [main design](managed-skills-design.md) owns scope and rollout. Existing
@@ -15,9 +17,9 @@ they are not a claim that every current path passed live validation.
 
 ## Technical glossary / 技术名词
 
-The [main glossary](architecture.md#key-objects--关键对象) introduces business and
+The [main glossary](architecture-detail.md#key-objects--关键对象) introduces business and
 memory objects. These terms explain how they are executed, authorized and stored.
-[主文档](architecture.md#key-objects--关键对象)解释业务与记忆对象；这里补充执行、权限和存储术语。
+[主文档](architecture-detail.md#key-objects--关键对象)解释业务与记忆对象；这里补充执行、权限和存储术语。
 
 | Term / 名词 | Meaning / 含义 |
 | --- | --- |
@@ -63,7 +65,7 @@ receipts exclude original request/response text and native context.
 
 ### Current execution path before ACP
 
-The [main architecture diagram](architecture.md#core-architecture) shows the
+The [main architecture diagram](architecture.md#ownership) shows the
 chosen target and ACP delivery status. This diagram records the retained print baseline: entries
 reach Host, and Host runs Claude's print/stream-JSON adapter. New Web chats
 launch a separately configured Host CLI. Selecting an existing channel Session
@@ -243,7 +245,7 @@ are implemented. See [configuration, boundaries and validation](acp-execution-de
 The remaining design below includes warm process reuse, additional engines and
 channel interaction controls; these are not delivered by the first increment.
 
-Scope follows the [main architecture](architecture.md#shared-acp-execution).
+Scope follows the [main architecture](offload-execution-boundary.md).
 Source inspection on 2026-10-20 found a shared `harness.Runner` contract in
 `internal/harness/harness.go`; channel execution reaches it through Host.
 `internal/harness/claude/adapter.go` currently launches `--print` with
@@ -526,3 +528,40 @@ choice records. Existing waiting requests remain owner-confirmed only.
 `/new` resets the compatible session for the latest actual project set and retains
 memory. `/status` exposes only safe conversation/task state; `/help` lists the
 three supported controls. Native interactive commands are not forwarded.
+
+## Key objects / 关键对象
+
+Read these as separate responsibilities, even when they work on the same request.
+这些对象可能参与同一次请求，但各自管理不同的内容。
+
+| Object / 对象 | Meaning / 含义 |
+| --- | --- |
+| Host / 宿主 | Coordinates tasks, access, context and durable records. 负责组织任务、权限、上下文与长期记录，产品名是 Agent-Host。 |
+| Agent / 智能体配置 | A configured role, model and project policy used for requests. 一套角色、模型和项目配置，例如“运维助手”；不是一个独立模型或进程。 |
+| Channel / 渠道 | An entry and reply path, such as DingTalk, Feishu or CLI. 接收请求并交付回复的入口，例如钉钉、飞书或终端。 |
+| Task / 任务 | The business work requested by the user. 用户希望完成的工作，例如“修复登录测试”；跨多轮的持久功能任务仍待实现。 |
+| Run / 执行记录 | One execution attempt with its own events and outcome. 一次执行尝试及其过程、结果；执行结束不等于业务验收通过。 |
+| Conversation / 对话 | Related channel messages and replies within an authorized binding. 授权范围内关联的渠道消息与回复；群成员可以共享同一对话。 |
+| Native session / 原生会话 | Conversation state maintained by the selected execution engine across compatible turns. 所选执行引擎自己保存的连续上下文；切换引擎不自动迁移，Host 的长期记忆另行保留。 |
+| Project / 项目 | A stable registered identity for a repository and its execution environment. 仓库及执行环境的稳定登记身份，用于路由和关联记录。 |
+| Workspace / 工作目录 | The filesystem location where execution works on files. 执行时实际操作文件的目录；项目身份与目录路径分别记录。 |
+| Context / 上下文 | The instructions and information available to the engine for the current work. 引擎处理当前工作时可用的指令与信息；长期记忆只是其中一种来源。 |
+| Evidence / 证据 | Attributed source material and observed execution results. 带来源的原始材料与执行观测，例如消息、工具输出；保留它不代表内容已被证实。 |
+| Memory / 长期记忆 | Eligible facts, preferences, decisions or procedures retained for later tasks. 可供后续任务使用的事实、偏好、决策或方法；与聊天原文、执行日志分别保存。 |
+| Skill / 方法技能 | A reusable procedure delivered as `SKILL.md` with conditions and evidence. 保存适用条件、步骤与证据的可复用方法；记住方法不代表已经执行成功。 |
+| Managed Skill / 纳管技能 | A versioned, reviewed and enabled catalog entry governed by agh, covering authored methods, eligible experience and plugin usage. 可复用处理方法统一以技能交付；安装、发布、装载和执行结果分别记录。 |
+| Plugin / 插件 | A configured capability whose adapter supplies tools and whose adapter also supplies matching usage guidance. 插件启用后应同时让 Agent 知道可用能力及使用方法，不因此获得业务操作授权。 |
+| Datasource / 数据源 | A configured source the assistant can consult, such as Confluence or local Markdown. 可按需查询的资料来源；读取资料不会自动把它变成长期记忆。 |
+
+For example, “fix the login test” arrives through a **Channel**, selects an
+**Agent** and **Project**, then creates a **Run** in the project's **Workspace**.
+Claude Code may continue a compatible **Native session**. Host records **Evidence**
+and separately decides whether a useful correction becomes **Memory / a Skill**.
+
+例如：“修复登录测试”从钉钉进入，Host 选择运维助手和目标项目，在项目目录执行。
+执行记录回答“做了什么、结果如何”，长期记忆回答“以后可以复用什么”。
+任务完成、AI 业务验收和经验保存成功分别记录。
+
+Execution-engine, authorization and storage terms are explained in the
+[bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
+执行引擎、权限和存储相关术语见同一份详细稿中的双语解释。

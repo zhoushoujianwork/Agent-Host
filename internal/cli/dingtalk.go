@@ -2,7 +2,7 @@ package cli
 
 import (
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/acp"
+	"agent-host/internal/offloadexec"
 
 	"bytes"
 	"context"
@@ -26,7 +26,7 @@ import (
 	"agent-host/internal/discovery"
 	"agent-host/internal/event"
 	"agent-host/internal/experience"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/host"
 	"agent-host/internal/memory"
 	"agent-host/internal/objectmemory"
@@ -55,7 +55,7 @@ The secret is read from a private local file and is never printed.
 Common execution options: --home, --workspace or --project, --model, --claude, --no-tools,
 --allowed-tools, --agents-config, --native-profile, --jev-provider, --jev-endpoint, --jev-model,
 --timeout, --format text|json, --discovery-config.
---execution-config selects the same ACP backend used by CLI and Web.
+Execution uses the Offload Go package and its default profile.
 Agent history search/read is mounted automatically when tools are enabled.
 Owner-private tasks also discover the built-in DingTalk workspace MCP.
 workspace_config selects its private configuration; default is data-dingtalk-workspace.json beside the bot JSON.
@@ -156,14 +156,11 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	if o.scope == "" {
 		o.scope = o.workspace
 	}
-	legacy := claude.New(o.binary)
-	var runner harness.Runner = legacy
-	if o.executionProfile != nil {
-		runner = acp.New(*o.executionProfile, o.binary)
-	}
-	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(legacy, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
+	native := nativeRunner(o)
+	var runner harness.Runner = native
+	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(native, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
-	h.Objects = objectmemory.New(legacy, o.model)
+	h.Objects = objectmemory.New(native, o.model)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
 	h.Config.ManagedEntries, h.Config.ManagedMemories, h.Config.ManagedUnready = o.managedEntries, o.managedMemories, o.managedUnready
@@ -489,4 +486,11 @@ func serveChannelRuntime(ctx context.Context, label string, receive func(context
 		cancel()
 		return errors.Join(ctx.Err(), <-received, <-worked)
 	}
+}
+
+func nativeRunner(o options) *nativepolicy.Adapter {
+	if library, ok := o.offloadClient.(*offloadexec.Library); ok {
+		return nativepolicy.NewWithLibrary(o.binary, library)
+	}
+	return nativepolicy.New(o.binary)
 }

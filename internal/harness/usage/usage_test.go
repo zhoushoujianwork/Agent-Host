@@ -14,3 +14,14 @@ func TestACPUnknownBillingIsNotInferredFromExtractor(t *testing.T) {
 		t.Fatalf("usage=%+v", out)
 	}
 }
+
+func TestOffloadNativeResultsRetainUsageWithoutDoubleCountingPrivateRecord(t *testing.T) {
+	raw := map[string]any{"type": "result", "uuid": "native-result", "usage": map[string]any{"input_tokens": 4, "output_tokens": 2}, "total_cost_usd": 0.01}
+	out := Summarize([]event.Event{
+		{RunID: "run", Phase: "execute", Component: "harness.offload", Type: "agent.result", Data: map[string]any{"raw": raw}},
+		{RunID: "run", Phase: "execute", Component: "harness.offload", Type: "offload.result", Data: map[string]any{"raw": map[string]any{"status": "ok", "usage": raw["usage"]}}},
+	})
+	if out.Calls != 1 || out.CostUSD == nil || *out.CostUSD != 0.01 || out.Tokens["input_tokens"] == nil || *out.Tokens["input_tokens"] != 4 {
+		t.Fatalf("%+v", out)
+	}
+}

@@ -15,7 +15,7 @@ import (
 	"agent-host/internal/assembly"
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/history"
 	"agent-host/internal/host"
 	"agent-host/internal/memory"
@@ -84,7 +84,7 @@ func TestDailyUseNativeLive(t *testing.T) {
 	started := time.Now()
 	cases := []string{}
 	memoryInputs := []string{}
-	runner := &dailyUseNativeRunner{native: claude.New(configured.Claude)}
+	runner := &dailyUseNativeRunner{native: nativepolicy.New(configured.Claude)}
 	report := map[string]any{
 		"report_version": 1, "date": started.In(time.FixedZone("Asia/Singapore", 8*60*60)).Format("2006-01-02"),
 		"method": "isolated_native_daily_use_acceptance", "requested_model": configured.Model,

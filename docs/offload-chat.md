@@ -10,14 +10,14 @@ Offload owns native execution and conversation history; AGH owns scoped memory,
 request receipts and durable outcomes. The Mac app presents the same workspace.
 
 Select a private Offload profile in the workspace's `config/web-chat.json`, or
-use `chat --offload-config PATH` for an interactive terminal conversation, or
+use `chat` for an interactive terminal conversation (optional `--offload-config PATH`), or
 add `-m MESSAGE` for a single turn. Optional memory uses that same
 profile. Answers appear before memory closeout, whose failure remains separate. User
 messages display only their original text; internal context uses a separate
 instruction channel, and empty memory adds no snapshot.
 
-Version 2 profiles call the pinned public Offload Go package directly. Version 1
-retains explicit CLI compatibility. Use a new conversation for the package path;
+All execution calls the pinned public Offload Go package directly. Version 1
+CLI compatibility is removed. Use a new compatible conversation after migration;
 existing sessions and installed services are not switched automatically.
 
 Web room/request IDs are now supported. Accepted retries return recorded results
@@ -27,7 +27,7 @@ Only the latest compatible, completed receipt can supply native continuation.
 Overlapping or interrupted intake uses a fresh session with attributed history.
 This keeps Offload's linear native history consistent with the saved receipts.
 
-Existing ACP conversations and running services are not migrated automatically.
+Historical conversations and running services are not migrated automatically.
 Offload room forks, channel takeover, runtime renewal and managed
 Host tool injection remain unsupported. Desktop/live acceptance is separate from
 headless implementation checks.

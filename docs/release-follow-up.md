@@ -1,11 +1,13 @@
 # Progress and next steps
 
+2026-11-02 source update: native execution now uses the Offload Go package only. ACP and direct Host-managed execution are removed; historical acceptance below remains tied to its original revision. Production adoption is separate. See [current migration scope](offload-execution-boundary.md).
+
 Source status reviewed on 2026-10-16; the shared ACP execution track was added
 on 2026-10-20, with the first Claude ACP runner implemented that day. This is the current backlog, not a release
 commitment. [Architecture](architecture.md) explains the technical route;
 [validation notes](release-follow-up-detail.md) retain evidence and open checks.
 
-Reading aid / 阅读提示：see [key objects / 关键对象](architecture.md#key-objects--关键对象)
+Reading aid / 阅读提示：see [key objects / 关键对象](architecture-detail.md#key-objects--关键对象)
 and [technical terms / 技术名词](architecture-detail.md#technical-glossary--技术名词).
 “Implemented / 已实现” means code exists; “live acceptance / 真实验收” means it
 has been exercised with real accounts and platforms. These are separate milestones.
@@ -74,7 +76,7 @@ This is the active continuation selected on 2026-10-23.
 
 ## Execution integration track
 
-Adopt [shared ACP execution](architecture.md#shared-acp-execution) for
+Adopt [shared ACP execution](offload-execution-boundary.md) for
 CLI, Web, DingTalk, Feishu and future conversation entries. This is a Host
 harness change shared by channels, not a Web-only Claude connection.
 

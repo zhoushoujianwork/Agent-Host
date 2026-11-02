@@ -178,7 +178,7 @@ func TestOffloadInteractiveFailureDoesNotConsumeNextTurn(t *testing.T) {
 	o, args := chatOffloadFixture(t)
 	dir := filepath.Dir(o.offloadConfig)
 	script := "#!/bin/sh\ncat > '" + dir + "/failed-input'\nprintf x >> '" + dir + "/calls'\nprintf '%s\n' '{\"status\":\"error\",\"exit_code\":7,\"error\":\"fixture failure\"}'\nexit 7\n"
-	if err := os.WriteFile(o.offloadProfile.Command, []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(filepath.Dir(o.offloadConfig), "offload"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
 	events, err := chatOffloadInputEvents(t, args, strings.NewReader("first\nnever run this\n"))

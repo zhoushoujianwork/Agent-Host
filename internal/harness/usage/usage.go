@@ -34,7 +34,7 @@ func Summarize(events []event.Event) Summary {
 			}
 			continue
 		}
-		if e.Component != "harness.claude" && e.Component != "harness.claude.extractor" {
+		if e.Component != "harness.claude" && e.Component != "harness.claude.extractor" && e.Component != "harness.offload" && e.Component != "harness.offload.extractor" {
 			continue
 		}
 		encoded, err := json.Marshal(e.Data["raw"])

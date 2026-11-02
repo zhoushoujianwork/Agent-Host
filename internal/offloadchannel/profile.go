@@ -27,8 +27,6 @@ const maxProfileBytes = 32 << 10
 // Profile is the validated Offload execution profile of one channel runtime.
 type Profile struct {
 	Version int
-	// Command is the resolved absolute Offload executable.
-	Command string
 	// ConfigPath selects Offload's private native config for version 2 Go calls.
 	ConfigPath string
 	library    *offloadexec.Library
@@ -38,6 +36,12 @@ type Profile struct {
 	Timeout       time.Duration
 	MemoryEnabled bool
 	Memory        MemoryConfig
+}
+
+// FromLibrary builds the default Host selector from an already resolved native
+// Offload snapshot. It cannot select a CLI transport or enable memory implicitly.
+func FromLibrary(library *offloadexec.Library, timeout time.Duration) Profile {
+	return Profile{Version: 2, ConfigPath: library.ConfigPath(), Profile: library.ProfileName(), Timeout: timeout, library: library}
 }
 
 // MemoryConfig selects AGH memory components, not Offload tools or credentials.
@@ -66,7 +70,7 @@ type profileFile struct {
 	} `json:"memory,omitempty"`
 }
 
-// Load reads a private CLI (v1) or Go package (v2) profile and its fingerprint.
+// Load reads a private Go package profile and its fingerprint.
 func Load(path string) (Profile, string, error) {
 	var p Profile
 	if !filepath.IsAbs(path) {
@@ -104,8 +108,8 @@ func Parse(raw []byte) (Profile, string, error) {
 	if err := mcpstdio.Decode(bytes.TrimSpace(raw), &f); err != nil {
 		return p, "", errors.New("offload configuration must be one JSON object with documented fields only")
 	}
-	if f.Version != 1 && f.Version != 2 {
-		return p, "", errors.New("offload configuration requires version 1 (CLI) or 2 (Go package)")
+	if f.Version != 2 {
+		return p, "", errors.New("only version 2 Offload Go package profiles are supported; CLI transport has been removed")
 	}
 	if f.Memory != nil {
 		if f.Memory.Enabled == nil {
@@ -117,31 +121,13 @@ func Parse(raw []byte) (Profile, string, error) {
 		return p, "", errors.New("offload timeout must be an explicit positive duration such as 30m")
 	}
 	p = Profile{Version: f.Version, Profile: f.Profile, Model: f.Model, Timeout: timeout}
-	if f.Version == 2 {
-		if f.Command != "" {
-			return Profile{}, "", errors.New("version 2 Go package configuration cannot specify a command or CLI fallback")
-		}
-		p.ConfigPath = f.ConfigPath
-		p.library, err = offloadexec.NewLibrary(f.ConfigPath, f.Profile, f.Model, timeout)
-		if err != nil {
-			return Profile{}, "", err
-		}
-	} else {
-		if f.ConfigPath != "" {
-			return Profile{}, "", errors.New("config_path requires version 2 Go package execution")
-		}
-		if !filepath.IsAbs(f.Command) || filepath.Clean(f.Command) != f.Command {
-			return Profile{}, "", errors.New("offload command must be a clean absolute path")
-		}
-		resolved, err := filepath.EvalSymlinks(f.Command)
-		if err != nil {
-			return Profile{}, "", errors.New("configured Offload executable is unavailable")
-		}
-		info, err := os.Stat(resolved)
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-			return Profile{}, "", errors.New("configured Offload command must be an executable regular file")
-		}
-		p.Command = resolved
+	if f.Command != "" {
+		return Profile{}, "", errors.New("Offload CLI command is no longer supported")
+	}
+	p.ConfigPath = f.ConfigPath
+	p.library, err = offloadexec.NewLibrary(f.ConfigPath, f.Profile, f.Model, timeout)
+	if err != nil {
+		return Profile{}, "", err
 	}
 	if f.Memory != nil && *f.Memory.Enabled {
 		p.MemoryEnabled = true
@@ -183,29 +169,15 @@ func Parse(raw []byte) (Profile, string, error) {
 			}
 		}
 	}
-	if f.Version == 1 {
-		if err := p.ClientConfig().Validate(); err != nil {
-			return Profile{}, "", err
-		}
-	}
 	return p, p.Fingerprint(), nil
 }
 
-// NewClient selects only the explicitly configured transport. A version 2
-// snapshot is never reconstructed as a CLI invocation after a library error.
+// NewClient returns only the resolved in-process package client.
 func (p Profile) NewClient() (offloadexec.Executor, error) {
-	if p.Version == 2 {
-		if p.library == nil {
-			return nil, errors.New("Go package execution requires a loaded profile snapshot")
-		}
-		return p.library, nil
+	if p.library == nil {
+		return nil, errors.New("Offload requires a loaded Go package profile")
 	}
-	return offloadexec.New(p.ClientConfig())
-}
-
-// ClientConfig returns the executor configuration for this profile.
-func (p Profile) ClientConfig() offloadexec.Config {
-	return offloadexec.Config{Command: p.Command, Profile: p.Profile, Model: p.Model, Timeout: p.Timeout}
+	return p.library, nil
 }
 
 // Fingerprint identifies every setting that changes how Offload is invoked.
@@ -214,28 +186,15 @@ func (p Profile) Fingerprint() string {
 	if p.MemoryEnabled {
 		memoryConfig = &p.Memory
 	}
-	if p.Version == 2 {
-		native := ""
-		if p.library != nil {
-			native = p.library.Fingerprint()
-		}
-		canonical, _ := json.Marshal(struct {
-			Version                                             int
-			ConfigPath, Profile, Model, Timeout, NativeSnapshot string
-			Memory                                              *MemoryConfig
-		}{p.Version, p.ConfigPath, p.Profile, p.Model, p.Timeout.String(), native, memoryConfig})
-		sum := sha256.Sum256(canonical)
-		return FingerprintPrefix + hex.EncodeToString(sum[:])
+	native := ""
+	if p.library != nil {
+		native = p.library.Fingerprint()
 	}
 	canonical, _ := json.Marshal(struct {
-		Version      int           `json:"version"`
-		Command      string        `json:"command"`
-		Profile      string        `json:"profile"`
-		Model        string        `json:"model"`
-		Timeout      string        `json:"timeout"`
-		Memory       bool          `json:"memory"`
-		MemoryConfig *MemoryConfig `json:"memory_config,omitempty"`
-	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), p.MemoryEnabled, memoryConfig})
+		Version                                             int
+		ConfigPath, Profile, Model, Timeout, NativeSnapshot string
+		Memory                                              *MemoryConfig
+	}{p.Version, p.ConfigPath, p.Profile, p.Model, p.Timeout.String(), native, memoryConfig})
 	sum := sha256.Sum256(canonical)
 	return FingerprintPrefix + hex.EncodeToString(sum[:])
 }

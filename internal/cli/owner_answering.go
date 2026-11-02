@@ -15,7 +15,6 @@ import (
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/discovery"
 	"agent-host/internal/event"
-	"agent-host/internal/harness/claude"
 	"agent-host/internal/host"
 	"agent-host/internal/owneranswering"
 	"agent-host/internal/runcompletion"
@@ -77,8 +76,8 @@ func composeOwnerAnswering(ctx context.Context, store *state.Store, cfg discover
 		}
 		return nil
 	}
-	c.Classify = owneranswering.NativeClassifier(claude.New(base.binary), cfg.Model, cfg.OwnerAnswering.Instructions)
-	nativeDraft := owneranswering.NativeDraft(claude.New(base.binary), cfg.Model, cfg.OwnerAnswering.Instructions)
+	c.Classify = owneranswering.NativeClassifier(nativeRunner(base), cfg.Model, cfg.OwnerAnswering.Instructions)
+	nativeDraft := owneranswering.NativeDraft(nativeRunner(base), cfg.Model, cfg.OwnerAnswering.Instructions)
 	c.Draft = func(ctx context.Context, q owneranswering.Question) (owneranswering.Outcome, error) {
 		if q.RunID != "" {
 			audience := "owner-answering:" + channel.Key(cfg.Profile, q.Source.ConversationID)

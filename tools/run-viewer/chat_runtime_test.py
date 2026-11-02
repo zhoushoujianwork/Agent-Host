@@ -183,7 +183,8 @@ class RuntimeTests(unittest.TestCase):
 
     def test_offload_launcher_uses_profile_without_legacy_agent_or_provider(self):
         profile=self.root/"offload.json"
-        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"fixture"}));profile.chmod(0o600)
+        native=self.root/"native.json";native.write_text(json.dumps({"profiles":{"fixture":{"backend":"codex"}}}));native.chmod(0o600)
+        profile.write_text(json.dumps({"version":2,"config_path":str(native),"profile":"fixture"}));profile.chmod(0o600)
         config=self.root/"offload-web.json"
         value={"binary":sys.executable,"cwd":str(self.root),"args":["--home",str(self.root),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]}
         config.write_text(json.dumps(value));config.chmod(0o600)
@@ -192,7 +193,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("--feedback-other-users-only=true",command)
         self.assertNotIn("ANTHROPIC_API_KEY",env)
         self.assertNotIn("JEV_API_KEY",env)
-        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"changed"}))
+        profile.write_text(json.dumps({"version":2,"config_path":str(native),"profile":"changed"}))
         self.assertNotEqual(configured_launch(config,"daily")[3],identity)
         with self.assertRaises(ValueError):configured_launch(config,"other")
         value["args"] += ["--no-tools","true"]

@@ -559,7 +559,7 @@ class ChatRuntime:
             # experience processing retain their evidence in the inspector.
             if event.get("agent") == "memory-extractor" or event.get("phase") not in (None, "", "execute", "knowledge_search", "knowledge_read"):
                 return event.get("status") if kind == "run.finished" else None
-            if event.get("component") == "harness.acp" and event.get("model") and (kind in {"text.delta", "agent.result"} or (event.get("data") or {}).get("native_type") == "native_configuration"):
+            if event.get("component") in {"harness.acp", "harness.offload"} and event.get("model") and (kind in {"text.delta", "agent.result"} or (event.get("data") or {}).get("native_type") == "native_configuration"):
                 turn["model"] = str(event["model"])
             if event.get("component")=="host.offload" and kind=="execution.ready" and event.get("model"):
                 turn["model"]=str(event["model"])

@@ -97,7 +97,7 @@ func TestOffloadChatOneShotAndResume(t *testing.T) {
 		t.Fatal("changed workspace launched native execution")
 	}
 	raw, err := os.ReadFile(filepath.Join(filepath.Dir(o.offloadConfig), "argv.2"))
-	if err != nil || !strings.Contains(string(raw), "-r\nnative-1\n") || !strings.Contains(string(raw), "--caller-run-id\nagh:"+previous.ID+"\n") {
+	if err != nil || !strings.Contains(string(raw), "--resume\nnative-1\n") {
 		t.Fatalf("bad resume: %s %v", raw, err)
 	}
 }

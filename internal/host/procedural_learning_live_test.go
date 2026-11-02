@@ -13,7 +13,7 @@ import (
 	"agent-host/internal/decision/jev"
 	"agent-host/internal/experience"
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/state"
 )
 
@@ -52,7 +52,7 @@ func TestProceduralLearningNativeObservation(t *testing.T) {
 	defer cancel()
 	started := time.Now()
 	h, replay, _, _ := correctionHost(t)
-	native := claude.New(os.Getenv("AGENT_HOST_LIVE_CLAUDE"))
+	native := nativepolicy.New(os.Getenv("AGENT_HOST_LIVE_CLAUDE"))
 	x := experience.NewExtractor(native, model)
 	h.Config.Model, h.Config.DecisionModel = model, client.Model()
 	h.Extractor, h.Judge = x, experience.NewJudge(client)

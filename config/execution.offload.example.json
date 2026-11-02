@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "config_path": "/absolute/path/to/offload/config.json",
+  "profile": "your-profile",
+  "timeout": "30m",
+  "memory": {"enabled": false}
+}

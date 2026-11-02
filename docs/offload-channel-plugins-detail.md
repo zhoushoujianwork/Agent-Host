@@ -5,8 +5,7 @@
 
 ## Boundaries
 
-- `internal/offloadexec`: explicit in-process Go package client (version 2) and
-  retained CLI compatibility client (version 1), with bounded inputs, private
+- `internal/offloadexec`: in-process Go package client (version 2 only), with bounded inputs, private
   results and cancellation of only the owned native execution.
 - A slim channel host implements the existing `channel.Host` interface. Both
   existing transports call it through one factory. It does not construct the
@@ -17,8 +16,8 @@
 
 ## Configuration and compatibility
 
-An explicit Offload selector is separate from `execution_config` (ACP); selecting
-both fails validation. Offload owns provider credentials. Unknown capabilities
+ACP `execution_config` is removed. The optional Offload selector chooses a profile;
+omitting it uses the explicit Offload default. Offload owns provider credentials. Unknown capabilities
 are not emulated using a prompt and are never silently dropped. Profile aliases
 may resolve on a fresh invocation; continuation retains the returned canonical
 profile, native session, workspace and runtime fingerprint.
@@ -40,13 +39,12 @@ Optional `model` overrides the Offload profile model. The configuration must be
 a regular owner-private file, normally mode `0600`. `config_path` points to an
 existing private native Offload config, also owner-only and not a symlink. The
 selected profile/alias is resolved into a snapshot through the published
-`github.com/zhoushoujianwork/offload/pkg/execution` module pinned to `v0.6.1`.
+`github.com/zhoushoujianwork/offload/pkg/execution` module pinned to `v0.7.0`.
 
 Version 2 explicitly enables the package's `RecordHistory` option. Offload owns
 the standard private history append; Host does not write its log format. Monitor
 and Offload history readers can therefore retain terminal package calls with the
-same Offload/Host run correlation as private Host evidence. Legacy CLI mode keeps
-its existing single history write. Existing calls are not backfilled or replayed.
+same Offload/Host run correlation as private Host evidence. Existing calls are not backfilled or replayed.
 
 Host emits `offload.history` with independent `saved`/`failed` status and run IDs.
 An append failure retains its details in private `offload.result` evidence and
@@ -57,12 +55,9 @@ No Offload CLI installation is needed; the native Claude/Codex executable and
 its authentication still follow Offload's process-wide configuration. No
 credential is copied from Offload into this selector or the event stream.
 
-Existing version 1 selectors keep `command` instead of `config_path` and retain
-their CLI behavior and fingerprints. Version 2 rejects `command`; version 1
-rejects `config_path`. There is no implicit transport fallback. To evaluate the
-package path, create a version 2 selector and a new conversation; do not relabel
-an existing native binding. Selected native profile changes alter the package
-runtime fingerprint and require a new compatible conversation.
+Version 1/`command` selectors are rejected. Use version 2 `config_path` and a
+new compatible conversation. Selected profile changes alter the package runtime
+fingerprint; existing state is never relabelled or replayed.
 
 Use isolated channel state and a new configuration during evaluation. For a
 channel-only background service, `service run --no-workbench` avoids starting
