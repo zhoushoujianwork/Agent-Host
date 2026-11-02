@@ -123,6 +123,9 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	monitorResumeArgs                                                                  []string
+	monitorDirectory                                                                   string
+	resumeCanceledRun                                                                  string
 	skillsRoot, managedFingerprint                                                     string
 	managedEntries                                                                     []managedskills.Entry
 	managedMemories                                                                    []state.Memory
@@ -208,6 +211,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	if name == "chat" {
+		fs.StringVar(&o.resumeCanceledRun, "resume-canceled-run", "", "Explicitly resume this canceled Host run through its validated session")
 		fs.BoolVar(&o.detach, "detach", false, "Continue after the caller exits (does not background the command)")
 		fs.IntVar(&o.callerPID, "caller-pid", 0, "Also cancel when this supervising caller process exits")
 		fs.BoolVar(&o.feedbackOtherUsersOnly, "feedback-other-users-only", false, "Keep requester feedback local; notify only other verified users")
@@ -293,6 +297,16 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	if err := fs.Parse(args); err != nil {
 		return o, nil, err
 	}
+	if name == "chat" {
+		o.monitorDirectory = cwd
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "m", "message", "resume", "resume-canceled-run", "detach", "caller-pid", "format", "home":
+				return
+			}
+			o.monitorResumeArgs = append(o.monitorResumeArgs, "--"+f.Name+"="+f.Value.String())
+		})
+	}
 	if o.offloadConfig == "" {
 		fs.Visit(func(f *flag.Flag) {
 			switch f.Name {
@@ -303,6 +317,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	if err := loadExecutionOptions(&o); err != nil {
 		return o, nil, err
+	}
+	if o.resumeCanceledRun != "" && o.fullHost {
+		return o, nil, errors.New("explicit canceled resume is supported only by direct Offload chat")
 	}
 	if o.offloadProfile != nil && o.offloadConfig != "" {
 		if name != "chat" && name != "run retry-memory" && !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {

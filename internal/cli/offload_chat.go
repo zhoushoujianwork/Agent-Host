@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 // Local terminal and Web room entries share the same host. Terminal Chat holds
 // its session lease across all turns; rooms own durable request deduplication.
 func runOffloadChat(ctx context.Context, o options, in io.Reader, out, errout io.Writer) (runErr error) {
+	if o.resumeCanceledRun != "" && (!o.oneShot || o.resume == "" || o.room != "") {
+		return errors.New("--resume-canceled-run requires direct one-shot chat with --resume")
+	}
 	if o.takeoverSession != "" || o.renewRuntime {
 		return errors.New("Offload Chat does not support takeover or runtime renewal; start a new session")
 	}
@@ -53,6 +57,18 @@ func runOffloadChat(ctx context.Context, o options, in io.Reader, out, errout io
 	}
 	renderer := terminal.Renderer{Out: out, JSON: o.format == "json"}
 	h := composeOffloadChannelHost(store, o, renderer.Render).(*offloadchannel.Host)
+	h.Config.ResumeCanceledRun = o.resumeCanceledRun
+	if o.room == "" {
+		executable, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		h.Config.ResumeCommand = func(run state.Run, session state.Session) ([]string, string) {
+			args := append([]string{executable, "chat"}, o.monitorResumeArgs...)
+			args = append(args, "--home", o.home, "--resume", session.ID, "--resume-canceled-run", run.ID, "--format", "json", "--detach", "-m", "Continue the unfinished task from the existing session. Inspect prior output and existing effects before taking further action; do not blindly replay completed operations.")
+			return args, o.monitorDirectory
+		}
+	}
 	if o.room != "" {
 		var received time.Time
 		if o.receivedAt != "" {

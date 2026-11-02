@@ -39,7 +39,7 @@ Optional `model` overrides the Offload profile model. The configuration must be
 a regular owner-private file, normally mode `0600`. `config_path` points to an
 existing private native Offload config, also owner-only and not a symlink. The
 selected profile/alias is resolved into a snapshot through the published
-`github.com/zhoushoujianwork/offload/pkg/execution` module pinned to `v0.7.0`.
+`github.com/zhoushoujianwork/offload/pkg/execution` module pinned to `v0.8.0`.
 
 Version 2 explicitly enables the package's `RecordHistory` option. Offload owns
 the standard private history append; Host does not write its log format. Monitor

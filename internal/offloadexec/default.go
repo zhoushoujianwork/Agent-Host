@@ -69,6 +69,9 @@ func (c *Library) RunNative(ctx context.Context, req execution.Request) (executi
 		req.CallerRunID = "agh:internal:" + uuid.NewString()
 	}
 	req.RecordHistory = true
+	if req.Monitor == nil {
+		req.Monitor = &execution.MonitorOptions{CaptureTranscript: true}
+	}
 	if req.Model == "" {
 		req.Model = c.model
 	}

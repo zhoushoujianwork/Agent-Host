@@ -105,7 +105,7 @@ receipts and retrieval decisions remain recorded for inspection.
 The package owns private native prompt-file lifecycle and cleanup. Host enforces
 a 256 KiB internal-context limit and the combined 1 MiB input budget. Oversized
 or unsupported requests fail explicitly, without a concatenation fallback.
-The published Go package v0.7.0 requires no Offload CLI. Every call carries
+The published Go package v0.8.0 requires no Offload CLI. Every call carries
 `Caller=agh` and its Host/internal correlation ID and records terminal history.
 Independent `offload.history` status reports persistence; write failure does not
 repeat work or relabel execution. Historical calls are not backfilled.
@@ -116,3 +116,16 @@ separates the public task/history surface, not that upstream role implementation
 Attributed memory remains source data and does not grant permissions. Existing
 native history is preserved; begin a fresh conversation to validate a clean
 visible task after upgrading.
+
+## Monitor controls
+
+All package calls opt into private per-run cancellation and bounded transcript
+capture. Direct owner CLI supplies an exact executable/argv and absolute working
+directory for explicit continuation. `--resume-canceled-run RUN_ID` requires
+one-shot direct chat, `--resume SESSION`, the latest canceled local owner run,
+matching private Offload caller/session evidence and confirmed cleanup. Normal
+session gates remain unchanged. A canceled first turn binds only a confirmed
+native session before terminal persistence. The monitor-launched CLI uses
+`--detach` to outlive the short acknowledgement process; it retains the Host
+session lease and reconstructs current context and runtime checks. No source
+content or lineage environment variable grants session permission.

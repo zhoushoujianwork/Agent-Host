@@ -13,7 +13,7 @@ require (
 	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.2-beta.1
 	github.com/zhoushoujianwork/Agent-Host/plugins/feishu v0.0.0
 	github.com/zhoushoujianwork/Agent-Host/plugins/speech v0.0.0
-	github.com/zhoushoujianwork/offload v0.7.0
+	github.com/zhoushoujianwork/offload v0.8.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.60.1
 )

@@ -39,3 +39,10 @@ queued input. Use `--resume HOST_SESSION_ID` to reopen an existing conversation;
 its runtime and workspace must still match.
 
 [Configuration, continuity and validation details](offload-chat-detail.md).
+
+Direct owner CLI tasks register bounded output and per-run Stop with Offload Monitor.
+An explicitly canceled task can Resume through its original AGH CLI entry point,
+creating a new Host/Offload run in the same validated session. The original run
+stays canceled. Missing sessions, unresolved cleanup and changed runtime settings
+remain unavailable; channel, room and full-Host calls do not advertise a resume
+entry point. See [implementation details](offload-chat-detail.md).

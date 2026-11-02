@@ -33,6 +33,8 @@ const (
 
 // Request describes one Offload run.
 type Request struct {
+	MonitorResumeCommand   []string
+	MonitorResumeDirectory string
 	// CallerRunID optionally correlates this invocation with its owning task.
 	// It is metadata, never a native session or a permission grant.
 	CallerRunID string

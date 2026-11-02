@@ -8,6 +8,8 @@ import (
 // Request carries explicit native execution policy. An empty PermissionMode
 // preserves native defaults; business instances may explicitly select bypass.
 type Request struct {
+	MonitorResumeCommand    []string
+	MonitorResumeDirectory  string
 	CallerRunID             string // Owning Host run correlation, never execution authority.
 	NativeSessionProfile    string // Canonical execution profile recorded by the previous turn.
 	WriteIntent             bool   // Task intent only; does not grant permissions or provide a sandbox.

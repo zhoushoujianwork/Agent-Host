@@ -5,7 +5,7 @@
 ## Package selection
 
 `internal/offloadexec.Library` is the only production execution client. It imports
-`github.com/zhoushoujianwork/offload/pkg/execution`, pinned to v0.7.0. Default
+`github.com/zhoushoujianwork/offload/pkg/execution`, pinned to v0.8.0. Default
 selection reads the owner-private XDG Offload config (normally
 `~/.config/offload/config.json`) and resolves its explicit `default` profile.
 Version 2 selector files name `config_path`, `profile`, optional `model`,

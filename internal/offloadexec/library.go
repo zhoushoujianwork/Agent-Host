@@ -15,7 +15,7 @@ import (
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
 
-const LibraryVersion = "v0.7.0"
+const LibraryVersion = "v0.8.0"
 
 // Library snapshots an explicit native profile and calls Offload's public Go
 // package. It never starts the Offload CLI or falls back to the CLI client.
@@ -119,9 +119,12 @@ func (c *Library) Run(ctx context.Context, req Request) (Result, error) {
 	defer cancel()
 	sdkRequest := execution.Request{Caller: Caller, CallerRunID: req.CallerRunID,
 		Task: req.Prompt, Instructions: []byte(req.Instructions), Directory: req.Workspace,
-		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true}
+		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true, Monitor: &execution.MonitorOptions{CaptureTranscript: true, ResumeCommand: req.MonitorResumeCommand, ResumeDirectory: req.MonitorResumeDirectory}}
 	if c.backend == "" || c.backend == "claude" {
 		sdkRequest.Native = &execution.NativeControls{CallerContext: true, PermissionMode: "bypassPermissions"}
+	}
+	if len(req.MonitorResumeCommand) > 0 {
+		sdkRequest.Monitor.ResumedFrom = execution.MonitorResumeSource()
 	}
 	r, runErr := c.client.Run(runCtx, sdkRequest)
 	result := Result{RunID: r.RunID, CallerRunID: r.CallerRunID, Status: r.Status, Text: r.Report,

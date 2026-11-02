@@ -33,6 +33,8 @@ const (
 // identity; Offload owns its model and tool loop, so there are no tool,
 // permission or MCP fields.
 type Config struct {
+	ResumeCanceledRun             string
+	ResumeCommand                 func(state.Run, state.Session) ([]string, string)
 	AgentID, AudienceID           string
 	Scope, ProjectID, ProjectName string
 	Workspace                     string
@@ -106,7 +108,7 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 	if err := h.checkSession(s); err != nil {
 		return s, err
 	}
-	if err := st.SessionCanResume(ctx, id); err != nil {
+	if err := h.canResume(ctx, st, id); err != nil {
 		return s, err
 	}
 	if _, _, err := h.continuation(ctx, st, s); err != nil {
@@ -339,7 +341,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		if last.Room != nil || messageID == "" && last.Source != nil || messageID != "" && last.Source == nil {
 			return state.Run{}, errors.New("Offload entry cannot adopt a session with different source provenance")
 		}
-		if err := st.SessionCanResume(ctx, cur.ID); err != nil {
+		if err := h.canResume(ctx, st, cur.ID); err != nil {
 			return state.Run{}, err
 		}
 	}
@@ -386,6 +388,9 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		}
 	}
 	req := harness.Request{CallerRunID: "agh:" + run.ID, Prompt: input, HostInstructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), WriteIntent: h.Config.Write, Resume: resume}
+	if messageID == "" && !room && h.Config.ResumeCommand != nil {
+		req.MonitorResumeCommand, req.MonitorResumeDirectory = h.Config.ResumeCommand(run, cur)
+	}
 	if resume {
 		req.NativeSessionID, req.NativeSessionProfile = cur.NativeSessionID, profile
 		if room {
@@ -443,6 +448,8 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 	}
 	if execErr == nil {
 		execErr = h.bind(ctx, j, cur, resume, result)
+	} else if result.Status == "canceled" && canceledBinding(result, run.ID) {
+		execErr = errors.Join(execErr, h.bind(ctx, j, cur, resume, result))
 	}
 	elapsed := time.Since(started).Milliseconds()
 	status := "completed"
