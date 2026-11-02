@@ -15,6 +15,10 @@ profile. Answers appear before memory closeout, whose failure remains separate. 
 messages display only their original text; internal context uses a separate
 instruction channel, and empty memory adds no snapshot.
 
+Version 2 profiles call the pinned public Offload Go package directly. Version 1
+retains explicit CLI compatibility. Use a new conversation for the package path;
+existing sessions and installed services are not switched automatically.
+
 Web room/request IDs are now supported. Accepted retries return recorded results
 without repeating work. Each room runs one request at a time; different rooms
 can run concurrently. A busy room reports a conflict for an explicit later retry.

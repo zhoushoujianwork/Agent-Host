@@ -48,7 +48,7 @@ type Config struct {
 // Optional memory remains under AGH policy; native loops stay in Offload.
 type Host struct {
 	Store  *state.Store
-	Client *offloadexec.Client
+	Client offloadexec.Executor
 	Config Config
 	Sink   event.Sink
 	Memory *MemoryPlugin
@@ -392,11 +392,12 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 			req.NativeSessionID = cur.Room.ForkFromNativeSessionID
 		}
 	}
-	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through exec",
-		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": "exec"}}}, false); err != nil {
+	var runner harness.Runner = offload.New(h.Client)
+	identity := harness.RunnerIdentity(runner)
+	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through " + identity.Transport,
+		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": identity.Transport}}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
-	var runner harness.Runner = offload.New(h.Client)
 	result, runErr := runner.Run(ctx, req, nil)
 	evidence := result.Evidence
 	backend := ""

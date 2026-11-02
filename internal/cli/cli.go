@@ -140,7 +140,7 @@ type options struct {
 	executionProfile                                                                   *acp.Config
 	offloadConfig                                                                      string
 	offloadProfile                                                                     *offloadchannel.Profile
-	offloadClient                                                                      *offloadexec.Client
+	offloadClient                                                                      offloadexec.Executor
 	offloadMemory                                                                      *offloadchannel.MemoryPlugin
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool

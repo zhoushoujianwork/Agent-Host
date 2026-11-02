@@ -5,9 +5,9 @@
 
 ## Boundaries
 
-- `internal/offloadexec`: subprocess-only client for the verified basic Offload
-  CLI, with prompt on stdin, explicit command/profile/workspace, bounded JSON
-  results and cancellation of only the process group it created.
+- `internal/offloadexec`: explicit in-process Go package client (version 2) and
+  retained CLI compatibility client (version 1), with bounded inputs, private
+  results and cancellation of only the owned native execution.
 - A slim channel host implements the existing `channel.Host` interface. Both
   existing transports call it through one factory. It does not construct the
   legacy Host or require Jev when memory is disabled.
@@ -24,12 +24,12 @@ may resolve on a fresh invocation; continuation retains the returned canonical
 profile, native session, workspace and runtime fingerprint.
 
 The channel CLI accepts `--offload-config /absolute/offload.json`; managed
-execution profiles use `offload_config`. The private file uses this shape:
+execution profiles use `offload_config`. New Go package profiles use this shape:
 
 ```json
 {
-  "version": 1,
-  "command": "/absolute/path/to/offload",
+  "version": 2,
+  "config_path": "/absolute/path/to/offload/config.json",
   "profile": "your-offload-profile",
   "timeout": "30m",
   "memory": {"enabled": false}
@@ -37,8 +37,21 @@ execution profiles use `offload_config`. The private file uses this shape:
 ```
 
 Optional `model` overrides the Offload profile model. The configuration must be
-a regular owner-private file, normally mode `0600`; the command must be an
-absolute executable path. No credential is copied from Offload into this file.
+a regular owner-private file, normally mode `0600`. `config_path` points to an
+existing private native Offload config, also owner-only and not a symlink. The
+selected profile/alias is resolved into a snapshot through the published
+`github.com/zhoushoujianwork/offload/pkg/execution` module pinned to `v0.6.0`.
+No Offload CLI installation is needed; the native Claude/Codex executable and
+its authentication still follow Offload's process-wide configuration. No
+credential is copied from Offload into this selector or the event stream.
+
+Existing version 1 selectors keep `command` instead of `config_path` and retain
+their CLI behavior and fingerprints. Version 2 rejects `command`; version 1
+rejects `config_path`. There is no implicit transport fallback. To evaluate the
+package path, create a version 2 selector and a new conversation; do not relabel
+an existing native binding. Selected native profile changes alter the package
+runtime fingerprint and require a new compatible conversation.
+
 Use isolated channel state and a new configuration during evaluation. For a
 channel-only background service, `service run --no-workbench` avoids starting
 the Python workbench or opening a browser. Existing channel component

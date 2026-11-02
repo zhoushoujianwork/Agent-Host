@@ -25,6 +25,12 @@ calling the execution client directly. It retains private raw evidence, canonica
 continuation bindings and independent execution/memory outcomes. Unsupported
 request controls fail explicitly before native dispatch.
 
+Version 2 execution profiles now call Offload's published `v0.6.0/pkg/execution`
+in process, without launching the Offload CLI. Explicit version 1 profiles retain
+CLI compatibility. There is no fallback between them and no automatic adoption
+of an old session. [Configuration details](offload-channel-plugins-detail.md#configuration-and-compatibility)
+describe the opt-in transition.
+
 The prototype still owns a separate Host orchestration implementation. The main
 Host has not adopted this adapter, the legacy paths remain available, and no
 installed service or existing native session is migrated by this increment.
@@ -32,7 +38,7 @@ installed service or existing native session is migrated by this increment.
 ## Delivery order
 
 1. Establish the shared execution boundary and preserve existing prototype
-   behavior. **Implemented in this increment; headless validation only.**
+   behavior, then consume the public Go package. **Implemented; headless validation only.**
 2. Close the capability gaps needed by the common Host: tools and permissions,
    context/Skills injection, native bindings and real streamed events. Keep
    model-based memory extraction within explicit Host policy.

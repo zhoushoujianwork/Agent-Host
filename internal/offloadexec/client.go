@@ -111,6 +111,14 @@ type Client struct {
 	waitGrace time.Duration
 }
 
+// Executor is the execution seam shared by the explicit CLI compatibility path
+// and the in-process Offload package client. Neither implementation may replay.
+type Executor interface {
+	Run(context.Context, Request) (Result, error)
+}
+
+func (*Client) Transport() string { return "exec" }
+
 // New validates cfg and returns a Client. It does not touch the filesystem.
 func New(cfg Config) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
@@ -125,6 +133,10 @@ func fail(kind, status string, code int, cause error, format string, args ...any
 }
 
 func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err error) {
+	return validateRequest(req, c.cfg.Profile)
+}
+
+func validateRequest(req Request, configuredProfile string) (stdin []byte, profile string, err error) {
 	if req.CallerRunID != "" && !correlationIDPattern.MatchString(req.CallerRunID) {
 		return nil, "", errors.New("offloadexec: invalid CallerRunID")
 	}
@@ -146,7 +158,7 @@ func (c *Client) validateRequest(req Request) (stdin []byte, profile string, err
 	if statErr != nil || !fi.IsDir() {
 		return nil, "", errors.New("offloadexec: Workspace must be an existing directory")
 	}
-	profile = c.cfg.Profile
+	profile = configuredProfile
 	if req.Session == "" {
 		if req.ResumeProfile != "" {
 			return nil, "", errors.New("offloadexec: ResumeProfile requires Session")
@@ -323,11 +335,11 @@ func trimPrefix(err error) string {
 func ctxFailure(parent, run context.Context) (Result, error) {
 	switch {
 	case errors.Is(parent.Err(), context.Canceled):
-		return fail(KindCanceled, StatusCanceled, -1, context.Canceled, "run canceled")
+		return fail(KindCanceled, StatusCanceled, -1, errors.Join(context.Canceled, context.Cause(parent)), "run canceled")
 	case errors.Is(parent.Err(), context.DeadlineExceeded):
-		return fail(KindDeadline, StatusTimeout, -1, context.DeadlineExceeded, "context deadline exceeded")
+		return fail(KindDeadline, StatusTimeout, -1, errors.Join(context.DeadlineExceeded, context.Cause(parent)), "context deadline exceeded")
 	default:
-		return fail(KindClientTimeout, StatusTimeout, -1, context.DeadlineExceeded, "offload did not finish within the configured timeout")
+		return fail(KindClientTimeout, StatusTimeout, -1, errors.Join(context.DeadlineExceeded, context.Cause(run)), "offload did not finish within the configured timeout")
 	}
 }
 

@@ -29,6 +29,9 @@ type Profile struct {
 	Version int
 	// Command is the resolved absolute Offload executable.
 	Command string
+	// ConfigPath selects Offload's private native config for version 2 Go calls.
+	ConfigPath string
+	library    *offloadexec.Library
 	// Profile is the explicit Offload profile name passed to fresh runs.
 	Profile       string
 	Model         string
@@ -47,12 +50,13 @@ type MemoryConfig struct {
 }
 
 type profileFile struct {
-	Version int    `json:"version"`
-	Command string `json:"command"`
-	Profile string `json:"profile"`
-	Model   string `json:"model,omitempty"`
-	Timeout string `json:"timeout"`
-	Memory  *struct {
+	Version    int    `json:"version"`
+	Command    string `json:"command"`
+	ConfigPath string `json:"config_path,omitempty"`
+	Profile    string `json:"profile"`
+	Model      string `json:"model,omitempty"`
+	Timeout    string `json:"timeout"`
+	Memory     *struct {
 		Enabled    *bool  `json:"enabled"`
 		Processing *bool  `json:"processing_enabled,omitempty"`
 		Provider   string `json:"provider,omitempty"`
@@ -62,7 +66,7 @@ type profileFile struct {
 	} `json:"memory,omitempty"`
 }
 
-// Load reads a private version 1 profile and returns it with its fingerprint.
+// Load reads a private CLI (v1) or Go package (v2) profile and its fingerprint.
 func Load(path string) (Profile, string, error) {
 	var p Profile
 	if !filepath.IsAbs(path) {
@@ -91,16 +95,17 @@ func Load(path string) (Profile, string, error) {
 	return Parse(raw)
 }
 
-// Parse validates profile JSON. It does not read credentials or Offload's own
-// configuration, and it never contacts a provider.
+// Parse validates profile JSON without contacting a provider. Version 2 loads
+// the explicit native config into an in-memory, fingerprinted SDK snapshot;
+// it does not run credential commands or persist credentials.
 func Parse(raw []byte) (Profile, string, error) {
 	var p Profile
 	var f profileFile
 	if err := mcpstdio.Decode(bytes.TrimSpace(raw), &f); err != nil {
 		return p, "", errors.New("offload configuration must be one JSON object with documented fields only")
 	}
-	if f.Version != 1 {
-		return p, "", errors.New("offload configuration requires version 1")
+	if f.Version != 1 && f.Version != 2 {
+		return p, "", errors.New("offload configuration requires version 1 (CLI) or 2 (Go package)")
 	}
 	if f.Memory != nil {
 		if f.Memory.Enabled == nil {
@@ -111,18 +116,33 @@ func Parse(raw []byte) (Profile, string, error) {
 	if err != nil {
 		return p, "", errors.New("offload timeout must be an explicit positive duration such as 30m")
 	}
-	if !filepath.IsAbs(f.Command) || filepath.Clean(f.Command) != f.Command {
-		return p, "", errors.New("offload command must be a clean absolute path")
+	p = Profile{Version: f.Version, Profile: f.Profile, Model: f.Model, Timeout: timeout}
+	if f.Version == 2 {
+		if f.Command != "" {
+			return Profile{}, "", errors.New("version 2 Go package configuration cannot specify a command or CLI fallback")
+		}
+		p.ConfigPath = f.ConfigPath
+		p.library, err = offloadexec.NewLibrary(f.ConfigPath, f.Profile, f.Model, timeout)
+		if err != nil {
+			return Profile{}, "", err
+		}
+	} else {
+		if f.ConfigPath != "" {
+			return Profile{}, "", errors.New("config_path requires version 2 Go package execution")
+		}
+		if !filepath.IsAbs(f.Command) || filepath.Clean(f.Command) != f.Command {
+			return Profile{}, "", errors.New("offload command must be a clean absolute path")
+		}
+		resolved, err := filepath.EvalSymlinks(f.Command)
+		if err != nil {
+			return Profile{}, "", errors.New("configured Offload executable is unavailable")
+		}
+		info, err := os.Stat(resolved)
+		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+			return Profile{}, "", errors.New("configured Offload command must be an executable regular file")
+		}
+		p.Command = resolved
 	}
-	resolved, err := filepath.EvalSymlinks(f.Command)
-	if err != nil {
-		return p, "", errors.New("configured Offload executable is unavailable")
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return p, "", errors.New("configured Offload command must be an executable regular file")
-	}
-	p = Profile{Version: 1, Command: resolved, Profile: f.Profile, Model: f.Model, Timeout: timeout}
 	if f.Memory != nil && *f.Memory.Enabled {
 		p.MemoryEnabled = true
 		p.Memory = MemoryConfig{Processing: true, Provider: "typesafe", Model: jev.DefaultModel, Timeout: 30 * time.Second}
@@ -163,10 +183,24 @@ func Parse(raw []byte) (Profile, string, error) {
 			}
 		}
 	}
-	if err := p.ClientConfig().Validate(); err != nil {
-		return Profile{}, "", err
+	if f.Version == 1 {
+		if err := p.ClientConfig().Validate(); err != nil {
+			return Profile{}, "", err
+		}
 	}
 	return p, p.Fingerprint(), nil
+}
+
+// NewClient selects only the explicitly configured transport. A version 2
+// snapshot is never reconstructed as a CLI invocation after a library error.
+func (p Profile) NewClient() (offloadexec.Executor, error) {
+	if p.Version == 2 {
+		if p.library == nil {
+			return nil, errors.New("Go package execution requires a loaded profile snapshot")
+		}
+		return p.library, nil
+	}
+	return offloadexec.New(p.ClientConfig())
 }
 
 // ClientConfig returns the executor configuration for this profile.
@@ -179,6 +213,19 @@ func (p Profile) Fingerprint() string {
 	var memoryConfig *MemoryConfig
 	if p.MemoryEnabled {
 		memoryConfig = &p.Memory
+	}
+	if p.Version == 2 {
+		native := ""
+		if p.library != nil {
+			native = p.library.Fingerprint()
+		}
+		canonical, _ := json.Marshal(struct {
+			Version                                             int
+			ConfigPath, Profile, Model, Timeout, NativeSnapshot string
+			Memory                                              *MemoryConfig
+		}{p.Version, p.ConfigPath, p.Profile, p.Model, p.Timeout.String(), native, memoryConfig})
+		sum := sha256.Sum256(canonical)
+		return FingerprintPrefix + hex.EncodeToString(sum[:])
 	}
 	canonical, _ := json.Marshal(struct {
 		Version      int           `json:"version"`

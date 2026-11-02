@@ -393,13 +393,34 @@ func TestDeadlineTerminatesGroup(t *testing.T) {
 	cmd, dir := fake(t, "")
 	_ = os.WriteFile(cmd, []byte("#!/bin/sh\ncat >/dev/null\n"+stubbornBody(dir)+"\n"), 0o700)
 	c := newClient(t, cmd, nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 700*time.Millisecond)
+	// Confirm startup within a separate budget before requiring a real caller
+	// deadline to reap the group. A 700ms deadline could expire before the shell
+	// had forked its child, leaving no PID with which to test group cleanup.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	res, err := c.Run(ctx, Request{Prompt: "p", Workspace: t.TempDir()})
+	type outcome struct {
+		result Result
+		err    error
+	}
+	done := make(chan outcome, 1)
+	workspace := t.TempDir()
+	go func() {
+		res, err := c.Run(ctx, Request{Prompt: "p", Workspace: workspace})
+		done <- outcome{res, err}
+	}()
+	pid := pidFrom(t, dir+"/child.pid")
+	var res Result
+	var err error
+	select {
+	case result := <-done:
+		res, err = result.result, result.err
+	case <-time.After(15 * time.Second):
+		t.Fatal("deadline did not stop the owned process group")
+	}
 	if res.Status != StatusTimeout || res.ErrorKind != KindDeadline || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
-	waitDead(t, pidFrom(t, dir+"/child.pid"))
+	waitDead(t, pid)
 }
 
 func TestClientTimeoutIsNotCancellation(t *testing.T) {

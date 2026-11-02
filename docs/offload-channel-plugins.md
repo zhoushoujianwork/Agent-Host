@@ -17,6 +17,11 @@ enable only the channels needed. Existing profiles keep their current behavior.
 Development and acceptance use isolated runtime directories, without switching
 the installed services.
 
+New version 2 profiles consume the published Offload `pkg/execution` directly
+in process. Existing version 1 profiles retain explicit CLI compatibility;
+library errors never trigger a CLI retry. Use a new conversation when adopting
+version 2 so existing bindings are preserved rather than silently migrated.
+
 Start with a private Offload profile file and pass `--offload-config PATH` to
 either channel's `check` and `serve` command. Managed channel profiles use
 `offload_config`; `service run --no-workbench` starts channels without the Web

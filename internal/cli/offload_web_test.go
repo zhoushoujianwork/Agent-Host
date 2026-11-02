@@ -33,18 +33,24 @@ func TestOffloadWebProcess(t *testing.T) {
 }
 
 func TestOffloadWebBridgeActualCLIAndFakeNative(t *testing.T) {
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("Python bridge unavailable")
-	}
 	o, _ := chatOffloadFixture(t)
 	dir := filepath.Dir(o.offloadConfig)
 	script := offloadFakeScript(dir)
 	script = strings.Replace(script, `session="native-$n"`, `case "$(cat "$dir/stdin.$n")" in *slow-room*) exec sleep 60;; esac
 session="native-$n"`, 1)
-	if err = os.WriteFile(o.offloadProfile.Command, []byte(script), 0o700); err != nil {
+	if err := os.WriteFile(o.offloadProfile.Command, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	runOffloadWebBridge(t, o, "answer-1", "answer-2")
+}
+
+func runOffloadWebBridge(t *testing.T, o options, firstAnswer, secondAnswer string) {
+	t.Helper()
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("Python bridge unavailable")
+	}
+	dir := filepath.Dir(o.offloadConfig)
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -78,11 +84,11 @@ try:
  a=wait(first)
  assert runtime.snapshot()['max_concurrent']==1
  assert a['status']=='completed',a
- assert a['text']=='answer-1',a
+ assert a['text']==sys.argv[3],a
  assert a['engine']=='offload' and a['memory_status']=='skipped',a
  second=runtime.start('request-two','second')
  b=wait(second)
- assert b['status']=='completed' and b['text']=='answer-2',b
+ assert b['status']=='completed' and b['text']==sys.argv[4],b
  assert runtime.start('request-two','second')==second
  assert (directory/'count').read_text().strip()=='2'
  runtime.close()
@@ -103,7 +109,7 @@ finally:
 `
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	command := exec.CommandContext(ctx, python, "-B", "-c", code, viewer, config)
+	command := exec.CommandContext(ctx, python, "-B", "-c", code, viewer, config, firstAnswer, secondAnswer)
 	command.Env = append(os.Environ(), "AGH_WEB_TEST_PROCESS=1")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("Web/CLI integration: %v\n%s", err, output)

@@ -12,7 +12,14 @@ import hashlib
 
 def execution_engine(store, agent, execution, assigned, origin=None):
     if execution.get("offload_config"):
-        return {"engine":"Offload","transport":"exec"}
+        try:
+            value = json.loads(private_bytes(store.config / execution["offload_config"]))
+            if not isinstance(value, dict):
+                raise ValueError("Offload profile must be an object")
+            transport = {1: "exec", 2: "go-package"}.get(value.get("version")) if type(value.get("version")) is int else None
+        except (OSError, ValueError, TypeError):
+            transport = None
+        return {"engine":"Offload","transport":transport}
     reference = agent.get("execution_config") or execution.get("execution_config")
     if not reference:
         return {"engine": "Claude Code", "transport": "print / stream-json"} if assigned else {"engine": None, "transport": None}

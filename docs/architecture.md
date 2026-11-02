@@ -279,6 +279,9 @@ harness interface, replacing the direct ACP integration while keeping one Host
 task flow. The prototype now uses that adapter; consolidating its orchestration
 into the common Host and closing capability gaps remain pending. This direction
 supersedes treating the lightweight prototype as a separate long-term Host.
+Version 2 profiles now consume Offload's published `v0.6.0/pkg/execution` in
+process. Explicit version 1 profiles retain CLI compatibility without fallback;
+package adoption and production rollout are separate from this source delivery.
 
 The [managed Skills increment](managed-skills-design.md) is implemented and locally
 validated. Explicit operator adoption and production/platform rollout remain

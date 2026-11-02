@@ -62,11 +62,20 @@ def offload_destination(config):
     if not Path(selected["--workspace"]).is_dir():
         raise ValueError("Offload workspace unavailable")
     profile = private_json(selected["--offload-config"])
-    if profile.get("version") != 1 or not isinstance(profile.get("profile"), str) or not profile["profile"]:
+    version = profile.get("version")
+    if type(version) is not int or version not in (1, 2) or not isinstance(profile.get("profile"), str) or not profile["profile"]:
         raise ValueError("invalid Offload profile")
-    native = profile.get("command")
-    if not isinstance(native,str) or not Path(native).is_absolute() or not os.access(native,os.X_OK):
-        raise ValueError("Offload executable unavailable")
+    if version == 2:
+        native_config = profile.get("config_path")
+        if profile.get("command") or not isinstance(native_config, str) or not Path(native_config).is_absolute():
+            raise ValueError("Go package execution needs an explicit native config without a CLI command")
+        private_json(native_config)  # Validate ownership; never copy native credentials into the launch environment.
+    else:
+        if profile.get("config_path"):
+            raise ValueError("native config_path requires version 2")
+        native = profile.get("command")
+        if not isinstance(native,str) or not Path(native).is_absolute() or not os.access(native,os.X_OK):
+            raise ValueError("Offload executable unavailable")
     return selected
 
 

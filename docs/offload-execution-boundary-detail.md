@@ -6,8 +6,10 @@ product boundary and migration sequence.
 ## Current adapter
 
 `internal/harness/offload.Adapter` implements the existing `harness.Runner`
-interface. It delegates once to `internal/offloadexec.Client`, which owns CLI
-validation, private instruction-file cleanup and process-group termination.
+interface. It delegates once through the shared `offloadexec.Executor` seam.
+Version 2 profiles use `offloadexec.Library` and the pinned public Offload Go
+package; version 1 profiles explicitly retain the CLI client. The package path
+starts only the selected native engine, not an Offload CLI child.
 The adapter never reads Host state, routes a task, retries work or switches
 engines. `internal/offloadchannel.Host` now uses this adapter; its existing
 CLI/Web/channel entry points and configuration retain their current behavior.
@@ -28,17 +30,34 @@ evidence privately and keeps its current `offload.result` and `offload.binding`
 events; presentation observers do not receive the raw record. Acceptance is not
 inferred from execution completion or from saved memory.
 
-The current CLI supplies one final record. The adapter can emit a final result
+Both transports supply one final record to this adapter. It can emit a final result
 observation; it does not invent text deltas or tool activity. Observer errors
 are returned without changing a completed execution into a failed execution.
 The prototype keeps its existing observer/audit behavior and private journal.
+
+`config_path` in a version 2 profile references an explicit owner-private native
+Offload config. The selected canonical profile is captured once, without running
+credential commands. The runtime fingerprint includes the selected snapshot,
+transport schema and pinned package version; secrets participate only in the
+private digest input, never in event data or profile previews. Native configuration
+changes require a new compatible runtime/session. Existing version 1 fingerprint
+serialization stays unchanged. A version 2 profile cannot specify `command`,
+and package failures never dispatch a CLI compatibility run.
+
+SDK calls identify their caller as `agh`, keep per-turn correlation and preserve
+the SDK raw record privately. Host input and output budgets still apply. Context
+cancellation stops only the SDK-owned native group; Host is not signaled. Setup,
+deadline, cancellation and native failures retain their error chains. Offload
+salvage remains disabled. SDK raw event callbacks are available upstream but are
+not yet projected into this adapter's presentation observations.
 
 ## Explicit capability gaps
 
 Before dispatch, the adapter rejects per-request native profiles, permission
 modes, tool disablement/allowlists, restricted execution, MCP servers, structured
 schemas/extraction, native Skill packages, model overrides, images, additional
-directories and true session forks. Profile-level model selection continues in
+directories and true session forks. Some controls exist in the SDK but remain
+unmapped here; they are not silently ignored. Profile-level model selection continues in
 the existing client configuration. Read-only intent cannot replace restricted
 execution. Unsupported controls are not converted to prose instructions.
 
@@ -46,7 +65,8 @@ The common Host currently assumes a preallocated native identity and assembles
 MCP/Skills and memory extraction capabilities. It must not select this adapter
 until those contracts are implemented or explicitly separated. The prototype
 also has its own room-continuation rules; these are retained, not generalized
-into support for native forks. No public configuration is added in this slice.
+into support for native forks. The version 2 selector is opt-in; neither installed
+services nor existing conversations are switched by this source change.
 
 ## Validation and migration acceptance
 

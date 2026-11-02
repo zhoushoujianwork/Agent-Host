@@ -6,7 +6,6 @@ import (
 	"agent-host/internal/harness/acp"
 	"agent-host/internal/memory"
 	"agent-host/internal/offloadchannel"
-	"agent-host/internal/offloadexec"
 )
 
 func loadExecutionOptions(o *options) error {
@@ -23,7 +22,7 @@ func loadExecutionOptions(o *options) error {
 		if err != nil {
 			return err
 		}
-		client, err := offloadexec.New(profile.ClientConfig())
+		client, err := profile.NewClient()
 		if err != nil {
 			return err
 		}

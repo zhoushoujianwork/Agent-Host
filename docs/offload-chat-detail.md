@@ -26,7 +26,9 @@ required. Optional `environment_file` may contain only `TYPESAFE_API_KEY` and/or
 no environment file. The launcher clears inherited native and Jev provider
 variables before adding explicitly selected classifier keys. Unsupported,
 duplicate or task/session arguments in saved destinations fail validation.
-The command, provider selection and profile digest participate in launch identity.
+The destination command, provider selection and selector digest participate in
+launch identity. Version 2 native profile snapshots also participate in Go-side
+runtime identity, so changing native configuration cannot silently reuse a session.
 A changed destination requires a new conversation, without automatic replay.
 
 CLI one-shot and explicit `--resume HOST_SESSION_ID` remain available. Web uses
@@ -84,17 +86,20 @@ records bounded real execution, continuation and memory evidence.
 
 The visible Offload task is exactly the current user input. Host instructions,
 nonempty memory, quoted source material and necessary room history travel through
-Offload's `--instructions-file`, never by concatenating them into that task.
+the Go package's `Instructions` bytes for version 2, or Offload's private
+`--instructions-file` for version 1, never by concatenating them into that task.
 No memory block is emitted when recall selects zero records. Empty room envelopes
 and history already inherited by native continuation are omitted. The complete
 receipts and retrieval decisions remain recorded for inspection.
 
-Instruction files use a private temporary directory (`0700`) and file (`0600`),
-remain available through owned process cleanup and are then removed. Context is
-bounded by Offload's 256 KiB file contract and the combined 1 MiB input budget.
+The package owns its native prompt-file lifecycle. CLI compatibility instruction
+files use a private temporary directory (`0700`) and file (`0600`), remain
+available through owned cleanup and are then removed. Both paths enforce a
+256 KiB internal-context limit and the combined 1 MiB input budget.
 Oversized or unsupported requests fail explicitly; there is no concatenation fallback.
-This integration requires an Offload build supporting `--instructions-file` (the
-live baseline is 0.4.0).
+Version 2 links the published Go package `v0.6.0` and requires no Offload CLI.
+Version 1 requires a CLI supporting `--instructions-file` (the historical live
+baseline is 0.4.0); that canary does not establish package-path live acceptance.
 
 Claude maps these instructions to its appended system prompt. The current
 Offload Codex adapter still wraps them internally on native stdin; this change

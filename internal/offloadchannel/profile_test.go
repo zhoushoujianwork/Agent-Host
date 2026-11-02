@@ -123,3 +123,39 @@ func TestLoadRejectsUnsafeOrAmbiguousConfiguration(t *testing.T) {
 		t.Error("relative path accepted")
 	}
 }
+
+func TestLibraryProfileSelectsExplicitTransportAndChangesIdentity(t *testing.T) {
+	dir := t.TempDir()
+	native := filepath.Join(dir, "native.json")
+	if err := os.WriteFile(native, []byte(`{"profiles":{"canonical":{"backend":"codex","aliases":["alias"],"model":"native-model"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"version":2,"config_path":"` + native + `","profile":"alias","timeout":"1m"}`
+	p, fp, err := Parse([]byte(body))
+	if err != nil || p.Version != 2 || p.Command != "" || p.ConfigPath != native {
+		t.Fatalf("%+v %v", p, err)
+	}
+	client, err := p.NewClient()
+	if err != nil || client.(interface{ Transport() string }).Transport() != "go-package" {
+		t.Fatalf("library selection %v", err)
+	}
+	_, repeated, err := Parse([]byte(body))
+	if err != nil || repeated != fp {
+		t.Fatal("unchanged SDK profile changed runtime identity")
+	}
+	for _, invalid := range []string{
+		strings.Replace(body, `"version":2`, `"version":1`, 1),
+		strings.Replace(body, `"version":2`, `"version":2,"command":"`+executable(t)+`"`, 1),
+		strings.Replace(body, `"config_path":"`+native+`",`, "", 1),
+	} {
+		if _, _, err := Parse([]byte(invalid)); err == nil {
+			t.Fatal("mixed or missing transport configuration accepted")
+		}
+	}
+	raw, _ := os.ReadFile(native)
+	os.WriteFile(native, []byte(strings.Replace(string(raw), "native-model", "changed-model", 1)), 0600)
+	_, changed, err := Parse([]byte(body))
+	if err != nil || changed == fp {
+		t.Fatal("changed native configuration reused the old runtime identity")
+	}
+}

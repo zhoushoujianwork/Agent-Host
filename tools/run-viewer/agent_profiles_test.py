@@ -73,6 +73,18 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(p["connectors"][0]["scope"], "shared_beta")
         self.assertNotIn("secret", json.dumps(profiles(self.store, self.catalog)))
 
+    def test_offload_library_transport_comes_from_the_explicit_profile(self):
+        profile = self.write("offload-pkg.json", {"version": 2, "profile": "local", "config_path": "/private/native.json"})
+        config = self.write("web-chat-pkg.json", {"binary": "/bin/true", "cwd": str(self.root), "args": ["--home", str(self.home), "--workspace", str(self.root), "--agent", "daily", "--offload-config", str(profile)]})
+        result = profiles(self.store, self.catalog, web_config=config)
+        web = next(p for p in result["profiles"] if p["destination"] == "web")
+        self.assertEqual((web["engine"], web["transport"]), ("Offload", "go-package"))
+        self.assertEqual(web["connectors"], [])
+        profile.write_text("[]")
+        result = profiles(self.store, self.catalog, web_config=config)
+        web = next(p for p in result["profiles"] if p["destination"] == "web")
+        self.assertEqual((web["engine"], web["transport"]), ("Offload", None))
+
     def test_current_routing_and_account_tenant_separation(self):
         for group in ("fallback", "explicit", "moved"):
             self.observe(group)
