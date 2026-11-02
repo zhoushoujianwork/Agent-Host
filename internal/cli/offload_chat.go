@@ -12,14 +12,14 @@ import (
 	"agent-host/internal/terminal"
 )
 
-// Local one-shot and Web room entries share the same host. Room execution owns
-// durable request deduplication and a serialized native continuation lease.
-func runOffloadChat(ctx context.Context, o options, out io.Writer) (runErr error) {
-	if !o.oneShot || o.takeoverSession != "" || o.renewRuntime {
-		return errors.New("Offload Chat requires -m with --resume or a room/request ID; interactive, takeover and runtime renewal are unsupported")
+// Local terminal and Web room entries share the same host. Terminal Chat holds
+// its session lease across all turns; rooms own durable request deduplication.
+func runOffloadChat(ctx context.Context, o options, in io.Reader, out, errout io.Writer) (runErr error) {
+	if o.takeoverSession != "" || o.renewRuntime {
+		return errors.New("Offload Chat does not support takeover or runtime renewal; start a new session")
 	}
 	if o.room != "" {
-		if o.requestID == "" || o.resume != "" || len(o.room) > 200 || len(o.requestID) > 200 {
+		if !o.oneShot || o.requestID == "" || o.resume != "" || len(o.room) > 200 || len(o.requestID) > 200 {
 			return errors.New("room Chat requires a bounded request ID without --resume")
 		}
 	} else if o.requestID != "" || o.receivedAt != "" {
@@ -28,7 +28,7 @@ func runOffloadChat(ctx context.Context, o options, out io.Writer) (runErr error
 	if o.requestFor != "" || o.notifyTo != "" || o.notifyChannel != "" || o.feedbackConfigDir != "" || o.feedbackOtherUsersOnly || o.knowledgeChannel != "" {
 		return errors.New("Offload Chat does not support requester notifications or Host knowledge injection yet")
 	}
-	if strings.TrimSpace(o.message) == "" || len(o.message) > 16*1024 {
+	if o.oneShot && (strings.TrimSpace(o.message) == "" || len(o.message) > 16*1024) {
 		return errors.New("provide a nonempty message up to 16 KiB")
 	}
 	if err := resolveOffloadChannelOptions(&o); err != nil {
@@ -76,8 +76,17 @@ func runOffloadChat(ctx context.Context, o options, out io.Writer) (runErr error
 			return err
 		}
 	}
-	turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
-	defer cancel()
-	_, err = h.Run(turnCtx, session, o.message)
-	return err
+	execute := func(input string) error {
+		if strings.TrimSpace(input) == "" || len(input) > 16*1024 {
+			return errors.New("provide a nonempty message up to 16 KiB")
+		}
+		turnCtx, cancel := context.WithTimeout(ctx, o.timeout)
+		defer cancel()
+		_, err := h.Run(turnCtx, session, input)
+		return err
+	}
+	if o.oneShot {
+		return execute(o.message)
+	}
+	return runChatInput(ctx, in, errout, execute)
 }

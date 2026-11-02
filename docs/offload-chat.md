@@ -10,7 +10,8 @@ Offload owns native execution and conversation history; AGH owns scoped memory,
 request receipts and durable outcomes. The Mac app presents the same workspace.
 
 Select a private Offload profile in the workspace's `config/web-chat.json`, or
-use `chat -m --offload-config PATH` directly. Optional memory uses that same
+use `chat --offload-config PATH` for an interactive terminal conversation, or
+add `-m MESSAGE` for a single turn. Optional memory uses that same
 profile. Answers appear before memory closeout, whose failure remains separate. User
 messages display only their original text; internal context uses a separate
 instruction channel, and empty memory adds no snapshot.
@@ -27,8 +28,14 @@ Overlapping or interrupted intake uses a fresh session with attributed history.
 This keeps Offload's linear native history consistent with the saved receipts.
 
 Existing ACP conversations and running services are not migrated automatically.
-Offload room forks, channel takeover, interactive CLI, runtime renewal and managed
+Offload room forks, channel takeover, runtime renewal and managed
 Host tool injection remain unsupported. Desktop/live acceptance is separate from
 headless implementation checks.
+
+Interactive CLI accepts one message per line and continues the same native
+session. Blank lines do nothing; EOF exits after the accepted turn finishes.
+Ctrl-C cancels execution and exits. A failed turn stops the loop without running
+queued input. Use `--resume HOST_SESSION_ID` to reopen an existing conversation;
+its runtime and workspace must still match.
 
 [Configuration, continuity and validation details](offload-chat-detail.md).

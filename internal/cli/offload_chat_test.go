@@ -21,9 +21,13 @@ func chatOffloadFixture(t *testing.T) (options, []string) {
 }
 
 func chatOffloadEvents(t *testing.T, args []string) ([]event.Event, error) {
+	return chatOffloadInputEvents(t, args, nil)
+}
+
+func chatOffloadInputEvents(t *testing.T, args []string, in io.Reader) ([]event.Event, error) {
 	t.Helper()
 	var out bytes.Buffer
-	err := Run(t.Context(), args, nil, &out, io.Discard)
+	err := Run(t.Context(), args, in, &out, io.Discard)
 	dec := json.NewDecoder(&out)
 	var events []event.Event
 	for {
@@ -100,8 +104,9 @@ func TestOffloadChatOneShotAndResume(t *testing.T) {
 
 func TestOffloadChatRejectsUnsupportedModesAndPoliciesBeforeExecution(t *testing.T) {
 	for name, extra := range map[string][]string{
-		"interactive": {}, "room": {"-m", "x", "--room", "r"},
-		"renew": {"-m", "x", "--renew-runtime"}, "takeover": {"-m", "x", "--takeover-session", "s", "--request-id", "q"},
+		"room":             {"-m", "x", "--room", "r"},
+		"interactive room": {"--room", "r", "--request-id", "q"},
+		"renew":            {"-m", "x", "--renew-runtime"}, "takeover": {"-m", "x", "--takeover-session", "s", "--request-id", "q"},
 		"notification": {"-m", "x", "--notify-to", "someone"},
 		"tools":        {"-m", "x", "--no-tools"}, "audience": {"-m", "x", "--audience", "other"},
 	} {

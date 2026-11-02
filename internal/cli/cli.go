@@ -4,7 +4,6 @@ package cli
 import (
 	"agent-host/internal/harness/acp"
 
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -109,7 +108,7 @@ Options (place before positional IDs/queries):
   --audience ID         Conversation partition for local state (default owner)
   --native-profile PATH Native Claude configuration directory
   --execution-config PATH Shared ACP execution profile; omitted keeps legacy print
-  --offload-config PATH Opt in to a shared private Offload profile (one-shot Chat and channel text); excludes --execution-config
+  --offload-config PATH Opt in to a shared private Offload profile (Chat and channel text); excludes --execution-config
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
@@ -304,7 +303,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	}
 	if o.offloadProfile != nil {
 		if name != "chat" && name != "run retry-memory" && !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {
-			return o, nil, errors.New("Offload execution supports one-shot Chat, memory retry and DingTalk/Feishu channel commands")
+			return o, nil, errors.New("Offload execution supports Chat, memory retry and DingTalk/Feishu channel commands")
 		}
 		var unsupported string
 		fs.Visit(func(f *flag.Flag) {
@@ -565,7 +564,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		return errors.New("provide exactly one query or ID after options")
 	}
 	if command == "chat" && o.offloadProfile != nil {
-		return runOffloadChat(ctx, o, out)
+		return runOffloadChat(ctx, o, in, out, errout)
 	}
 	if command == "run retry-memory" && o.offloadProfile != nil {
 		return retryOffloadMemory(ctx, o, pos[0], out)
@@ -797,52 +796,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if o.oneShot {
 		return execute(o.message)
 	}
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 4096), 16*1024+1)
-	type inputResult struct {
-		text string
-		err  error
-		eof  bool
-	}
-	inputs := make(chan inputResult)
-	readCtx, stopRead := context.WithCancel(ctx)
-	defer stopRead()
-	go func() {
-		for scanner.Scan() {
-			select {
-			case inputs <- inputResult{text: scanner.Text()}:
-			case <-readCtx.Done():
-				return
-			}
-		}
-		select {
-		case inputs <- inputResult{err: scanner.Err(), eof: true}:
-		case <-readCtx.Done():
-		}
-	}()
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if _, err := io.WriteString(errout, "you> "); err != nil {
-			return err
-		}
-		var next inputResult
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case next = <-inputs:
-		}
-		if next.eof {
-			return next.err
-		}
-		if strings.TrimSpace(next.text) == "" {
-			continue
-		}
-		if err := execute(next.text); err != nil {
-			return err
-		}
-	}
+	return runChatInput(ctx, in, errout, execute)
 }
 
 func inspect(ctx context.Context, command string, o options, id string, out io.Writer) (inspectErr error) {

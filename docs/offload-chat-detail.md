@@ -31,7 +31,18 @@ launch identity. Version 2 native profile snapshots also participate in Go-side
 runtime identity, so changing native configuration cannot silently reuse a session.
 A changed destination requires a new conversation, without automatic replay.
 
-CLI one-shot and explicit `--resume HOST_SESSION_ID` remain available. Web uses
+CLI accepts interactive input when `-m` is omitted; one-shot and explicit
+`--resume HOST_SESSION_ID` also remain available. Both terminal modes use the
+same Host/session/native binding and per-turn timeout. The profile snapshot is
+loaded once per invocation; profile changes require a fresh compatible entry.
+Interactive Chat holds the session lease until exit, including time waiting for
+input, and does not accept room/request IDs. It shares the existing terminal input
+loop with legacy Chat: prompts go to stderr, NDJSON events remain on stdout,
+blank lines are ignored, and messages retain the 16 KiB bound. EOF does not cancel
+an accepted turn. Input errors, execution/closeout errors and caller cancellation
+exit the loop without dispatching queued messages or retrying native work. The
+caller still owns stdin; cancellation does not close a caller-provided reader.
+Web uses
 `--room`, `--request-id` and `--received-at`. It does not add legacy renewal or
 notification flags to Offload commands. Agent settings show Offload execution
 without claiming legacy tools or datasource mounts.
