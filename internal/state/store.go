@@ -95,7 +95,14 @@ PRAGMA user_version=7;
 `
 
 func Open(home string, readOnly bool) (*Store, error) {
-	return open(home, readOnly, false, false)
+	return open(home, readOnly, false, false, false)
+}
+
+// OpenForHistoryInspection reads current-schema operational receipts without
+// loading file memory, acquiring its publication lock or rebuilding its index.
+// History access still validates its receipt-derived identity and project grants.
+func OpenForHistoryInspection(home string) (*Store, error) {
+	return open(home, true, false, false, true)
 }
 
 // OpenForProjectInspection opens project registration data without migrating
@@ -105,17 +112,17 @@ func Open(home string, readOnly bool) (*Store, error) {
 // the additive discovery migration. Other inspection stays
 // strict and this compatibility exception never permits writes.
 func OpenForProjectInspection(home string) (*Store, error) {
-	return open(home, true, true, false)
+	return open(home, true, true, false, false)
 }
 
 // OpenForMemoryInspection lets startup verify schema-14/15 file publications
 // before the owning worker performs additive receipt/room migrations. It never
 // writes operational state or relies on the new tables.
 func OpenForMemoryInspection(home string) (*Store, error) {
-	return open(home, true, false, true)
+	return open(home, true, false, true, false)
 }
 
-func open(home string, readOnly, projectInspection, memoryInspection bool) (*Store, error) {
+func open(home string, readOnly, projectInspection, memoryInspection, historyInspection bool) (*Store, error) {
 	if home == "" {
 		return nil, errors.New("state home is required")
 	}
@@ -315,7 +322,7 @@ func open(home string, readOnly, projectInspection, memoryInspection bool) (*Sto
 		}
 	}
 	store := &Store{db: db, home: filepath.Dir(path), readOnly: readOnly, legacyProjectMetadata: readOnly && version < 9}
-	if !projectInspection {
+	if !projectInspection && !historyInspection {
 		if err := store.openFileMemory(context.Background()); err != nil {
 			return fail(err)
 		}

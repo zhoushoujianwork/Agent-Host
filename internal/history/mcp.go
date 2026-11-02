@@ -30,7 +30,7 @@ type Binding struct {
 
 // Resolve takes a receipt ID, not caller-supplied identity or project grants.
 func Resolve(home, currentMessageID string) (Binding, error) {
-	store, err := state.Open(home, true)
+	store, err := state.OpenForHistoryInspection(home)
 	if err != nil {
 		return Binding{}, errors.New("conversation history state unavailable")
 	}
@@ -128,7 +128,7 @@ func Serve(ctx context.Context, binding Binding, in io.Reader, out io.Writer) er
 	if err != nil || current.Fingerprint != binding.Fingerprint {
 		return errors.New("conversation history launch binding changed or is unavailable")
 	}
-	store, err := state.Open(binding.home, true)
+	store, err := state.OpenForHistoryInspection(binding.home)
 	if err != nil {
 		return errors.New("conversation history state unavailable")
 	}
