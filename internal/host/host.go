@@ -530,18 +530,19 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 	mcpServers := append([]harness.MCPServer(nil), h.Config.MCPServers...)
 	instructions := h.Config.HostInstructions
 	managedEntries := append([]managedskills.Entry(nil), h.Config.ManagedEntries...)
-	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && len(r.Projects) <= 1 && (r.ProjectID != "" || r.Source != nil && r.Source.TaskRootID != "") && r.MemoryAttribution != "unresolved" && (r.Source == nil || r.Source.ConversationType != "2") {
+	if h.Config.ContextHome != "" && !h.Config.ToolsDisabled && r.AudienceID == state.OwnerAudienceID && len(r.Projects) <= 1 && r.MemoryAttribution != "unresolved" && (r.Source == nil || r.Source.ConversationType != "2") {
 		binding, err := assistance.Resolve(ctx, h.Config.ContextHome, h.Config.ContextConfig, r.ID)
 		if err != nil {
 			return h.failBeforeExecution(j, fmt.Errorf("assemble owner context: %w", err))
 		}
-		mcpServers = append(mcpServers, binding.Server(h.Config.ContextExecutable))
+		server := binding.Server(h.Config.ContextExecutable)
+		mcpServers = append(mcpServers, server)
 		if h.Config.ManagedCatalog {
 			guide := assistance.Instructions
 			if binding.MemoryOnly {
 				guide = assistance.MemoryInstructions
 			}
-			managedEntries = append(managedEntries, managedskills.PluginUsage("host_context", binding.Tools(), guide, binding.Fingerprint))
+			managedEntries = append(managedEntries, managedskills.PluginUsage("host_context", binding.Tools(), guide, server.SessionKey))
 		}
 		if binding.MemoryOnly {
 			instructions += "\n\n" + assistance.MemoryInstructions

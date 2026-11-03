@@ -67,6 +67,8 @@ remain separate from development tests.
 ## Remaining work
 
 Production rollout and broader live channel/model acceptance remain separate.
+The [capability runtime direction](agent-capability-runtime.md) covers explicit
+memory/knowledge mounting and AGH-root separation while retaining native login.
 Richer channel controls, additional backend capabilities, durable engineering
 missions and automatic conversation learning are not established by this change.
 See [execution details](offload-execution-boundary-detail.md),

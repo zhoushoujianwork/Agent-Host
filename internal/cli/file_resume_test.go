@@ -70,17 +70,19 @@ if [ "$1" = "--version" ]; then echo '2.1.277 (Claude Code)'; exit 0; fi
 session=''
 resumed='false'
 plugin=''
+mcp='{"mcpServers":{}}'
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --session-id) session="$2"; shift ;;
     --resume) session="$2"; resumed='true'; shift ;;
     --plugin-dir) plugin="$2"; shift ;;
+    --mcp-config) mcp="$2"; shift ;;
   esac
   shift
 done
 cat >/dev/null
 printf '%s|%s|%s\n' "$session" "$resumed" "$plugin" >> "$AGENT_HOST_FILE_RESUME_CAPTURE"
-printf '{"type":"system","subtype":"init","session_id":"%s","model":"resume-native-fixture"}\n' "$session"
+python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init","session_id":sys.argv[1],"model":"resume-native-fixture","mcp_servers":[{"name":name,"status":"connected"} for name in json.loads(sys.argv[2])["mcpServers"]]}))' "$session" "$mcp"
 printf '{"type":"assistant","session_id":"%s","message":{"model":"resume-native-fixture","content":[{"type":"text","text":"Fixture plan."}]}}\n' "$session"
 printf '{"type":"result","subtype":"success","session_id":"%s","is_error":false,"result":"Fixture plan."}\n' "$session"
 `
