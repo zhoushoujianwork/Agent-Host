@@ -25,10 +25,20 @@ func judgeCloseout(id, actor, status, text string) (string, state.RunJudgment) {
 	j := state.RunJudgment{Outcome: "unresolved", Actor: "host.closeout", Reason: "No valid Agent closeout evidence was recorded."}
 	trimmed := strings.TrimSpace(text)
 	start := strings.LastIndex(trimmed, closeoutOpen)
-	if start < 0 || !strings.HasSuffix(trimmed, closeoutEnd) {
+	if start < 0 {
 		return text, j
 	}
-	answer := strings.TrimSpace(trimmed[:start])
+	end := strings.Index(trimmed[start+len(closeoutOpen):], closeoutEnd)
+	if end < 0 {
+		return text, j
+	}
+	end += start + len(closeoutOpen)
+	answer := strings.TrimSpace(strings.TrimSpace(trimmed[:start]) + "\n\n" + strings.TrimSpace(trimmed[end+len(closeoutEnd):]))
+	// Hide bookkeeping even when a native trailer makes it non-terminal. Such
+	// metadata remains inadmissible as acceptance evidence.
+	if end+len(closeoutEnd) != len(trimmed) {
+		return answer, j
+	}
 	var v struct {
 		RunID    string `json:"run_id"`
 		TaskKind string `json:"task_kind"`
@@ -36,7 +46,7 @@ func judgeCloseout(id, actor, status, text string) (string, state.RunJudgment) {
 		Reason   string `json:"reason"`
 		Quote    string `json:"evidence_quote"`
 	}
-	raw := trimmed[start+len(closeoutOpen) : len(trimmed)-len(closeoutEnd)]
+	raw := trimmed[start+len(closeoutOpen) : end]
 	if len(raw) > 8192 || json.Unmarshal([]byte(raw), &v) != nil || v.RunID != id {
 		return answer, j
 	}

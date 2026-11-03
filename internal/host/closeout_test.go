@@ -30,6 +30,21 @@ func TestCloseoutEvidenceValidation(t *testing.T) {
 	}
 }
 
+func TestCloseoutTrailerHidesBookkeepingWithoutAcceptingIt(t *testing.T) {
+	for _, raw := range []string{
+		`{"run_id":"r","task_kind":"query","outcome":"resolved","reason":"Verified: Answer.","evidence_quote":"Answer."}`,
+		`{"run_id":"previous","task_kind":"query","outcome":"resolved","reason":"Verified: Answer.","evidence_quote":"Answer."}`,
+		`{"task_kind":"query","outcome":"resolved"}`,
+		`invalid JSON`,
+	} {
+		text := "Answer.\n" + closeoutOpen + raw + closeoutEnd + "\n\nNative service notice."
+		answer, judgment := judgeCloseout("r", "claude", "completed", text)
+		if answer != "Answer.\n\nNative service notice." || judgment.Outcome != "unresolved" || judgment.Actor != "host.closeout" {
+			t.Fatalf("answer=%q judgment=%+v", answer, judgment)
+		}
+	}
+}
+
 type closeoutRunner struct{ missing bool }
 
 func (r closeoutRunner) Run(_ context.Context, req harness.Request, _ func(harness.Observation) error) (harness.Result, error) {
