@@ -2,113 +2,73 @@ package nativepolicy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
+	"fmt"
 
 	"agent-host/internal/harness"
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
 
-// runCodex consumes native Codex evidence directly; Claude-shaped synthetic
-// events would obscure the source protocol and are deliberately not generated.
+// runCodex consumes Codex JSON-RPC evidence directly. It never fabricates
+// Claude or legacy exec events from the app-server protocol.
 func (a *Adapter) runCodex(ctx context.Context, req harness.Request, emit func(harness.Observation) error) (harness.Result, error) {
 	result := harness.Result{Status: "failed", ExitCode: -1}
-	if req.NativeProfile != "" {
-		entries, err := os.ReadDir(filepath.Join(req.NativeProfile, "skills"))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return result, err
-		}
-		if len(entries) > 0 {
-			return result, errors.New("Codex Host execution cannot mount configured native Skills yet")
-		}
+	if req.ToolsDisabled || req.Extraction || req.RestrictedReadOnly {
+		return result, errors.New("Codex app-server cannot satisfy strict tool-free or restricted execution")
 	}
 	if err := validateRunDirectories(req.Workspace, req.AdditionalDirectories); err != nil {
 		return result, err
 	}
-	native := &execution.NativeControls{CallerContext: true, PermissionMode: req.PermissionMode, RestrictedReadOnly: req.RestrictedReadOnly, Extraction: req.Extraction, AllowedTools: req.AllowedTools, SkillDirectory: req.SkillPluginDir, JSONSchema: req.JSONSchema, ForkFromSessionID: req.ForkFromNativeSessionID}
+	var skillManifest *harness.SkillManifest
+	if req.SkillPluginDir != "" {
+		manifest, err := validateSkillPlugin(req.SkillPluginDir, req.SkillPluginDigest)
+		if err != nil {
+			return result, err
+		}
+		skillManifest = &manifest
+	}
+	skillRoots, err := approvedSkillRoots(req.NativeProfile, req.SkillPluginDir)
+	if err != nil {
+		return result, err
+	}
+	environment, cleanupEnvironment, err := executionEnvironment(req)
+	if err != nil {
+		return result, err
+	}
+	defer cleanupEnvironment()
+	if emit != nil && len(skillRoots) > 0 {
+		provided, message := any(map[string]any{"roots": skillRoots}), "provided Host-selected native Skills"
+		if skillManifest != nil {
+			provided, message = *skillManifest, "provided task-scoped native Skills"
+		}
+		if err = emit(harness.Observation{Type: "skills_provided", Message: message, Raw: mustJSON(provided)}); err != nil {
+			return result, err
+		}
+	}
+	native := &execution.NativeControls{CallerContext: true, CodexAppServer: true, PermissionMode: req.PermissionMode, JSONSchema: req.JSONSchema, AllowedTools: append([]string(nil), req.AllowedTools...), SkillRoots: skillRoots}
 	for _, server := range req.MCPServers {
-		native.MCPServers = append(native.MCPServers, execution.MCPServer{Name: server.Name, Command: server.Command, Args: server.Args})
+		native.MCPServers = append(native.MCPServers, execution.MCPServer{Name: server.Name, Command: server.Command, Args: append([]string(nil), server.Args...)})
 	}
 	for _, image := range req.Images {
-		native.Images = append(native.Images, execution.Image{Name: image.Name, MediaType: image.MediaType, Data: image.Data})
+		native.Images = append(native.Images, execution.Image{Name: image.Name, MediaType: image.MediaType, Data: append([]byte(nil), image.Data...)})
 	}
-	sdk := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Directory: req.Workspace, Instructions: []byte(req.HostInstructions), Model: req.Model, AdditionalDirectories: req.AdditionalDirectories, Native: native, ToolsDisabled: req.ToolsDisabled}
+	instructions := req.HostInstructions + "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
+	resourceRoots := append([]string{req.Workspace}, req.AdditionalDirectories...)
+	sdk := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Directory: environment.Workspace, EnvironmentDirectory: environment.Root, Instructions: []byte(instructions), Model: req.Model, AdditionalDirectories: resourceRoots, Native: native}
 	if req.Resume {
 		sdk.NativeSessionID = req.NativeSessionID
 	}
-	observedSession := ""
+	decoder := codexRPCDecoder{expectedSession: req.NativeSessionID, resume: req.Resume, emit: emit}
 	sdk.OnEvent = func(raw execution.RawEvent) error {
-		var event struct {
-			Type     string `json:"type"`
-			ThreadID string `json:"thread_id"`
-			Item     struct {
-				ID        string          `json:"id"`
-				Type      string          `json:"type"`
-				Text      string          `json:"text"`
-				Server    string          `json:"server"`
-				Tool      string          `json:"tool"`
-				Arguments json.RawMessage `json:"arguments"`
-				Result    json.RawMessage `json:"result"`
-				Status    string          `json:"status"`
-			} `json:"item"`
+		if raw.NativeProtocol != "codex-app-server" {
+			return fmt.Errorf("Codex returned incompatible native protocol %q", raw.NativeProtocol)
 		}
-		if err := json.Unmarshal(raw.Data, &event); err != nil {
-			return err
-		}
-		observation := harness.Observation{Type: "codex." + event.Type, Raw: raw.Data}
-		switch event.Type {
-		case "thread.started":
-			if event.ThreadID == "" || req.Resume && event.ThreadID != req.NativeSessionID || observedSession != "" && observedSession != event.ThreadID {
-				return errors.New("Codex reported an incompatible native session")
-			}
-			observedSession = event.ThreadID
-			observation.Type = "init"
-			observation.NativeSessionID = event.ThreadID
-		case "item.started", "item.completed":
-			if event.Item.Type == "mcp_tool_call" {
-				stage := "call"
-				observation.Type = "tool_start"
-				if event.Type == "item.completed" {
-					stage = "result"
-					observation.Type = "tool_result"
-				}
-				observation.Tool = &harness.ToolObservation{ID: event.Item.ID, Name: "mcp__" + event.Item.Server + "__" + event.Item.Tool, Stage: stage, Input: event.Item.Arguments, Result: event.Item.Result, IsError: event.Item.Status == "failed"}
-			}
-			if event.Item.Type == "command_execution" || event.Item.Type == "file_change" || event.Item.Type == "web_search" {
-				var envelope struct {
-					Item json.RawMessage `json:"item"`
-				}
-				if err := json.Unmarshal(raw.Data, &envelope); err != nil {
-					return err
-				}
-				stage := "call"
-				observation.Type = "tool_start"
-				tool := &harness.ToolObservation{ID: event.Item.ID, Name: "codex." + event.Item.Type, Stage: stage, Input: envelope.Item}
-				if event.Type == "item.completed" {
-					tool.Stage = "result"
-					tool.Result = envelope.Item
-					tool.IsError = event.Item.Status == "failed"
-					observation.Type = "tool_result"
-				}
-				observation.Tool = tool
-			}
-			if event.Item.Type == "agent_message" && event.Type == "item.completed" {
-				observation.Type = "text_delta"
-				observation.Delta = event.Item.Text
-			}
-		case "turn.completed":
-			observation.Type = "result"
-		}
-		if emit != nil {
-			return emit(observation)
-		}
-		return nil
+		return decoder.consume(raw.Data)
 	}
 	r, err := a.library.RunNative(ctx, sdk)
 	result.ExitCode, result.Text, result.Model, result.NativeSessionID = r.ExitCode, r.Report, r.ObservedModel, r.NativeSessionID
-	result.Evidence = &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID, Profile: r.Profile, Backend: r.Backend, Status: r.Status, ErrorKind: r.ErrorKind, Usage: r.Usage, Raw: r.RawRecord}
+	result.StructuredOutput = r.StructuredOutput
+	result.Evidence = &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID, Profile: r.Profile, Backend: r.Backend, NativeProtocol: r.NativeProtocol, Status: r.Status, ErrorKind: r.ErrorKind, Usage: r.Usage, Raw: r.RawRecord}
 	if r.HistoryRecorded {
 		result.Evidence.HistoryStatus = "saved"
 	} else if r.HistoryError != nil {
@@ -122,9 +82,13 @@ func (a *Adapter) runCodex(ctx context.Context, req harness.Request, emit func(h
 		result.Error = err.Error()
 		return result, err
 	}
-	if r.NativeSessionID == "" || r.Report == "" {
+	if r.NativeProtocol != "codex-app-server" || r.NativeSessionID == "" || r.Report == "" || !decoder.terminal {
 		result.Status = "unknown"
-		return result, errors.New("Codex completed without session or final report")
+		return result, errors.New("Codex app-server completed without compatible session, terminal event or final report")
+	}
+	if req.Resume && r.NativeSessionID != req.NativeSessionID {
+		result.Status = "unknown"
+		return result, errors.New("Codex app-server resumed a different native thread")
 	}
 	result.Status = "completed"
 	return result, nil

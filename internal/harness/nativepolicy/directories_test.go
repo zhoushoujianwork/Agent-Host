@@ -17,10 +17,10 @@ func TestAdditionalDirectoriesKeepNativeInstructionsAndBridgeAgents(t *testing.T
 	for _, version := range []string{"2.1.223 (Claude Code)", "2.1.277 (Claude Code)"} {
 		t.Run(version, func(t *testing.T) {
 			adapter, request := fixtureAdapter(t, "success")
-			t.Setenv("AGENT_HOST_FIXTURE_VERSION", version)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", version)
 			t.Setenv("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD", "0")
 			capturePath := filepath.Join(t.TempDir(), "request.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capturePath)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capturePath)
 			agentsDir, _ := filepath.EvalSymlinks(t.TempDir())
 			nativeDir, _ := filepath.EvalSymlinks(t.TempDir())
 			for path, text := range map[string]string{
@@ -61,7 +61,8 @@ func TestAdditionalDirectoriesKeepNativeInstructionsAndBridgeAgents(t *testing.T
 					directories = append(directories, capture.Args[i+1])
 				}
 			}
-			if !slices.Equal(directories, request.AdditionalDirectories) {
+			expectedDirectories := append([]string{request.Workspace}, request.AdditionalDirectories...)
+			if !slices.Equal(directories, expectedDirectories) {
 				t.Fatalf("additional access set: %v", capture.Args)
 			}
 			index := slices.Index(capture.Args, "--append-system-prompt-file")
@@ -80,7 +81,7 @@ func TestRuntimeDirectoriesAreRevalidatedBeforeNativeLaunch(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			adapter, request := fixtureAdapter(t, "success")
 			capturePath := filepath.Join(t.TempDir(), "request.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capturePath)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capturePath)
 			parent, _ := filepath.EvalSymlinks(t.TempDir())
 			directory := filepath.Join(parent, "attached")
 			switch kind {
@@ -109,7 +110,7 @@ func TestExtractionDoesNotInheritAdditionalInstructionEnvironment(t *testing.T) 
 	adapter, request := fixtureAdapter(t, "success")
 	t.Setenv("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD", "1")
 	path := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 	request.Extraction, request.ToolsDisabled = true, true
 	if _, err := adapter.Run(t.Context(), request, nil); err != nil {
 		t.Fatal(err)

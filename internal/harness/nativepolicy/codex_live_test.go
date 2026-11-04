@@ -42,7 +42,11 @@ for line in sys.stdin:
 		t.Fatal(err)
 	}
 	adapter := NewWithLibrary("/unused/claude", library)
-	request := harness.Request{Workspace: root, PermissionMode: "bypassPermissions", Prompt: "Call the fixture marker MCP tool exactly once and reply only with the marker. Do not run commands or change files.", MCPServers: []harness.MCPServer{{Name: "fixture", Command: python, Args: []string{server}}}}
+	profile := filepath.Join(root, "native")
+	if err := os.Mkdir(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	request := harness.Request{HostSessionID: "live-mcp-conversation", NativeProfile: profile, Workspace: root, PermissionMode: "bypassPermissions", Prompt: "Call the fixture marker MCP tool exactly once and reply only with the marker. Do not run commands or change files.", MCPServers: []harness.MCPServer{{Name: "fixture", Command: python, Args: []string{server}}}}
 	request.HostInstructions = "For this isolated acceptance, use only the supplied fixture MCP if needed. Never run commands or edit files. Reply with the acceptance marker only."
 	calls := 0
 	result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {

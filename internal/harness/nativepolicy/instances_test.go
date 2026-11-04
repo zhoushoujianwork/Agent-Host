@@ -17,8 +17,8 @@ import (
 func TestInstanceProfilePolicyAndInstructionsArePerInvocation(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "normal")
 	path := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
-	t.Setenv("AGENT_HOST_FIXTURE_VERSION", "2.1.223")
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", "2.1.223")
 	t.Setenv("CLAUDE_CONFIG_DIR", "/ambient/private-profile")
 	if err := os.WriteFile(filepath.Join(request.Workspace, "AGENTS.md"), []byte("Use the local fixture convention."), 0600); err != nil {
 		t.Fatal(err)
@@ -45,8 +45,12 @@ func TestInstanceProfilePolicyAndInstructionsArePerInvocation(t *testing.T) {
 		if err := json.Unmarshal(raw, &captured); err != nil {
 			t.Fatal(err)
 		}
-		if captured.Profile != profile || captured.AutoMemory != "1" || captured.Cwd != request.Workspace {
+		if captured.Profile == profile || !strings.HasSuffix(captured.Profile, "/claude") || captured.AutoMemory != "1" || captured.Cwd == request.Workspace || !strings.HasSuffix(captured.Cwd, "/workspace") {
 			t.Fatalf("incorrect child environment: %+v", captured)
+		}
+		addDir := slices.Index(captured.Args, "--add-dir")
+		if addDir < 0 || captured.Args[addDir+1] != request.Workspace {
+			t.Fatalf("task workspace was not an explicit resource root: %v", captured.Args)
 		}
 		index := slices.Index(captured.Args, "--permission-mode")
 		if index < 0 || captured.Args[index+1] != "bypassPermissions" {

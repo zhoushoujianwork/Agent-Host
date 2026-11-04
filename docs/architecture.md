@@ -50,16 +50,24 @@ flowchart LR
 
 ## Delivered scope
 
-The initial [Codex owner path](codex-host-controls.md) supports MCP and native
-session continuation through the pinned companion Offload implementation. Other
-native controls remain explicitly unsupported; production cutover is pending.
+The candidate [Codex owner path](codex-host-controls.md) opts into the native
+app-server protocol through the pinned companion Offload implementation. It
+supports explicit Host-managed Skill roots, MCP, observed-model evidence and
+native thread continuation. Strict tool-free and restricted Codex requests fail
+before dispatch. Production cutover is pending.
 
-The full Host preserves Claude MCP, Skills, permissions, images, structured
-extraction, native forks and streamed evidence through package native controls.
-The lightweight text Host uses ordinary Claude/Codex package requests with
-optional local memory. Full controls currently require Claude and unsupported
-combinations fail explicitly. Consolidating the remaining Host orchestration is
-pending; there is one native package execution boundary and no backend fallback.
+Claude and Codex business execution use a private environment per stable Host
+conversation. The native cwd is an empty Host-owned runtime workspace; the task
+workspace and additional directories are explicit resource roots. Continuation
+requires the original environment and compatible native identity. Native forks
+are currently unsupported for both engines because the isolated child cannot
+bind the parent's environment. See the [clean execution contract](clean-ops-agent-detail.md).
+
+The full Host preserves supported Claude MCP, Skills, permissions, images,
+structured extraction and streamed evidence through package native controls.
+Tool-free memory extraction uses a separately selected compatible Claude profile,
+not fallback after a failed business request. Unsupported combinations fail
+explicitly; there is one native package execution boundary and no backend fallback.
 
 Projects retain stable registered identities and attributed execution receipts.
 Published memory and managed Skills use versioned files; SQLite retains runtime
@@ -67,12 +75,14 @@ records and caches remain rebuildable. Enabled plugins provide real tools and
 matching usage guidance. Integration libraries have explicit configuration and
 lifecycle; no generic loader or extra Host model/tool loop is introduced.
 
-Existing native sessions and historical ACP records stay intact. Configuration
-or backend/model changes start new compatible conversations rather than silently
-adopting or migrating incompatible native state. Unsupported capabilities retain
+Historical native and ACP records stay intact, but sessions without a compatible
+isolated environment are not silently adopted. Configuration or backend/model
+changes start new compatible conversations rather than migrating native state.
+Unsupported capabilities retain
 their errors and evidence; they do not trigger provider fallback or automatic
 replay of work with side effects. Production configuration, binaries and channel
-identities remain separate from development tests.
+identities remain separate from development tests. Existing channel authorization,
+including `shared-execution-v2`, is unchanged by this candidate.
 
 ## Remaining work
 

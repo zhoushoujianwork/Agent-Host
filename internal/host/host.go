@@ -684,7 +684,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, HostSessionID: r.SessionID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
 			if o.Type == "init" && state.IsOffloadPending(s.NativeSessionID) {
 				if err := h.Store.BindHostNativeSession(ctx, r.ID, s.NativeSessionID, o.NativeSessionID); err != nil {
 					return err
@@ -714,7 +714,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			return activity.observe(e, o.Tool)
 		})
 		if evidence := result.Evidence; evidence != nil {
-			data := map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": evidence.CallerRunID, "profile": evidence.Profile, "backend": evidence.Backend, "status": evidence.Status, "history_status": evidence.HistoryStatus, "history_error": evidence.HistoryError, "raw": evidence.Raw, "usage": evidence.Usage}
+			data := map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": evidence.CallerRunID, "profile": evidence.Profile, "backend": evidence.Backend, "native_protocol": evidence.NativeProtocol, "status": evidence.Status, "history_status": evidence.HistoryStatus, "history_error": evidence.HistoryError, "raw": evidence.Raw, "usage": evidence.Usage}
 			runErr = errors.Join(runErr, j.emitPrivate(event.Event{Type: "offload.result", Phase: "execute", Component: execution.Component, Status: evidence.Status, Data: data}))
 			if evidence.HistoryStatus != "" {
 				message := "Offload history saved"

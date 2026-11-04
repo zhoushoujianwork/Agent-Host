@@ -92,7 +92,7 @@ Options (place before positional IDs/queries):
   --project ID          Registered project; repeat for joint chat (exclusive with --workspace)
   --primary-project ID  Primary cwd within the selected set; otherwise joint chat uses ~/workspace
   --format text|json    Live terminal output or NDJSON events (default text)
-  --model MODEL         Claude model (default AGENT_HOST_MODEL or sonnet)
+  --model MODEL         Explicit native model override; omitted follows the Offload profile
   --claude PATH         Native executable (default claude)
   --no-tools            Explicit tool-free Claude execution for controlled tests
   --debug-non-owner     Chat only: simulate a non-owner with restricted read tools
@@ -104,8 +104,9 @@ Options (place before positional IDs/queries):
   --skills-root PATH    Shared Host-managed Skill publication catalog
   --agent ID            Logical instance for chat and local state (default default)
   --audience ID         Conversation partition for local state (default owner)
-  --native-profile PATH Native Claude configuration directory
+  --native-profile PATH Host-owned native state and selected Skills directory
   --offload-config PATH Optional private profile selector; defaults to the Offload default profile
+  --memory-offload-config PATH  Private profile selector for internal memory extraction only
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
@@ -143,13 +144,16 @@ type options struct {
 	offloadProfile                                                                     *offloadchannel.Profile
 	offloadClient                                                                      offloadexec.Executor
 	offloadMemory                                                                      *offloadchannel.MemoryPlugin
+	memoryOffloadConfig                                                                string
+	memoryOffloadClient                                                                offloadexec.Executor
+	memoryExecutionFingerprint, memoryModel                                            string
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
 	userKnowledgeSources                                                               []string
 	procedureRecallHints                                                               []state.ProcedureRecallHint
 	recallBinding                                                                      string
-	retrievalQuery, skillFingerprint                                                   string
+	retrievalQuery, skillFingerprint, nativeSkillsFingerprint                          string
 	skillsPreselected                                                                  bool
 	contextFiles                                                                       []assembly.ContextFile
 	userProfile, workspaceCache, memoryFingerprint, memorySource                       string
@@ -236,9 +240,10 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	})
 	fs.StringVar(&o.primaryProject, "primary-project", "", "Primary project in the selected set")
 	fs.StringVar(&o.format, "format", "text", "text or json (NDJSON)")
-	fs.StringVar(&o.model, "model", model, "Claude model")
+	fs.StringVar(&o.model, "model", model, "Native model override")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
 	fs.StringVar(&o.offloadConfig, "offload-config", "", "Optional private Offload profile selector; omitted uses the Offload default profile")
+	fs.StringVar(&o.memoryOffloadConfig, "memory-offload-config", "", "Optional private Offload profile selector for internal memory extraction only")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
@@ -251,7 +256,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
 	fs.StringVar(&o.agentID, "agent", "default", "Logical agent instance for local state selection")
 	fs.StringVar(&o.audienceID, "audience", "owner", "Conversation audience for local state selection")
-	fs.StringVar(&o.nativeProfile, "native-profile", os.Getenv("CLAUDE_CONFIG_DIR"), "Native Claude configuration directory")
+	fs.StringVar(&o.nativeProfile, "native-profile", os.Getenv("CLAUDE_CONFIG_DIR"), "Host-owned native state and selected Skills directory")
 	fs.StringVar(&o.provider, "jev-provider", "typesafe", "typesafe (official) or custom")
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", "", "Third-party Jev gateway URL for custom")
 	fs.StringVar(&o.jevModel, "jev-model", "", "Jev model")
@@ -320,6 +325,9 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 				o.fullHost = true
 			}
 		})
+	}
+	if o.memoryOffloadConfig != "" {
+		o.fullHost = true
 	}
 	if err := loadExecutionOptions(&o); err != nil {
 		return o, nil, err

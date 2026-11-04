@@ -15,7 +15,7 @@ import (
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
 
-const LibraryVersion = "v0.8.8-0.20261104101121-9d1b4789f3b7"
+const LibraryVersion = "v0.8.10"
 
 // Library snapshots an explicit native profile and calls Offload's public Go
 // package. It never starts the Offload CLI or falls back to the CLI client.

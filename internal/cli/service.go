@@ -43,10 +43,11 @@ preserves the legacy --root setup; an existing directory with no enabled channel
 --viewer-source enables runtime locking and supervised startup for a single --root too.
 Configuration comes from ROOT/config/component-service.json, component-environment.json and
 channel-dingtalk.json, channel-feishu.json for channel feishu, or channel-feishu-meeting.json for
-channel feishu-meeting, plus the optional private agents_config file. Native Claude
-profiles are isolated by agent and audience under ROOT/native.
+channel feishu-meeting, plus the optional private agents_config file. Native state
+is isolated by Agent, audience and Host conversation under ROOT/native.
 Optional offload_config selects a private Offload profile; Agent overrides apply
 to every channel. Auxiliary tool-free extraction uses the same package boundary.
+Optional memory_offload_config selects only that internal extraction profile.
 check validates local files and configuration without connecting, executing
 Claude, or creating host state. It does not verify platform or model credentials.
 run starts the installed read-only workbench and opens the default browser.
@@ -59,6 +60,7 @@ It observes ROOT/cli-state; use chat --home ABSOLUTE_ROOT/cli-state for the same
 type serviceConfig struct {
 	SkillsRoot                 string   `json:"skills_root,omitempty"`
 	OffloadConfig              string   `json:"offload_config,omitempty"`
+	MemoryOffloadConfig        string   `json:"memory_offload_config,omitempty"`
 	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
 	KnowledgeChannel           string   `json:"-"`
@@ -301,6 +303,15 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
+	if c.OffloadConfig != "" && c.MemoryOffloadConfig != "" {
+		return errors.New("service offload_config cannot be combined with Host memory_offload_config")
+	}
+	if c.MemoryOffloadConfig != "" {
+		memory := options{memoryOffloadConfig: c.MemoryOffloadConfig}
+		if err := loadMemoryExecutionOptions(&memory); err != nil {
+			return err
+		}
+	}
 	if c.OffloadConfig != "" {
 		if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu" {
 			return errors.New("Offload supports DingTalk and Feishu IM channels only")
@@ -425,6 +436,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	}
 	if c.MemoryScope != "" {
 		args = append(args, "--memory-scope", c.MemoryScope)
+	}
+	if c.MemoryOffloadConfig != "" {
+		args = append(args, "--memory-offload-config", c.MemoryOffloadConfig)
 	}
 	if c.WorkspaceCache != "" {
 		args = append(args, "--workspace-cache", c.WorkspaceCache)

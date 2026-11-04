@@ -17,10 +17,10 @@ import (
 func TestNativeCwdMemoryPolicyAndLegacyProjectInstructions(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "success")
 	request.Workspace, _ = filepath.EvalSymlinks(request.Workspace)
-	t.Setenv("AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
+	fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
 	t.Setenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "0")
 	path := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 	rules := filepath.Join(request.Workspace, "AGENTS.md")
 	if err := os.WriteFile(rules, []byte("Project marker: ORCHID. Run the project tests."), 0600); err != nil {
 		t.Fatal(err)
@@ -44,8 +44,12 @@ func TestNativeCwdMemoryPolicyAndLegacyProjectInstructions(t *testing.T) {
 	if err = json.Unmarshal(body, &capture); err != nil {
 		t.Fatal(err)
 	}
-	if capture.Cwd != request.Workspace || capture.Memory != "1" || os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY") != "0" {
+	if capture.Cwd == request.Workspace || !strings.HasSuffix(capture.Cwd, "/workspace") || capture.Memory != "1" || os.Getenv("CLAUDE_CODE_DISABLE_AUTO_MEMORY") != "0" {
 		t.Fatalf("cwd/memory policy: %+v", capture)
+	}
+	addDir := slices.Index(capture.Args, "--add-dir")
+	if addDir < 0 || capture.Args[addDir+1] != request.Workspace {
+		t.Fatalf("task workspace was not an explicit resource root: %v", capture.Args)
 	}
 	index := slices.Index(capture.Args, "--append-system-prompt-file")
 	if index < 0 || !strings.Contains(capture.PromptInstructions, rules) || !strings.Contains(capture.PromptInstructions, "ORCHID") || slices.Contains(capture.Args, "--system-prompt") {
@@ -65,14 +69,14 @@ func TestNativeCwdMemoryPolicyAndLegacyProjectInstructions(t *testing.T) {
 func TestNativeInstructionsOwnSupportedAndClaudeEntryCases(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "success")
 	request.Workspace, _ = filepath.EvalSymlinks(request.Workspace)
-	t.Setenv("AGENT_HOST_FIXTURE_VERSION", "2.1.277 (Claude Code)")
+	fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", "2.1.277 (Claude Code)")
 	if err := os.WriteFile(filepath.Join(request.Workspace, "AGENTS.md"), []byte("rules"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if text, _, err := adapter.projectInstructions(context.Background(), request.Workspace); err != nil || text != "" {
 		t.Fatalf("duplicated native AGENTS discovery: %q %v", text, err)
 	}
-	t.Setenv("AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
+	fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
 	if err := os.WriteFile(filepath.Join(request.Workspace, "CLAUDE.md"), []byte("@AGENTS.md"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +87,7 @@ func TestNativeInstructionsOwnSupportedAndClaudeEntryCases(t *testing.T) {
 
 func TestAncestorClaudeEntryDoesNotHideLegacyProjectAgents(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "success")
-	t.Setenv("AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
+	fixtureSet(t, "AGENT_HOST_FIXTURE_VERSION", "2.1.223 (Claude Code)")
 	parent := t.TempDir()
 	request.Workspace = filepath.Join(parent, "project")
 	if err := os.Mkdir(request.Workspace, 0700); err != nil {

@@ -54,7 +54,7 @@ The secret is read from a private local file and is never printed.
 
 Common execution options: --home, --workspace or --project, --model, --claude, --no-tools,
 --allowed-tools, --agents-config, --native-profile, --jev-provider, --jev-endpoint, --jev-model,
---timeout, --format text|json, --discovery-config.
+--memory-offload-config, --timeout, --format text|json, --discovery-config.
 Execution uses the Offload Go package and its default profile.
 Agent history search/read is mounted automatically when tools are enabled.
 Owner-private tasks also discover the built-in DingTalk workspace MCP.
@@ -157,10 +157,16 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 		o.scope = o.workspace
 	}
 	native := nativeRunner(o)
+	memoryNative, memoryModel := native, o.model
+	if o.memoryOffloadClient != nil {
+		memoryOptions := o
+		memoryOptions.offloadClient = o.memoryOffloadClient
+		memoryNative, memoryModel = nativeRunner(memoryOptions), o.memoryModel
+	}
 	var runner harness.Runner = native
-	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(native, o.model), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
+	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(memoryNative, memoryModel), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
-	h.Objects = objectmemory.New(native, o.model)
+	h.Objects = objectmemory.New(memoryNative, memoryModel)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
 	h.Config.ExpectedSkillDigest, h.Config.SkillsPreselected = o.skillFingerprint, o.skillsPreselected
 	h.Config.ManagedEntries, h.Config.ManagedMemories, h.Config.ManagedUnready = o.managedEntries, o.managedMemories, o.managedUnready

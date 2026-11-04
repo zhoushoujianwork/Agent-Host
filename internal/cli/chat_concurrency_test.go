@@ -37,7 +37,6 @@ func TestIndependentCLIProcessesExecuteConcurrently(t *testing.T) {
 		t.Run(fmt.Sprint("room=", room), func(t *testing.T) {
 			fixture, args, _ := fileResumeFixture(t)
 			barrier := t.TempDir()
-			t.Setenv("AGENT_HOST_CONCURRENT_BARRIER", barrier)
 			var binary string
 			for i, arg := range args {
 				if arg == "--claude" {
@@ -50,9 +49,9 @@ func TestIndependentCLIProcessesExecuteConcurrently(t *testing.T) {
 			}
 			// Both native children must reach this barrier before either may finish.
 			// A serialized implementation cannot pass by eventually running each task.
-			blocked := strings.Replace(string(script), "cat >/dev/null", `cat >/dev/null
-touch "$AGENT_HOST_CONCURRENT_BARRIER/$session"
-while [ ! -f "$AGENT_HOST_CONCURRENT_BARRIER/release" ]; do sleep 0.02; done`, 1)
+			blocked := strings.Replace(string(script), "cat >/dev/null", fmt.Sprintf(`cat >/dev/null
+touch %s/"$session"
+while [ ! -f %s/release ]; do sleep 0.02; done`, fixtureShellQuote(barrier), fixtureShellQuote(barrier)), 1)
 			if err := os.WriteFile(binary, []byte(blocked), 0700); err != nil {
 				t.Fatal(err)
 			}

@@ -34,7 +34,7 @@ func TestClaudeMountsExactInstructionOnlySkillSnapshot(t *testing.T) {
 	package1 := nativeSkillFixture(t)
 	request.SkillPluginDir, request.SkillPluginDigest = package1.Path, package1.Digest
 	capturePath := filepath.Join(t.TempDir(), "capture.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capturePath)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capturePath)
 	var observations []harness.Observation
 	result, err := adapter.Run(t.Context(), request, func(o harness.Observation) error { observations = append(observations, o); return nil })
 	if err != nil || result.Status != "completed" {
@@ -51,11 +51,15 @@ func TestClaudeMountsExactInstructionOnlySkillSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	index := slices.Index(capture.Args, "--plugin-dir")
-	if index < 0 || capture.Args[index+1] != package1.Path {
+	if index < 0 || capture.Args[index+1] == package1.Path {
 		t.Fatalf("plugin flag missing: %v", capture.Args)
 	}
-	if slices.Contains(capture.Args, "--add-dir") {
-		t.Fatal("skill mount expanded filesystem grant")
+	if _, err := os.Stat(capture.Args[index+1]); !os.IsNotExist(err) {
+		t.Fatal("controlled temporary Skill bundle was not cleaned")
+	}
+	addDir := slices.Index(capture.Args, "--add-dir")
+	if addDir < 0 || capture.Args[addDir+1] != request.Workspace {
+		t.Fatal("task workspace was not the only explicit resource root")
 	}
 	if len(observations) == 0 || observations[0].Type != "skills_provided" {
 		t.Fatalf("provided receipt missing: %+v", observations)
@@ -108,7 +112,7 @@ func TestClaudeUnsupportedSkillMountFailsBeforeBusinessExecution(t *testing.T) {
 	package1 := nativeSkillFixture(t)
 	request.SkillPluginDir, request.SkillPluginDigest = package1.Path, package1.Digest
 	capture := filepath.Join(t.TempDir(), "capture.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capture)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capture)
 	result, err := adapter.Run(t.Context(), request, nil)
 	if err == nil || result.Status != "failed" || !strings.Contains(err.Error(), "does not advertise") {
 		t.Fatalf("result=%+v err=%v", result, err)

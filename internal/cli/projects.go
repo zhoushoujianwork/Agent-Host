@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"agent-host/internal/assembly"
+	"agent-host/internal/channel"
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/history"
 	"agent-host/internal/knowledge"
@@ -135,7 +136,11 @@ func assemblyConfig(o options) assembly.Configuration {
 	if o.historyEnabled && !o.noTools {
 		policy = history.PolicyVersion
 	}
-	return assembly.Configuration{ManagedSkillsFingerprint: o.managedFingerprint, ExecutionFingerprint: o.executionFingerprint, AgentID: o.agentID, AudienceID: o.audienceID, HostInstructions: o.hostInstructions, UserProfile: o.userProfile, MemoryFingerprint: fileRuntimeCompatibility(o), PermissionMode: o.permissionMode, Binary: o.binary, Model: o.model, NativeProfile: o.nativeProfile, ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, KnowledgeFingerprint: knowledge.Fingerprint(o.knowledgeSources), ConversationHistoryPolicy: policy, ContextPolicy: o.contextPolicy, EmailFingerprint: o.emailFingerprint, DingTalkFingerprint: o.dingtalkWorkspaceFingerprint}
+	executionFingerprint := o.executionFingerprint
+	if o.nativeSkillsFingerprint != "" {
+		executionFingerprint = channel.Key("agent-native-skills-v1", executionFingerprint, o.nativeSkillsFingerprint)
+	}
+	return assembly.Configuration{ManagedSkillsFingerprint: o.managedFingerprint, ExecutionFingerprint: executionFingerprint, AgentID: o.agentID, AudienceID: o.audienceID, HostInstructions: o.hostInstructions, UserProfile: o.userProfile, MemoryFingerprint: fileRuntimeCompatibility(o), PermissionMode: o.permissionMode, Binary: o.binary, Model: o.model, NativeProfile: o.nativeProfile, ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, KnowledgeFingerprint: knowledge.Fingerprint(o.knowledgeSources), ConversationHistoryPolicy: policy, ContextPolicy: o.contextPolicy, EmailFingerprint: o.emailFingerprint, DingTalkFingerprint: o.dingtalkWorkspaceFingerprint}
 }
 
 func selectKnowledgeForOptions(o options) ([]knowledge.ResolvedSource, error) {

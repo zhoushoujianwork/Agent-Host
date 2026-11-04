@@ -265,6 +265,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 	}
 	c := p.Execution
 	c.OffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.OffloadConfig)
+	c.MemoryOffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.MemoryOffloadConfig)
 	usesMemory := c.OffloadConfig == ""
 	if c.OffloadConfig != "" {
 		profile, _, err := offloadchannel.Load(c.OffloadConfig)

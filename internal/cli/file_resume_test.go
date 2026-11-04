@@ -63,8 +63,8 @@ func fileResumeFixture(t *testing.T) (reviewFixture, []string, string) {
 	memoryStorageCommand(t, "migrate", "--home", fixture.home, "--memory-root", filepath.Join(root, "memory"), "--memory-cache", filepath.Join(root, "cache", "memory"), "--memory-source", "resume-test")
 	binary := filepath.Join(root, "claude-fixture")
 	capture := filepath.Join(root, "native-calls")
-	t.Setenv("AGENT_HOST_FILE_RESUME_CAPTURE", capture)
-	script := `#!/bin/sh
+	script := fmt.Sprintf(`#!/bin/sh
+capture=%s
 if [ "$1" = "--help" ]; then echo '--plugin-dir <path>'; exit 0; fi
 if [ "$1" = "--version" ]; then echo '2.1.277 (Claude Code)'; exit 0; fi
 session=''
@@ -81,11 +81,11 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 cat >/dev/null
-printf '%s|%s|%s\n' "$session" "$resumed" "$plugin" >> "$AGENT_HOST_FILE_RESUME_CAPTURE"
+printf '%%s|%%s|%%s\n' "$session" "$resumed" "$plugin" >> "$capture"
 python3 -c 'import json,sys; print(json.dumps({"type":"system","subtype":"init","session_id":sys.argv[1],"model":"resume-native-fixture","mcp_servers":[{"name":name,"status":"connected"} for name in json.loads(sys.argv[2])["mcpServers"]]}))' "$session" "$mcp"
-printf '{"type":"assistant","session_id":"%s","message":{"model":"resume-native-fixture","content":[{"type":"text","text":"Fixture plan."}]}}\n' "$session"
-printf '{"type":"result","subtype":"success","session_id":"%s","is_error":false,"result":"Fixture plan."}\n' "$session"
-`
+printf '{"type":"assistant","session_id":"%%s","message":{"model":"resume-native-fixture","content":[{"type":"text","text":"Fixture plan."}]}}\n' "$session"
+printf '{"type":"result","subtype":"success","session_id":"%%s","is_error":false,"result":"Fixture plan."}\n' "$session"
+`, fixtureShellQuote(capture))
 	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +95,10 @@ printf '{"type":"result","subtype":"success","session_id":"%s","is_error":false,
 	}
 	args := []string{"chat", "--home", fixture.home, "--workspace", fixture.workspace, "--claude", binary, "--native-profile", profile, "--model", "test", "--jev-provider", "custom", "--jev-endpoint", server.URL, "--format", "json"}
 	return fixture, args, capture
+}
+
+func fixtureShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func fileResumeRuns(t *testing.T, home string) []state.Run {

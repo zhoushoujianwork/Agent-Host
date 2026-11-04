@@ -89,14 +89,14 @@ func TestChatCallerLifecycle(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				blocked := strings.Replace(string(script), "cat >/dev/null", `cat >/dev/null
+				blocked := strings.Replace(string(script), "cat >/dev/null", fmt.Sprintf(`cat >/dev/null
 /bin/sleep 90 &
 descendant=$!
-echo "$descendant" > "$AGENT_HOST_CALLER_TEST_ROOT/descendant"
-echo $$ > "$AGENT_HOST_CALLER_TEST_ROOT/native"
-while [ ! -f "$AGENT_HOST_CALLER_TEST_ROOT/release" ]; do sleep 0.02; done
+echo "$descendant" > %s/descendant
+echo $$ > %s/native
+while [ ! -f %s/release ]; do sleep 0.02; done
 kill "$descendant"
-wait "$descendant" 2>/dev/null || true`, 1)
+wait "$descendant" 2>/dev/null || true`, fixtureShellQuote(root), fixtureShellQuote(root), fixtureShellQuote(root)), 1)
 				if err := os.WriteFile(binary, []byte(blocked), 0700); err != nil {
 					t.Fatal(err)
 				}

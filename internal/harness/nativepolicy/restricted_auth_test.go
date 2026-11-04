@@ -22,8 +22,8 @@ func TestRestrictedProviderEnvironment(t *testing.T) {
 	t.Setenv("UNREVIEWED_PROFILE_ENV", "")
 	capture := filepath.Join(t.TempDir(), "provider.json")
 	request := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_PROVIDER_ENV", capture)
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", request)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_PROVIDER_ENV", capture)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", request)
 	if result, err := adapter.Run(context.Background(), req, nil); err != nil || result.Status != "completed" {
 		t.Fatalf("run failed: %v %+v", err, result)
 	}

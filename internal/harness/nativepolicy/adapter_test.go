@@ -35,7 +35,43 @@ func TestMain(m *testing.M) {
 		fixture(mode)
 		os.Exit(0)
 	}
+	if path := os.Getenv("AGENT_HOST_CLAUDE_FIXTURE_CONFIG"); path != "" {
+		raw, err := os.ReadFile(path)
+		var config fixtureConfig
+		if err != nil || json.Unmarshal(raw, &config) != nil || config.Mode == "" {
+			fmt.Fprintln(os.Stderr, "invalid Claude fixture configuration")
+			os.Exit(2)
+		}
+		for key, value := range config.Environment {
+			_ = os.Setenv(key, value)
+		}
+		fixture(config.Mode)
+		os.Exit(0)
+	}
 	os.Exit(m.Run())
+}
+
+type fixtureConfig struct {
+	Mode        string            `json:"mode"`
+	Environment map[string]string `json:"environment,omitempty"`
+}
+
+func fixtureSet(t *testing.T, key, value string) {
+	t.Helper()
+	path := os.Getenv("AGENT_HOST_CLAUDE_FIXTURE_CONTROL")
+	raw, err := os.ReadFile(path)
+	var config fixtureConfig
+	if err != nil || json.Unmarshal(raw, &config) != nil {
+		t.Fatal("read Claude fixture control", err)
+	}
+	if config.Environment == nil {
+		config.Environment = map[string]string{}
+	}
+	config.Environment[key] = value
+	raw, _ = json.Marshal(config)
+	if err = os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal("write Claude fixture control", err)
+	}
 }
 
 func fixture(mode string) {
@@ -383,7 +419,6 @@ func fixtureSynchronousTask(mode, session string, write func(any)) {
 
 func fixtureAdapter(t *testing.T, mode string) (*Adapter, harness.Request) {
 	t.Helper()
-	t.Setenv("AGENT_HOST_CLAUDE_FIXTURE", mode)
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -392,13 +427,42 @@ func fixtureAdapter(t *testing.T, mode string) (*Adapter, harness.Request) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newTestSDKAdapter(t, exe), harness.Request{Prompt: "private prompt", Workspace: workspace, Model: "requested-model", NativeSessionID: testSession}
+	control := filepath.Join(t.TempDir(), "fixture.json")
+	raw, _ := json.Marshal(fixtureConfig{Mode: mode})
+	if err = os.WriteFile(control, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(t.TempDir(), "claude-fixture")
+	script := fmt.Sprintf("#!/bin/sh\nexec env AGENT_HOST_CLAUDE_FIXTURE_CONFIG=%s %s \"$@\"\n", shellQuote(control), shellQuote(exe))
+	if err = os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENT_HOST_CLAUDE_FIXTURE_CONTROL", control)
+	return newTestSDKAdapter(t, wrapper), harness.Request{Prompt: "private prompt", Workspace: workspace, Model: "requested-model", NativeSessionID: testSession}
+}
+
+func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'" }
+
+func fixtureResume(t *testing.T, request *harness.Request) {
+	t.Helper()
+	profile, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	request.NativeProfile, request.HostSessionID = profile, "fixture-host-session"
+	if _, _, err = executionEnvironment(*request); err != nil {
+		t.Fatal(err)
+	}
+	request.Resume = true
 }
 
 func TestStreamingArrivesBeforeNativeExit(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "stream_gate")
 	marker := filepath.Join(t.TempDir(), "release")
-	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_MARKER", marker)
 	// The marker handshake proves delivery before exit; this budget only bounds
 	// process startup and owned cleanup under concurrent full-suite load.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -432,7 +496,7 @@ func TestStreamingArrivesBeforeNativeExit(t *testing.T) {
 func TestSlowSinkDrainsOutputAfterNativeExit(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "slow_sink")
 	marker := filepath.Join(t.TempDir(), "sink")
-	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_MARKER", marker)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	first := true
@@ -511,7 +575,9 @@ func TestImageRunWithBackgroundInitializationRefreshRequiresSubmittedTurnResult(
 		for _, resume := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/resume=%t", tc.mode, resume), func(t *testing.T) {
 				adapter, request := fixtureAdapter(t, "image_reinit_"+tc.mode)
-				request.Resume = resume
+				if resume {
+					fixtureResume(t, &request)
+				}
 				request.Images = []harness.Image{{MediaType: "image/png", Data: []byte("fixture image")}}
 				var observations []harness.Observation
 				result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
@@ -711,8 +777,9 @@ func TestFinalLineWithoutNewline(t *testing.T) {
 func TestPromptUsesStdinAndToolFreeModeRestrictsNativeFacilities(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "normal")
 	path := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
-	request.ToolsDisabled, request.Resume = true, true
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
+	request.ToolsDisabled = true
+	fixtureResume(t, &request)
 	_, err := adapter.Run(context.Background(), request, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -758,7 +825,7 @@ func TestNativeStreamingPolicyMatchesValidatedEnvironmentForTaskAndExtraction(t 
 				adapter, request := fixtureAdapter(t, "normal")
 				request.Extraction, request.ToolsDisabled = extraction, extraction
 				path := filepath.Join(t.TempDir(), "request.json")
-				t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+				fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 				t.Setenv(nativeFallbackEnvironment, "1")
 				t.Setenv(nativeOutputEnvironment, "8192")
 				wantFallback, wantLimit := tc.disabled, tc.limit
@@ -834,7 +901,7 @@ func TestNativeStreamingPolicyRejectsMalformedConfigurationBeforeLaunch(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			adapter, request := fixtureAdapter(t, "normal")
 			path := filepath.Join(t.TempDir(), "request.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 			t.Setenv(nativeFallbackEnvironment, tc.disabled)
 			t.Setenv(nativeOutputEnvironment, tc.limit)
 			var observed int
@@ -871,7 +938,7 @@ func TestCancellationStopsProcessGroup(t *testing.T) {
 			defer func() { _ = unrelated.Process.Kill(); _ = unrelated.Wait() }()
 			adapter, request := fixtureAdapter(t, mode)
 			marker := filepath.Join(t.TempDir(), "child-survived")
-			t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_MARKER", marker)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			start := time.Now()
@@ -993,13 +1060,15 @@ func TestNativeMCPMountsAreExplicitAndPreserveResumeAndPermissions(t *testing.T)
 	for _, resume := range []bool{false, true} {
 		t.Run(fmt.Sprintf("resume=%t", resume), func(t *testing.T) {
 			adapter, request := fixtureAdapter(t, "mcp_connected")
-			request.Resume = resume
+			if resume {
+				fixtureResume(t, &request)
+			}
 			request.MCPServers = []harness.MCPServer{
 				{Name: "knowledge_dokki", Command: "/opt/agent-host", Args: []string{"knowledge", "serve", "dokki"}},
 				{Name: "knowledge_confluence", Command: "/opt/agent-host", Args: []string{"knowledge", "serve", "confluence"}},
 			}
 			path := filepath.Join(t.TempDir(), "request.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 			result, err := adapter.Run(context.Background(), request, nil)
 			if err != nil || result.Status != "completed" {
 				t.Fatalf("result=%+v err=%v", result, err)

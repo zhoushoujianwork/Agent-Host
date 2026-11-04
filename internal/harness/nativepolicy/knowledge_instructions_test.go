@@ -28,7 +28,7 @@ func TestKnowledgeUsageIsSystemGuidanceWithoutGrantingPermissions(t *testing.T) 
 			adapter, request := fixtureAdapter(t, "success")
 			request.ToolsDisabled, request.Extraction = tc.toolsDisabled, tc.extraction
 			path := filepath.Join(t.TempDir(), "request.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", path)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", path)
 			if _, err := adapter.Run(context.Background(), request, func(harness.Observation) error { return nil }); err != nil {
 				t.Fatal(err)
 			}

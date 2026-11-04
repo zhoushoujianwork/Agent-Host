@@ -136,10 +136,10 @@ func TestCLIWorkbenchObservesOfficialChatAfterStartup(t *testing.T) {
 		t.Fatal("native failure was hidden")
 	}
 	marker := filepath.Join(root, "native-started")
-	t.Setenv("AGENT_HOST_WORKBENCH_STARTED", marker)
 	for i, value := range args {
 		if value == "--claude" {
-			if err := os.WriteFile(args[i+1], []byte("#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo '2.1.277 (Claude Code)'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo '--plugin-dir <path>'; exit 0; fi\ncat >/dev/null\ntouch \"$AGENT_HOST_WORKBENCH_STARTED\"\nexec sleep 30\n"), 0700); err != nil {
+			script := "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo '2.1.277 (Claude Code)'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo '--plugin-dir <path>'; exit 0; fi\ncat >/dev/null\ntouch " + fixtureShellQuote(marker) + "\nexec sleep 30\n"
+			if err := os.WriteFile(args[i+1], []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
 		}

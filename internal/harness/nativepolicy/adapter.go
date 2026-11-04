@@ -25,7 +25,10 @@ type Adapter struct {
 	library *offloadexec.Library
 }
 
-func (a *Adapter) SupportsFork() bool { return !a.GeneratesSessionID() }
+// Isolated environments do not contain another conversation's native history.
+// A safe fork needs an explicit parent-environment binding that Host does not
+// currently provide, so advertising native fork support would be misleading.
+func (a *Adapter) SupportsFork() bool { return false }
 
 func (a *Adapter) GeneratesSessionID() bool {
 	return a.library != nil && a.library.Backend() == "codex"
@@ -53,7 +56,15 @@ func New(binary string) *Adapter {
 }
 
 func (a *Adapter) Version(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, a.binary, "--version")
+	binary, provider := a.binary, "Claude"
+	if a.GeneratesSessionID() {
+		provider = "Codex"
+		binary = os.Getenv("OFFLOAD_CODEX")
+		if binary == "" {
+			binary = "codex"
+		}
+	}
+	cmd := exec.CommandContext(ctx, binary, "--version")
 	cmd.WaitDelay = 2 * time.Second
 	var output boundedBuffer
 	cmd.Stdout, cmd.Stderr = &output, &output
@@ -62,7 +73,7 @@ func (a *Adapter) Version(ctx context.Context) (string, error) {
 	}
 	if err := cmd.Run(); err != nil {
 		stopProcessGroup(cmd)
-		return "", fmt.Errorf("Claude version: %w: %s", err, output.String())
+		return "", fmt.Errorf("%s version: %w: %s", provider, err, output.String())
 	}
 	return strings.TrimSpace(output.String()), nil
 }
@@ -291,12 +302,19 @@ func NewWithLibrary(binary string, library *offloadexec.Library) *Adapter {
 }
 
 func (a *Adapter) Identity() harness.Identity {
-	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion}
+	protocol := "claude-stream-json"
+	if a.GeneratesSessionID() {
+		protocol = "codex-app-server"
+	}
+	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion + ";native=" + protocol + ";environment=v1"}
 }
 
 // Run assembles Host policy and observations, then delegates execution, timeout,
 // native subprocess ownership and history to Offload's public Go package.
 func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harness.Observation) error) (result harness.Result, runErr error) {
+	if req.ForkFromNativeSessionID != "" {
+		return harness.Result{Status: "failed", NativeSessionID: req.NativeSessionID, ExitCode: -1}, errors.New("isolated native execution cannot fork without the parent Host environment")
+	}
 	if a.GeneratesSessionID() {
 		return a.runCodex(ctx, req, emit)
 	}
@@ -337,17 +355,38 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	if err := validateRunDirectories(req.Workspace, req.AdditionalDirectories); err != nil {
 		return result, err
 	}
+	var skillManifest *harness.SkillManifest
 	if req.SkillPluginDir != "" {
 		manifest, err := validateSkillPlugin(req.SkillPluginDir, req.SkillPluginDigest)
 		if err != nil {
 			return result, err
 		}
+		skillManifest = &manifest
+	}
+	var skillRoots []string
+	var err error
+	if !req.Extraction && !req.ToolsDisabled && !req.RestrictedReadOnly {
+		skillRoots, err = approvedSkillRoots(req.NativeProfile, req.SkillPluginDir)
+		if err != nil {
+			return result, err
+		}
+	}
+	plugin, cleanupPlugin, err := controlledClaudePlugin(skillRoots)
+	if err != nil {
+		return result, err
+	}
+	defer cleanupPlugin()
+	if plugin != "" {
 		if err = a.supportsSkillPlugin(ctx); err != nil {
 			return result, err
 		}
 		if emit != nil {
-			raw, _ := json.Marshal(manifest)
-			if err = emit(harness.Observation{Type: "skills_provided", Message: "provided task-scoped native skill package", Raw: raw}); err != nil {
+			provided, message := any(map[string]any{"roots": skillRoots}), "provided Host-selected native Skills"
+			if skillManifest != nil {
+				provided, message = *skillManifest, "provided task-scoped native skill package"
+			}
+			raw, _ := json.Marshal(provided)
+			if err = emit(harness.Observation{Type: "skills_provided", Message: message, Raw: raw}); err != nil {
 				return result, err
 			}
 		}
@@ -378,6 +417,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	}
 	if !req.Extraction {
 		instructions = withKnowledgeGuidance(instructions, req.ToolsDisabled || req.RestrictedReadOnly)
+		instructions += "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
 	}
 	lib := a.library
 	if lib == nil {
@@ -391,8 +431,8 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	if err != nil {
 		return result, err
 	}
-	native := &execution.NativeControls{StreamEnvironment: policy, Executable: a.binary, ProfileDirectory: req.NativeProfile, PermissionMode: req.PermissionMode,
-		JSONSchema: req.JSONSchema, SkillDirectory: req.SkillPluginDir, CallerContext: true, Extraction: req.Extraction,
+	native := &execution.NativeControls{StreamEnvironment: policy, Executable: a.binary, PermissionMode: req.PermissionMode,
+		JSONSchema: req.JSONSchema, SkillDirectory: plugin, CallerContext: true, Extraction: req.Extraction,
 		RestrictedReadOnly: req.RestrictedReadOnly, AllowedTools: append([]string(nil), req.AllowedTools...)}
 	if req.Resume {
 	} else {
@@ -414,8 +454,17 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	}
 	decoder := streamDecoder{session: req.NativeSessionID, extraction: req.Extraction, restrictedReadOnly: req.RestrictedReadOnly, mcpServers: req.MCPServers, emit: imageSafeEmitter(emit)}
 	var observerErr error
-	sdkReq := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Instructions: []byte(instructions), Directory: req.Workspace,
-		Model: req.Model, AdditionalDirectories: req.AdditionalDirectories, ToolsDisabled: req.ToolsDisabled, Native: native,
+	environment, cleanupEnvironment, err := executionEnvironment(req)
+	if err != nil {
+		return result, err
+	}
+	defer cleanupEnvironment()
+	resourceRoots := append([]string{req.Workspace}, req.AdditionalDirectories...)
+	if req.Extraction || req.RestrictedReadOnly {
+		resourceRoots = nil
+	}
+	sdkReq := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Instructions: []byte(instructions), Directory: environment.Workspace, EnvironmentDirectory: environment.Root,
+		Model: req.Model, AdditionalDirectories: resourceRoots, ToolsDisabled: req.ToolsDisabled, Native: native,
 		OnEvent: func(e execution.RawEvent) error { observerErr = decoder.consume(e.Data); return observerErr }}
 	if req.Resume {
 		sdkReq.NativeSessionID = req.NativeSessionID
@@ -428,7 +477,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	result.Text = decoder.text
 	result.Model = decoder.model
 	result.StructuredOutput = decoder.structuredOutput
-	result.Evidence = &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID, Profile: r.Profile, Backend: r.Backend, Status: r.Status, ErrorKind: r.ErrorKind, Usage: r.Usage, Raw: r.RawRecord}
+	result.Evidence = &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID, Profile: r.Profile, Backend: r.Backend, NativeProtocol: r.NativeProtocol, Status: r.Status, ErrorKind: r.ErrorKind, Usage: r.Usage, Raw: r.RawRecord}
 	if r.HistoryRecorded {
 		result.Evidence.HistoryStatus = "saved"
 	} else if r.HistoryError != nil {

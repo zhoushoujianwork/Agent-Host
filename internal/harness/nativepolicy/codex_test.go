@@ -4,8 +4,10 @@ import (
 	"agent-host/internal/harness"
 	"agent-host/internal/offloadexec"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -13,14 +15,41 @@ import (
 func TestCodexHostConsumesNativeEventsAndResume(t *testing.T) {
 	root := t.TempDir()
 	root, _ = filepath.EvalSymlinks(root)
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("XDG_STATE_HOME", root)
-	t.Setenv("CODEX_HOME", filepath.Join(root, "account"))
+	account := filepath.Join(root, "account")
+	if err := os.Mkdir(account, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(account, "auth.json"), []byte(`{"token":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", account)
 	t.Setenv("OFFLOAD_MAX_WORKERS", "-1")
 	binary := filepath.Join(root, "codex")
-	script := `#!/bin/sh
-cat >/dev/null
-printf '%s\n' '{"type":"thread.started","thread_id":"native-codex-session"}' '{"type":"turn.started"}' '{"type":"item.completed","item":{"id":"message","type":"agent_message","text":"Codex answer"}}' '{"type":"turn.completed","usage":{"input_tokens":2,"output_tokens":1}}'
-`
+	log := filepath.Join(root, "codex-requests")
+	const threadID = "11111111-1111-4111-8111-111111111111"
+	script := fmt.Sprintf(`#!/bin/sh
+read_frame() { IFS= read -r frame || exit 0; printf '%%s\n' "$frame" >> %s; }
+read_frame
+printf '%%s\n' '{"id":1,"result":{"userAgent":"fixture"}}'
+read_frame
+read_frame
+printf '%%s\n' '{"id":2,"result":{}}'
+read_frame
+printf '%%s\n' '{"id":3,"result":{"data":[{"cwd":"/workspace","errors":[],"skills":[]}]}}'
+read_frame
+printf '%%s\n' '{"id":4,"result":{"model":"gpt-native","thread":{"id":"%s","model":"gpt-native"}}}'
+read_frame
+printf '%%s\n' '{"id":5,"result":{"turn":{"id":"turn-native","status":"inProgress","items":[]}}}'
+printf '%%s\n' '{"method":"turn/started","params":{"threadId":"%s","turn":{"id":"turn-native"}}}'
+printf '%%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"%s","turnId":"turn-native","itemId":"message","delta":"Codex answer"}}'
+printf '%%s\n' '{"method":"turn/completed","params":{"threadId":"%s","turn":{"id":"turn-native","status":"completed","items":[{"id":"message","type":"agentMessage","text":"Codex answer"}],"error":null}}}'
+mkdir -p "$CODEX_HOME/sessions"
+printf '%%s\n' '{"type":"session_meta","payload":{"id":"%s"}}' > "$CODEX_HOME/sessions/rollout-fixture-%s.jsonl"
+`, shellQuote(log), threadID, threadID, threadID, threadID, threadID, threadID)
 	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +66,7 @@ printf '%s\n' '{"type":"thread.started","thread_id":"native-codex-session"}' '{"
 	if !adapter.GeneratesSessionID() {
 		t.Fatal("Codex session ownership missing")
 	}
-	request := harness.Request{Workspace: root, Prompt: "task", NativeSessionID: "host-placeholder", PermissionMode: "bypassPermissions"}
+	request := harness.Request{Workspace: root, NativeProfile: root, HostSessionID: "host-session", Prompt: "task", NativeSessionID: "host-placeholder", PermissionMode: "bypassPermissions"}
 	init := 0
 	result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
 		if o.Type == "init" {
@@ -45,24 +74,28 @@ printf '%s\n' '{"type":"thread.started","thread_id":"native-codex-session"}' '{"
 		}
 		return nil
 	})
-	if err != nil || result.Status != "completed" || result.Text != "Codex answer" || result.NativeSessionID != "native-codex-session" || init != 1 || result.Evidence.Backend != "codex" {
-		t.Fatalf("%+v %v", result, err)
+	if err != nil || result.Status != "completed" || result.Text != "Codex answer" || result.Model != "gpt-native" || result.NativeSessionID != threadID || init != 1 || result.Evidence.Backend != "codex" || result.Evidence.NativeProtocol != "codex-app-server" {
+		t.Fatalf("%+v evidence=%+v %v", result, result.Evidence, err)
 	}
 	request.NativeSessionID = result.NativeSessionID
 	request.Resume = true
-	if _, err := adapter.Run(context.Background(), request, nil); err != nil {
-		t.Fatal(err)
+	resumed, err := adapter.Run(context.Background(), request, nil)
+	if err != nil {
+		t.Fatalf("resume=%+v evidence=%+v err=%v", resumed, resumed.Evidence, err)
 	}
 	request.ToolsDisabled = true
 	if _, err := adapter.Run(context.Background(), request, nil); err == nil {
 		t.Fatal("unsupported tool-free policy accepted")
 	}
 	request.ToolsDisabled = false
-	request.NativeProfile = root
 	if err := os.MkdirAll(filepath.Join(root, "skills", "configured"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := adapter.Run(context.Background(), request, nil); err == nil {
-		t.Fatal("configured native Skills silently ignored")
+	if err := os.WriteFile(filepath.Join(root, "skills", "configured", "SKILL.md"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	roots, err := approvedSkillRoots(root, "")
+	if err != nil || len(roots) != 1 || !strings.HasSuffix(roots[0], "/skills/configured") {
+		t.Fatalf("configured native Skills were not explicitly resolved: %v %v", roots, err)
 	}
 }

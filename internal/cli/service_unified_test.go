@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-host/internal/knowledge"
@@ -98,6 +99,50 @@ func TestUnifiedDingTalkIndependentFeatures(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnifiedMemoryOffloadProfileResolvesAndForwardsSelector(t *testing.T) {
+	root, dir := unifiedFixture(t)
+	selector := memorySelectorFixture(t, "claude", "unified-memory")
+	raw, err := os.ReadFile(selector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localSelector := filepath.Join(dir, "memory.offload.json")
+	if err := os.WriteFile(localSelector, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var host unifiedHost
+	if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+		t.Fatal(err)
+	}
+	profile := host.Profiles[host.DefaultProfile]
+	profile.Execution.MemoryOffloadConfig = "memory.offload.json"
+	host.Profiles[host.DefaultProfile] = profile
+	writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
+	layout, config, _, err := loadUnifiedService(filepath.Join(root, "channels", "dingtalk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.MemoryOffloadConfig != localSelector {
+		t.Fatal("unified memory selector was not resolved", config.MemoryOffloadConfig)
+	}
+	args := strings.Join(config.arguments(layout, "check"), " ")
+	if !strings.Contains(args, "--memory-offload-config "+localSelector) {
+		t.Fatal("unified memory selector was not forwarded", args)
+	}
+	unsupported := memorySelectorFixture(t, "codex", "unsupported-memory")
+	raw, err = os.ReadFile(unsupported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(localSelector, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := loadUnifiedService(filepath.Join(root, "channels", "dingtalk")); err == nil || !strings.Contains(err.Error(), "unsupported extraction backend") {
+		t.Fatalf("unified profile accepted unsupported memory selector: %v", err)
 	}
 }
 

@@ -111,7 +111,7 @@ func TestClaudeRejectsInvalidImagesBeforeStartingNativeProcess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter, req := fixtureAdapter(t, "success")
 			capture := filepath.Join(t.TempDir(), "started.json")
-			t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capture)
+			fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capture)
 			req.Images = []harness.Image{image}
 			tc.edit(&req)
 			if _, err := encodeClaudeInput(req); err == nil {
@@ -138,7 +138,7 @@ func TestClaudeRejectsInvalidImagesBeforeStartingNativeProcess(t *testing.T) {
 func TestClaudePassesImagesToNativeStdinWithoutJournalingEchoedPayload(t *testing.T) {
 	adapter, req := fixtureAdapter(t, "image_echo")
 	capture := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", capture)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", capture)
 	req.Images = []harness.Image{{Name: "diagram.png", MediaType: "image/png", Data: []byte("synthetic image payload for native input")}}
 	encodedImage := base64.StdEncoding.EncodeToString(req.Images[0].Data)
 	var observations []harness.Observation

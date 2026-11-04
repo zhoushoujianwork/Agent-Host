@@ -8,7 +8,7 @@ Its [main design](managed-skills-design.md) owns scope and rollout. Existing
 memory publication and native Skill mounts described below remain delivered
 behavior; they do not yet implement the unified lifecycle or readiness contract.
 
-Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
+Companion to the [current architecture](architecture.md), reviewed on 2026-11-04.
 The shared ACP proposal and first Claude implementation were added on 2026-10-20;
 delivered behavior is separated from the remaining design below.
 The main document owns scope; [progress](release-follow-up.md) owns priorities.
@@ -23,7 +23,7 @@ memory objects. These terms explain how they are executed, authorized and stored
 
 | Term / 名词 | Meaning / 含义 |
 | --- | --- |
-| Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code. 负责模型推理、工具调用循环和原生会话的程序，当前为 Claude Code。 |
+| Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code or Codex app-server according to the selected profile. 负责模型推理、工具调用循环和原生会话的程序，按配置使用 Claude Code 或 Codex app-server。 |
 | Harness adapter / 执行引擎适配器 | Translates Host requests and engine events across their boundary. 在 Host 与执行引擎之间转换请求和事件，不接管引擎内部循环。 |
 | ACP / Agent Client Protocol / 智能体客户端协议 | A shared Host-to-engine protocol, implemented for the pinned Claude bridge. Host 与底层执行引擎通信的统一协议，首版已支持 Claude；不替代钉钉、飞书等渠道接口。 |
 | Routing / 路由 | Selects the Agent and project environment for a request. 为请求选择智能体配置和项目环境；选中项目本身不会增加权限。 |
@@ -50,7 +50,7 @@ memory objects. These terms explain how they are executed, authorized and stored
 | --- | --- |
 | Selected local checkout discovery and shared receipts | `internal/projectruntime`, `internal/cli/project_runtime.go`; [project records](development-projects-detail.md) |
 | Verified private users and profiles | `internal/cli/users.go`, `internal/assembly/workspace.go`; [workspace contracts](workspace-layout-detail.md#multi-user-recording-and-retrieval) |
-| Owner/member execution and one-use approvals | `internal/cli/channel_authorization.go`, `internal/approval`, `internal/harness/claude/restricted.go`; [authorization details](dangerous-operations-design-detail.md) |
+| Owner/member execution and one-use approvals | `internal/cli/channel_authorization.go`, `internal/approval`, `internal/harness/nativepolicy/restricted.go`; [authorization details](dangerous-operations-design-detail.md) |
 | File-memory publication, source-linked objects and native Skills | `internal/state`, `internal/memory`, `internal/experience`, `internal/objectmemory`; [file backend](file-memory-design-detail.md), [procedural learning](procedural-learning-detail.md) |
 | External evidence ingestion and installed memory skill | `internal/cli`, `skills/agent-host-memory`, `tools/install.py`; [external memory](external-memory-skill-design-detail.md) |
 | Knowledge retrieval, Confluence writes and reply guidance | `internal/knowledge`, `internal/assembly/context.go`, `internal/harness/claude/knowledge_instructions.go`; [source tools](knowledge-sources-detail.md) |
@@ -63,19 +63,19 @@ Runtime state and native sessions remain channel-local. Memory publication can
 share file storage without merging Agent/audience visibility. Shared project
 receipts exclude original request/response text and native context.
 
-### Current execution path before ACP
+### Historical execution path before the package boundary
 
-The [main architecture diagram](architecture.md#ownership) shows the
-chosen target and ACP delivery status. This diagram records the retained print baseline: entries
-reach Host, and Host runs Claude's print/stream-JSON adapter. New Web chats
-launch a separately configured Host CLI. Selecting an existing channel Session
-uses the owning worker's private control socket; Host forks its exact completed
-native context and preserves the original room and audience. Room snapshots retain
+The [main architecture diagram](architecture.md#ownership) shows the current
+package boundary. This section records the earlier print baseline: entries
+reached Host, Host ran Claude's print/stream-JSON adapter, and new Web chats
+launched a separately configured Host CLI. Selecting an existing channel Session
+used the owning worker's private control socket. The current isolated package
+path does not advertise native fork support: neither Claude nor Codex can bind a
+child to the original parent's private environment. Room snapshots retain
 bounded attributed conversation text across runtime/model changes only within the
 same Agent/audience, room epoch, scope, primary project, workspace, full project
 identity/scope/workspace set and additional directories. Completed results require
-a final journal seal available by message arrival. Native parent selection and
-explicit takeover keep exact runtime/model compatibility. Durable continuation
+a final journal seal available by message arrival. Durable continuation
 metadata explains text-only history; current execution capabilities apply and
 historical text grants no authority. Preview-only quoted bot messages remain
 unresolved because DingTalk webhook acceptance supplies no mapped outgoing ID;
@@ -125,7 +125,8 @@ See [layout](workspace-layout-detail.md) and [migration](file-memory-design-deta
 The CLI composes channel and local execution through selected profiles. Local Git
 discovery, automatic enrollment, routing, default-workspace execution and project-set
 assembly are implemented. Remote discovery, managed clones and durable worktree/PR
-coordination remain proposed. The Codex package remains a scaffold.
+coordination remain proposed. Codex execution is implemented through the shared
+native-policy adapter and the companion Offload app-server control.
 
 ```text
 Agent-Host/
@@ -142,8 +143,8 @@ Agent-Host/
 │   ├── assembly/            Workspace, instructions, and context preparation
 │   ├── knowledge/           Source MCP retrieval and authorized Confluence writes
 │   ├── harness/             Shared adapter boundary
-│   │   ├── claude/          Claude Code protocol and process integration
-│   │   └── codex/           Codex adapter scaffold (not executable)
+│   │   ├── nativepolicy/    Isolated Claude and Codex app-server policy adapter
+│   │   └── offload/         Ordinary package execution compatibility adapter
 │   ├── annotation/          Source-linked objects, aliases and topic applicability
 │   ├── memory/              User-statement decisions and finalization
 │   ├── experience/          Tool-free extraction and selected procedure publication
@@ -158,8 +159,8 @@ Agent-Host/
 | --- | --- |
 | `internal/host` | Business task lifecycle and execution coordination |
 | `internal/harness` | Shared execution contract and capability reporting |
-| `internal/harness/claude` | Claude-specific protocol and process integration |
-| `internal/harness/codex` | Reserved scaffold; no runtime implementation |
+| `internal/harness/nativepolicy` | Isolated Claude process policy, Codex app-server RPC projection, environment ownership and managed Skill roots |
+| `internal/harness/offload` | Ordinary Offload package request compatibility path |
 | `internal/annotation` | Versioned source spans, service identities, aliases, topics and applicability checks |
 | `internal/memory` | Source-linked user-statement decisions and finalization |
 | `internal/experience` | Evidence-linked procedure extraction and Jev screening/comparison |
@@ -246,13 +247,12 @@ The remaining design below includes warm process reuse, additional engines and
 channel interaction controls; these are not delivered by the first increment.
 
 Scope follows the [main architecture](offload-execution-boundary.md).
-Source inspection on 2026-10-20 found a shared `harness.Runner` contract in
-`internal/harness/harness.go`; channel execution reaches it through Host.
-`internal/harness/claude/adapter.go` currently launches `--print` with
-`stream-json`, partial messages and native session continuation. Web reaches
-the same Host CLI through `tools/run-viewer/chat_runtime.py`. The new
-`internal/harness/acp` client can replace business print execution through the
-same boundary. There is no warm channel ACP process pool or working Codex runner.
+The 2026-10-20 source snapshot used a shared `harness.Runner` contract with a
+Claude print adapter and a proposed ACP client. Those paths are historical, not
+the current execution claim. Current source keeps the runner contract in
+`internal/harness/harness.go` and implements isolated Claude plus executable
+Codex app-server behavior in `internal/harness/nativepolicy`; it does not provide
+a warm channel ACP process pool.
 
 ### Ownership and entry points
 

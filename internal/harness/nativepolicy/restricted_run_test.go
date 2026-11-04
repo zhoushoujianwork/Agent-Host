@@ -22,7 +22,7 @@ func TestRestrictedRunExcludesAmbientProjectInstructions(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestPath := filepath.Join(t.TempDir(), "request.json")
-	t.Setenv("AGENT_HOST_FIXTURE_REQUEST", requestPath)
+	fixtureSet(t, "AGENT_HOST_FIXTURE_REQUEST", requestPath)
 	t.Setenv("CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD", "1")
 	result, err := adapter.Run(context.Background(), req, func(obs harness.Observation) error {
 		if obs.Type == "project_instructions" {
