@@ -11,8 +11,9 @@ and project, assembles context and tools, executes through Offload and retains
 attributed evidence and reusable memory. Optional Web/Mac surfaces present the
 same Host records and configured conversation entries.
 
-`agent-host chat` uses the configured Offload default profile. An optional
-`--offload-config` version 2 selector chooses another profile. ACP, direct
+`agent-host chat` uses the configured Offload default profile. Full Host deployments
+should pin an explicit `--offload-config` version 2 selector on each routed Agent so
+a global default change cannot silently switch their backend or capability set. ACP, direct
 Host-managed native execution and Offload CLI compatibility are removed.
 [Execution scope and migration](offload-execution-boundary.md) distinguish source
 behavior from installed production adoption.

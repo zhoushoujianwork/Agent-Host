@@ -45,6 +45,9 @@ func TestCLIAndChannelAgentCapabilityParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if selected.model == base.model || selected.model != "sonnet" {
+		t.Fatalf("Agent selector did not replace inherited model: base=%q selected=%q", base.model, selected.model)
+	}
 	if err := resolveOptions(t.Context(), store, &selected, true); err != nil {
 		t.Fatal(err)
 	}

@@ -85,7 +85,8 @@ source selectors and limits. See [the guide](../docs/dingtalk-workspace.md).
 ## Native execution
 
 Execution uses the Offload Go package only. Without a selector, CLI chat resolves
-the explicit default in the private Offload config. Optional
+the explicit default in the private Offload config. Full Host deployments should
+pin the selector on each routed Agent. Optional
 `execution.offload.json` follows [execution.offload.example.json](execution.offload.example.json)
 (version 2); copy it to an owner-private `0600` file and set `config_path` and
 `profile`. Agent entries use `offload_config`. ACP `execution_config` and version 1

@@ -215,6 +215,9 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 	if a.OffloadConfig != "" {
 		o.fullHost = true
 		o.offloadConfig = a.OffloadConfig
+		// The routed Agent selector owns both backend and model. Do not carry a
+		// model resolved from the process-wide default into a different profile.
+		o.model = ""
 		if err := loadExecutionOptions(&o); err != nil {
 			return o, err
 		}

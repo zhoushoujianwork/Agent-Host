@@ -90,6 +90,22 @@ class HandoffTests(unittest.TestCase):
         profile.write_text(json.dumps(value))
         with self.assertRaises(ValueError): CHAT.configured_command(self.config)
 
+    def test_full_host_accepts_agent_offload_profile(self):
+        native = self.root / "native.json"
+        native.write_text(json.dumps({"profiles": {"local": {"backend": "claude", "model": "fixture"}}}))
+        native.chmod(0o600)
+        profile = self.root / "offload-pkg.json"
+        profile.write_text(json.dumps({"version": 2, "config_path": str(native), "profile": "local"}))
+        profile.chmod(0o600)
+        agents = Path(self.value["args"][self.value["args"].index("--agents-config") + 1])
+        agents.write_text(json.dumps({"agents": [{"id": "daily", "projects": [], "offload_config": profile.name}]}))
+        agents.chmod(0o600)
+        self.save()
+        command, _, env = CHAT.configured_command(self.config)
+        self.assertIn("--agents-config", command)
+        self.assertNotIn("--offload-config", command)
+        self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "managed-token")
+
     def test_caller_policy_is_recorded_and_detach_is_not_inherited_on_resume(self):
         self.fake_host()
         directory = self.root / "detached"

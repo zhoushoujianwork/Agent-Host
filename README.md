@@ -121,7 +121,9 @@ make build
 ```
 
 Optional `--offload-config` selects a version 2 profile; omitted uses the Offload
-default. ACP and the Offload CLI transport have been removed. See the
+default. Full Host deployments should pin the selector on each routed Agent instead
+of inheriting a mutable global default. ACP and the Offload CLI transport have been
+removed. See the
 [execution contract](docs/offload-execution-boundary.md) before migrating existing
 configuration or native conversations.
 
