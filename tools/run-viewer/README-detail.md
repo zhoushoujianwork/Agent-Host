@@ -21,6 +21,9 @@ configured source paths. The separate settings API intentionally edits only
 enumerated owner-local configuration files; see the
 [settings implementation](../../docs/settings-console-detail.md). Saving source
 configuration does not replace the viewer's current catalog or restart services.
+For Agent skills, the settings UI treats the disabled/null mode and an empty
+explicit selection as zero enabled skills; only IDs in the explicit selection
+are assembled.
 
 WAL databases without both sidecars are opened with `mode=ro&immutable=1`
 as explicit snapshots that may lag recent writes. The viewer does not create

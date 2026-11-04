@@ -86,10 +86,10 @@ function renderEditor() {
 }
 function renderAgentCapabilities(parent,index) {
   for(const [field,choices,title,hint]of [
-    ["native_skills","skills","技能","选择当前原生配置中已安装的用户技能；原生命令与插件、项目技能和 Host 记忆仍由各自机制提供。"],
+    ["native_skills","skills","技能","只启用明确勾选并由 Host 组装的技能；空选择表示零技能，嵌套技能和系统技能不会自动启用。"],
     ["knowledge_sources","knowledge_sources","知识源","选择此智能体实际挂载的检索来源；不会更改其他智能体的配置。"]]){
     const section=node("section","agent-capability-editor");section.append(node("h3","group-title",title),node("p","help-note",hint));
-    const mode=node("select","");mode.setAttribute("aria-label",title+"配置方式");mode.add(new Option("使用默认能力","inherit"));mode.add(new Option("自定义选择","custom"));
+    const mode=node("select","");mode.setAttribute("aria-label",title+"配置方式");mode.add(new Option(field==="native_skills"?"不启用技能":"使用默认能力","inherit"));mode.add(new Option(field==="native_skills"?"选择技能":"自定义选择","custom"));
     mode.value=draft.agents[index][field]==null?"inherit":"custom";section.append(mode);
     const list=node("div","agent-capability-list");section.append(list);
     function renderList(){
@@ -111,7 +111,7 @@ function renderAgentCapabilities(parent,index) {
       search.oninput=filter;filter();list.append(node("p","help-note","未勾选任何项时，不挂载本组能力。"));
       for(const id of selected.filter(id=>!available.some(item=>item.id===id))){const remove=node("button","quiet",`移除已不可用项：${id}`);remove.type="button";remove.onclick=()=>{setAt(["agents",index,field],draft.agents[index][field].filter(value=>value!==id));renderList();};list.append(remove);}
     }
-    mode.onchange=()=>{setAt(["agents",index,field],mode.value==="inherit"?null:catalog.agent_options[choices].map(item=>item.id));renderList();};renderList();parent.append(section);
+    mode.onchange=()=>{setAt(["agents",index,field],window.AGHSettings.capabilitySelection(field,mode.value,catalog.agent_options[choices]));renderList();};renderList();parent.append(section);
   }
 }
 function renderField(field) {

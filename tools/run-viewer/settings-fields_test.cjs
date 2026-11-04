@@ -2,6 +2,18 @@
 const {test}=require("node:test"),assert=require("node:assert/strict"),vm=require("node:vm"),fs=require("node:fs"),path=require("node:path");
 const window={};vm.runInNewContext(fs.readFileSync(path.join(__dirname,"settings-fields.js"),"utf8"),{window});
 const fields=(value,category,secret)=>Array.from(window.AGHSettings.fields(value,category,secret));
+const capabilitySelection=(field,mode,options)=>window.AGHSettings.capabilitySelection(field,mode,options);
+test("native skill mode transitions preserve strict zero-skill defaults",()=>{
+  const installed=[{id:"skill-a",name:"Renamed A"},{id:"skill-b",name:"B"}],before=JSON.stringify(installed);
+  assert.equal(capabilitySelection("native_skills","inherit",installed),null);
+  assert.deepEqual(Array.from(capabilitySelection("native_skills","custom",installed)),[]);
+  assert.equal(JSON.stringify(installed),before);
+});
+test("knowledge source mode transitions retain legacy select-all behavior",()=>{
+  const installed=[{id:"source-a",name:"A"},{id:"source-b",name:"B"}];
+  assert.equal(capabilitySelection("knowledge_sources","inherit",installed),null);
+  assert.deepEqual(Array.from(capabilitySelection("knowledge_sources","custom",installed)),["source-a","source-b"]);
+});
 test("Agent UI exposes only first-use fields and does not mutate defaults",()=>{
   const config={default_agent:"a",agents:[{id:"a",name:"Assistant",workspace:"/tmp",projects:["private"],execution_profile:"fast",instructions_dir:"/private"}]};
   const before=JSON.stringify(config),shown=fields(config,"agents");
