@@ -30,7 +30,7 @@ cat > "$d/stdin.$n"
 (while [ $# -gt 0 ]; do case "$1" in --append-system-prompt-file) cp "$2" "$d/instructions.$n";; esac; shift; done)
 mode=$(cat "$d/mode" 2>/dev/null || echo ok)
 sess=sess-$n
-while [ $# -gt 0 ]; do case "$1" in --resume) sess="$2"; shift;; esac; shift; done
+while [ $# -gt 0 ]; do case "$1" in --resume|--session-id) sess="$2"; shift;; esac; shift; done
 case "$mode" in
 fail) printf '%s\n' '{"type":"result","subtype":"error","is_error":true,"result":"provider says no"}'; exit 1;;
 garbage) echo not-json; exit 0;;
@@ -125,6 +125,84 @@ func newFixture(t *testing.T) *fixture {
 	f.host = &Host{Store: store, Client: client, Sink: func(e event.Event) error { f.events = append(f.events, e); return nil },
 		Config: Config{AgentID: "default", AudienceID: "owner", Scope: workspace, Workspace: workspace, RuntimeFingerprint: state.OffloadFingerprintPrefix + "fixture", Model: "m1"}}
 	return f
+}
+
+func enableCleanNativeProfile(t *testing.T, f *fixture) string {
+	t.Helper()
+	profile := filepath.Join(f.dir, "clean-native")
+	if err := os.Mkdir(profile, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(profile, "skills"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile, "settings.json"), []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := filepath.EvalSymlinks(profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := filepath.EvalSymlinks(f.host.Config.Workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.host.Config.Workspace, f.host.Config.Scope = workspace, workspace
+	f.host.Config.NativeProfile = profile
+	f.host.Config.RuntimeFingerprint = state.OffloadFingerprintPrefix + "environment=v2;exact-skills=v1;clean-profile"
+	return profile
+}
+
+func TestCleanNativeProfileBindsEnvironmentToHostSession(t *testing.T) {
+	f := newFixture(t)
+	profile := enableCleanNativeProfile(t, f)
+	session, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.host.Run(t.Context(), session, "first")
+	if err != nil || first.ExecutionStatus != "completed" || first.NativeSessionID == "" {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	environment := filepath.Join(profile, "environments", session.ID)
+	if _, err := os.Stat(filepath.Join(environment, "environment.json")); err != nil {
+		t.Fatal("missing Host-session environment", err)
+	}
+	resumed, err := f.host.Session(t.Context(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := f.host.Run(t.Context(), resumed, "second")
+	if err != nil || second.NativeSessionID != first.NativeSessionID {
+		t.Fatalf("resume=%+v err=%v", second, err)
+	}
+	other, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), other, "other"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(profile, "environments", other.ID, "environment.json")); err != nil || other.ID == session.ID {
+		t.Fatal("distinct Host session did not receive a distinct environment", err)
+	}
+	for _, call := range []string{f.read("argv.1"), f.read("argv.2"), f.read("argv.3")} {
+		if !strings.Contains(call, "\n--bare\n") || strings.Contains(call, "\n--plugin-dir\n") || !strings.Contains(call, "\n--add-dir\n"+f.host.Config.Workspace+"\n") {
+			t.Fatal("clean native request lost isolation or workspace resource", call)
+		}
+	}
+}
+
+func TestCleanNativeProfileRejectsCompatibilityExecutorBeforeDispatch(t *testing.T) {
+	f := newFixture(t)
+	enableCleanNativeProfile(t, f)
+	f.host.Client = historyExecutor{status: "saved"}
+	if _, err := f.host.Session(t.Context(), ""); err == nil || !strings.Contains(err.Error(), "Go package library") {
+		t.Fatal("clean profile accepted a compatibility executor", err)
+	}
+	if f.calls() != 0 {
+		t.Fatal("unsupported executor dispatched native work")
+	}
 }
 
 func (f *fixture) mode(m string) {

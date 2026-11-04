@@ -13,11 +13,15 @@ retained as evidence.
 Each stable Host conversation gets its own persistent native environment. Its
 native cwd is a fresh, empty Host-owned runtime workspace; the business workspace
 and any additional directories are explicit task roots. Continuation reuses the
-original environment and native identity or fails. A fresh Agent does not import
-the operator's native configuration, conversation history, plugins, or user
-instructions. Host explicitly supplies its authorization, reviewed context and
-operations Skills. This is configuration isolation, not an OS filesystem or
-network sandbox.
+original environment and native identity or fails. A routed Agent, including the
+default owner Agent, does not import the operator's native configuration,
+conversation history, plugins, user instructions, or ambient Skills. Host
+explicitly supplies its authorization, reviewed context and exact selected
+Skills. Omitted, null, and empty Agent Skill selections all mean zero native
+Skills. CLI and lite channel execution without an Agent catalog also uses a
+private Host-owned zero-Skill profile; it does not fall back to the operator's
+ambient native profile. This is configuration isolation, not an OS filesystem
+or network sandbox.
 
 The operations skill set comes from an explicit inventory of the existing global
 skills. Hidden backups, duplicates, development/media skills and credential caches

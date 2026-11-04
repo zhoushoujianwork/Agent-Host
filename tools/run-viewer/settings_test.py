@@ -231,12 +231,6 @@ class SettingsTests(unittest.TestCase):
         linked_definition = json.loads(json.dumps(row["value"]))
         linked_definition["agents"][0]["native_skills"] = ["linked-skill"]
         cases.append(linked_definition)
-        empty = json.loads(json.dumps(row["value"]))
-        empty["agents"][0]["native_skills"] = []
-        cases.append(empty)
-        absent = json.loads(json.dumps(row["value"]))
-        absent["agents"][0].pop("native_skills")
-        cases.append(absent)
         alias = self.root / "capability-alias"
         alias.symlink_to(explicit, target_is_directory=True)
         symlinked = json.loads(json.dumps(row["value"]))
@@ -262,6 +256,22 @@ class SettingsTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.save(row, changed)
                 self.assertEqual((self.config / "agents.cli.json").read_bytes(), before)
+
+        for selection in ([], None, "absent"):
+            row = self.row("agents.cli.json")
+            changed = json.loads(json.dumps(row["value"]))
+            if selection == "absent":
+                changed["agents"][0].pop("native_skills")
+            else:
+                changed["agents"][0]["native_skills"] = selection
+            self.assertEqual(self.save(row, changed)["status"], "saved")
+
+        row = self.row("agents.cli.json")
+        unsafe_empty = json.loads(json.dumps(row["value"]))
+        unsafe_empty["agents"][0]["native_skills_root"] = str(alias)
+        unsafe_empty["agents"][0]["native_skills"] = []
+        with self.assertRaises(ValueError):
+            self.save(row, unsafe_empty)
 
     def test_owner_http_checks_conflicts_and_settings_assets(self):
         http = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)

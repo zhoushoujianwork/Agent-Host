@@ -23,6 +23,13 @@ import (
 
 const testSession = "e7a0d011-08ab-48ca-908e-77d853094ba0"
 
+func TestIdentityDiscriminatesExactSkillEnvironment(t *testing.T) {
+	version := New("claude").Identity().Version
+	if !strings.Contains(version, ";environment=v2;exact-skills=v1") || strings.Contains(version, ";environment=v1") {
+		t.Fatal("native identity did not rotate for exact Skill isolation", version)
+	}
+}
+
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "managed-skill-fixture" {
 		if err := serveManagedSkillFixture(); err != nil {

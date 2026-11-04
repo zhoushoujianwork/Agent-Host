@@ -41,9 +41,11 @@ printf '%%s\n' '{"id":2,"result":{}}'
 read_frame
 printf '%%s\n' '{"id":3,"result":{"data":[{"cwd":"/workspace","errors":[],"skills":[]}]}}'
 read_frame
-printf '%%s\n' '{"id":4,"result":{"model":"gpt-native","thread":{"id":"%s","model":"gpt-native"}}}'
+printf '%%s\n' '{"id":4,"result":{"data":[{"cwd":"/workspace","errors":[],"skills":[]}]}}'
 read_frame
-printf '%%s\n' '{"id":5,"result":{"turn":{"id":"turn-native","status":"inProgress","items":[]}}}'
+printf '%%s\n' '{"id":5,"result":{"model":"gpt-native","thread":{"id":"%s","model":"gpt-native"}}}'
+read_frame
+printf '%%s\n' '{"id":6,"result":{"turn":{"id":"turn-native","status":"inProgress","items":[]}}}'
 printf '%%s\n' '{"method":"turn/started","params":{"threadId":"%s","turn":{"id":"turn-native"}}}'
 printf '%%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"%s","turnId":"turn-native","itemId":"message","delta":"Codex answer"}}'
 printf '%%s\n' '{"method":"turn/completed","params":{"threadId":"%s","turn":{"id":"turn-native","status":"completed","items":[{"id":"message","type":"agentMessage","text":"Codex answer"}],"error":null}}}'

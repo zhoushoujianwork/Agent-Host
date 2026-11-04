@@ -27,12 +27,9 @@ func nativeSkillsRootFixture(t *testing.T, skills map[string]string) string {
 	return root
 }
 
-func TestAgentProfileInheritsSkillsEvenWhenSettingsAreUnchanged(t *testing.T) {
+func TestAgentProfileNilSelectionUsesEmptySettingsAndNoAmbientSkills(t *testing.T) {
 	base := t.TempDir()
 	destination := filepath.Join(base, "instances", "assistant", "audiences", "owner")
-	if err := prepareAgentProfile(base, destination); err != nil {
-		t.Fatal(err)
-	}
 	skill := filepath.Join(base, "skills", "example", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(skill), 0700); err != nil {
 		t.Fatal(err)
@@ -40,50 +37,41 @@ func TestAgentProfileInheritsSkillsEvenWhenSettingsAreUnchanged(t *testing.T) {
 	if err := os.WriteFile(skill, []byte("example"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for range 2 {
-		if err := prepareAgentProfile(base, destination); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(base, "settings.json"), []byte(`{"ambient":true}`), 0600); err != nil {
+		t.Fatal(err)
 	}
-	loaded, err := os.ReadFile(filepath.Join(destination, "skills", "example", "SKILL.md"))
-	if err != nil || string(loaded) != "example" {
-		t.Fatalf("inherited skill=%s err=%v", loaded, err)
+	if err := prepareSelectedAgentProfile(base, destination, nil); err != nil {
+		t.Fatal(err)
 	}
-	if err := os.Rename(filepath.Join(base, "skills"), filepath.Join(base, "removed-skills")); err != nil {
+	settings, err := os.ReadFile(filepath.Join(destination, "settings.json"))
+	if err != nil || string(settings) != "{}\n" {
+		t.Fatalf("controlled settings=%q err=%v", settings, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(destination, "skills"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("nil selection inherited ambient skills: %+v %v", entries, err)
+	}
+}
+
+func TestEmptySelectionReplacesOldInheritedSkillLink(t *testing.T) {
+	base := t.TempDir()
+	destination := t.TempDir()
+	if err := os.Chmod(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(base, "skills"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(destination, "skills")
+	if err := os.Symlink(filepath.Join(base, "skills"), target); err != nil {
 		t.Fatal(err)
 	}
 	if err := prepareAgentProfile(base, destination); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(destination, "skills")); !os.IsNotExist(err) {
-		t.Fatal("removed base skills left a stale mount")
-	}
-}
-
-func TestSkillInheritancePreservesLocalOverridesAndRejectsConflicts(t *testing.T) {
-	base := t.TempDir()
-	destination := t.TempDir()
-	if err := os.Mkdir(filepath.Join(base, "skills"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(destination, "skills")
-	if err := os.Mkdir(target, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := inheritNativeSkills(base, destination); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(target); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("operator file"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := inheritNativeSkills(base, destination); err == nil {
-		t.Fatal("conflicting file was accepted")
-	}
-	if body, _ := os.ReadFile(target); string(body) != "operator file" {
-		t.Fatal("operator file was overwritten")
+	info, err := os.Lstat(target)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatal("old inherited Skill link was reused", info, err)
 	}
 }
 
@@ -110,14 +98,32 @@ func TestAgentExplicitNativeSkillsAreIsolatedAndChangesSelectNewProfile(t *testi
 	if _, err := os.Stat(filepath.Join(first.nativeProfile, "skills", "one", "SKILL.md")); err != nil {
 		t.Fatal(err)
 	}
-	if first.nativeSkillsFingerprint != "" {
-		t.Fatal("legacy native skill selection changed its runtime fingerprint inputs")
+	if first.nativeSkillsFingerprint == "" {
+		t.Fatal("explicit legacy-source selection lacks a content fingerprint")
 	}
-	if settings, err := os.ReadFile(filepath.Join(first.nativeProfile, "settings.json")); err != nil || !strings.Contains(string(settings), "inherited") {
-		t.Fatal("legacy Agent stopped inheriting native settings", string(settings), err)
+	if settings, err := os.ReadFile(filepath.Join(first.nativeProfile, "settings.json")); err != nil || string(settings) != "{}\n" {
+		t.Fatal("routed Agent inherited native settings", string(settings), err)
 	}
 	if _, err := os.Stat(filepath.Join(first.nativeProfile, "skills", "two")); !os.IsNotExist(err) {
 		t.Fatal("unselected skill mounted")
+	}
+	beforeFingerprint := first.nativeSkillsFingerprint
+	resource := filepath.Join(base, "skills", "one", "references", "runbook.md")
+	if err := os.MkdirAll(filepath.Dir(resource), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(resource, []byte("bounded runbook"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := a.options(o, "owner", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.nativeSkillsFingerprint == beforeFingerprint {
+		t.Fatal("legacy explicit Skill resource content was not fingerprinted")
+	}
+	if body, err := os.ReadFile(filepath.Join(first.nativeProfile, "skills", "one", "references", "runbook.md")); err != nil || string(body) != "bounded runbook" {
+		t.Fatal("nested selected Skill resource was stripped", string(body), err)
 	}
 	a.NativeSkills = []string{}
 	empty, err := a.options(o, "owner", false, true)
@@ -224,8 +230,8 @@ func TestAgentNativeSkillsRootRelativeResolutionAndValidation(t *testing.T) {
 		t.Fatal("relative native skills root was not resolved from the catalog", catalog.Agents[0].NativeSkillsRoot)
 	}
 	writeBotJSON(t, catalogPath, map[string]any{"default_agent": "ops", "agents": []map[string]any{{"id": "ops", "name": "Operations", "native_skills_root": "operations", "native_skills": []string{}}}})
-	if _, err := loadAgents(catalogPath); err == nil || !strings.Contains(err.Error(), "explicit nonempty native_skills") {
-		t.Fatal("native skills root without an explicit selection was accepted", err)
+	if _, err := loadAgents(catalogPath); err != nil {
+		t.Fatal("explicit root with zero selected Skills was rejected", err)
 	}
 	if err := os.Chmod(root, 0755); err != nil {
 		t.Fatal(err)
@@ -233,6 +239,46 @@ func TestAgentNativeSkillsRootRelativeResolutionAndValidation(t *testing.T) {
 	writeBotJSON(t, catalogPath, map[string]any{"default_agent": "ops", "agents": []map[string]any{{"id": "ops", "name": "Operations", "native_skills_root": "operations", "native_skills": []string{"one"}}}})
 	if _, err := loadAgents(catalogPath); err == nil || !strings.Contains(err.Error(), "deny group/other access") {
 		t.Fatal("untrusted native skills root was accepted", err)
+	}
+}
+
+func TestDefaultOwnerOmittedNullAndEmptyNativeSkillsSelectZero(t *testing.T) {
+	base := nativeSkillsRootFixture(t, map[string]string{"ambient": "must-not-mount"})
+	if err := os.WriteFile(filepath.Join(base, "settings.json"), []byte(`{"ambient":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"", `,"native_skills":null`, `,"native_skills":[]`} {
+		t.Run(field, func(t *testing.T) {
+			catalogPath := filepath.Join(t.TempDir(), "agents.json")
+			raw := `{"default_agent":"default","agents":[{"id":"default","name":"Default"` + field + `}]}`
+			if err := os.WriteFile(catalogPath, []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			catalog, err := loadAgents(catalogPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			selected, err := catalog.Agents[0].options(options{nativeProfile: base}, "owner", false, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selected.nativeProfile == base || selected.nativeSkillsFingerprint == "" {
+				t.Fatal("default owner reused ambient profile or lacked strict fingerprint")
+			}
+			entries, err := os.ReadDir(filepath.Join(selected.nativeProfile, "skills"))
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("zero selection mounted ambient skills: %+v %v", entries, err)
+			}
+			settings, err := os.ReadFile(filepath.Join(selected.nativeProfile, "settings.json"))
+			if err != nil || string(settings) != "{}\n" {
+				t.Fatalf("zero selection inherited ambient settings: %q %v", settings, err)
+			}
+		})
+	}
+	if got, err := nativeSkillSelectionFingerprint(base, nil); err != nil {
+		t.Fatal(err)
+	} else if other, err := nativeSkillSelectionFingerprint(t.TempDir(), []string{}); err != nil || got != other {
+		t.Fatal("empty selection fingerprint is not stable", got, other, err)
 	}
 }
 

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +17,7 @@ import (
 	"agent-host/internal/channel"
 	"agent-host/internal/event"
 	"agent-host/internal/harness"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/harness/offload"
 	"agent-host/internal/offloadexec"
 	"agent-host/internal/runcompletion"
@@ -38,9 +41,12 @@ type Config struct {
 	AgentID, AudienceID           string
 	Scope, ProjectID, ProjectName string
 	Workspace                     string
-	RuntimeFingerprint            string
-	Instructions                  string
-	Model                         string
+	// NativeProfile opts production Host calls into the strict native adapter.
+	// An empty value retains the low-level Offload adapter for library consumers.
+	NativeProfile      string
+	RuntimeFingerprint string
+	Instructions       string
+	Model              string
 	// Write sets Offload's task write intent (-w). Offload adds no sandbox
 	// either way; when false the worker is only told to stay read-only.
 	Write bool
@@ -67,8 +73,56 @@ func (h *Host) validate() error {
 		return errors.New("offload host requires a memory-independent scope identity")
 	case !filepath.IsAbs(c.Workspace) || filepath.Clean(c.Workspace) != c.Workspace:
 		return errors.New("offload host requires a clean absolute workspace")
+	case c.NativeProfile != "" && (!filepath.IsAbs(c.NativeProfile) || filepath.Clean(c.NativeProfile) != c.NativeProfile):
+		return errors.New("offload host requires a clean absolute native profile")
 	case !strings.HasPrefix(c.RuntimeFingerprint, state.OffloadFingerprintPrefix):
 		return errors.New("offload host requires an offload:v1: runtime fingerprint")
+	}
+	if c.NativeProfile != "" {
+		if _, ok := h.Client.(*offloadexec.Library); !ok {
+			return errors.New("clean Offload execution requires the Go package library; compatibility executors are unsupported")
+		}
+		if err := validateCleanNativeProfile(c.NativeProfile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCleanNativeProfile(profile string) error {
+	canonical, err := filepath.EvalSymlinks(profile)
+	if err != nil || canonical != profile {
+		return errors.New("clean Offload native profile must be canonical")
+	}
+	private := func(path string, directory bool) error {
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || directory && !info.IsDir() || !directory && !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+			return errors.New("clean Offload native profile must contain private regular paths without symlinks")
+		}
+		owner, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || int(owner.Uid) != os.Geteuid() {
+			return errors.New("clean Offload native profile must belong to the current user")
+		}
+		return nil
+	}
+	if err := private(profile, true); err != nil {
+		return err
+	}
+	settings := filepath.Join(profile, "settings.json")
+	if err := private(settings, false); err != nil {
+		return err
+	}
+	body, err := os.ReadFile(settings)
+	if err != nil || string(body) != "{}\n" {
+		return errors.New("clean Offload native settings must remain empty")
+	}
+	skills := filepath.Join(profile, "skills")
+	if err := private(skills, true); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(skills)
+	if err != nil || len(entries) != 0 {
+		return errors.New("clean Offload native profile must contain zero Skills")
 	}
 	return nil
 }
@@ -398,6 +452,19 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		}
 	}
 	var runner harness.Runner = offload.New(h.Client)
+	if h.Config.NativeProfile != "" {
+		library := h.Client.(*offloadexec.Library)
+		runner = nativepolicy.NewWithLibrary("", library)
+		req.HostSessionID, err = h.environmentSessionID(ctx, st, cur)
+		if err != nil {
+			return h.finish(ctx, j, nil, err)
+		}
+		req.NativeProfile = h.Config.NativeProfile
+		req.PermissionMode = "bypassPermissions"
+		if !resume && !runner.(interface{ GeneratesSessionID() bool }).GeneratesSessionID() {
+			req.NativeSessionID = uuid.NewString()
+		}
+	}
 	identity := harness.RunnerIdentity(runner)
 	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through " + identity.Transport,
 		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": identity.Transport}}}, false); err != nil {
@@ -459,6 +526,25 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 	j.receipt(j.emit(event.Event{Type: "phase.finished", Phase: "execute", Component: bindingComponent, Status: status, Model: result.Model, Message: status,
 		Data: map[string]any{"duration_ms": elapsed, "backend": backend}}, false))
 	return h.finish(ctx, j, &result, execErr)
+}
+
+// Room receipts use a new Host session per request while serialized native
+// continuation stays in the original room environment. Ordinary sessions own
+// their environment directly.
+func (h *Host) environmentSessionID(ctx context.Context, st *state.Store, current state.Session) (string, error) {
+	seen := map[string]bool{}
+	for current.Room != nil && current.Room.NativeContinuation == state.OffloadRoomResume {
+		if current.Room.ParentSessionID == "" || seen[current.ID] {
+			return "", errors.New("Offload room environment ancestry is invalid")
+		}
+		seen[current.ID] = true
+		parent, err := st.Session(ctx, current.Room.ParentSessionID)
+		if err != nil {
+			return "", err
+		}
+		current = parent
+	}
+	return current.ID, nil
 }
 
 // bind records the actual Offload session and canonical profile. It runs

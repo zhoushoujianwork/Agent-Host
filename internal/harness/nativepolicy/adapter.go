@@ -306,7 +306,7 @@ func (a *Adapter) Identity() harness.Identity {
 	if a.GeneratesSessionID() {
 		protocol = "codex-app-server"
 	}
-	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion + ";native=" + protocol + ";environment=v1"}
+	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion + ";native=" + protocol + ";environment=v2;exact-skills=v1"}
 }
 
 // Run assembles Host policy and observations, then delegates execution, timeout,

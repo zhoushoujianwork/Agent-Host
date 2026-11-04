@@ -127,6 +127,9 @@ func copyControlledSkill(source, destination string) error {
 		if !info.Mode().IsRegular() {
 			return errors.New("native Skill contains a non-regular file")
 		}
+		if entry.Name() == "SKILL.md" && relative != "SKILL.md" {
+			return errors.New("Claude controlled Skills require leaf directories; nested Skill declarations must be selected separately")
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return err

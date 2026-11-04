@@ -35,24 +35,35 @@ or profile.
 
 An Agent may set `native_skills_root` to a private capability inventory root.
 The root's `skills` directory is the source of Skill content; it is not a native
-settings or session profile. A configured root requires an explicit, nonempty
-`native_skills` list, so AGH never absorbs the whole inventory automatically.
-Relative roots resolve from the Agent catalog.
+settings or session profile. Relative roots resolve from the Agent catalog and
+are validated whenever supplied. The `native_skills` field is explicit-only:
+omitted, null, and empty lists all select zero Skills, including when a root is
+configured. AGH never absorbs the whole inventory automatically.
 
 AGH keeps the Agent's native profile under the ordinary Agent/audience partition.
-For an explicit Skill root, the partition uses fixed empty native settings and
-does not read or inherit ambient settings, hooks, credentials, history, or
-language preferences from the base profile. Only the named Skills are linked
-from the explicit source. The canonical source, selected names, and selected
-file contents participate in runtime compatibility; source or content changes
-are never silently adopted by an existing conversation. Agents without
-`native_skills_root` retain the existing base-settings inheritance behavior.
+Every routed Agent partition uses fixed empty native settings and does not read
+or inherit ambient settings, hooks, credentials, history, language preferences,
+or Skills from the base profile or a sibling Agent. Only named Skills are linked
+from the selected source. Without `native_skills_root`, explicitly listed names
+use the configured native profile as their legacy source; no global Skills are
+selected automatically. The canonical nonempty source, selected names, and
+selected file contents participate in runtime compatibility; source or content
+changes are never silently adopted by an existing conversation. The empty set
+has a stable strict-policy fingerprint.
+
+CLI and lite channel execution without an Agent catalog has no selectable native
+Skills. AGH creates a separate owner-private zero-Skill profile below the Host
+home for each Agent/audience. Its canonical path and the strict Skill/environment
+policy rotate runtime compatibility; unsafe or populated Skill directories fail
+admission instead of inheriting the operator's global profile. This does not
+change Offload account or model selection, memory closeout, room deduplication,
+or durable execution evidence.
 
 The local settings viewer preserves the complete Agent catalog draft when
 changing a name or default selection, including unknown fields and
 `memory_offload_config`. For the Web Chat catalog it validates an Agent's named
-Skills against that Agent's explicit `native_skills_root` when present; legacy
-Agents continue to validate against the Web connection's base native profile.
+Skills against that Agent's explicit `native_skills_root` when present; explicit
+legacy-source names validate against the Web connection's base native profile.
 The explicit root and its `skills` directory must be canonical owner-private
 directories, and every selected Skill must provide a regular `SKILL.md`. This
 validation admits capability sources only; it does not import native settings,

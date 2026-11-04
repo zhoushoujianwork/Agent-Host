@@ -17,8 +17,10 @@ Only matching completed/interrupted turns establish terminal execution status.
 
 The selected model/account still comes from Offload configuration. Native
 response/reroute evidence supplies the observed model; it is not inferred from
-the request. Missing model or usage remains unavailable. The ordinary Offload
-exec path is preserved for callers that do not opt into app-server controls.
+the request. Missing model or usage remains unavailable. Production CLI and lite
+channel entries use the same strict native adapter with their selected Offload
+Go library. The ordinary Offload adapter remains only as a low-level compatibility
+contract for library consumers that do not configure a native profile.
 
 ## Environment ownership
 
@@ -45,22 +47,45 @@ Calls without a Host session identity use a disposable environment, and cannot
 resume. Native forks fail closed for both Claude and Codex because the current
 Host request cannot bind the child's environment to the original parent's.
 
+No-catalog CLI and lite channel profiles live under
+`<HostHome>/native-clean/instances/<Agent>/audiences/<AudienceKey>`. Their fixed
+settings and `skills` directory are empty and owner-private; any Skill residue,
+symlink, nonprivate directory, or compatibility executor fails before dispatch.
+Full Host CLI chat without an Agent catalog selects the same controlled empty
+profile while preserving its explicitly configured projects, context, MCP,
+knowledge, memory, permission and task-scoped Skill package assembly.
+The canonical profile path plus `environment=v2;exact-skills=v1` participates in
+runtime compatibility, so sessions created by the former ambient path cannot be
+adopted. Serialized room continuations reuse the original room environment while
+retaining their existing Host receipts, deduplication and native binding rules.
+
 ## Skills and internal calls
 
 Reuse Host authored/experience skill assembly and digest validation. Approved
 global operations skills are inventoried separately from credentials and caches.
 Preserve source directories, references and required resources, deduplicate by
-logical identity, and record the final mounted digest. Native skill discovery
-must be checked against approved roots before business execution.
+logical identity, and record the final mounted digest. Before a Codex thread is
+created or resumed, Offload enables exactly each selected root's own `SKILL.md`,
+disables unselected declarations, reloads discovery and compares canonical paths
+against the complete manifest. Nested declarations require separate selection;
+bundled, cloud, system and plugin Skills are not implicitly enabled. Any native
+write failure or final inventory mismatch stops before a model turn.
 
-An Agent may select an explicit `native_skills_root` plus a nonempty
-`native_skills` list. This root supplies Skills only; its settings, credentials
-and native state are never imported. Each selected Skill root is resolved and
-validated, including explicit symlink targets. A task package is admitted only
-after its original digest validates. Codex receives the resulting managed roots;
+An Agent may select `native_skills` from the configured native profile or pair
+the list with an explicit `native_skills_root`. The root is validated even when
+the list is empty and supplies Skills only; its settings, credentials and native
+state are never imported. Omitted, null, and empty lists select zero Skills.
+Every routed Agent receives empty controlled settings and an exact selection
+mount, so neither the default owner nor another audience inherits ambient or
+sibling Skills. Each selected Skill root is resolved and validated, including
+explicit symlink targets. Selected names and content always participate in the
+runtime fingerprint, including legacy explicit selections; the empty selection
+has a stable strict-policy fingerprint. A task package is admitted only after
+its original digest validates. Codex receives the resulting managed roots;
 Claude receives a controlled temporary plugin bundle containing only those
-sources. Existing Agents retain their prior source selection. The new operations
-Agent does not inherit the full mixed global Claude Skills directory.
+sources. Its controlled plugin path accepts leaf directories and rejects nested
+`SKILL.md` declarations until equivalent native enablement is verified; it does
+not silently expand a bundle or drop declaration files.
 
 The explicit internal extraction selector is resolved independently of the
 business default and affects only experience/object extraction. It uses the

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"agent-host/internal/channel/feishumeeting"
 	"agent-host/internal/event"
 	"agent-host/internal/offloadchannel"
+	"agent-host/internal/offloadexec"
 	"agent-host/internal/state"
 	"agent-host/internal/terminal"
 )
@@ -24,6 +27,9 @@ import (
 func resolveOffloadChannelOptions(o *options) error {
 	if o.offloadProfile == nil || o.offloadClient == nil {
 		return errors.New("Offload channel execution requires an explicit profile")
+	}
+	if _, ok := o.offloadClient.(*offloadexec.Library); !ok {
+		return errors.New("clean Offload execution requires a Go package profile; CLI compatibility selectors are unsupported")
 	}
 	if o.audienceID != state.OwnerAudienceID {
 		return errors.New("Offload channel audiences are resolved from authenticated channel messages")
@@ -48,14 +54,102 @@ func resolveOffloadChannelOptions(o *options) error {
 	}
 	o.defaultScope = o.scope
 	o.model = o.offloadProfile.Model
-	o.runtimeFingerprint = offloadchannel.FingerprintPrefix + channel.Key(o.executionFingerprint, workspace, o.scope, o.agentID, o.hostInstructions)
+	if err := prepareOffloadCleanProfile(o); err != nil {
+		return err
+	}
+	return nil
+}
+
+func offloadCleanProfilePath(home, agent, audience string) string {
+	return filepath.Join(home, "native-clean", "instances", agent, "audiences", channel.Key(audience))
+}
+
+func prepareOffloadCleanProfile(o *options) error {
+	if err := os.MkdirAll(o.home, 0700); err != nil {
+		return fmt.Errorf("create clean Offload home: %w", err)
+	}
+	canonicalHome, err := filepath.EvalSymlinks(o.home)
+	if err != nil {
+		return errors.New("clean Offload home is unavailable")
+	}
+	o.home = canonicalHome
+	paths := []string{filepath.Join(o.home, "native-clean"), filepath.Join(o.home, "native-clean", "instances"), filepath.Join(o.home, "native-clean", "instances", o.agentID), filepath.Join(o.home, "native-clean", "instances", o.agentID, "audiences"), offloadCleanProfilePath(o.home, o.agentID, o.audienceID)}
+	for _, path := range paths {
+		if err := os.Mkdir(path, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("create clean Offload native profile: %w", err)
+		}
+		if _, err := privateServicePath(path, true); err != nil {
+			return fmt.Errorf("clean Offload native profile %s: %w", path, err)
+		}
+	}
+	profile := paths[len(paths)-1]
+	settings := filepath.Join(profile, "settings.json")
+	file, err := os.OpenFile(settings, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err == nil {
+		_, writeErr := file.Write([]byte("{}\n"))
+		err = errors.Join(writeErr, file.Close())
+	} else if errors.Is(err, os.ErrExist) {
+		err = nil
+	} else {
+		return fmt.Errorf("create clean Offload native settings: %w", err)
+	}
+	if err != nil {
+		return fmt.Errorf("write clean Offload native settings: %w", err)
+	}
+	if _, err = privateServicePath(settings, false); err != nil {
+		return fmt.Errorf("clean Offload native settings: %w", err)
+	}
+	body, err := os.ReadFile(settings)
+	if err != nil || string(body) != "{}\n" {
+		return errors.New("clean Offload native settings must remain empty")
+	}
+	skills := filepath.Join(profile, "skills")
+	if err := os.Mkdir(skills, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create clean Offload Skill directory: %w", err)
+	}
+	if _, err := privateServicePath(skills, true); err != nil {
+		return fmt.Errorf("clean Offload Skill directory: %w", err)
+	}
+	entries, err := os.ReadDir(skills)
+	if err != nil {
+		return errors.New("clean Offload Skill directory is unreadable")
+	}
+	if len(entries) != 0 {
+		return errors.New("clean Offload native profile must contain zero Skills")
+	}
+	o.nativeProfile = profile
+	o.runtimeFingerprint = offloadchannel.FingerprintPrefix + channel.Key("offload-clean-native-v1", "environment=v2", "exact-skills=v1", profile, o.executionFingerprint, o.workspace, o.scope, o.agentID, o.hostInstructions)
+	return nil
+}
+
+// Full Host chat without a catalog uses the same zero-Skill profile as the lite
+// path without adopting the lite path's runtime or business configuration.
+func selectNoCatalogChatProfile(command string, o *options) error {
+	if command != "chat" || o.agentsConfig != "" {
+		return nil
+	}
+	return selectEmptyNativeChatProfile(o)
+}
+
+func selectEmptyNativeChatProfile(o *options) error {
+	selected := *o
+	if err := prepareOffloadCleanProfile(&selected); err != nil {
+		return err
+	}
+	fingerprint, err := nativeSkillSelectionFingerprint("", nil)
+	if err != nil {
+		return err
+	}
+	o.home = selected.home
+	o.nativeProfile = selected.nativeProfile
+	o.nativeSkillsFingerprint = fingerprint
 	return nil
 }
 
 func composeOffloadChannelHost(store *state.Store, o options, sink event.Sink) channel.Host {
 	return &offloadchannel.Host{Store: store.WithPartition(o.agentID, o.audienceID), Client: o.offloadClient,
 		Config: offloadchannel.Config{AgentID: o.agentID, AudienceID: o.audienceID, Scope: o.scope,
-			Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model,
+			Workspace: o.workspace, NativeProfile: o.nativeProfile, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model,
 			Instructions: o.hostInstructions, Write: true}, Sink: sink, Memory: o.offloadMemory}
 }
 
@@ -87,6 +181,9 @@ func configureOffloadChannel(service *channel.Service, o options, tenant string,
 		}
 		selected := o
 		selected.audienceID = expectedAudience
+		if err := prepareOffloadCleanProfile(&selected); err != nil {
+			return nil, err
+		}
 		owner := message.SenderID == service.OwnerID
 		selected.hostInstructions += "\n\n" + channelAuthorizationInstructions(service.OwnerID, owner)
 		child := *service
