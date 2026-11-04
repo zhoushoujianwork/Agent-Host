@@ -107,6 +107,7 @@ func TestUnifiedServiceCheckResolvesOffloadDefaultWhenBusinessModelOmitted(t *te
 	for _, channel := range []string{"dingtalk", "feishu"} {
 		t.Run(channel, func(t *testing.T) {
 			_, dir := unifiedFixture(t)
+			var commandMarker string
 			var host unifiedHost
 			if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
 				t.Fatal(err)
@@ -118,6 +119,7 @@ func TestUnifiedServiceCheckResolvesOffloadDefaultWhenBusinessModelOmitted(t *te
 			if channel == "dingtalk" {
 				writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
 			} else {
+				_, commandMarker = meetingCommandFixtures(t)
 				cfg := meetingConfigFixture()
 				cfg.MeetingID, cfg.IMChat, cfg.OwnerOpenID = "", true, "ou_owner"
 				writeBotJSON(t, filepath.Join(dir, "channels.feishu.json"), map[string]any{"version": 1, "enabled": true, "settings": cfg})
@@ -147,6 +149,11 @@ func TestUnifiedServiceCheckResolvesOffloadDefaultWhenBusinessModelOmitted(t *te
 			}
 			if report["model"] != "sonnet" || report["platform_verified"] != false || report["native_auth_verified"] != false {
 				t.Fatal("service check did not resolve the fixture Offload default locally", report)
+			}
+			if commandMarker != "" {
+				if _, err := os.Stat(commandMarker); !os.IsNotExist(err) {
+					t.Fatal("service check invoked the fake lark-cli", err)
+				}
 			}
 		})
 	}
