@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"agent-host/internal/harness/acp"
-
 	"context"
 	"errors"
 	"fmt"
@@ -26,21 +24,23 @@ import (
 
 // Instance configuration is local policy, never inferred from message content.
 type agentDefinition struct {
-	ExecutionConfig  string   `json:"execution_config,omitempty"`
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	InstructionsFile string   `json:"instructions_file,omitempty"`
-	InstructionsDir  string   `json:"instructions_dir,omitempty"`
-	UserFile         string   `json:"user_file,omitempty"`
-	Workspace        string   `json:"workspace,omitempty"`
-	Projects         []string `json:"projects"`
-	Plugins          []string `json:"plugins,omitempty"`
-	KnowledgeSources []string `json:"knowledge_sources"`
-	NativeSkills     []string `json:"native_skills"`
-	Model            string   `json:"model,omitempty"`
-	role             string
-	contextFiles     []assembly.ContextFile
-	userProfile      string
+	OffloadConfig       string   `json:"offload_config,omitempty"`
+	MemoryOffloadConfig string   `json:"memory_offload_config,omitempty"`
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	InstructionsFile    string   `json:"instructions_file,omitempty"`
+	InstructionsDir     string   `json:"instructions_dir,omitempty"`
+	UserFile            string   `json:"user_file,omitempty"`
+	Workspace           string   `json:"workspace,omitempty"`
+	Projects            []string `json:"projects"`
+	Plugins             []string `json:"plugins,omitempty"`
+	KnowledgeSources    []string `json:"knowledge_sources"`
+	NativeSkills        []string `json:"native_skills"`
+	NativeSkillsRoot    string   `json:"native_skills_root,omitempty"`
+	Model               string   `json:"model,omitempty"`
+	role                string
+	contextFiles        []assembly.ContextFile
+	userProfile         string
 }
 
 type agentBinding struct {
@@ -72,12 +72,27 @@ func loadAgents(path string) (agentCatalog, error) {
 	seen := map[string]bool{}
 	for i := range c.Agents {
 		a := &c.Agents[i]
-		if a.ExecutionConfig != "" {
-			if !filepath.IsAbs(a.ExecutionConfig) {
-				a.ExecutionConfig = filepath.Join(filepath.Dir(path), a.ExecutionConfig)
+		if a.OffloadConfig != "" {
+			if !filepath.IsAbs(a.OffloadConfig) {
+				a.OffloadConfig = filepath.Join(filepath.Dir(path), a.OffloadConfig)
 			}
-			if _, _, err := acp.Load(a.ExecutionConfig); err != nil {
-				return c, fmt.Errorf("agent %s execution profile: %w", a.ID, err)
+		}
+		if a.MemoryOffloadConfig != "" && !filepath.IsAbs(a.MemoryOffloadConfig) {
+			a.MemoryOffloadConfig = filepath.Join(filepath.Dir(path), a.MemoryOffloadConfig)
+		}
+		if a.NativeSkillsRoot != "" {
+			if !filepath.IsAbs(a.NativeSkillsRoot) {
+				catalogDirectory, err := filepath.Abs(filepath.Dir(path))
+				if err != nil {
+					return c, fmt.Errorf("agent %s native skills root: %w", a.ID, err)
+				}
+				a.NativeSkillsRoot = filepath.Join(catalogDirectory, a.NativeSkillsRoot)
+			}
+			if len(a.NativeSkills) == 0 {
+				return c, fmt.Errorf("agent %s native_skills_root requires an explicit nonempty native_skills selection", a.ID)
+			}
+			if err := validateNativeSkillsRoot(a.NativeSkillsRoot); err != nil {
+				return c, fmt.Errorf("agent %s native skills root: %w", a.ID, err)
 			}
 		}
 		if !agentIdentifier.MatchString(a.ID) || seen[a.ID] {
@@ -217,8 +232,31 @@ func (a agentDefinition) projects(ctx context.Context, store *state.Store) ([]st
 
 func (a agentDefinition) options(base options, audience string, group, prepare bool) (options, error) {
 	o := base
-	if a.ExecutionConfig != "" {
-		o.executionConfig = a.ExecutionConfig
+	if a.MemoryOffloadConfig != "" {
+		o.memoryOffloadConfig = a.MemoryOffloadConfig
+	}
+	if o.memoryOffloadConfig != "" {
+		if err := loadMemoryExecutionOptions(&o); err != nil {
+			return o, fmt.Errorf("agent %s: %w", a.ID, err)
+		}
+	}
+	if a.OffloadConfig == "" && base.offloadConfig == "" && base.offloadClient != nil {
+		// An inherited default is resolved for each admission, not frozen when a
+		// long-lived channel starts. Agent-local Model below remains explicit.
+		o.fullHost, o.nativeExecution, o.model = true, true, ""
+		if base.modelExplicit {
+			o.model = base.model
+		}
+		if err := loadExecutionOptions(&o); err != nil {
+			return o, err
+		}
+	}
+	if a.OffloadConfig != "" {
+		o.fullHost = true
+		o.offloadConfig = a.OffloadConfig
+		// The routed Agent selector owns both backend and model. Do not carry a
+		// model resolved from the process-wide default into a different profile.
+		o.model = ""
 		if err := loadExecutionOptions(&o); err != nil {
 			return o, err
 		}
@@ -258,8 +296,27 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 		profile = filepath.Join(home, ".claude")
 	}
 	o.nativeProfile = profile
-	if err := validateNativeSkillSelection(profile, a.NativeSkills); err != nil {
+	nativeSkillsBase := profile
+	if a.NativeSkillsRoot != "" {
+		if len(a.NativeSkills) == 0 {
+			return o, errors.New("native_skills_root requires an explicit nonempty native_skills selection")
+		}
+		if err := validateNativeSkillsRoot(a.NativeSkillsRoot); err != nil {
+			return o, fmt.Errorf("agent %s native skills root: %w", a.ID, err)
+		}
+		nativeSkillsBase = a.NativeSkillsRoot
+	}
+	if err := validateNativeSkillSelection(nativeSkillsBase, a.NativeSkills); err != nil {
 		return o, err
+	}
+	if a.NativeSkillsRoot != "" {
+		fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, a.NativeSkills)
+		if err != nil {
+			return o, fmt.Errorf("agent %s native skills fingerprint: %w", a.ID, err)
+		}
+		o.nativeSkillsFingerprint = fingerprint
+	} else {
+		o.nativeSkillsFingerprint = ""
 	}
 	if a.ID != "default" || audience != "owner" || a.NativeSkills != nil {
 		o.nativeProfile = filepath.Join(profile, "instances", a.ID, "audiences", channel.Key(audience))
@@ -267,31 +324,46 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 			o.nativeProfile = filepath.Join(o.nativeProfile, "skill-sets", nativeSkillSelectionID(a.NativeSkills))
 		}
 		if prepare {
-			if err := prepareSelectedAgentProfile(profile, o.nativeProfile, a.NativeSkills); err != nil {
+			if err := prepareSelectedAgentProfileFrom(profile, nativeSkillsBase, o.nativeProfile, a.NativeSkills, a.NativeSkillsRoot != ""); err != nil {
 				return o, err
+			}
+			if a.NativeSkillsRoot != "" {
+				fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, a.NativeSkills)
+				if err != nil || fingerprint != o.nativeSkillsFingerprint {
+					return o, errors.New("selected native skill source changed while preparing the Agent profile")
+				}
 			}
 		}
 	}
 	return o, nil
 }
 
-// Only managed settings are shared, never conversation state or instruction files.
+// Legacy profiles share only managed settings; explicit Skill roots use empty
+// controlled settings. Conversation state and instruction files are never shared.
 func prepareAgentProfile(base, destination string) error {
 	return prepareSelectedAgentProfile(base, destination, nil)
 }
 
 func prepareSelectedAgentProfile(base, destination string, skills []string) error {
+	return prepareSelectedAgentProfileFrom(base, base, destination, skills, false)
+}
+
+func prepareSelectedAgentProfileFrom(base, skillsBase, destination string, skills []string, controlledSettings bool) error {
 	if err := os.MkdirAll(destination, 0700); err != nil {
 		return err
 	}
 	if _, err := privateServicePath(destination, true); err != nil {
 		return fmt.Errorf("agent native profile: %w", err)
 	}
-	settings, err := os.ReadFile(filepath.Join(base, "settings.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		settings = []byte("{}\n")
-	} else if err != nil {
-		return errors.New("cannot read shared native settings")
+	settings := []byte("{}\n")
+	if !controlledSettings {
+		var err error
+		settings, err = os.ReadFile(filepath.Join(base, "settings.json"))
+		if errors.Is(err, os.ErrNotExist) {
+			settings = []byte("{}\n")
+		} else if err != nil {
+			return errors.New("cannot read shared native settings")
+		}
 	}
 	path := filepath.Join(destination, "settings.json")
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
@@ -307,7 +379,7 @@ func prepareSelectedAgentProfile(base, destination string, skills []string) erro
 	if skills == nil {
 		return inheritNativeSkills(base, destination)
 	}
-	return mountSelectedNativeSkills(base, destination, skills)
+	return mountSelectedNativeSkills(skillsBase, destination, skills)
 }
 
 func checkAgents(ctx context.Context, agents agentCatalog, o options) error {

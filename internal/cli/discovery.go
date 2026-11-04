@@ -12,7 +12,7 @@ import (
 
 	"agent-host/internal/assistance"
 	"agent-host/internal/discovery"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/state"
 )
 
@@ -225,7 +225,7 @@ func composeDiscoveryCollector(ctx context.Context, store *state.Store, config d
 	if err != nil {
 		return nil, err
 	}
-	runner := claude.New(resolved)
+	runner := nativepolicy.New(resolved)
 	return discovery.NewCollector(store, config, discovery.NewDWSProvider(config), discovery.NewExtractor(runner, config.Model)).WithMatters(&assistance.Processor{Store: store, Runner: runner, Model: config.Model}), nil
 }
 

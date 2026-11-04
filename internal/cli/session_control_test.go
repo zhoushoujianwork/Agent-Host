@@ -114,8 +114,18 @@ func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *tes
 			if runner.requests[0].SkillPluginDigest == "" || runner.requests[1].SkillPluginDigest != runner.requests[0].SkillPluginDigest {
 				t.Fatal("Web continuation changed preselected source Skills", runner.requests)
 			}
-			if len(runner.requests[0].MCPServers) != 1 || len(runner.requests[1].MCPServers) != 1 || runner.requests[1].MCPServers[0].Name != "conversation_history" || runner.requests[1].MCPServers[0].SessionKey != runner.requests[0].MCPServers[0].SessionKey {
-				t.Fatal("Web continuation lost authenticated source history", runner.requests)
+			for i, req := range runner.requests {
+				if len(req.MCPServers) != 2 || req.MCPServers[0].Name != "host_context" || req.MCPServers[1].Name != "conversation_history" {
+					t.Fatal("Web continuation lost scoped memory or authenticated source history")
+				}
+				for j, server := range req.MCPServers {
+					if server.SessionKey == "" || server.SessionKey != runner.requests[0].MCPServers[j].SessionKey {
+						t.Fatalf("continuation %d changed capability compatibility: %s", i, server.Name)
+					}
+				}
+				if i > 0 && req.MCPServers[0].Args[4] == runner.requests[0].MCPServers[0].Args[4] {
+					t.Fatal("memory capability reused the previous run authority")
+				}
 			}
 			invoke(original.ID, "web-1")
 			if len(runner.requests) != 2 {

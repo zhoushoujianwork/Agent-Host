@@ -4,7 +4,10 @@ package offloadchannel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,16 +27,17 @@ d="$(dirname "$0")"
 n=$(cat "$d/count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$d/count"
 printf '%s\n' "$@" > "$d/argv.$n"
 cat > "$d/stdin.$n"
-(while [ $# -gt 0 ]; do case "$1" in --instructions-file) cp "$2" "$d/instructions.$n";; esac; shift; done)
+(while [ $# -gt 0 ]; do case "$1" in --append-system-prompt-file) cp "$2" "$d/instructions.$n";; esac; shift; done)
 mode=$(cat "$d/mode" 2>/dev/null || echo ok)
 sess=sess-$n
-while [ $# -gt 0 ]; do case "$1" in -r) sess="$2"; shift;; esac; shift; done
+while [ $# -gt 0 ]; do case "$1" in --resume) sess="$2"; shift;; esac; shift; done
 case "$mode" in
-fail) printf '%s\n' '{"status":"error","exit_code":1,"result":"provider says no"}'; exit 1;;
+fail) printf '%s\n' '{"type":"result","subtype":"error","is_error":true,"result":"provider says no"}'; exit 1;;
 garbage) echo not-json; exit 0;;
 hang) exec sleep 60;;
 esac
-printf '{"status":"ok","exit_code":0,"profile":"canon","backend":"b","model":"m1","session":"%s","result":"answer %s","usage":{"in":1}}\n' "$sess" "$n"
+printf '{"type":"system","subtype":"init","session_id":"%s","model":"m1"}\n' "$sess"
+printf '{"type":"result","subtype":"success","is_error":false,"session_id":"%s","result":"answer %s","usage":{"input_tokens":1}}\n' "$sess" "$n"
 `
 
 type fixture struct {
@@ -43,6 +47,51 @@ type fixture struct {
 	host   *Host
 	events []event.Event
 	seq    int
+}
+
+type historyExecutor struct{ status string }
+
+func (c historyExecutor) Run(_ context.Context, req offloadexec.Request) (offloadexec.Result, error) {
+	r := offloadexec.Result{Status: "ok", Text: "answer", Profile: "canon", Session: "history-session",
+		RunID: "history-run", CallerRunID: req.CallerRunID, Raw: []byte(`{"status":"ok"}`), HistoryStatus: c.status}
+	if c.status == "failed" {
+		r.HistoryError = "secret-log-path: permission denied"
+	}
+	return r, nil
+}
+
+func TestHistorySyncIsVisibleAndIndependentOfExecution(t *testing.T) {
+	for _, status := range []string{"saved", "failed"} {
+		t.Run(status, func(t *testing.T) {
+			f := newFixture(t)
+			f.host.Client = historyExecutor{status: status}
+			run, err := f.turn(context.Background(), "history-message", "inspect")
+			if err != nil || run.ExecutionStatus != "completed" || run.Output != "answer" {
+				t.Fatalf("%+v %v", run, err)
+			}
+			seen := false
+			for _, e := range f.events {
+				if e.Type == "offload.history" {
+					seen = e.Status == status && e.Data["offload_run_id"] == "history-run"
+				}
+				if strings.Contains(e.Message, "secret-log-path") || e.Data["history_error"] != nil {
+					t.Fatal("private history error leaked")
+				}
+			}
+			if !seen {
+				t.Fatal("history sync not projected")
+			}
+			if status == "failed" {
+				private := false
+				for _, e := range run.Events {
+					private = private || e.Type == "offload.result" && e.Data["history_error"] == "secret-log-path: permission denied"
+				}
+				if !private {
+					t.Fatal("history failure evidence lost")
+				}
+			}
+		})
+	}
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -57,7 +106,17 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	client, err := offloadexec.New(offloadexec.Config{Command: cmd, Profile: "alias", Timeout: time.Minute})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	t.Cleanup(server.Close)
+	native := filepath.Join(dir, "native.json")
+	body, _ := json.Marshal(map[string]any{"profiles": map[string]any{"canon": map[string]any{"backend": "claude", "aliases": []string{"alias"}, "model": "m1", "base_url": server.URL, "token": "synthetic-fixture-token"}}})
+	if err := os.WriteFile(native, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OFFLOAD_CLAUDE", cmd)
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "sdk-state"))
+	t.Setenv("OFFLOAD_MAX_WORKERS", "-1")
+	client, err := offloadexec.NewLibrary(native, "alias", "", time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +212,7 @@ func TestTwoTurnContinuationUsesActualSessionAndCanonicalProfile(t *testing.T) {
 		t.Fatalf("binding/memory: %+v", first)
 	}
 	argv := f.read("argv.1")
-	if !strings.Contains(argv, "-p\nalias\n") || strings.Contains(argv, "-r\n") || !strings.Contains(f.read("stdin.1"), "first question") {
+	if !strings.Contains(argv, "--print\n") || strings.Contains(argv, "--resume\n") || !strings.Contains(f.read("stdin.1"), "first question") {
 		t.Fatalf("fresh invocation: %q", argv)
 	}
 	second, err := f.turn(context.Background(), "m2", "follow up")
@@ -161,7 +220,7 @@ func TestTwoTurnContinuationUsesActualSessionAndCanonicalProfile(t *testing.T) {
 		t.Fatalf("second: %+v %v", second, err)
 	}
 	argv = f.read("argv.2")
-	if !strings.Contains(argv, "-p\ncanon\n") || !strings.Contains(argv, "-r\nsess-1\n") {
+	if !strings.Contains(argv, "--model\nm1\n") || !strings.Contains(argv, "--resume\nsess-1\n") {
 		t.Fatalf("continuation must resume the actual session with the canonical profile: %q", argv)
 	}
 	binding := 0
@@ -344,7 +403,7 @@ func TestFailingSinkNeverChangesSuccessfulOutcomeOrBinding(t *testing.T) {
 	if err != nil || second.Output != "answer 2" || second.SessionID != run.SessionID {
 		t.Fatalf("second: %+v %v", second, err)
 	}
-	if argv := f.read("argv.2"); !strings.Contains(argv, "-r\nsess-1\n") || !strings.Contains(argv, "-p\ncanon\n") {
+	if argv := f.read("argv.2"); !strings.Contains(argv, "--resume\nsess-1\n") || !strings.Contains(argv, "--model\nm1\n") {
 		t.Fatalf("continuation lost its binding: %q", argv)
 	}
 }

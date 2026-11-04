@@ -178,6 +178,91 @@ class SettingsTests(unittest.TestCase):
         result["file"]["value"]["agents"][1]["knowledge_sources"] = []
         self.assertEqual(self.save(result["file"], result["file"]["value"])["status"], "saved")
 
+    def test_web_agent_explicit_skill_root_preserves_raw_fields_on_ordinary_edits(self):
+        profile = self.root / "native"
+        (profile / "skills").mkdir(parents=True)
+        explicit = self.root / "operations-capabilities"
+        skill = explicit / "skills" / "explicit-only"
+        skill.mkdir(parents=True)
+        explicit.chmod(0o700)
+        (explicit / "skills").chmod(0o700)
+        (skill / "SKILL.md").write_text("explicit fixture")
+        web = self.write("web-chat.json", {"args": ["--agents-config", str(self.config / "agents.cli.json"), "--agent", "daily", "--home", str(self.root / "cli-state"), "--workspace", str(self.root), "--native-profile", str(profile)]})
+        self.store.web_config = web
+        catalog = {"default_agent": "daily", "agents": [
+            {"id": "daily", "name": "Daily", "native_skills_root": "../operations-capabilities", "native_skills": ["explicit-only"], "memory_offload_config": "memory.json", "raw_future_field": {"keep": True}},
+            {"id": "other", "name": "Other"}]}
+        self.write("agents.cli.json", catalog)
+        row = self.row("agents.cli.json")
+        row["value"]["default_agent"] = "other"
+        row["value"]["agents"][0]["name"] = "Renamed daily"
+        self.save(row, row["value"])
+        saved = json.loads((self.config / "agents.cli.json").read_text())
+        self.assertEqual(saved["default_agent"], "other")
+        self.assertEqual(saved["agents"][0]["native_skills_root"], "../operations-capabilities")
+        self.assertEqual(saved["agents"][0]["native_skills"], ["explicit-only"])
+        self.assertEqual(saved["agents"][0]["memory_offload_config"], "memory.json")
+        self.assertEqual(saved["agents"][0]["raw_future_field"], {"keep": True})
+
+    def test_web_agent_explicit_skill_root_and_legacy_inventory_fail_closed(self):
+        profile = self.root / "native"
+        global_skill = profile / "skills" / "global-only"
+        global_skill.mkdir(parents=True)
+        (global_skill / "SKILL.md").write_text("global fixture")
+        explicit = self.root / "operations-capabilities"
+        explicit_skill = explicit / "skills" / "explicit-only"
+        explicit_skill.mkdir(parents=True)
+        explicit.chmod(0o700)
+        (explicit / "skills").chmod(0o700)
+        (explicit_skill / "SKILL.md").write_text("explicit fixture")
+        web = self.write("web-chat.json", {"args": ["--agents-config", str(self.config / "agents.cli.json"), "--agent", "daily", "--home", str(self.root / "cli-state"), "--workspace", str(self.root), "--native-profile", str(profile)]})
+        self.store.web_config = web
+        base = {"default_agent": "daily", "agents": [{"id": "daily", "name": "Daily", "native_skills_root": str(explicit), "native_skills": ["explicit-only"]}]}
+        self.write("agents.cli.json", base)
+        row = self.row("agents.cli.json")
+
+        cases = []
+        missing = json.loads(json.dumps(row["value"]))
+        missing["agents"][0]["native_skills"] = ["missing"]
+        cases.append(missing)
+        linked_skill = explicit / "skills" / "linked-skill"
+        linked_skill.mkdir()
+        (linked_skill / "SKILL.md").symlink_to(explicit_skill / "SKILL.md")
+        linked_definition = json.loads(json.dumps(row["value"]))
+        linked_definition["agents"][0]["native_skills"] = ["linked-skill"]
+        cases.append(linked_definition)
+        empty = json.loads(json.dumps(row["value"]))
+        empty["agents"][0]["native_skills"] = []
+        cases.append(empty)
+        absent = json.loads(json.dumps(row["value"]))
+        absent["agents"][0].pop("native_skills")
+        cases.append(absent)
+        alias = self.root / "capability-alias"
+        alias.symlink_to(explicit, target_is_directory=True)
+        symlinked = json.loads(json.dumps(row["value"]))
+        symlinked["agents"][0]["native_skills_root"] = str(alias)
+        cases.append(symlinked)
+        nonprivate = self.root / "nonprivate-capabilities"
+        nonprivate_skill = nonprivate / "skills" / "explicit-only"
+        nonprivate_skill.mkdir(parents=True)
+        (nonprivate / "skills").chmod(0o700)
+        (nonprivate_skill / "SKILL.md").write_text("fixture")
+        nonprivate.chmod(0o755)
+        exposed = json.loads(json.dumps(row["value"]))
+        exposed["agents"][0]["native_skills_root"] = str(nonprivate)
+        cases.append(exposed)
+        legacy = json.loads(json.dumps(row["value"]))
+        legacy["agents"][0].pop("native_skills_root")
+        legacy["agents"][0]["native_skills"] = ["missing"]
+        cases.append(legacy)
+
+        before = (self.config / "agents.cli.json").read_bytes()
+        for changed in cases:
+            with self.subTest(changed=changed["agents"][0]):
+                with self.assertRaises(ValueError):
+                    self.save(row, changed)
+                self.assertEqual((self.config / "agents.cli.json").read_bytes(), before)
+
     def test_owner_http_checks_conflicts_and_settings_assets(self):
         http = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         http.settings_store = self.store

@@ -33,6 +33,8 @@ const (
 // identity; Offload owns its model and tool loop, so there are no tool,
 // permission or MCP fields.
 type Config struct {
+	ResumeCanceledRun             string
+	ResumeCommand                 func(state.Run, state.Session) ([]string, string)
 	AgentID, AudienceID           string
 	Scope, ProjectID, ProjectName string
 	Workspace                     string
@@ -48,7 +50,7 @@ type Config struct {
 // Optional memory remains under AGH policy; native loops stay in Offload.
 type Host struct {
 	Store  *state.Store
-	Client *offloadexec.Client
+	Client offloadexec.Executor
 	Config Config
 	Sink   event.Sink
 	Memory *MemoryPlugin
@@ -106,7 +108,7 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 	if err := h.checkSession(s); err != nil {
 		return s, err
 	}
-	if err := st.SessionCanResume(ctx, id); err != nil {
+	if err := h.canResume(ctx, st, id); err != nil {
 		return s, err
 	}
 	if _, _, err := h.continuation(ctx, st, s); err != nil {
@@ -339,7 +341,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		if last.Room != nil || messageID == "" && last.Source != nil || messageID != "" && last.Source == nil {
 			return state.Run{}, errors.New("Offload entry cannot adopt a session with different source provenance")
 		}
-		if err := st.SessionCanResume(ctx, cur.ID); err != nil {
+		if err := h.canResume(ctx, st, cur.ID); err != nil {
 			return state.Run{}, err
 		}
 	}
@@ -386,25 +388,44 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		}
 	}
 	req := harness.Request{CallerRunID: "agh:" + run.ID, Prompt: input, HostInstructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), WriteIntent: h.Config.Write, Resume: resume}
+	if messageID == "" && !room && h.Config.ResumeCommand != nil {
+		req.MonitorResumeCommand, req.MonitorResumeDirectory = h.Config.ResumeCommand(run, cur)
+	}
 	if resume {
 		req.NativeSessionID, req.NativeSessionProfile = cur.NativeSessionID, profile
 		if room {
 			req.NativeSessionID = cur.Room.ForkFromNativeSessionID
 		}
 	}
-	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through exec",
-		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": "exec"}}}, false); err != nil {
+	var runner harness.Runner = offload.New(h.Client)
+	identity := harness.RunnerIdentity(runner)
+	if err := j.emit(event.Event{Type: "agent.dispatched", Phase: "execute", Component: bindingComponent, Status: "running", Message: "dispatch offload through " + identity.Transport,
+		Data: map[string]any{"engine": engineName, "resume": resume, "write_intent": req.WriteIntent, "profile": profile, "caller_run_id": req.CallerRunID, "execution": map[string]string{"engine": "offload", "transport": identity.Transport}}}, false); err != nil {
 		return h.finish(ctx, j, nil, err)
 	}
-	var runner harness.Runner = offload.New(h.Client)
 	result, runErr := runner.Run(ctx, req, nil)
 	evidence := result.Evidence
 	backend := ""
 	if evidence != nil {
 		backend = evidence.Backend
+		if evidence.HistoryStatus != "" {
+			message := "Offload history saved"
+			if evidence.HistoryStatus == "failed" {
+				message = "Offload history was not saved; execution outcome is unchanged"
+			}
+			j.receipt(j.emit(event.Event{Type: "offload.history", Phase: "execute", Component: bindingComponent,
+				Status: evidence.HistoryStatus, Message: message,
+				Data: map[string]any{"offload_run_id": evidence.RunID, "caller_run_id": req.CallerRunID}}, false))
+		}
 	}
 	if evidence != nil && (len(evidence.Raw) > 0 || len(evidence.Usage) > 0) {
 		data := map[string]any{"status": evidence.Status, "exit_code": result.ExitCode, "error_kind": evidence.ErrorKind, "caller_run_id": req.CallerRunID}
+		if evidence.HistoryStatus != "" {
+			data["history_status"] = evidence.HistoryStatus
+		}
+		if evidence.HistoryError != "" {
+			data["history_error"] = evidence.HistoryError
+		}
 		if evidence.RunID != "" {
 			data["offload_run_id"] = evidence.RunID
 		}
@@ -427,6 +448,8 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 	}
 	if execErr == nil {
 		execErr = h.bind(ctx, j, cur, resume, result)
+	} else if result.Status == "canceled" && canceledBinding(result, run.ID) {
+		execErr = errors.Join(execErr, h.bind(ctx, j, cur, resume, result))
 	}
 	elapsed := time.Since(started).Milliseconds()
 	status := "completed"

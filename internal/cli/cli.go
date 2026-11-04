@@ -2,9 +2,6 @@
 package cli
 
 import (
-	"agent-host/internal/harness/acp"
-
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -95,7 +92,7 @@ Options (place before positional IDs/queries):
   --project ID          Registered project; repeat for joint chat (exclusive with --workspace)
   --primary-project ID  Primary cwd within the selected set; otherwise joint chat uses ~/workspace
   --format text|json    Live terminal output or NDJSON events (default text)
-  --model MODEL         Claude model (default AGENT_HOST_MODEL or sonnet)
+  --model MODEL         Explicit native model override; omitted follows the Offload profile
   --claude PATH         Native executable (default claude)
   --no-tools            Explicit tool-free Claude execution for controlled tests
   --debug-non-owner     Chat only: simulate a non-owner with restricted read tools
@@ -107,9 +104,9 @@ Options (place before positional IDs/queries):
   --skills-root PATH    Shared Host-managed Skill publication catalog
   --agent ID            Logical instance for chat and local state (default default)
   --audience ID         Conversation partition for local state (default owner)
-  --native-profile PATH Native Claude configuration directory
-  --execution-config PATH Shared ACP execution profile; omitted keeps legacy print
-  --offload-config PATH Opt in to a shared private Offload profile (one-shot Chat and channel text); excludes --execution-config
+  --native-profile PATH Host-owned native state and selected Skills directory
+  --offload-config PATH Optional private profile selector; defaults to the Offload default profile
+  --memory-offload-config PATH  Private profile selector for internal memory extraction only
   --jev-provider NAME   typesafe (official, default) or custom; never automatic fallback
   --jev-endpoint URL    Third-party System One gateway; required for custom
   --jev-model MODEL     Default jev-1.13.0
@@ -127,6 +124,9 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	monitorResumeArgs                                                                  []string
+	monitorDirectory                                                                   string
+	resumeCanceledRun                                                                  string
 	skillsRoot, managedFingerprint                                                     string
 	managedEntries                                                                     []managedskills.Entry
 	managedMemories                                                                    []state.Memory
@@ -136,19 +136,24 @@ type options struct {
 	renewRuntime                                                                       bool
 	feedbackOtherUsersOnly                                                             bool
 	renewedFrom                                                                        string
-	executionConfig, executionFingerprint                                              string
-	executionProfile                                                                   *acp.Config
+	executionFingerprint                                                               string
+	nativeExecution                                                                    bool
+	modelExplicit                                                                      bool
+	fullHost                                                                           bool
 	offloadConfig                                                                      string
 	offloadProfile                                                                     *offloadchannel.Profile
-	offloadClient                                                                      *offloadexec.Client
+	offloadClient                                                                      offloadexec.Executor
 	offloadMemory                                                                      *offloadchannel.MemoryPlugin
+	memoryOffloadConfig                                                                string
+	memoryOffloadClient                                                                offloadexec.Executor
+	memoryExecutionFingerprint, memoryModel                                            string
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
 	debugNonOwner                                                                      bool
 	userKnowledgeRestricted                                                            bool
 	userKnowledgeSources                                                               []string
 	procedureRecallHints                                                               []state.ProcedureRecallHint
 	recallBinding                                                                      string
-	retrievalQuery, skillFingerprint                                                   string
+	retrievalQuery, skillFingerprint, nativeSkillsFingerprint                          string
 	skillsPreselected                                                                  bool
 	contextFiles                                                                       []assembly.ContextFile
 	userProfile, workspaceCache, memoryFingerprint, memorySource                       string
@@ -202,17 +207,16 @@ type options struct {
 
 func parse(name string, args []string, errout io.Writer) (options, []string, error) {
 	var o options
+	o.nativeExecution = name == "chat" || name == "dingtalk serve" || name == "dingtalk check" || name == "feishu-meeting serve" || name == "feishu-meeting check" || name == "run retry-memory" || name == "run retry-experience"
 	cwd, err := os.Getwd()
 	if err != nil {
 		return o, nil, err
 	}
 	model := os.Getenv("AGENT_HOST_MODEL")
-	if model == "" {
-		model = "sonnet"
-	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	if name == "chat" {
+		fs.StringVar(&o.resumeCanceledRun, "resume-canceled-run", "", "Explicitly resume this canceled Host run through its validated session")
 		fs.BoolVar(&o.detach, "detach", false, "Continue after the caller exits (does not background the command)")
 		fs.IntVar(&o.callerPID, "caller-pid", 0, "Also cancel when this supervising caller process exits")
 		fs.BoolVar(&o.feedbackOtherUsersOnly, "feedback-other-users-only", false, "Keep requester feedback local; notify only other verified users")
@@ -236,10 +240,10 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	})
 	fs.StringVar(&o.primaryProject, "primary-project", "", "Primary project in the selected set")
 	fs.StringVar(&o.format, "format", "text", "text or json (NDJSON)")
-	fs.StringVar(&o.model, "model", model, "Claude model")
+	fs.StringVar(&o.model, "model", model, "Native model override")
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
-	fs.StringVar(&o.executionConfig, "execution-config", "", "Shared execution profile JSON (ACP); omitted preserves explicit legacy configuration")
-	fs.StringVar(&o.offloadConfig, "offload-config", "", "Shared private Offload profile JSON; omitted preserves explicit legacy configuration")
+	fs.StringVar(&o.offloadConfig, "offload-config", "", "Optional private Offload profile selector; omitted uses the Offload default profile")
+	fs.StringVar(&o.memoryOffloadConfig, "memory-offload-config", "", "Optional private Offload profile selector for internal memory extraction only")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
@@ -252,7 +256,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.agentsConfig, "agents-config", "", "Private agent instance and group binding configuration")
 	fs.StringVar(&o.agentID, "agent", "default", "Logical agent instance for local state selection")
 	fs.StringVar(&o.audienceID, "audience", "owner", "Conversation audience for local state selection")
-	fs.StringVar(&o.nativeProfile, "native-profile", os.Getenv("CLAUDE_CONFIG_DIR"), "Native Claude configuration directory")
+	fs.StringVar(&o.nativeProfile, "native-profile", os.Getenv("CLAUDE_CONFIG_DIR"), "Host-owned native state and selected Skills directory")
 	fs.StringVar(&o.provider, "jev-provider", "typesafe", "typesafe (official) or custom")
 	fs.StringVar(&o.jevEndpoint, "jev-endpoint", "", "Third-party Jev gateway URL for custom")
 	fs.StringVar(&o.jevModel, "jev-model", "", "Jev model")
@@ -299,12 +303,41 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	if err := fs.Parse(args); err != nil {
 		return o, nil, err
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "model" {
+			o.modelExplicit = true
+		}
+	})
+	if name == "chat" {
+		o.monitorDirectory = cwd
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "m", "message", "resume", "resume-canceled-run", "detach", "caller-pid", "format", "home":
+				return
+			}
+			o.monitorResumeArgs = append(o.monitorResumeArgs, "--"+f.Name+"="+f.Value.String())
+		})
+	}
+	if o.offloadConfig == "" {
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "claude", "native-profile", "jev-provider", "jev-model", "jev-endpoint":
+				o.fullHost = true
+			}
+		})
+	}
+	if o.memoryOffloadConfig != "" {
+		o.fullHost = true
+	}
 	if err := loadExecutionOptions(&o); err != nil {
 		return o, nil, err
 	}
-	if o.offloadProfile != nil {
+	if o.resumeCanceledRun != "" && o.fullHost {
+		return o, nil, errors.New("explicit canceled resume is supported only by direct Offload chat")
+	}
+	if o.offloadProfile != nil && o.offloadConfig != "" {
 		if name != "chat" && name != "run retry-memory" && !strings.HasPrefix(name, "dingtalk ") && !strings.HasPrefix(name, "feishu-meeting ") {
-			return o, nil, errors.New("Offload execution supports one-shot Chat, memory retry and DingTalk/Feishu channel commands")
+			return o, nil, errors.New("Offload execution supports Chat, memory retry and DingTalk/Feishu channel commands")
 		}
 		var unsupported string
 		fs.Visit(func(f *flag.Flag) {
@@ -565,7 +598,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		return errors.New("provide exactly one query or ID after options")
 	}
 	if command == "chat" && o.offloadProfile != nil {
-		return runOffloadChat(ctx, o, out)
+		return runOffloadChat(ctx, o, in, out, errout)
 	}
 	if command == "run retry-memory" && o.offloadProfile != nil {
 		return retryOffloadMemory(ctx, o, pos[0], out)
@@ -797,52 +830,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if o.oneShot {
 		return execute(o.message)
 	}
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 4096), 16*1024+1)
-	type inputResult struct {
-		text string
-		err  error
-		eof  bool
-	}
-	inputs := make(chan inputResult)
-	readCtx, stopRead := context.WithCancel(ctx)
-	defer stopRead()
-	go func() {
-		for scanner.Scan() {
-			select {
-			case inputs <- inputResult{text: scanner.Text()}:
-			case <-readCtx.Done():
-				return
-			}
-		}
-		select {
-		case inputs <- inputResult{err: scanner.Err(), eof: true}:
-		case <-readCtx.Done():
-		}
-	}()
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if _, err := io.WriteString(errout, "you> "); err != nil {
-			return err
-		}
-		var next inputResult
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case next = <-inputs:
-		}
-		if next.eof {
-			return next.err
-		}
-		if strings.TrimSpace(next.text) == "" {
-			continue
-		}
-		if err := execute(next.text); err != nil {
-			return err
-		}
-	}
+	return runChatInput(ctx, in, errout, execute)
 }
 
 func inspect(ctx context.Context, command string, o options, id string, out io.Writer) (inspectErr error) {

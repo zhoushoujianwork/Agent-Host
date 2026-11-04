@@ -55,7 +55,7 @@ class ProfileTests(unittest.TestCase):
         return next(p for p in profiles(self.store, self.catalog)["profiles"] if p["id"] == agent and p["destination"] == destination)
 
     def test_offload_web_profile_is_not_reported_as_claude_or_legacy_tools(self):
-        profile=self.write("offload.json",{"version":1,"profile":"local","command":"/bin/true"})
+        profile=self.write("offload.json",{"version":2,"profile":"local","config_path":"/private/native.json"})
         config=self.write("web-chat.json",{"binary":"/bin/true","cwd":str(self.root),"args":["--home",str(self.home),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]})
         result=profiles(self.store,self.catalog,web_config=config)
         self.assertFalse(result["web_error"])
@@ -72,6 +72,18 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(p["loaded_state"], "unknown")
         self.assertEqual(p["connectors"][0]["scope"], "shared_beta")
         self.assertNotIn("secret", json.dumps(profiles(self.store, self.catalog)))
+
+    def test_offload_library_transport_comes_from_the_explicit_profile(self):
+        profile = self.write("offload-pkg.json", {"version": 2, "profile": "local", "config_path": "/private/native.json"})
+        config = self.write("web-chat-pkg.json", {"binary": "/bin/true", "cwd": str(self.root), "args": ["--home", str(self.home), "--workspace", str(self.root), "--agent", "daily", "--offload-config", str(profile)]})
+        result = profiles(self.store, self.catalog, web_config=config)
+        web = next(p for p in result["profiles"] if p["destination"] == "web")
+        self.assertEqual((web["engine"], web["transport"]), ("Offload", "go-package"))
+        self.assertEqual(web["connectors"], [])
+        profile.write_text("[]")
+        result = profiles(self.store, self.catalog, web_config=config)
+        web = next(p for p in result["profiles"] if p["destination"] == "web")
+        self.assertEqual((web["engine"], web["transport"]), ("Offload", None))
 
     def test_current_routing_and_account_tenant_separation(self):
         for group in ("fallback", "explicit", "moved"):

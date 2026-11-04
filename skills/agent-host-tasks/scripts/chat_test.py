@@ -44,7 +44,8 @@ class HandoffTests(unittest.TestCase):
 
     def test_offload_destination_separates_native_and_classifier_credentials(self):
         profile=self.root/"offload.json"
-        profile.write_text(json.dumps({"version":1,"command":sys.executable,"profile":"local"}));profile.chmod(0o600)
+        native=self.root/"native.json";native.write_text(json.dumps({"profiles":{"local":{"backend":"codex"}}}));native.chmod(0o600)
+        profile.write_text(json.dumps({"version":2,"config_path":str(native),"profile":"local"}));profile.chmod(0o600)
         self.value["args"]=["--home",str(self.root/"cli-state"),"--workspace",str(self.root),"--agent","daily","--offload-config",str(profile)]
         self.value.pop("environment_file")
         self.save()
@@ -69,6 +70,41 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(args[-2:], ["--resume", "session-1"])
         self.assertNotIn("shell", run.call_args.kwargs)
         self.assertEqual(args[args.index("--caller-pid") + 1], str(os.getppid()))
+
+    def test_offload_package_destination_needs_no_cli_and_keeps_native_credentials_private(self):
+        native = self.root / "native.json"
+        native.write_text(json.dumps({"profiles": {"local": {"backend": "codex", "token": "native-only-secret"}}}))
+        native.chmod(0o600)
+        profile = self.root / "offload-pkg.json"
+        value = {"version": 2, "config_path": str(native), "profile": "local"}
+        profile.write_text(json.dumps(value)); profile.chmod(0o600)
+        self.value["args"] = ["--home", str(self.root/"cli-state"), "--workspace", str(self.root), "--agent", "daily", "--offload-config", str(profile)]
+        self.value.pop("environment_file"); self.save()
+        command, _, env = CHAT.configured_command(self.config)
+        self.assertIn("--offload-config", command)
+        self.assertNotIn("native-only-secret", json.dumps([command, env]))
+        native.chmod(0o644)
+        with self.assertRaises(ValueError): CHAT.configured_command(self.config)
+        native.chmod(0o600)
+        value["command"] = sys.executable
+        profile.write_text(json.dumps(value))
+        with self.assertRaises(ValueError): CHAT.configured_command(self.config)
+
+    def test_full_host_accepts_agent_offload_profile(self):
+        native = self.root / "native.json"
+        native.write_text(json.dumps({"profiles": {"local": {"backend": "claude", "model": "fixture"}}}))
+        native.chmod(0o600)
+        profile = self.root / "offload-pkg.json"
+        profile.write_text(json.dumps({"version": 2, "config_path": str(native), "profile": "local"}))
+        profile.chmod(0o600)
+        agents = Path(self.value["args"][self.value["args"].index("--agents-config") + 1])
+        agents.write_text(json.dumps({"agents": [{"id": "daily", "projects": [], "offload_config": profile.name}]}))
+        agents.chmod(0o600)
+        self.save()
+        command, _, env = CHAT.configured_command(self.config)
+        self.assertIn("--agents-config", command)
+        self.assertNotIn("--offload-config", command)
+        self.assertEqual(env["ANTHROPIC_AUTH_TOKEN"], "managed-token")
 
     def test_caller_policy_is_recorded_and_detach_is_not_inherited_on_resume(self):
         self.fake_host()

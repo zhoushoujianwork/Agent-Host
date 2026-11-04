@@ -41,6 +41,38 @@ def private_bytes(path, max_bytes=MAX_BYTES):
     return data
 
 
+def explicit_agent_skill_ids(catalog, configured_root):
+    if not isinstance(configured_root, str) or not configured_root or "\x00" in configured_root:
+        raise ValueError("Agent native Skill root must be a path.")
+    root = Path(configured_root)
+    if root.is_absolute():
+        if os.path.normpath(configured_root) != configured_root:
+            raise ValueError("Agent native Skill root must be a clean absolute path.")
+    else:
+        root = Path(os.path.normpath(str(catalog.parent / root)))
+    if not root.is_absolute():
+        raise ValueError("Agent native Skill root must resolve to an absolute path.")
+    try:
+        if root.resolve(strict=True) != root:
+            raise ValueError("Agent native Skill root must not contain symlinks.")
+        skills = root / "skills"
+        for directory in (root, skills):
+            info = directory.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError("Agent native Skill root must contain owner-private directories.")
+        entries = list(skills.iterdir())
+    except (OSError, RuntimeError):
+        raise ValueError("Agent native Skill root and skills directory must be readable private directories.") from None
+    installed = set()
+    for entry in entries:
+        try:
+            if stat.S_ISREG((entry / "SKILL.md").lstat().st_mode):
+                installed.add(entry.name)
+        except OSError:
+            continue
+    return installed
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -241,14 +273,19 @@ class SettingsStore:
                     raise ValueError("Every Agent needs a name.")
                 if agent.get("workspace") and (not isinstance(agent["workspace"], str) or not Path(agent["workspace"]).is_absolute() or not Path(agent["workspace"]).is_dir()):
                     raise ValueError("The Agent workspace must be an existing absolute directory.")
+                if is_web and agent.get("native_skills_root") and not agent.get("native_skills"):
+                    raise ValueError("Agent native Skill root requires an explicit nonempty selection.")
                 for field, choices in (("native_skills", "skills"), ("knowledge_sources", "knowledge_sources")):
                     selected = agent.get(field)
                     if selected is None:
                         continue
                     if not isinstance(selected, list) or not all(isinstance(s, str) and s and s.strip() == s and not any(c in s for c in "\x00\r\n") for s in selected) or len(set(selected)) != len(selected):
                         raise ValueError("Agent capabilities must contain distinct installed identifiers.")
-                    if is_web and not set(selected) <= {c["id"] for c in capability_options[choices]}:
-                        raise ValueError("Selected Agent capability is unavailable in this Web connection.")
+                    if is_web:
+                        explicit_root = agent.get("native_skills_root") if field == "native_skills" else None
+                        installed = explicit_agent_skill_ids(path, explicit_root) if explicit_root else {c["id"] for c in capability_options[choices]}
+                        if not set(selected) <= installed:
+                            raise ValueError("Selected Agent capability is unavailable in this Web connection.")
         if path == self.handoff:
             # Reuse the launcher's validation without starting a native task.
             script = next((directory / "scripts/chat.py" for directory in

@@ -33,7 +33,7 @@ func TestOffloadRoomsOverlapAndUnknownNeverResumeOrReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.NativeSessionID == first.NativeSessionID || strings.Contains("\n"+f.read("argv.2"), "\n-r\n") {
+	if second.NativeSessionID == first.NativeSessionID || strings.Contains("\n"+f.read("argv.2"), "\n--resume\n") {
 		t.Fatal("overlapping intake inherited later native history")
 	}
 	seed := f.host.newSession()

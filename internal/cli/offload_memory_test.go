@@ -19,7 +19,7 @@ import (
 
 func configureMemoryRig(t *testing.T, r *offloadRig, endpoint string, processing bool) {
 	t.Helper()
-	writeBotJSON(t, r.o.offloadConfig, map[string]any{"version": 1, "command": r.o.offloadProfile.Command, "profile": "alias", "timeout": "30s",
+	writeBotJSON(t, r.o.offloadConfig, map[string]any{"version": 2, "config_path": r.o.offloadProfile.ConfigPath, "profile": "alias", "timeout": "30s",
 		"memory": map[string]any{"enabled": true, "processing_enabled": processing, "provider": "custom", "endpoint": endpoint, "model": "fixture-memory"}})
 	t.Setenv("JEV_API_KEY", "fixture-memory-key")
 	if err := loadExecutionOptions(&r.o); err != nil {
@@ -137,7 +137,7 @@ func TestOffloadMemoryBothChannelsRecallAcrossFreshNativeSessions(t *testing.T) 
 			if second.SessionID == first.SessionID || second.NativeSessionID == first.NativeSessionID || len(second.Context) != 1 || second.Context[0].SourceRunID != first.ID {
 				t.Fatalf("not sourced fresh-session recall: %+v", second)
 			}
-			if !strings.Contains(r.instructions(2), "ACORN-482") || !strings.Contains(r.instructions(2), offloadTestOwner) || strings.Contains(r.argv(2), "\n-r\n") {
+			if !strings.Contains(r.instructions(2), "ACORN-482") || !strings.Contains(r.instructions(2), offloadTestOwner) || strings.Contains(r.argv(2), "\n--resume\n") {
 				t.Fatal("native history was used instead of memory")
 			}
 		})

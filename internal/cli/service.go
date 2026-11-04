@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"agent-host/internal/harness/acp"
-
 	"bytes"
 	"context"
 	"encoding/json"
@@ -17,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/offloadchannel"
 )
 
@@ -45,10 +43,11 @@ preserves the legacy --root setup; an existing directory with no enabled channel
 --viewer-source enables runtime locking and supervised startup for a single --root too.
 Configuration comes from ROOT/config/component-service.json, component-environment.json and
 channel-dingtalk.json, channel-feishu.json for channel feishu, or channel-feishu-meeting.json for
-channel feishu-meeting, plus the optional private agents_config file. Native Claude
-profiles are isolated by agent and audience under ROOT/native.
-Optional execution_config selects a shared ACP profile; Agent overrides apply
-to every channel. Auxiliary tool-free extraction keeps its separate Claude runner.
+channel feishu-meeting, plus the optional private agents_config file. Native state
+is isolated by Agent, audience and Host conversation under ROOT/native.
+Optional offload_config selects a private Offload profile; Agent overrides apply
+to every channel. Auxiliary tool-free extraction uses the same package boundary.
+Optional memory_offload_config selects only that internal extraction profile.
 check validates local files and configuration without connecting, executing
 Claude, or creating host state. It does not verify platform or model credentials.
 run starts the installed read-only workbench and opens the default browser.
@@ -60,8 +59,8 @@ It observes ROOT/cli-state; use chat --home ABSOLUTE_ROOT/cli-state for the same
 
 type serviceConfig struct {
 	SkillsRoot                 string   `json:"skills_root,omitempty"`
-	ExecutionConfig            string   `json:"execution_config,omitempty"`
 	OffloadConfig              string   `json:"offload_config,omitempty"`
+	MemoryOffloadConfig        string   `json:"memory_offload_config,omitempty"`
 	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
 	KnowledgeChannel           string   `json:"-"`
@@ -266,7 +265,7 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 				return layout, config, nil, errors.New("service environment must contain only documented provider or native stream keys with nonempty single-line string values")
 			}
 		}
-		if _, err := claude.NativeStreamEnvironment(environment); err != nil {
+		if _, err := nativepolicy.NativeStreamEnvironment(environment); err != nil {
 			return layout, config, nil, fmt.Errorf("service native stream configuration: %w", err)
 		}
 	}
@@ -304,10 +303,16 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
-	if c.OffloadConfig != "" {
-		if c.ExecutionConfig != "" {
-			return errors.New("offload_config and execution_config are mutually exclusive")
+	if c.OffloadConfig != "" && c.MemoryOffloadConfig != "" {
+		return errors.New("service offload_config cannot be combined with Host memory_offload_config")
+	}
+	if c.MemoryOffloadConfig != "" {
+		memory := options{memoryOffloadConfig: c.MemoryOffloadConfig}
+		if err := loadMemoryExecutionOptions(&memory); err != nil {
+			return err
 		}
+	}
+	if c.OffloadConfig != "" {
 		if c.Channel != "" && c.Channel != "dingtalk" && c.Channel != "feishu" {
 			return errors.New("Offload supports DingTalk and Feishu IM channels only")
 		}
@@ -358,15 +363,11 @@ func (c serviceConfig) validate() error {
 	if !filepath.IsAbs(c.Claude) || strings.ContainsAny(c.Claude, "\x00\r\n") {
 		return errors.New("service claude must be an absolute executable path")
 	}
-	if c.ExecutionConfig != "" {
-		if _, _, err := acp.Load(c.ExecutionConfig); err != nil {
-			return err
-		}
+	if c.Model != "" && (c.Model != strings.TrimSpace(c.Model) || len(c.Model) > 512 || strings.ContainsAny(c.Model, "\x00\r\n") || strings.HasPrefix(c.Model, "-")) {
+		return errors.New("service model must be omitted or a valid model name")
 	}
-	for _, model := range []string{c.Model, c.JevModel} {
-		if strings.TrimSpace(model) == "" || model != strings.TrimSpace(model) || len(model) > 512 || strings.ContainsAny(model, "\x00\r\n") || strings.HasPrefix(model, "-") {
-			return errors.New("service model and jev_model must be explicit valid model names")
-		}
+	if strings.TrimSpace(c.JevModel) == "" || c.JevModel != strings.TrimSpace(c.JevModel) || len(c.JevModel) > 512 || strings.ContainsAny(c.JevModel, "\x00\r\n") || strings.HasPrefix(c.JevModel, "-") {
+		return errors.New("service jev_model must be an explicit valid model name")
 	}
 	if err := validateJevProvider(c.JevProvider, c.JevEndpoint); err != nil {
 		return fmt.Errorf("service %w", err)
@@ -420,8 +421,11 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		return args
 	}
 	args := []string{command, "--config", path, "--home", layout.State,
-		"--workspace", layout.Workspace, "--claude", c.Claude, "--model", c.Model,
-		"--jev-provider", c.JevProvider, "--jev-model", c.JevModel, "--timeout", c.Timeout, "--format", "json"}
+		"--workspace", layout.Workspace, "--claude", c.Claude}
+	if c.Model != "" {
+		args = append(args, "--model", c.Model)
+	}
+	args = append(args, "--jev-provider", c.JevProvider, "--jev-model", c.JevModel, "--timeout", c.Timeout, "--format", "json")
 	concurrency := c.MaxConcurrentConversations
 	if concurrency == 0 {
 		concurrency = 4
@@ -434,11 +438,11 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	if c.SkillsRoot != "" {
 		args = append(args, "--skills-root", c.SkillsRoot)
 	}
-	if c.ExecutionConfig != "" {
-		args = append(args, "--execution-config", c.ExecutionConfig)
-	}
 	if c.MemoryScope != "" {
 		args = append(args, "--memory-scope", c.MemoryScope)
+	}
+	if c.MemoryOffloadConfig != "" {
+		args = append(args, "--memory-offload-config", c.MemoryOffloadConfig)
 	}
 	if c.WorkspaceCache != "" {
 		args = append(args, "--workspace-cache", c.WorkspaceCache)

@@ -12,7 +12,7 @@ import (
 
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/host"
 	"agent-host/internal/state"
 )
@@ -58,7 +58,7 @@ func TestForwardedCardNativeLive(t *testing.T) {
 	f.host.Config.Model = profile.Execution.Model
 	f.host.Config.HostInstructions = host.ChannelInstructions("", false)
 	f.service.Timeout = 2 * time.Minute
-	f.host.Runner = claude.New(profile.Execution.Claude)
+	f.host.Runner = nativepolicy.New(profile.Execution.Claude)
 	input := inputCallback(t, f, "synthetic-forwarded-card", "interactiveCard", "", map[string]any{
 		"title": "Synthetic network approval", "cardContent": []any{
 			map[string]string{"elementType": "TEXT", "value": "Approval CARD-731: allow buildhub-test to connect to 192.0.2.10 on TCP port 3306. Requested by Alice. Awaiting review."},
@@ -137,7 +137,7 @@ func TestPrivateCardConcurrentNativeLive(t *testing.T) {
 	}
 	type interval struct{ start, end time.Time }
 	spans := make(chan interval, 2)
-	adapter := claude.New(profile.Execution.Claude)
+	adapter := nativepolicy.New(profile.Execution.Claude)
 	f.runner.run = func(ctx context.Context, req harness.Request) (harness.Result, error) {
 		req.Model = profile.Execution.Model
 		req.NativeProfile = native

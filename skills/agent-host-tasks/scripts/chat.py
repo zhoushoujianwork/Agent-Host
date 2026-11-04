@@ -44,8 +44,20 @@ def private_json(path):
 
 
 
+def validate_offload_profile(path):
+    profile = private_json(path)
+    version = profile.get("version")
+    if type(version) is not int or version != 2 or not isinstance(profile.get("profile"), str) or not profile["profile"]:
+        raise ValueError("Offload requires a version 2 package profile")
+    native_config = profile.get("config_path")
+    if profile.get("command") or not isinstance(native_config, str) or not Path(native_config).is_absolute():
+        raise ValueError("Go package execution needs an explicit native config without a CLI command")
+    private_json(native_config)
+    return profile
+
+
 def offload_destination(config):
-    """Validate the narrow Offload destination without a legacy Agent catalog."""
+    """Validate the narrow Offload destination without a Full Host Agent catalog."""
     args = config["args"]
     allowed = {"--home", "--workspace", "--agent", "--offload-config", "--memory-scope", "--timeout"}
     if len(args) % 2 or any(args[i] not in allowed for i in range(0, len(args), 2)):
@@ -61,12 +73,7 @@ def offload_destination(config):
             raise ValueError("Offload destination paths must be absolute")
     if not Path(selected["--workspace"]).is_dir():
         raise ValueError("Offload workspace unavailable")
-    profile = private_json(selected["--offload-config"])
-    if profile.get("version") != 1 or not isinstance(profile.get("profile"), str) or not profile["profile"]:
-        raise ValueError("invalid Offload profile")
-    native = profile.get("command")
-    if not isinstance(native,str) or not Path(native).is_absolute() or not os.access(native,os.X_OK):
-        raise ValueError("Offload executable unavailable")
+    validate_offload_profile(selected["--offload-config"])
     return selected
 
 
@@ -103,6 +110,13 @@ def configured_command(path):
     agents = catalog.get("agents", [])
     if not isinstance(agents, list) or not all(isinstance(agent, dict) for agent in agents) or not any(agent.get("id") == selected["--agent"] for agent in agents):
         raise ValueError("selected Agent is unavailable in the configured catalog")
+    selected_agent = next(agent for agent in agents if agent.get("id") == selected["--agent"])
+    offload_config = selected_agent.get("offload_config")
+    if offload_config:
+        profile_path = Path(offload_config)
+        if not profile_path.is_absolute():
+            profile_path = Path(selected["--agents-config"]).parent / profile_path
+        validate_offload_profile(profile_path)
     projects = [project for agent in agents for project in (agent.get("projects") or [])]
     if projects:
         database = Path(selected["--home"]) / "state.db"

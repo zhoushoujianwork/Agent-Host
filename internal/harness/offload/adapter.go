@@ -12,7 +12,8 @@ import (
 )
 
 // Executor owns one invocation and its cleanup. The production implementation
-// is offloadexec.Client; the adapter never retries or switches engines.
+// is either the explicit CLI compatibility client or the Go package client;
+// the adapter never retries or switches engines.
 type Executor interface {
 	Run(context.Context, offloadexec.Request) (offloadexec.Result, error)
 }
@@ -23,12 +24,16 @@ func New(client Executor) *Adapter { return &Adapter{client: client} }
 
 var _ harness.Runner = (*Adapter)(nil)
 
-func (*Adapter) Identity() harness.Identity {
-	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "exec"}
+func (a *Adapter) Identity() harness.Identity {
+	transport := "exec"
+	if client, ok := a.client.(interface{ Transport() string }); ok {
+		transport = client.Transport()
+	}
+	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: transport}
 }
 
-// validate rejects controls the current Offload CLI cannot enforce. In
-// particular, read-only intent is not a substitute for restricted execution.
+// validate rejects controls this Host adapter has not mapped to its executors.
+// In particular, read-only intent is not a substitute for restricted execution.
 func validate(req harness.Request) error {
 	if req.NativeProfile != "" || req.PermissionMode != "" || req.ToolsDisabled || req.RestrictedReadOnly ||
 		len(req.AllowedTools) > 0 || len(req.MCPServers) > 0 || req.JSONSchema != "" || req.Extraction ||
@@ -62,7 +67,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, observe func(har
 		}
 		return harness.Result{Status: status, ExitCode: -1, Error: err.Error()}, &harness.ExecutionError{Kind: kind, Cause: err}
 	}
-	r, err := a.client.Run(ctx, offloadexec.Request{CallerRunID: req.CallerRunID,
+	r, err := a.client.Run(ctx, offloadexec.Request{MonitorResumeCommand: req.MonitorResumeCommand, MonitorResumeDirectory: req.MonitorResumeDirectory, CallerRunID: req.CallerRunID,
 		Prompt: req.Prompt, Instructions: req.HostInstructions, Workspace: req.Workspace,
 		Session: req.NativeSessionID, ResumeProfile: req.NativeSessionProfile, Write: req.WriteIntent})
 	status := "failed"
@@ -78,12 +83,12 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, observe func(har
 		NativeSessionID: r.Session, ExitCode: r.ExitCode,
 		Evidence: &harness.ExecutionEvidence{RunID: r.RunID, CallerRunID: r.CallerRunID,
 			Profile: r.Profile, Backend: r.Backend, Status: r.Status, ErrorKind: r.ErrorKind,
-			Usage: r.Usage, Raw: r.Raw}}
+			Usage: r.Usage, Raw: r.Raw, HistoryStatus: r.HistoryStatus, HistoryError: r.HistoryError}}
 	if err != nil {
 		result.Error = err.Error()
 		err = &harness.ExecutionError{Kind: failureKind(r.ErrorKind, r.Status, err), Cause: err}
 	}
-	// The current CLI returns a final record, not streamed tool/text events.
+	// This adapter currently consumes final records, not native tool/text events.
 	// Raw evidence is deliberately absent from this presentation observation.
 	if observe != nil {
 		err = errors.Join(err, observe(harness.Observation{Type: "result", Model: result.Model,

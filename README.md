@@ -4,7 +4,7 @@
 
 Give AI work continuity across conversations and projects.
 Agent-Host connects your requests, workspaces, knowledge and mailboxes to
-Claude Code, while keeping task history and reusable memory locally.
+native engines through the Offload Go package, while keeping task history and reusable memory locally.
 
 ## Introduction video
 
@@ -30,11 +30,11 @@ Examples in the video are illustrative; current support is listed below.
 - **See what happened:** inspect execution steps, tool results and memory in
   the local workbench or terminal logs; retain encrypted recovery backups.
 
-Claude Code is the current execution engine. Email requires your own account
+Full Host native controls currently support Claude Code through Offload; lightweight text chat supports ordinary Claude/Codex profiles. Email requires your own account
 setup; 163 reads have been tested live. Gmail onboarding and real send/reply
 acceptance remain separate checks. Migrated file-memory runtimes automatically
 publish selected execution lessons; legacy SQLite runtimes retain `memory accept`.
-Codex execution and meeting audio are planned.
+Full Codex Host controls and live meeting-audio acceptance remain pending.
 
 ## Run statistics
 
@@ -67,8 +67,10 @@ handwritten Skills. See [support details](README-detail.md#plugin-and-integratio
 
 ## Start
 
-Requires Go 1.26+, Make, Python 3.9+ and Claude Code. Configure your Claude/Jev credentials
-and channel settings using the [runtime setup guide](docs/service-install.md).
+Requires Go 1.26+, Make, Python 3.9+ and the native executable selected by your
+private Offload configuration. Basic CLI chat reads Offload's explicit default
+profile and needs no Jev credentials. Full Host memory/classification and channel
+settings follow the [runtime setup guide](docs/service-install.md).
 
 Clone and compile locally; distribution is source-only:
 
@@ -109,12 +111,26 @@ Published knowledge and reviewed experience live in `memory/`; adopted authored
 revisions live in `managed-skills/`. Rebuildable indexes and task snapshots live
 in `cache/`. Operational state remains durable.
 
-For a terminal conversation, supply your configured Jev credentials and run:
+For a terminal conversation, configure the private Offload default profile and run:
 
 ```sh
 make build
+./bin/agent-host chat
+# Or one turn:
 ./bin/agent-host chat -m 'Inspect this project and explain how to run it.'
 ```
+
+Optional `--offload-config` selects a version 2 profile; omitted uses the Offload
+default unless the routed Agent already binds an `offload_config` or model. Daily
+chat should normally inherit the current default. Select a profile or model only
+when the user requests it or compatibility or troubleshooting evidence requires
+it; a backend/model change starts a new compatible conversation instead of
+migrating an old native session. Unsupported Full Host controls still fail
+explicitly rather than falling back or replaying work. ACP and the Offload CLI
+transport have been removed. Routed Agents without a selector re-resolve the
+default for each request. See the
+[execution contract](docs/offload-execution-boundary.md) before migrating existing
+configuration or native conversations.
 
 ## Try asking
 

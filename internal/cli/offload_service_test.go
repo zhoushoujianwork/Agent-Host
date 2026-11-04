@@ -57,7 +57,6 @@ func TestOffloadServiceChecksWithoutLegacyCredentialsOrEnvironment(t *testing.T)
 func TestOffloadServiceRejectsMixedExecutionAndUnsupportedCapabilities(t *testing.T) {
 	profile := offloadProfileFixture(t)
 	for _, mutate := range []func(*serviceConfig){
-		func(c *serviceConfig) { c.ExecutionConfig = "/acp.json" },
 		func(c *serviceConfig) { c.Claude = "/claude" },
 		func(c *serviceConfig) { c.Model = "legacy-model" },
 		func(c *serviceConfig) { c.JevProvider = "typesafe" },

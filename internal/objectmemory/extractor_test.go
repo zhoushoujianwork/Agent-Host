@@ -38,7 +38,7 @@ func TestExtractionUsesToolEvidenceAndIsIsolated(t *testing.T) {
 		if _, err := os.Stat(workspace); err != nil {
 			t.Fatal(err)
 		}
-		return harness.Result{Status: "completed", Model: "resolved", StructuredOutput: json.RawMessage(`{"status":"identified","reason":"The observed CLI is the subject.","objects":[{"name":"CloudSDK","kind":"tool","evidence_id":"call"}]}`)}, nil
+		return harness.Result{Status: "completed", Model: "resolved", Evidence: &harness.ExecutionEvidence{RunID: "internal-run", Profile: "memory-profile", Backend: "claude", Status: "ok"}, StructuredOutput: json.RawMessage(`{"status":"identified","reason":"The observed CLI is the subject.","objects":[{"name":"CloudSDK","kind":"tool","evidence_id":"call"}]}`)}, nil
 	})
 	out, err := New(runner, "requested").Extract(t.Context(), toolInput())
 	if err != nil || len(out.Objects) != 1 || out.Objects[0].Name != "CloudSDK" || out.Objects[0].Evidence.Role != "tool" || !json.Valid(out.Audit) {
@@ -46,6 +46,9 @@ func TestExtractionUsesToolEvidenceAndIsIsolated(t *testing.T) {
 	}
 	if _, err := os.Stat(workspace); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("workspace retained", err)
+	}
+	if !strings.Contains(string(out.Audit), `"execution_evidence"`) || !strings.Contains(string(out.Audit), `"profile":"memory-profile"`) {
+		t.Fatal("internal execution evidence missing from object audit", string(out.Audit))
 	}
 }
 

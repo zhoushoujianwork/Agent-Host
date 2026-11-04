@@ -16,6 +16,11 @@ through the private `history-mcp` command. It offers exactly:
 | `search_conversation_history` | Optional lexical phrase and inclusive/exclusive RFC3339 receipt-time bounds; at most 20 snippets, with a continuation cursor |
 | `read_conversation_history` | An authorized search reference, at most three neighbors on each side, and bounded exact-text excerpts; Unicode offsets and expected digest support continuation |
 
+History opens only current-schema operational SQLite state. It does not load
+file memory, acquire its publication lock or rebuild the memory index. Native
+MCP initialization therefore does not wait for unrelated memory publication or
+depend on the memory cache. Normal Host memory validation remains unchanged.
+
 `history.Resolve` takes the current durable receipt ID. Identity and grants
 come from its admitted account/tenant, conversation, Agent, audience, route and
 linked run; callers cannot choose a different principal or project. The MCP

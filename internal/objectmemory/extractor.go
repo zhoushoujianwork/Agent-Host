@@ -65,6 +65,9 @@ func (x *NativeExtractor) Extract(ctx context.Context, in Input) (out Extraction
 		return nil
 	})
 	audit := map[string]any{"policy": "required-object-extraction-v1", "model": result.Model, "execution_status": result.Status, "status": "failed", "structured_output": string(result.StructuredOutput)}
+	if result.Evidence != nil {
+		audit["execution_evidence"] = result.Evidence
+	}
 	defer func() {
 		if err != nil {
 			audit["error"] = err.Error()

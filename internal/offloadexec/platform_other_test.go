@@ -8,11 +8,7 @@ import (
 )
 
 func TestUnsupportedPlatformRejected(t *testing.T) {
-	cfg := Config{Command: `C:\offload.exe`, Profile: "p", Timeout: time.Second}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate accepted an unsupported platform")
-	}
-	if _, err := New(cfg); err == nil {
-		t.Fatal("New accepted an unsupported platform")
+	if _, err := NewLibrary(`C:\offload.json`, "p", "", time.Second); err == nil {
+		t.Fatal("unsupported platform accepted")
 	}
 }

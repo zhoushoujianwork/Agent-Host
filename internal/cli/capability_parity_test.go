@@ -40,10 +40,13 @@ func TestCLIAndChannelAgentCapabilityParity(t *testing.T) {
 	base := options{home: layout.State, workspace: layout.Workspace, defaultWorkspace: layout.Workspace,
 		defaultScope: "parity", nativeProfile: layout.Native, binary: config.Claude, model: config.Model,
 		knowledgeConfig: knowledgePath, disableDingTalkWorkspace: true}
-	agent := agentDefinition{ID: "parity", Name: "Parity", ExecutionConfig: profile, NativeSkills: []string{"parity"}, KnowledgeSources: []string{"project_notes"}, Projects: []string{}}
+	agent := agentDefinition{ID: "parity", Name: "Parity", OffloadConfig: profile, NativeSkills: []string{"parity"}, KnowledgeSources: []string{"project_notes"}, Projects: []string{}}
 	selected, err := agent.options(base, state.OwnerAudienceID, false, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if selected.model == base.model || selected.model != "sonnet" {
+		t.Fatalf("Agent selector did not replace inherited model: base=%q selected=%q", base.model, selected.model)
 	}
 	if err := resolveOptions(t.Context(), store, &selected, true); err != nil {
 		t.Fatal(err)
@@ -62,7 +65,7 @@ func TestCLIAndChannelAgentCapabilityParity(t *testing.T) {
 				t.Fatal(err)
 			}
 			h := resolved.(*host.Host)
-			if harness.RunnerIdentity(h.Runner).Transport != "acp" || h.Extractor == nil || h.Decider == nil || h.Judge == nil || h.Objects == nil || !h.Store.FileMemoryEnabled() {
+			if harness.RunnerIdentity(h.Runner).Transport != "go-package" || h.Extractor == nil || h.Decider == nil || h.Judge == nil || h.Objects == nil || !h.Store.FileMemoryEnabled() {
 				t.Fatal("shared execution or automatic learning capability missing")
 			}
 			if len(h.Config.MCPServers) != 1 || !reflect.DeepEqual(h.Config.MCPServers, cliHost.Config.MCPServers) || !reflect.DeepEqual(h.Config.KnowledgeHints, cliHost.Config.KnowledgeHints) {

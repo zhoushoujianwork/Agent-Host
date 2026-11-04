@@ -129,7 +129,7 @@ This presentation does not require ACP. OpenFilm desktop's `src/agents.mjs`
 uses ACP adapters, while its `agent-activity-runs.ts` and Markdown components
 implement the presentation independently. AGH now supports either its existing
 Claude stream-json harness or the shared pinned Claude ACP runner behind Host. The chosen
-[shared ACP direction](architecture.md#shared-acp-execution) places ACP
+[shared ACP direction](offload-execution-boundary.md) places ACP
 at that harness boundary for Web, CLI and all chat channels. The
 [execution profile](acp-execution-detail.md#configuration) selects it for the Web
 CLI destination. ACP tool patches update the existing call, and native plans are

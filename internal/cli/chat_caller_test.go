@@ -53,7 +53,9 @@ func TestChatCallerLifecycle(t *testing.T) {
 		if err := json.Unmarshal([]byte(os.Getenv(argsKey)), &args); err != nil {
 			t.Fatal(err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		// File-memory startup can exceed the old 12s marker budget on a busy
+		// machine. Keep the worker alive through startup and lifecycle checks.
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		err := Run(ctx, args, nil, io.Discard, io.Discard)
 		_ = os.WriteFile(filepath.Join(root, "done"), []byte(fmt.Sprint(err)), 0600)
@@ -64,7 +66,7 @@ func TestChatCallerLifecycle(t *testing.T) {
 			fixture, args, _ := fileResumeFixture(t)
 			root := t.TempDir()
 			t.Setenv(rootKey, root)
-			unrelated := exec.Command("/bin/sleep", "30")
+			unrelated := exec.Command("/bin/sleep", "90")
 			if err := unrelated.Start(); err != nil {
 				t.Fatal(err)
 			}
@@ -87,14 +89,14 @@ func TestChatCallerLifecycle(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				blocked := strings.Replace(string(script), "cat >/dev/null", `cat >/dev/null
-/bin/sleep 30 &
+				blocked := strings.Replace(string(script), "cat >/dev/null", fmt.Sprintf(`cat >/dev/null
+/bin/sleep 90 &
 descendant=$!
-echo "$descendant" > "$AGENT_HOST_CALLER_TEST_ROOT/descendant"
-echo $$ > "$AGENT_HOST_CALLER_TEST_ROOT/native"
-while [ ! -f "$AGENT_HOST_CALLER_TEST_ROOT/release" ]; do sleep 0.02; done
+echo "$descendant" > %s/descendant
+echo $$ > %s/native
+while [ ! -f %s/release ]; do sleep 0.02; done
 kill "$descendant"
-wait "$descendant" 2>/dev/null || true`, 1)
+wait "$descendant" 2>/dev/null || true`, fixtureShellQuote(root), fixtureShellQuote(root), fixtureShellQuote(root)), 1)
 				if err := os.WriteFile(binary, []byte(blocked), 0700); err != nil {
 					t.Fatal(err)
 				}
@@ -109,12 +111,21 @@ wait "$descendant" 2>/dev/null || true`, 1)
 			}
 			t.Cleanup(func() {
 				_ = os.WriteFile(filepath.Join(root, "release"), nil, 0600)
-				_ = parent.Process.Kill()
 				if parent.ProcessState == nil {
-					_ = parent.Wait()
+					// Let the supervisor collect its worker before TempDir cleanup.
+					// Killing it first can leave startup writing into deleted roots.
+					stopped := make(chan error, 1)
+					go func() { stopped <- parent.Wait() }()
+					select {
+					case <-stopped:
+					case <-time.After(30 * time.Second):
+						_ = parent.Process.Kill()
+						<-stopped
+						t.Error("caller fixture supervisor did not finish after release")
+					}
 				}
 			})
-			waitCallerFile(t, filepath.Join(root, "native"))
+			waitCallerFileWithin(t, filepath.Join(root, "native"), 45*time.Second)
 			switch mode {
 			case "parent-exit":
 				_ = os.WriteFile(filepath.Join(root, "parent-exit"), nil, 0600)
@@ -169,7 +180,12 @@ wait "$descendant" 2>/dev/null || true`, 1)
 
 func waitCallerFile(t *testing.T, path string) []byte {
 	t.Helper()
-	deadline := time.Now().Add(12 * time.Second)
+	return waitCallerFileWithin(t, path, 12*time.Second)
+}
+
+func waitCallerFileWithin(t *testing.T, path string, timeout time.Duration) []byte {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
 			return data

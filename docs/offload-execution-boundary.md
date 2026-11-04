@@ -1,50 +1,43 @@
 # Offload as the execution component
 
-Direction agreed on 2026-11-02. Offload replaces the execution integration
-currently provided by the ACP adapter. Agent-Host remains the single Host for
-tasks and all conversation entries. This is a staged migration, not a production
-switch or a second channel platform.
+Agent-Host uses Offload's public Go package for native execution. ACP, direct
+Host-managed Claude execution and the Offload CLI transport are removed.
+Production adoption remains separate from this source migration.
 
-## Ownership and usage
+## Usage
 
-Users keep sending tasks through DingTalk, Feishu, CLI or Web/Mac. Host owns
-identity, authorization, Agent/project routing, context, memory and Skills,
-task records, business acceptance and result delivery. Offload owns execution
-adapters, native invocation, continuation and cancellation/cleanup. Native
-engines retain their own model/tool loops and conversation state.
+Run `agent-host chat` for interactive CLI chat, or `agent-host chat -m "task"`
+for one turn. Without `--offload-config`, Host selects the explicit `default`
+profile in the private Offload `config.json`. An optional version 2 selector
+chooses another native config/profile; it does not change execution transport.
+Missing configuration fails explicitly.
 
-All entries should call the same Host flow through `harness.Runner`. ACP may
-remain an implementation detail of an Offload engine adapter. Memory enablement
-is a Host decision independent of the execution backend. Host run IDs remain the
-user-facing lookup identity, with Offload execution IDs linked as evidence.
+Host retains tasks, identity, authorization, routing, context, MCP, Skills,
+memory, business acceptance and delivery. Offload owns native subprocesses,
+timeouts, cancellation, execution history and provider credentials. Native
+engines retain their model/tool loops and conversation state.
 
-## Current increment
+Every package request carries `caller: "agh"`. Business calls use
+`caller_run_id: "agh:<Host run ID>"`; internal model calls use a distinct internal
+correlation ID. Execution, history persistence, task acceptance and memory remain
+separate outcomes.
 
-The existing Offload prototype now calls a shared harness adapter instead of
-calling the execution client directly. It retains private raw evidence, canonical
-continuation bindings and independent execution/memory outcomes. Unsupported
-request controls fail explicitly before native dispatch.
+## Scope and transition
 
-The prototype still owns a separate Host orchestration implementation. The main
-Host has not adopted this adapter, the legacy paths remain available, and no
-installed service or existing native session is migrated by this increment.
+The full Host maps its Claude permissions, tool controls, MCP/Skills, images,
+structured extraction, forks and streamed observations through the package.
+The lightweight text Host also uses the package and can use ordinary Claude or
+Codex profiles. Full native controls currently require Claude; unsupported
+backend capabilities fail before dispatch.
 
-## Delivery order
+Existing state and historical ACP evidence remain readable. Native bindings
+are not relabelled or automatically replayed. Start a new compatible conversation
+when changing backend/profile. Existing production configuration must be migrated
+explicitly before deploying the replacement binary.
 
-1. Establish the shared execution boundary and preserve existing prototype
-   behavior. **Implemented in this increment; headless validation only.**
-2. Close the capability gaps needed by the common Host: tools and permissions,
-   context/Skills injection, native bindings and real streamed events. Keep
-   model-based memory extraction within explicit Host policy.
-3. Move Offload selection into the common Host composition and remove duplicate
-   orchestration as entries migrate. Prove routing, delivery, continuation and
-   memory behavior through the same flow.
-4. Accept the isolated end-to-end path, then perform a separately scoped
-   production rollout. Remove the direct ACP path only after parity and
-   migration acceptance; never silently retry failed work on another backend.
+Consolidating the remaining lightweight and full Host orchestration is a separate
+step; both now share the package execution boundary. No generic plugin loader,
+second model/tool loop or automatic fallback is introduced.
 
-There is no new generic plugin loader, parallel task controller or automatic
-native-session migration in this work.
-
-[Implementation contract and checks](offload-execution-boundary-detail.md).
-[Current architecture](architecture.md).
+[Implementation and checks](offload-execution-boundary-detail.md).
+[Architecture](architecture.md).

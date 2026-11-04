@@ -81,3 +81,20 @@ Authorize through `agent-host dingtalk-workspace login --config PATH`.
 For selected-source discovery, replace `dws_executable` with
 `dingtalk_workspace_config` pointing to that workspace file; keep existing
 source selectors and limits. See [the guide](../docs/dingtalk-workspace.md).
+
+## Native execution
+
+Execution uses the Offload Go package only. Without a selector, CLI chat and
+unified channel services resolve the explicit default in the private Offload
+config unless the routed Agent already binds an `offload_config` or model.
+Daily chat should normally inherit the current
+default; use an explicit selector only for a user request or an evidence-backed
+compatibility or troubleshooting need. Unbound routed Agents refresh the default
+on each request. Unified execution profiles may omit `model` to inherit that
+default; `jev_model` remains explicit and independent. Optional
+`execution.offload.json` follows [execution.offload.example.json](execution.offload.example.json)
+(version 2); copy it to an owner-private `0600` file and set `config_path` and
+`profile`. Agent entries use `offload_config`. ACP `execution_config` and version 1
+CLI selectors are removed. Migrate configuration and start a new compatible
+conversation after a backend/model change; do not silently migrate an incompatible
+native session, fall back to another backend or replay work with side effects.

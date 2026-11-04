@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/history"
 	"agent-host/internal/host"
 	"agent-host/internal/state"
@@ -60,7 +60,7 @@ func TestNativeConversationHistoryLive(t *testing.T) {
 		t.Helper()
 		paired := map[string]bool{}
 		calls := map[string]string{}
-		result, err := claude.New(native).Run(ctx, harness.Request{
+		result, err := nativepolicy.New(native).Run(ctx, harness.Request{
 			Workspace: workspace, Model: model, NativeSessionID: nativeSessionID, Resume: resume,
 			HostInstructions: history.Instructions, Prompt: prompt,
 			MCPServers: []harness.MCPServer{capability.Server(binary)}, AllowedTools: toolNames,

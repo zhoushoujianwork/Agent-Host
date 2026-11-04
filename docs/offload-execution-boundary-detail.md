@@ -1,65 +1,80 @@
 # Offload execution boundary — implementation notes
 
-[Main direction and delivery scope](offload-execution-boundary.md) owns the
-product boundary and migration sequence.
+[Main direction and scope](offload-execution-boundary.md).
 
-## Current adapter
+## Package selection
 
-`internal/harness/offload.Adapter` implements the existing `harness.Runner`
-interface. It delegates once to `internal/offloadexec.Client`, which owns CLI
-validation, private instruction-file cleanup and process-group termination.
-The adapter never reads Host state, routes a task, retries work or switches
-engines. `internal/offloadchannel.Host` now uses this adapter; its existing
-CLI/Web/channel entry points and configuration retain their current behavior.
+`internal/offloadexec.Library` is the only production execution client. It imports
+`github.com/zhoushoujianwork/offload/pkg/execution`, pinned to v0.8.0. Default
+selection reads the owner-private XDG Offload config (normally
+`~/.config/offload/config.json`) and resolves its explicit `default` profile.
+Version 2 selector files name `config_path`, `profile`, optional `model`,
+`timeout` and optional lightweight memory settings. Version 1/`command` and
+`execution_config`/`--execution-config` are rejected, with no fallback.
+Agent catalogs use `offload_config` for per-Agent selection.
 
-The harness request carries Host caller correlation, visible prompt, separate
-Host instructions, workspace, explicit write intent and a recorded continuation
-session/profile pair. Write intent is not authorization or a sandbox. Fresh
-requests cannot adopt a supplied native binding. A resumed request must carry
-both the native session and its canonical profile; Host still verifies the
-binding event and compatible runtime before invoking the adapter.
+The selected profile is snapshotted before execution. Configuration, package
+version and execution policy participate in compatibility fingerprints; secrets
+only enter the private digest input. Profile changes require a new compatible
+native conversation. Missing capabilities, credentials or launch failures never
+select a weaker backend or replay the request.
 
-Normalized results use `completed`, `failed` and `canceled`. Failure categories
-remain startup, deadline, cancellation or process failure, retaining the
-original error chain. Invalid output and executor errors cannot become success.
-Optional execution evidence retains Offload run/caller IDs, canonical profile,
-backend, original status/error kind, usage and raw record. Host persists this
-evidence privately and keeps its current `offload.result` and `offload.binding`
-events; presentation observers do not receive the raw record. Acceptance is not
-inferred from execution completion or from saved memory.
+## Host adapters and lifecycle
 
-The current CLI supplies one final record. The adapter can emit a final result
-observation; it does not invent text deltas or tool activity. Observer errors
-are returned without changing a completed execution into a failed execution.
-The prototype keeps its existing observer/audit behavior and private journal.
+The lightweight `harness/offload.Adapter` delegates through the same library.
+The full Host's `harness/nativepolicy.Adapter` retains Host validation, project
+instruction assembly, skill digest checks, native event decoding and completion
+gates. `Request.Native` maps executable/profile paths, fresh/fork session IDs,
+permissions, tool rules, MCP servers, Skills, structured extraction and images.
+Only metadata probes (`--version`, `--help`) remain Host-owned subprocesses.
+All actual model execution and native process cleanup belongs to Offload.
 
-## Explicit capability gaps
+The package's caller-context mode keeps task stdin separate from private Host
+instruction files, without adding a delegation role. Credentials always come
+from the selected Offload profile. Restricted reads exclude ambient instructions
+and hooks and verify observed tool inventories. Structured extraction remains
+fresh, tool-free, safe-mode and nonpersistent. Unsupported Codex native controls
+fail before launch; ordinary Codex requests retain package behavior.
 
-Before dispatch, the adapter rejects per-request native profiles, permission
-modes, tool disablement/allowlists, restricted execution, MCP servers, structured
-schemas/extraction, native Skill packages, model overrides, images, additional
-directories and true session forks. Profile-level model selection continues in
-the existing client configuration. Read-only intent cannot replace restricted
-execution. Unsupported controls are not converted to prose instructions.
+Package event callbacks feed the existing bounded protocol decoder. A matching
+initialized session, successful terminal result, complete stream and actual
+successful process exit are all required. Image-bearing echoes are redacted
+before Host observations are journaled. Slow observers do not truncate buffered
+output. Held stdout is bounded and remains an unknown outcome; process exit and
+callback errors preserve their original Go error chains. No partial output is
+promoted to completion.
 
-The common Host currently assumes a preallocated native identity and assembles
-MCP/Skills and memory extraction capabilities. It must not select this adapter
-until those contracts are implemented or explicitly separated. The prototype
-also has its own room-continuation rules; these are retained, not generalized
-into support for native forks. No public configuration is added in this slice.
+## Attribution and durable evidence
 
-## Validation and migration acceptance
+All business calls carry `Caller=agh` and `CallerRunID=agh:<Host run ID>`.
+Internal extraction/classification calls receive `agh:internal:<UUID>` when no
+business ID is supplied. Attribution never comes from untrusted source content.
+`RecordHistory` is always enabled. SDK run IDs, canonical profile/backend,
+usage, raw result and history-write outcome are retained in private Host
+`offload.result` evidence; public `offload.history` only reports status and IDs.
+History failure is independent of execution and never triggers replay. Full Host
+auxiliary runners use the same boundary; configured Agent runners pin their
+selected library. Global discovery uses the explicit Offload default.
 
-Headless adapter tests cover fresh/resumed request mapping, context separation,
-private evidence, caller correlation, failure categories, pre-dispatch rejection,
-cancellation and observer failure without replay. Existing prototype and CLI
-tests exercise real fixture processes, native binding, room deduplication,
-cross-entry restrictions, optional memory and answer-before-memory behavior.
-`make check` is required before the local commit.
+## Validation and rollout
 
-Later migration acceptance must demonstrate the common Host path for Agent and
-project routing, provenance, tool/permission enforcement, Skills/context,
-streaming, native continuation, cancellation cleanup, result delivery and
-independent memory/acceptance outcomes. Live channel and desktop validation
-require their own explicit scope. Isolated native evidence does not authorize
-or establish production adoption.
+Headless fake-native checks cover default selection, caller/history correlation,
+fresh/continued conversations, channels, memory, MCP, Skills, images, structured
+extraction, permissions, forks, protocol failures, cancellation/descendant cleanup,
+slow observers and native exit causes. The producer package must also build from
+an independent consumer module. `make check` is required before committing.
+Historical readers remain for previously recorded ACP events; the ACP executable
+adapter and CLI compatibility client are removed. Production rollout, real
+channel sends, actual model acceptance and desktop acceptance require their own
+scope; fixture checks do not establish those outcomes.
+
+### Bounded native package canary (2026-11-02)
+
+An independent consumer of the published v0.7.0 module ran the configured Claude
+Sonnet default once in a disposable workspace, with tools disabled. It returned
+the exact acknowledgement, native exit 0 and status `ok`. Run
+`00a889ac9f98089aa6344415e5d2a204` had exactly one Offload history record with
+`caller=agh` and `caller_run_id=agh:validation:1793611015735159000`.
+This proves the selected profile's package invocation, attribution and terminal
+history append. It does not establish full Host MCP/Skills live behavior, channel
+sends, desktop rendering or production migration.

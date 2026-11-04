@@ -17,7 +17,7 @@ import (
 	"agent-host/internal/assistance"
 	"agent-host/internal/discovery"
 	"agent-host/internal/harness"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/host"
 	"agent-host/internal/state"
 )
@@ -42,7 +42,7 @@ func probeNativeContext(t *testing.T, ctx context.Context, store *state.Store, o
 	calls := map[string]string{}
 	proof := map[string]bool{}
 	trace := []harness.ToolObservation{}
-	result, err := claude.New(o.binary).Run(ctx, harness.Request{Workspace: o.workspace, Model: o.model, NativeSessionID: session.NativeSessionID, HostInstructions: assistance.Instructions, Prompt: prompt, AllowedTools: tools, MCPServers: []harness.MCPServer{binding.Server(os.Getenv("AGENT_HOST_LIVE_HOST"))}}, func(obs harness.Observation) error {
+	result, err := nativepolicy.New(o.binary).Run(ctx, harness.Request{Workspace: o.workspace, Model: o.model, NativeSessionID: session.NativeSessionID, HostInstructions: assistance.Instructions, Prompt: prompt, AllowedTools: tools, MCPServers: []harness.MCPServer{binding.Server(os.Getenv("AGENT_HOST_LIVE_HOST"))}}, func(obs harness.Observation) error {
 		if obs.Tool == nil {
 			return nil
 		}
@@ -243,7 +243,7 @@ func TestNativeAssistanceRetrievalAndPreparationLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, _ = store.DiscoverySource(ctx, source.ID)
-	processor := &assistance.Processor{Store: store, Runner: claude.New(o.binary), Model: o.model}
+	processor := &assistance.Processor{Store: store, Runner: nativepolicy.New(o.binary), Model: o.model}
 	if err = processor.Reconcile(ctx, current, evidence); err != nil {
 		t.Fatal("real native matter reconciliation", err)
 	}

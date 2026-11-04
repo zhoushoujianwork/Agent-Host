@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/state"
 )
 
@@ -55,7 +55,7 @@ func TestNativeDiscoveryLive(t *testing.T) {
 	provider := providerFunc(func(context.Context, Source, Range) (Collection, error) {
 		return Collection{Coverage: state.DiscoveryCollection{Complete: true, Ledger: json.RawMessage(`{"synthetic_fixture":true,"complete":true}`)}, Evidence: evidence}, nil
 	})
-	c := NewCollector(store, cfg, provider, NewExtractor(claude.New(binary), cfg.Model))
+	c := NewCollector(store, cfg, provider, NewExtractor(nativepolicy.New(binary), cfg.Model))
 	c.now = func() time.Time { return now }
 	ctx, cancel := context.WithTimeout(testContext, 240*time.Second)
 	defer cancel()

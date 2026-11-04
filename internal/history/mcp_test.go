@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,6 +72,68 @@ func historyFixture(t *testing.T, count int, quote bool) (string, Binding) {
 }
 
 const initialize = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test"}}}`
+
+func TestHistoryStartupDoesNotWaitForMemoryPublication(t *testing.T) {
+	home, _ := historyFixture(t, 1, false)
+	store, err := state.Open(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	cache := filepath.Join(root, "cache")
+	if _, err = store.MigrateFileMemory(t.Context(), filepath.Join(root, "memory"), cache, "history-test"); err != nil {
+		store.Close()
+		t.Fatal(err)
+	}
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	locks, err := filepath.Glob(filepath.Join(root, "memory", "sources", "*", "publish.lock"))
+	if err != nil || len(locks) != 1 {
+		t.Fatalf("publication lock: %v %v", locks, err)
+	}
+	lock, err := os.OpenFile(locks[0], os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	// History neither needs nor recreates the rebuildable memory cache.
+	if err = os.RemoveAll(cache); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		output string
+		err    error
+	}
+	done := make(chan result, 1)
+	go func() {
+		binding, err := Resolve(home, "receipt-1")
+		var out bytes.Buffer
+		if err == nil {
+			input := initialize + "\n" + `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"read_conversation_history","arguments":{"reference":"host-history:receipt-0"}}}` + "\n"
+			err = Serve(t.Context(), binding, strings.NewReader(input), &out)
+		}
+		done <- result{out.String(), err}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil || !strings.Contains(got.output, "Formatted **deployment** answer") || strings.Contains(got.output, `"isError":true`) {
+			t.Fatalf("history unavailable during publication: %s %v", got.output, got.err)
+		}
+	case <-time.After(2 * time.Second):
+		// Release before joining so a regression cannot strand a goroutine.
+		_ = syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		<-done
+		t.Fatal("history startup waited for the unrelated memory publication lock")
+	}
+	if _, err := os.Stat(cache); !os.IsNotExist(err) {
+		t.Fatalf("history touched the memory cache: %v", err)
+	}
+}
 
 func TestHistorySessionAuthorityExcludesOnlyCurrentReceipt(t *testing.T) {
 	_, b := historyFixture(t, 1, false)

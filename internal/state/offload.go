@@ -43,6 +43,16 @@ func validOffloadNativeID(id string) bool {
 // run, a session shared with earlier runs, or anything owned by another engine
 // or partition.
 func (s *Store) BindOffloadSession(ctx context.Context, runID, expectedNativeID, nativeID string) error {
+	return s.bindOffloadSession(ctx, runID, expectedNativeID, nativeID, false)
+}
+
+// BindHostNativeSession binds the first native identity observed by the full
+// Host's Offload runner. Partition, pending identity and first-run checks apply.
+func (s *Store) BindHostNativeSession(ctx context.Context, runID, expectedNativeID, nativeID string) error {
+	return s.bindOffloadSession(ctx, runID, expectedNativeID, nativeID, true)
+}
+
+func (s *Store) bindOffloadSession(ctx context.Context, runID, expectedNativeID, nativeID string, fullHost bool) error {
 	if runID == "" {
 		return errors.New("offload binding requires a run ID")
 	}
@@ -67,7 +77,11 @@ func (s *Store) BindOffloadSession(ctx context.Context, runID, expectedNativeID,
 		if err != nil {
 			return err
 		}
-		if !strings.HasPrefix(session.RuntimeFingerprint, OffloadFingerprintPrefix) || run.RuntimeFingerprint != session.RuntimeFingerprint {
+		owned := strings.HasPrefix(session.RuntimeFingerprint, OffloadFingerprintPrefix)
+		if fullHost {
+			owned = run.Agent == "offload" && IsOffloadPending(expectedNativeID)
+		}
+		if !owned || run.RuntimeFingerprint != session.RuntimeFingerprint {
 			return errors.New("session does not belong to an Offload runtime")
 		}
 		if session.Room != nil && (session.AudienceID != OwnerAudienceID || session.Room.SenderID != "local-owner" || session.Room.NativeContinuation != OffloadRoomFresh && session.Room.NativeContinuation != OffloadRoomResume) {

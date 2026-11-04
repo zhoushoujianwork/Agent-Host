@@ -4,7 +4,7 @@
 
 ## Configuration and lifecycle
 
-The existing private version 1 Offload profile accepts:
+The private version 2 Offload package selector accepts:
 
 ```json
 "memory": {
@@ -25,8 +25,7 @@ no fallback provider is selected. These credentials are separate from
 Offload's native execution-provider credentials and are never put in prompts.
 
 Use `processing_enabled: false` for local retrieval only, without Jev credentials.
-Omitted memory or `enabled: false` loads neither component and preserves the old
-configuration fingerprint. Enabled configuration enters the runtime/queue
+Omitted memory or `enabled: false` loads neither component. Enabled configuration enters the runtime/queue
 fingerprint; changing it does not migrate existing native sessions. Records and
 source evidence are preserved on rollback. A selected file-memory backend still
 requires the existing explicit migration; it never silently falls back to SQLite.

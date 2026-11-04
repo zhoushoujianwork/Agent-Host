@@ -1,7 +1,7 @@
 # Shared ACP execution details
 
 Companion to [the user guide](acp-execution.md). Scope follows the
-[architecture](architecture.md#shared-acp-execution).
+[architecture](offload-execution-boundary.md).
 
 ## Configuration
 

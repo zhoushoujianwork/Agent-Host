@@ -146,3 +146,13 @@ func TestAdapterObserverFailurePreservesCompletedExecution(t *testing.T) {
 		t.Fatalf("result %+v, error %v", result, err)
 	}
 }
+
+func TestAdapterHistoryFailurePreservesCompletedExecution(t *testing.T) {
+	adapter := New(executorFunc(func(context.Context, offloadexec.Request) (offloadexec.Result, error) {
+		return offloadexec.Result{Status: "ok", Text: "answer", HistoryStatus: "failed", HistoryError: "private log path"}, nil
+	}))
+	result, err := adapter.Run(context.Background(), harness.Request{}, nil)
+	if err != nil || result.Status != "completed" || result.Evidence.HistoryStatus != "failed" || result.Evidence.HistoryError != "private log path" {
+		t.Fatalf("history failure changed execution: %+v %v", result, err)
+	}
+}

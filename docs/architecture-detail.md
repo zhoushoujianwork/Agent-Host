@@ -1,12 +1,14 @@
 # Agent-Host implementation notes
 
+Current source uses only the Offload package; see [current execution contract](offload-execution-boundary-detail.md). ACP and print-backend sections below are historical implementation notes.
+
 The [managed Skills contract](managed-skills-design-detail.md) adds the proposed
 agh catalog, proactive default-Agent loading and enabled-plugin usage guidance.
 Its [main design](managed-skills-design.md) owns scope and rollout. Existing
 memory publication and native Skill mounts described below remain delivered
 behavior; they do not yet implement the unified lifecycle or readiness contract.
 
-Companion to the [current architecture](architecture.md), reviewed on 2026-10-16.
+Companion to the [current architecture](architecture.md), reviewed on 2026-11-04.
 The shared ACP proposal and first Claude implementation were added on 2026-10-20;
 delivered behavior is separated from the remaining design below.
 The main document owns scope; [progress](release-follow-up.md) owns priorities.
@@ -15,13 +17,13 @@ they are not a claim that every current path passed live validation.
 
 ## Technical glossary / 技术名词
 
-The [main glossary](architecture.md#key-objects--关键对象) introduces business and
+The [main glossary](architecture-detail.md#key-objects--关键对象) introduces business and
 memory objects. These terms explain how they are executed, authorized and stored.
-[主文档](architecture.md#key-objects--关键对象)解释业务与记忆对象；这里补充执行、权限和存储术语。
+[主文档](architecture-detail.md#key-objects--关键对象)解释业务与记忆对象；这里补充执行、权限和存储术语。
 
 | Term / 名词 | Meaning / 含义 |
 | --- | --- |
-| Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code. 负责模型推理、工具调用循环和原生会话的程序，当前为 Claude Code。 |
+| Harness / 原生执行引擎 | The application running the model/tool loop and native session, currently Claude Code or Codex app-server according to the selected profile. 负责模型推理、工具调用循环和原生会话的程序，按配置使用 Claude Code 或 Codex app-server。 |
 | Harness adapter / 执行引擎适配器 | Translates Host requests and engine events across their boundary. 在 Host 与执行引擎之间转换请求和事件，不接管引擎内部循环。 |
 | ACP / Agent Client Protocol / 智能体客户端协议 | A shared Host-to-engine protocol, implemented for the pinned Claude bridge. Host 与底层执行引擎通信的统一协议，首版已支持 Claude；不替代钉钉、飞书等渠道接口。 |
 | Routing / 路由 | Selects the Agent and project environment for a request. 为请求选择智能体配置和项目环境；选中项目本身不会增加权限。 |
@@ -48,7 +50,7 @@ memory objects. These terms explain how they are executed, authorized and stored
 | --- | --- |
 | Selected local checkout discovery and shared receipts | `internal/projectruntime`, `internal/cli/project_runtime.go`; [project records](development-projects-detail.md) |
 | Verified private users and profiles | `internal/cli/users.go`, `internal/assembly/workspace.go`; [workspace contracts](workspace-layout-detail.md#multi-user-recording-and-retrieval) |
-| Owner/member execution and one-use approvals | `internal/cli/channel_authorization.go`, `internal/approval`, `internal/harness/claude/restricted.go`; [authorization details](dangerous-operations-design-detail.md) |
+| Owner/member execution and one-use approvals | `internal/cli/channel_authorization.go`, `internal/approval`, `internal/harness/nativepolicy/restricted.go`; [authorization details](dangerous-operations-design-detail.md) |
 | File-memory publication, source-linked objects and native Skills | `internal/state`, `internal/memory`, `internal/experience`, `internal/objectmemory`; [file backend](file-memory-design-detail.md), [procedural learning](procedural-learning-detail.md) |
 | External evidence ingestion and installed memory skill | `internal/cli`, `skills/agent-host-memory`, `tools/install.py`; [external memory](external-memory-skill-design-detail.md) |
 | Knowledge retrieval, Confluence writes and reply guidance | `internal/knowledge`, `internal/assembly/context.go`, `internal/harness/claude/knowledge_instructions.go`; [source tools](knowledge-sources-detail.md) |
@@ -61,19 +63,19 @@ Runtime state and native sessions remain channel-local. Memory publication can
 share file storage without merging Agent/audience visibility. Shared project
 receipts exclude original request/response text and native context.
 
-### Current execution path before ACP
+### Historical execution path before the package boundary
 
-The [main architecture diagram](architecture.md#core-architecture) shows the
-chosen target and ACP delivery status. This diagram records the retained print baseline: entries
-reach Host, and Host runs Claude's print/stream-JSON adapter. New Web chats
-launch a separately configured Host CLI. Selecting an existing channel Session
-uses the owning worker's private control socket; Host forks its exact completed
-native context and preserves the original room and audience. Room snapshots retain
+The [main architecture diagram](architecture.md#ownership) shows the current
+package boundary. This section records the earlier print baseline: entries
+reached Host, Host ran Claude's print/stream-JSON adapter, and new Web chats
+launched a separately configured Host CLI. Selecting an existing channel Session
+used the owning worker's private control socket. The current isolated package
+path does not advertise native fork support: neither Claude nor Codex can bind a
+child to the original parent's private environment. Room snapshots retain
 bounded attributed conversation text across runtime/model changes only within the
 same Agent/audience, room epoch, scope, primary project, workspace, full project
 identity/scope/workspace set and additional directories. Completed results require
-a final journal seal available by message arrival. Native parent selection and
-explicit takeover keep exact runtime/model compatibility. Durable continuation
+a final journal seal available by message arrival. Durable continuation
 metadata explains text-only history; current execution capabilities apply and
 historical text grants no authority. Preview-only quoted bot messages remain
 unresolved because DingTalk webhook acceptance supplies no mapped outgoing ID;
@@ -123,7 +125,8 @@ See [layout](workspace-layout-detail.md) and [migration](file-memory-design-deta
 The CLI composes channel and local execution through selected profiles. Local Git
 discovery, automatic enrollment, routing, default-workspace execution and project-set
 assembly are implemented. Remote discovery, managed clones and durable worktree/PR
-coordination remain proposed. The Codex package remains a scaffold.
+coordination remain proposed. Codex execution is implemented through the shared
+native-policy adapter and the companion Offload app-server control.
 
 ```text
 Agent-Host/
@@ -140,8 +143,8 @@ Agent-Host/
 │   ├── assembly/            Workspace, instructions, and context preparation
 │   ├── knowledge/           Source MCP retrieval and authorized Confluence writes
 │   ├── harness/             Shared adapter boundary
-│   │   ├── claude/          Claude Code protocol and process integration
-│   │   └── codex/           Codex adapter scaffold (not executable)
+│   │   ├── nativepolicy/    Isolated Claude and Codex app-server policy adapter
+│   │   └── offload/         Ordinary package execution compatibility adapter
 │   ├── annotation/          Source-linked objects, aliases and topic applicability
 │   ├── memory/              User-statement decisions and finalization
 │   ├── experience/          Tool-free extraction and selected procedure publication
@@ -156,8 +159,8 @@ Agent-Host/
 | --- | --- |
 | `internal/host` | Business task lifecycle and execution coordination |
 | `internal/harness` | Shared execution contract and capability reporting |
-| `internal/harness/claude` | Claude-specific protocol and process integration |
-| `internal/harness/codex` | Reserved scaffold; no runtime implementation |
+| `internal/harness/nativepolicy` | Isolated Claude process policy, Codex app-server RPC projection, environment ownership and managed Skill roots |
+| `internal/harness/offload` | Ordinary Offload package request compatibility path |
 | `internal/annotation` | Versioned source spans, service identities, aliases, topics and applicability checks |
 | `internal/memory` | Source-linked user-statement decisions and finalization |
 | `internal/experience` | Evidence-linked procedure extraction and Jev screening/comparison |
@@ -243,14 +246,13 @@ are implemented. See [configuration, boundaries and validation](acp-execution-de
 The remaining design below includes warm process reuse, additional engines and
 channel interaction controls; these are not delivered by the first increment.
 
-Scope follows the [main architecture](architecture.md#shared-acp-execution).
-Source inspection on 2026-10-20 found a shared `harness.Runner` contract in
-`internal/harness/harness.go`; channel execution reaches it through Host.
-`internal/harness/claude/adapter.go` currently launches `--print` with
-`stream-json`, partial messages and native session continuation. Web reaches
-the same Host CLI through `tools/run-viewer/chat_runtime.py`. The new
-`internal/harness/acp` client can replace business print execution through the
-same boundary. There is no warm channel ACP process pool or working Codex runner.
+Scope follows the [main architecture](offload-execution-boundary.md).
+The 2026-10-20 source snapshot used a shared `harness.Runner` contract with a
+Claude print adapter and a proposed ACP client. Those paths are historical, not
+the current execution claim. Current source keeps the runner contract in
+`internal/harness/harness.go` and implements isolated Claude plus executable
+Codex app-server behavior in `internal/harness/nativepolicy`; it does not provide
+a warm channel ACP process pool.
 
 ### Ownership and entry points
 
@@ -526,3 +528,40 @@ choice records. Existing waiting requests remain owner-confirmed only.
 `/new` resets the compatible session for the latest actual project set and retains
 memory. `/status` exposes only safe conversation/task state; `/help` lists the
 three supported controls. Native interactive commands are not forwarded.
+
+## Key objects / 关键对象
+
+Read these as separate responsibilities, even when they work on the same request.
+这些对象可能参与同一次请求，但各自管理不同的内容。
+
+| Object / 对象 | Meaning / 含义 |
+| --- | --- |
+| Host / 宿主 | Coordinates tasks, access, context and durable records. 负责组织任务、权限、上下文与长期记录，产品名是 Agent-Host。 |
+| Agent / 智能体配置 | A configured role, model and project policy used for requests. 一套角色、模型和项目配置，例如“运维助手”；不是一个独立模型或进程。 |
+| Channel / 渠道 | An entry and reply path, such as DingTalk, Feishu or CLI. 接收请求并交付回复的入口，例如钉钉、飞书或终端。 |
+| Task / 任务 | The business work requested by the user. 用户希望完成的工作，例如“修复登录测试”；跨多轮的持久功能任务仍待实现。 |
+| Run / 执行记录 | One execution attempt with its own events and outcome. 一次执行尝试及其过程、结果；执行结束不等于业务验收通过。 |
+| Conversation / 对话 | Related channel messages and replies within an authorized binding. 授权范围内关联的渠道消息与回复；群成员可以共享同一对话。 |
+| Native session / 原生会话 | Conversation state maintained by the selected execution engine across compatible turns. 所选执行引擎自己保存的连续上下文；切换引擎不自动迁移，Host 的长期记忆另行保留。 |
+| Project / 项目 | A stable registered identity for a repository and its execution environment. 仓库及执行环境的稳定登记身份，用于路由和关联记录。 |
+| Workspace / 工作目录 | The filesystem location where execution works on files. 执行时实际操作文件的目录；项目身份与目录路径分别记录。 |
+| Context / 上下文 | The instructions and information available to the engine for the current work. 引擎处理当前工作时可用的指令与信息；长期记忆只是其中一种来源。 |
+| Evidence / 证据 | Attributed source material and observed execution results. 带来源的原始材料与执行观测，例如消息、工具输出；保留它不代表内容已被证实。 |
+| Memory / 长期记忆 | Eligible facts, preferences, decisions or procedures retained for later tasks. 可供后续任务使用的事实、偏好、决策或方法；与聊天原文、执行日志分别保存。 |
+| Skill / 方法技能 | A reusable procedure delivered as `SKILL.md` with conditions and evidence. 保存适用条件、步骤与证据的可复用方法；记住方法不代表已经执行成功。 |
+| Managed Skill / 纳管技能 | A versioned, reviewed and enabled catalog entry governed by agh, covering authored methods, eligible experience and plugin usage. 可复用处理方法统一以技能交付；安装、发布、装载和执行结果分别记录。 |
+| Plugin / 插件 | A configured capability whose adapter supplies tools and whose adapter also supplies matching usage guidance. 插件启用后应同时让 Agent 知道可用能力及使用方法，不因此获得业务操作授权。 |
+| Datasource / 数据源 | A configured source the assistant can consult, such as Confluence or local Markdown. 可按需查询的资料来源；读取资料不会自动把它变成长期记忆。 |
+
+For example, “fix the login test” arrives through a **Channel**, selects an
+**Agent** and **Project**, then creates a **Run** in the project's **Workspace**.
+Claude Code may continue a compatible **Native session**. Host records **Evidence**
+and separately decides whether a useful correction becomes **Memory / a Skill**.
+
+例如：“修复登录测试”从钉钉进入，Host 选择运维助手和目标项目，在项目目录执行。
+执行记录回答“做了什么、结果如何”，长期记忆回答“以后可以复用什么”。
+任务完成、AI 业务验收和经验保存成功分别记录。
+
+Execution-engine, authorization and storage terms are explained in the
+[bilingual technical glossary](architecture-detail.md#technical-glossary--技术名词).
+执行引擎、权限和存储相关术语见同一份详细稿中的双语解释。

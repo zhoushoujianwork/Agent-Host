@@ -323,7 +323,7 @@ func readStore(ctx context.Context, ref storeRef, o Options, compare bool) (*agg
 	return a, b, nil
 }
 func readEvents(ctx context.Context, tx *sql.Tx, id string) ([]event.Event, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT json_object('run_id',run_id,'type',json_extract(payload,'$.type'),'phase',json_extract(payload,'$.phase'),'component',json_extract(payload,'$.component'),'data',json_object('raw',json_extract(payload,'$.data.raw'))) FROM events WHERE run_id=? AND (json_extract(payload,'$.type')='tool.activity' OR (json_extract(payload,'$.component') IN ('harness.claude','harness.claude.extractor') AND json_extract(payload,'$.data.raw.type')='result') OR (json_extract(payload,'$.component')='harness.acp' AND json_extract(payload,'$.type')='agent.result')) ORDER BY seq`, id)
+	rows, err := tx.QueryContext(ctx, `SELECT json_object('run_id',run_id,'type',json_extract(payload,'$.type'),'phase',json_extract(payload,'$.phase'),'component',json_extract(payload,'$.component'),'data',json_object('raw',json_extract(payload,'$.data.raw'))) FROM events WHERE run_id=? AND (json_extract(payload,'$.type')='tool.activity' OR (json_extract(payload,'$.component') IN ('harness.claude','harness.claude.extractor','harness.offload','harness.offload.extractor') AND json_extract(payload,'$.data.raw.type')='result') OR (json_extract(payload,'$.component')='harness.acp' AND json_extract(payload,'$.type')='agent.result')) ORDER BY seq`, id)
 	if err != nil {
 		return nil, errors.New("cannot read events")
 	}

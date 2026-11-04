@@ -6,49 +6,19 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
-	"agent-host/internal/harness/acp"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/state"
 )
 
-func TestUnifiedSharedACPProfileDiscovery(t *testing.T) {
-	root, dir := unifiedFixture(t)
-	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{
-		"bot": map[string]any{"enabled": false}, "dws": map[string]any{"enabled": true, "profile": "fixture-corp:fixture-owner", "services": []string{"contact"}},
-	}})
-	path := filepath.Join(dir, "execution.acp.json")
-	profile := acp.Config{Version: 1, Transport: "acp", Engine: "claude", Command: filepath.Join(root, "fixture-claude"), AdapterVersion: acp.ClaudeBridgeVersion}
-	writeBotJSON(t, path, profile)
-	var host unifiedHost
-	if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
-		t.Fatal(err)
-	}
-	selected := host.Profiles["default"]
-	selected.Execution.ExecutionConfig = path
-	host.Profiles["default"] = selected
-	writeBotJSON(t, filepath.Join(dir, "host.json"), host)
-	channels, err := discoverUnifiedChannels(dir)
-	if err != nil || len(channels) != 1 {
-		t.Fatal("shared ACP profile rejected before channel startup", channels, err)
-	}
-	_, loaded, _, err := loadService(channels[0].Root)
-	if err != nil || loaded.ExecutionConfig != path {
-		t.Fatal("shared execution selection lost", loaded.ExecutionConfig, err)
-	}
-	profile.AdapterVersion = "unsupported"
-	writeBotJSON(t, path, profile)
+func TestUnifiedRejectsRemovedACPProfiles(t *testing.T) {
+	_, dir := unifiedFixture(t)
+	writeBotJSON(t, filepath.Join(dir, "execution.acp.json"), map[string]any{"version": 1, "transport": "acp", "engine": "claude", "command": "/missing/bridge"})
 	if _, err := discoverUnifiedChannels(dir); err == nil {
-		t.Fatal("invalid execution profile accepted")
-	}
-	profile.AdapterVersion = acp.ClaudeBridgeVersion
-	writeBotJSON(t, path, profile)
-	if err := os.Chmod(path, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := discoverUnifiedChannels(dir); err == nil {
-		t.Fatal("non-private execution profile accepted")
+		t.Fatal("removed ACP profile accepted")
 	}
 }
 
@@ -130,6 +100,106 @@ func TestUnifiedDingTalkIndependentFeatures(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUnifiedServiceCheckResolvesOffloadDefaultWhenBusinessModelOmitted(t *testing.T) {
+	for _, channel := range []string{"dingtalk", "feishu"} {
+		t.Run(channel, func(t *testing.T) {
+			_, dir := unifiedFixture(t)
+			var commandMarker string
+			var host unifiedHost
+			if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+				t.Fatal(err)
+			}
+			profile := host.Profiles[host.DefaultProfile]
+			profile.Execution.Model = ""
+			host.Profiles[host.DefaultProfile] = profile
+			writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+			if channel == "dingtalk" {
+				writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
+			} else {
+				_, commandMarker = meetingCommandFixtures(t)
+				cfg := meetingConfigFixture()
+				cfg.MeetingID, cfg.IMChat, cfg.OwnerOpenID = "", true, "ou_owner"
+				writeBotJSON(t, filepath.Join(dir, "channels.feishu.json"), map[string]any{"version": 1, "enabled": true, "settings": cfg})
+				blockMeetingCheckNetwork(t)
+			}
+			channels, err := discoverUnifiedChannels(dir)
+			if err != nil || len(channels) != 1 {
+				t.Fatal(channels, err)
+			}
+			layout, config, _, err := loadService(channels[0].Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.Model != "" || slices.Contains(config.arguments(layout, "check"), "--model") {
+				t.Fatal("model-free service froze an explicit model", config.Model, config.arguments(layout, "check"))
+			}
+			if err := prepareUnifiedRuntime(layout.Root); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if err := runService(t.Context(), []string{"check", "--config-dir", dir}, &out, &out); err != nil {
+				t.Fatal(err)
+			}
+			var report map[string]any
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report["model"] != "sonnet" || report["platform_verified"] != false || report["native_auth_verified"] != false {
+				t.Fatal("service check did not resolve the fixture Offload default locally", report)
+			}
+			if commandMarker != "" {
+				if _, err := os.Stat(commandMarker); !os.IsNotExist(err) {
+					t.Fatal("service check invoked the fake lark-cli", err)
+				}
+			}
+		})
+	}
+}
+
+func TestUnifiedMemoryOffloadProfileResolvesAndForwardsSelector(t *testing.T) {
+	root, dir := unifiedFixture(t)
+	selector := memorySelectorFixture(t, "claude", "unified-memory")
+	raw, err := os.ReadFile(selector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localSelector := filepath.Join(dir, "memory.offload.json")
+	if err := os.WriteFile(localSelector, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var host unifiedHost
+	if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+		t.Fatal(err)
+	}
+	profile := host.Profiles[host.DefaultProfile]
+	profile.Execution.MemoryOffloadConfig = "memory.offload.json"
+	host.Profiles[host.DefaultProfile] = profile
+	writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
+	layout, config, _, err := loadUnifiedService(filepath.Join(root, "channels", "dingtalk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.MemoryOffloadConfig != localSelector {
+		t.Fatal("unified memory selector was not resolved", config.MemoryOffloadConfig)
+	}
+	args := strings.Join(config.arguments(layout, "check"), " ")
+	if !strings.Contains(args, "--memory-offload-config "+localSelector) {
+		t.Fatal("unified memory selector was not forwarded", args)
+	}
+	unsupported := memorySelectorFixture(t, "codex", "unsupported-memory")
+	raw, err = os.ReadFile(unsupported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(localSelector, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := loadUnifiedService(filepath.Join(root, "channels", "dingtalk")); err == nil || !strings.Contains(err.Error(), "unsupported extraction backend") {
+		t.Fatalf("unified profile accepted unsupported memory selector: %v", err)
 	}
 }
 

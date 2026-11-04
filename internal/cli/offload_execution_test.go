@@ -16,12 +16,8 @@ func offloadProfileFixture(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := filepath.Join(dir, "offload")
-	if err := os.WriteFile(command, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(dir, "offload-profile.json")
-	writeBotJSON(t, path, map[string]any{"version": 1, "command": command, "profile": "fixture", "timeout": "5m"})
+	writeBotJSON(t, path, map[string]any{"version": 2, "config_path": filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "offload", "config.json"), "profile": "fixture", "timeout": "5m"})
 	return path
 }
 
@@ -32,7 +28,7 @@ func TestOffloadExecutionSelectorLoadsProfile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", entry, err)
 		}
-		if o.offloadProfile == nil || o.offloadClient == nil || o.executionProfile != nil {
+		if o.offloadProfile == nil || o.offloadClient == nil {
 			t.Fatalf("%s: %+v", entry, o)
 		}
 		if !strings.HasPrefix(o.executionFingerprint, offloadchannel.FingerprintPrefix) || o.executionFingerprint != o.offloadProfile.Fingerprint() {
@@ -53,33 +49,10 @@ func TestOffloadExecutionRejectsUnwiredEntriesAndLegacyOverrides(t *testing.T) {
 	}
 }
 
-func TestOffloadExecutionSelectorIsMutuallyExclusive(t *testing.T) {
-	_, _, acpPath := executionFixture(t)
-	offload := offloadProfileFixture(t)
-	o := options{offloadConfig: offload, executionConfig: acpPath}
-	if err := loadExecutionOptions(&o); err == nil || o.offloadProfile != nil || o.executionProfile != nil || o.executionFingerprint != "" {
-		t.Fatalf("combined selectors accepted: %+v %v", o, err)
-	}
-	if _, _, err := parse("dingtalk serve", []string{"--offload-config", offload, "--execution-config", acpPath}, io.Discard); err == nil {
-		t.Fatal("parse accepted both selectors")
-	}
-}
-
-func TestOffloadExecutionNoSelectionKeepsLegacy(t *testing.T) {
-	o, _, err := parse("dingtalk serve", []string{"--workspace", t.TempDir()}, io.Discard)
-	if err != nil || o.offloadConfig != "" || o.offloadProfile != nil || o.offloadClient != nil || o.executionProfile != nil || o.executionFingerprint != "" {
-		t.Fatalf("legacy defaults changed: %+v %v", o, err)
-	}
-	// A reload with stale offload state resets it when nothing is selected.
-	stale := options{}
-	stale.offloadProfile, stale.executionFingerprint = &offloadchannel.Profile{}, "offload:v1:stale"
-	if err := loadExecutionOptions(&stale); err != nil || stale.offloadProfile != nil || stale.offloadClient != nil || stale.executionFingerprint != "" {
-		t.Fatalf("stale state kept: %+v %v", stale, err)
-	}
-	_, _, acpPath := executionFixture(t)
-	o, _, err = parse("dingtalk serve", []string{"--execution-config", acpPath}, io.Discard)
-	if err != nil || o.executionProfile == nil || o.offloadProfile != nil || o.offloadClient != nil || strings.HasPrefix(o.executionFingerprint, offloadchannel.FingerprintPrefix) {
-		t.Fatalf("ACP selector changed: %+v %v", o, err)
+func TestOffloadDefaultSelectionIsNotACompatibilityTransport(t *testing.T) {
+	o, _, err := parse("chat", []string{"--workspace", canonicalTemp(t)}, io.Discard)
+	if err != nil || o.offloadClient == nil || o.offloadProfile == nil || o.offloadProfile.Version != 2 {
+		t.Fatalf("default selection: %+v %v", o, err)
 	}
 }
 
@@ -93,8 +66,8 @@ func TestOffloadExecutionRejectsInvalidProfile(t *testing.T) {
 	cases := map[string]string{
 		"missing":          filepath.Join(dir, "absent.json"),
 		"relative":         "offload-profile.json",
-		"unknown field":    write(t, dir, "unknown.json", strings.Replace(string(raw), `"version":1`, `"version":1,"tools":["x"]`, 1), 0o600),
-		"memory provider":  write(t, dir, "memory.json", strings.Replace(string(raw), `"version":1`, `"version":1,"memory":{"enabled":true,"provider":"unknown"}`, 1), 0o600),
+		"unknown field":    write(t, dir, "unknown.json", strings.Replace(string(raw), `"version":2`, `"version":2,"tools":["x"]`, 1), 0o600),
+		"memory provider":  write(t, dir, "memory.json", strings.Replace(string(raw), `"version":2`, `"version":2,"memory":{"enabled":true,"provider":"unknown"}`, 1), 0o600),
 		"group accessible": write(t, dir, "open.json", string(raw), 0o644),
 	}
 	for name, path := range cases {

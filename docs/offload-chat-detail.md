@@ -26,10 +26,23 @@ required. Optional `environment_file` may contain only `TYPESAFE_API_KEY` and/or
 no environment file. The launcher clears inherited native and Jev provider
 variables before adding explicitly selected classifier keys. Unsupported,
 duplicate or task/session arguments in saved destinations fail validation.
-The command, provider selection and profile digest participate in launch identity.
+The destination command, provider selection and selector digest participate in
+launch identity. Version 2 native profile snapshots also participate in Go-side
+runtime identity, so changing native configuration cannot silently reuse a session.
 A changed destination requires a new conversation, without automatic replay.
 
-CLI one-shot and explicit `--resume HOST_SESSION_ID` remain available. Web uses
+CLI accepts interactive input when `-m` is omitted; one-shot and explicit
+`--resume HOST_SESSION_ID` also remain available. Both terminal modes use the
+same Host/session/native binding and per-turn timeout. The profile snapshot is
+loaded once per invocation; profile changes require a fresh compatible entry.
+Interactive Chat holds the session lease until exit, including time waiting for
+input, and does not accept room/request IDs. It shares the existing terminal input
+loop with legacy Chat: prompts go to stderr, NDJSON events remain on stdout,
+blank lines are ignored, and messages retain the 16 KiB bound. EOF does not cancel
+an accepted turn. Input errors, execution/closeout errors and caller cancellation
+exit the loop without dispatching queued messages or retrying native work. The
+caller still owns stdin; cancellation does not close a caller-provided reader.
+Web uses
 `--room`, `--request-id` and `--received-at`. It does not add legacy renewal or
 notification flags to Offload commands. Agent settings show Offload execution
 without claiming legacy tools or datasource mounts.
@@ -47,7 +60,7 @@ only the latest receipt as a possible parent, provided it completed and sealed
 before the new input arrived and matches the runtime. Other history remains
 bounded attributed source data. An overlapping/unfinished latest receipt prevents
 resuming older, subsequently mutated native history. It starts fresh instead.
-Legacy ACP room selection is unchanged.
+Historical ACP room bindings remain readable but cannot be continued by the removed adapter.
 
 A completed linear child may bind the parent's native ID only within the same
 Offload room/runtime and owner partition. Binding verifies the latest parent,
@@ -75,7 +88,7 @@ Headless tests include a real Go CLI behind the Python Web bridge with a fake
 native executable: new room, continuation, accepted retry, persisted reload and
 owned-process cancellation. Host/state fixtures cover concurrent rooms, busy
 rooms, overlapping intake, unfinished receipts, memory failure, provenance and
-binding checks. Existing ACP/channel behavior and launcher validation retain
+binding checks. Historical channel evidence and launcher validation retain
 regressions. Automated fixtures use no real native provider, desktop or production activation.
 The [isolated live canary](offload-canary-acceptance-2026-10-30.md) separately
 records bounded real execution, continuation and memory evidence.
@@ -84,17 +97,18 @@ records bounded real execution, continuation and memory evidence.
 
 The visible Offload task is exactly the current user input. Host instructions,
 nonempty memory, quoted source material and necessary room history travel through
-Offload's `--instructions-file`, never by concatenating them into that task.
+the Go package's `Instructions` bytes, without concatenating them into that task.
 No memory block is emitted when recall selects zero records. Empty room envelopes
 and history already inherited by native continuation are omitted. The complete
 receipts and retrieval decisions remain recorded for inspection.
 
-Instruction files use a private temporary directory (`0700`) and file (`0600`),
-remain available through owned process cleanup and are then removed. Context is
-bounded by Offload's 256 KiB file contract and the combined 1 MiB input budget.
-Oversized or unsupported requests fail explicitly; there is no concatenation fallback.
-This integration requires an Offload build supporting `--instructions-file` (the
-live baseline is 0.4.0).
+The package owns private native prompt-file lifecycle and cleanup. Host enforces
+a 256 KiB internal-context limit and the combined 1 MiB input budget. Oversized
+or unsupported requests fail explicitly, without a concatenation fallback.
+The published Go package v0.8.0 requires no Offload CLI. Every call carries
+`Caller=agh` and its Host/internal correlation ID and records terminal history.
+Independent `offload.history` status reports persistence; write failure does not
+repeat work or relabel execution. Historical calls are not backfilled.
 
 Claude maps these instructions to its appended system prompt. The current
 Offload Codex adapter still wraps them internally on native stdin; this change
@@ -102,3 +116,16 @@ separates the public task/history surface, not that upstream role implementation
 Attributed memory remains source data and does not grant permissions. Existing
 native history is preserved; begin a fresh conversation to validate a clean
 visible task after upgrading.
+
+## Monitor controls
+
+All package calls opt into private per-run cancellation and bounded transcript
+capture. Direct owner CLI supplies an exact executable/argv and absolute working
+directory for explicit continuation. `--resume-canceled-run RUN_ID` requires
+one-shot direct chat, `--resume SESSION`, the latest canceled local owner run,
+matching private Offload caller/session evidence and confirmed cleanup. Normal
+session gates remain unchanged. A canceled first turn binds only a confirmed
+native session before terminal persistence. The monitor-launched CLI uses
+`--detach` to outlive the short acknowledgement process; it retains the Host
+session lease and reconstructs current context and runtime checks. No source
+content or lineage environment variable grants session permission.

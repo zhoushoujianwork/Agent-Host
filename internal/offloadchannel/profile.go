@@ -27,14 +27,21 @@ const maxProfileBytes = 32 << 10
 // Profile is the validated Offload execution profile of one channel runtime.
 type Profile struct {
 	Version int
-	// Command is the resolved absolute Offload executable.
-	Command string
+	// ConfigPath selects Offload's private native config for version 2 Go calls.
+	ConfigPath string
+	library    *offloadexec.Library
 	// Profile is the explicit Offload profile name passed to fresh runs.
 	Profile       string
 	Model         string
 	Timeout       time.Duration
 	MemoryEnabled bool
 	Memory        MemoryConfig
+}
+
+// FromLibrary builds the default Host selector from an already resolved native
+// Offload snapshot. It cannot select a CLI transport or enable memory implicitly.
+func FromLibrary(library *offloadexec.Library, timeout time.Duration) Profile {
+	return Profile{Version: 2, ConfigPath: library.ConfigPath(), Profile: library.ProfileName(), Timeout: timeout, library: library}
 }
 
 // MemoryConfig selects AGH memory components, not Offload tools or credentials.
@@ -47,12 +54,13 @@ type MemoryConfig struct {
 }
 
 type profileFile struct {
-	Version int    `json:"version"`
-	Command string `json:"command"`
-	Profile string `json:"profile"`
-	Model   string `json:"model,omitempty"`
-	Timeout string `json:"timeout"`
-	Memory  *struct {
+	Version    int    `json:"version"`
+	Command    string `json:"command"`
+	ConfigPath string `json:"config_path,omitempty"`
+	Profile    string `json:"profile"`
+	Model      string `json:"model,omitempty"`
+	Timeout    string `json:"timeout"`
+	Memory     *struct {
 		Enabled    *bool  `json:"enabled"`
 		Processing *bool  `json:"processing_enabled,omitempty"`
 		Provider   string `json:"provider,omitempty"`
@@ -62,7 +70,7 @@ type profileFile struct {
 	} `json:"memory,omitempty"`
 }
 
-// Load reads a private version 1 profile and returns it with its fingerprint.
+// Load reads a private Go package profile and its fingerprint.
 func Load(path string) (Profile, string, error) {
 	var p Profile
 	if !filepath.IsAbs(path) {
@@ -91,16 +99,17 @@ func Load(path string) (Profile, string, error) {
 	return Parse(raw)
 }
 
-// Parse validates profile JSON. It does not read credentials or Offload's own
-// configuration, and it never contacts a provider.
+// Parse validates profile JSON without contacting a provider. Version 2 loads
+// the explicit native config into an in-memory, fingerprinted SDK snapshot;
+// it does not run credential commands or persist credentials.
 func Parse(raw []byte) (Profile, string, error) {
 	var p Profile
 	var f profileFile
 	if err := mcpstdio.Decode(bytes.TrimSpace(raw), &f); err != nil {
 		return p, "", errors.New("offload configuration must be one JSON object with documented fields only")
 	}
-	if f.Version != 1 {
-		return p, "", errors.New("offload configuration requires version 1")
+	if f.Version != 2 {
+		return p, "", errors.New("only version 2 Offload Go package profiles are supported; CLI transport has been removed")
 	}
 	if f.Memory != nil {
 		if f.Memory.Enabled == nil {
@@ -111,18 +120,15 @@ func Parse(raw []byte) (Profile, string, error) {
 	if err != nil {
 		return p, "", errors.New("offload timeout must be an explicit positive duration such as 30m")
 	}
-	if !filepath.IsAbs(f.Command) || filepath.Clean(f.Command) != f.Command {
-		return p, "", errors.New("offload command must be a clean absolute path")
+	p = Profile{Version: f.Version, Profile: f.Profile, Model: f.Model, Timeout: timeout}
+	if f.Command != "" {
+		return Profile{}, "", errors.New("Offload CLI command is no longer supported")
 	}
-	resolved, err := filepath.EvalSymlinks(f.Command)
+	p.ConfigPath = f.ConfigPath
+	p.library, err = offloadexec.NewLibrary(f.ConfigPath, f.Profile, f.Model, timeout)
 	if err != nil {
-		return p, "", errors.New("configured Offload executable is unavailable")
+		return Profile{}, "", err
 	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return p, "", errors.New("configured Offload command must be an executable regular file")
-	}
-	p = Profile{Version: 1, Command: resolved, Profile: f.Profile, Model: f.Model, Timeout: timeout}
 	if f.Memory != nil && *f.Memory.Enabled {
 		p.MemoryEnabled = true
 		p.Memory = MemoryConfig{Processing: true, Provider: "typesafe", Model: jev.DefaultModel, Timeout: 30 * time.Second}
@@ -163,15 +169,15 @@ func Parse(raw []byte) (Profile, string, error) {
 			}
 		}
 	}
-	if err := p.ClientConfig().Validate(); err != nil {
-		return Profile{}, "", err
-	}
 	return p, p.Fingerprint(), nil
 }
 
-// ClientConfig returns the executor configuration for this profile.
-func (p Profile) ClientConfig() offloadexec.Config {
-	return offloadexec.Config{Command: p.Command, Profile: p.Profile, Model: p.Model, Timeout: p.Timeout}
+// NewClient returns only the resolved in-process package client.
+func (p Profile) NewClient() (offloadexec.Executor, error) {
+	if p.library == nil {
+		return nil, errors.New("Offload requires a loaded Go package profile")
+	}
+	return p.library, nil
 }
 
 // Fingerprint identifies every setting that changes how Offload is invoked.
@@ -180,15 +186,15 @@ func (p Profile) Fingerprint() string {
 	if p.MemoryEnabled {
 		memoryConfig = &p.Memory
 	}
+	native := ""
+	if p.library != nil {
+		native = p.library.Fingerprint()
+	}
 	canonical, _ := json.Marshal(struct {
-		Version      int           `json:"version"`
-		Command      string        `json:"command"`
-		Profile      string        `json:"profile"`
-		Model        string        `json:"model"`
-		Timeout      string        `json:"timeout"`
-		Memory       bool          `json:"memory"`
-		MemoryConfig *MemoryConfig `json:"memory_config,omitempty"`
-	}{p.Version, p.Command, p.Profile, p.Model, p.Timeout.String(), p.MemoryEnabled, memoryConfig})
+		Version                                             int
+		ConfigPath, Profile, Model, Timeout, NativeSnapshot string
+		Memory                                              *MemoryConfig
+	}{p.Version, p.ConfigPath, p.Profile, p.Model, p.Timeout.String(), native, memoryConfig})
 	sum := sha256.Sum256(canonical)
 	return FingerprintPrefix + hex.EncodeToString(sum[:])
 }

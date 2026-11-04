@@ -15,8 +15,7 @@ import (
 	"agent-host/internal/componentconfig"
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/email"
-	"agent-host/internal/harness/acp"
-	"agent-host/internal/harness/claude"
+	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/knowledge"
 	"agent-host/internal/mcpstdio"
 	"agent-host/internal/offloadchannel"
@@ -105,7 +104,7 @@ func discoverUnifiedChannels(directory string) ([]configuredChannel, error) {
 			if _, err := privateServicePath(path, false); err != nil {
 				return nil, err
 			}
-			if _, _, err := acp.Load(path); err != nil {
+			if _, _, err := offloadchannel.Load(path); err != nil {
 				return nil, fmt.Errorf("%s: %w", name, err)
 			}
 			continue
@@ -266,6 +265,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 	}
 	c := p.Execution
 	c.OffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.OffloadConfig)
+	c.MemoryOffloadConfig = componentconfig.Resolve(filepath.Join(directory, "host.json"), c.MemoryOffloadConfig)
 	usesMemory := c.OffloadConfig == ""
 	if c.OffloadConfig != "" {
 		profile, _, err := offloadchannel.Load(c.OffloadConfig)
@@ -334,7 +334,7 @@ func loadUnifiedService(root string) (serviceLayout, serviceConfig, map[string]s
 				return layout, c, nil, errors.New("invalid provider environment")
 			}
 		}
-		if _, err := claude.NativeStreamEnvironment(env); err != nil {
+		if _, err := nativepolicy.NativeStreamEnvironment(env); err != nil {
 			return layout, c, nil, err
 		}
 	}
