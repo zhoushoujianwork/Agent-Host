@@ -11,12 +11,13 @@ and project, assembles context and tools, executes through Offload and retains
 attributed evidence and reusable memory. Optional Web/Mac surfaces present the
 same Host records and configured conversation entries.
 
-`agent-host chat` uses the configured Offload default profile. Routed Agents without
-an explicit selector re-resolve the default for each request; configuration changes
-update runtime compatibility instead of silently reusing an incompatible session.
-Explicit Agent selectors and model overrides remain available. Deployments requiring
-Claude-only controls retain a compatible selector until Codex parity is verified. ACP, direct
-Host-managed native execution and Offload CLI compatibility are removed.
+`agent-host chat` follows the current configured Offload default when neither the
+CLI nor the routed Agent selects a profile or model. Daily use should normally
+inherit that default. Pin a selector only for an explicit user request or an
+evidence-backed compatibility or troubleshooting need; selection never enables
+silent backend fallback. ACP, direct Host-managed native execution and Offload
+CLI compatibility are removed. Unbound routed Agents re-resolve the default for
+each request and preserve runtime compatibility checks.
 [Execution scope and migration](offload-execution-boundary.md) distinguish source
 behavior from installed production adoption.
 
@@ -67,9 +68,11 @@ matching usage guidance. Integration libraries have explicit configuration and
 lifecycle; no generic loader or extra Host model/tool loop is introduced.
 
 Existing native sessions and historical ACP records stay intact. Configuration
-or backend changes start new compatible conversations rather than silently
-adopting native state. Production configuration, binaries and channel identities
-remain separate from development tests.
+or backend/model changes start new compatible conversations rather than silently
+adopting or migrating incompatible native state. Unsupported capabilities retain
+their errors and evidence; they do not trigger provider fallback or automatic
+replay of work with side effects. Production configuration, binaries and channel
+identities remain separate from development tests.
 
 ## Remaining work
 

@@ -8,6 +8,22 @@ Resolve the skill directory before invoking its script. The default remains raw
 JSON events for compatibility; `--format text|json` and `--resume SESSION_ID`
 retain their existing behavior. Prefer result mode for routine delegation.
 
+Ordinary daily chat inherits the current Offload default when neither the CLI nor
+the routed Agent selects execution. Before relying on that inheritance, inspect
+both the saved launcher's `args` and the selected entry in the Agent catalog:
+Agent `offload_config` and `model` bindings and Direct CLI overrides take priority
+over the global default. Omitting an option from a new command does not remove a
+binding already saved on the Agent. `--agent` selects the Host identity and
+`--native-profile` selects its native state directory; neither is an Offload model
+profile, and both remain required destination arguments where configured.
+
+Do not invent `chat.py --profile` or `chat.py --offload-config` options. For an
+explicit, evidence-backed diagnostic selection, use an existing standalone
+launcher destination selected with `chat.py --config`, or use Direct CLI's
+supported `--offload-config` selector and a separate Agent catalog. Keep these
+diagnostic choices explicit and isolated; do not rewrite the production daily
+configuration as part of a handoff.
+
 Result mode creates a private evidence directory under the configuration's
 `handoffs/` directory, announces its path immediately on stderr, and returns one
 JSON object on stdout after execution. `--output-dir /absolute/new-directory`
@@ -77,6 +93,8 @@ same `--config` for a custom destination. Configuration changes are an explicit
 blocker, including model/profile changes. The comparison checks destination
 options, not the contents of all referenced files; keep the intended runtime
 configuration stable and review intentional configuration edits before resuming.
+When the backend or model changes, start a new compatible conversation and retain
+the old session as evidence; never silently migrate or inherit its native state.
 
 A nonzero child exit is preserved. SIGINT/SIGTERM are forwarded to the child's
 process group and the observed exit is saved. If the launcher is killed before
@@ -144,8 +162,8 @@ runtime/configuration flags on follow-up and inspection commands. Chat does not
 inherit a running channel service's configuration or memory connection alias.
 Pass its required `--agents-config`, `--knowledge-config`, `--email-config` or
 `--dingtalk-workspace-config` paths explicitly when needed; do not copy secrets
-into the task text. Native Claude and configured Jev authentication must already
-be available; report missing setup without switching engines.
+into the task text. Authentication for the selected native backend and configured
+Jev must already be available; report missing setup without switching engines.
 
 For example, replace every placeholder below from the intended configuration:
 
@@ -158,8 +176,11 @@ agent-host chat --home /absolute/host/cli-state \
 
 Use `--project REGISTERED_ID` instead of `--workspace` for a known registered
 project. Those selectors are mutually exclusive. `--agent` selects a configured
-Host role, not a Codex/Claude backend. Host currently executes through Claude;
-Codex execution inside Host is a scaffold. External Codex and Claude can both
+Host role, not a Codex/Claude backend. Full Host native controls currently require
+Claude; the lightweight text Host supports its documented Claude/Codex subset.
+Preserve an unsupported-capability error and its evidence, then choose a verified
+compatible configuration only within the task's authorization; do not silently
+fall back or replay a turn with side effects. External Codex and Claude can both
 call this CLI without becoming Host execution adapters.
 
 `-m` runs one turn and exits; messages are limited to 16 KiB. Supply concise

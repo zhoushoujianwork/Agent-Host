@@ -121,10 +121,14 @@ make build
 ```
 
 Optional `--offload-config` selects a version 2 profile; omitted uses the Offload
-default. Routed Agents without a selector read the current default for each request;
-explicit selectors remain available for deployments needing backend-specific controls.
-ACP and the Offload CLI transport have been
-removed. See the
+default unless the routed Agent already binds an `offload_config` or model. Daily
+chat should normally inherit the current default. Select a profile or model only
+when the user requests it or compatibility or troubleshooting evidence requires
+it; a backend/model change starts a new compatible conversation instead of
+migrating an old native session. Unsupported Full Host controls still fail
+explicitly rather than falling back or replaying work. ACP and the Offload CLI
+transport have been removed. Routed Agents without a selector re-resolve the
+default for each request. See the
 [execution contract](docs/offload-execution-boundary.md) before migrating existing
 configuration or native conversations.
 

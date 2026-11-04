@@ -35,6 +35,16 @@ saved `~/.config/agent-host/task-handoff.json`, normal handoffs need no runtime
 flags. `--check` validates setup without executing work. Use
 [the CLI handoff reference](references/handoff.md) for setup and recovery.
 
+For ordinary daily chat, do not add or require a fixed Offload selector, model or
+backend: inherit the current Offload default when the saved destination and routed
+Agent leave them unset. Use an explicit selection only when the user asks for it
+or retained evidence establishes a compatibility or troubleshooting need. First
+check the saved launcher arguments and Agent catalog because omitting a command
+argument does not clear an existing Agent binding. Preserve unsupported-capability
+errors and evidence; never silently fall back, replay side effects or continue an
+incompatible native session. The reference explains selection and compatible
+session handling.
+
 ```sh
 python3 /absolute/skill/scripts/chat.py --format result -m 'Objective and target: ... Context: ... Authorized actions and exclusions: ... Done when: ... Execute directly without delegation. Return DONE, BLOCKED or FAILED, actual changes, checks/evidence and any decision needed.'
 python3 /absolute/skill/scripts/chat.py --inspect /absolute/handoff-evidence
