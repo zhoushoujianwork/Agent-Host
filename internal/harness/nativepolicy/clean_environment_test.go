@@ -8,6 +8,27 @@ import (
 	"agent-host/internal/harness"
 )
 
+func TestControlledClaudePluginRejectsNestedDeclarations(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{"SKILL.md", "nested/SKILL.md"} {
+		if err := os.WriteFile(filepath.Join(root, relative), []byte("selected Skill"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if bundle, cleanup, err := controlledClaudePlugin([]string{root}); err == nil {
+		cleanup()
+		t.Fatalf("undeclared nested Skill was bundled: %s", bundle)
+	}
+	_, cleanup, err := controlledClaudePlugin([]string{filepath.Join(root, "nested")})
+	if err != nil {
+		t.Fatalf("explicit leaf selection failed: %v", err)
+	}
+	cleanup()
+}
+
 func TestHostSessionEnvironmentIsolationReuseAndMissingResume(t *testing.T) {
 	profile := t.TempDir()
 	profile, _ = filepath.EvalSymlinks(profile)

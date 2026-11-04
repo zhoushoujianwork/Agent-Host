@@ -27,21 +27,30 @@ func (a *Adapter) runCodex(ctx context.Context, req harness.Request, emit func(h
 		}
 		skillManifest = &manifest
 	}
-	skillRoots, err := approvedSkillRoots(req.NativeProfile, req.SkillPluginDir)
-	if err != nil {
-		return result, err
-	}
 	environment, cleanupEnvironment, err := executionEnvironment(req)
 	if err != nil {
 		return result, err
 	}
 	defer cleanupEnvironment()
+	taskPackage := req.SkillPluginDir
+	var skillMount *harness.SkillMount
+	if taskPackage != "" {
+		taskPackage, err = mountTaskSkillPackage(environment.Root, taskPackage, req.SkillPluginDigest)
+		if err != nil {
+			return result, err
+		}
+		skillMount = &harness.SkillMount{Digest: req.SkillPluginDigest, Directory: taskPackage}
+	}
+	skillRoots, err := approvedSkillRoots(req.NativeProfile, taskPackage)
+	if err != nil {
+		return result, err
+	}
 	if emit != nil && len(skillRoots) > 0 {
 		provided, message := any(map[string]any{"roots": skillRoots}), "provided Host-selected native Skills"
 		if skillManifest != nil {
 			provided, message = *skillManifest, "provided task-scoped native Skills"
 		}
-		if err = emit(harness.Observation{Type: "skills_provided", Message: message, Raw: mustJSON(provided)}); err != nil {
+		if err = emit(harness.Observation{Type: "skills_provided", Message: message, Raw: mustJSON(provided), SkillMount: skillMount}); err != nil {
 			return result, err
 		}
 	}

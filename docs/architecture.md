@@ -56,6 +56,17 @@ supports explicit Host-managed Skill roots, MCP, observed-model evidence and
 native thread continuation. Strict tool-free and restricted Codex requests fail
 before dispatch. Deployment acceptance is separate from source validation.
 
+Skills are explicit Agent capabilities: omitted, null or empty `native_skills`
+selects none, including for the default owner Agent. Catalog profiles never
+inherit global native Skills or settings. Each selected directory identifies
+exactly its own `SKILL.md`; nested declarations require their own selection.
+Codex configures native enablement before opening a thread and verifies that
+the enabled paths equal the assembled manifest. Built-in, cloud, plugin and
+unselected declarations are disabled; configuration failures stop execution.
+Claude controlled plugins accept leaf Skills and reject a selected directory
+containing nested Skill declarations until equivalent native enablement is
+verified; they do not silently expand the selection.
+
 Claude and Codex business execution use a private environment per stable Host
 conversation. The native cwd is an empty Host-owned runtime workspace; the task
 workspace and additional directories are explicit resource roots. Continuation

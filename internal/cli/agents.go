@@ -88,9 +88,6 @@ func loadAgents(path string) (agentCatalog, error) {
 				}
 				a.NativeSkillsRoot = filepath.Join(catalogDirectory, a.NativeSkillsRoot)
 			}
-			if len(a.NativeSkills) == 0 {
-				return c, fmt.Errorf("agent %s native_skills_root requires an explicit nonempty native_skills selection", a.ID)
-			}
 			if err := validateNativeSkillsRoot(a.NativeSkillsRoot); err != nil {
 				return c, fmt.Errorf("agent %s native skills root: %w", a.ID, err)
 			}
@@ -298,9 +295,6 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 	o.nativeProfile = profile
 	nativeSkillsBase := profile
 	if a.NativeSkillsRoot != "" {
-		if len(a.NativeSkills) == 0 {
-			return o, errors.New("native_skills_root requires an explicit nonempty native_skills selection")
-		}
 		if err := validateNativeSkillsRoot(a.NativeSkillsRoot); err != nil {
 			return o, fmt.Errorf("agent %s native skills root: %w", a.ID, err)
 		}
@@ -309,46 +303,36 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 	if err := validateNativeSkillSelection(nativeSkillsBase, a.NativeSkills); err != nil {
 		return o, err
 	}
-	if a.NativeSkillsRoot != "" {
-		fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, a.NativeSkills)
-		if err != nil {
-			return o, fmt.Errorf("agent %s native skills fingerprint: %w", a.ID, err)
-		}
-		o.nativeSkillsFingerprint = fingerprint
-	} else {
-		o.nativeSkillsFingerprint = ""
+	fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, a.NativeSkills)
+	if err != nil {
+		return o, fmt.Errorf("agent %s native skills fingerprint: %w", a.ID, err)
 	}
-	if a.ID != "default" || audience != "owner" || a.NativeSkills != nil {
-		o.nativeProfile = filepath.Join(profile, "instances", a.ID, "audiences", channel.Key(audience))
-		if a.NativeSkills != nil {
-			o.nativeProfile = filepath.Join(o.nativeProfile, "skill-sets", nativeSkillSelectionID(a.NativeSkills))
+	o.nativeSkillsFingerprint = fingerprint
+	selectedSkills := append([]string{}, a.NativeSkills...)
+	o.nativeProfile = filepath.Join(profile, "instances", a.ID, "audiences", channel.Key(audience), "skill-sets", nativeSkillSelectionID(selectedSkills))
+	if prepare {
+		if err := prepareSelectedAgentProfileFrom(nativeSkillsBase, o.nativeProfile, selectedSkills); err != nil {
+			return o, err
 		}
-		if prepare {
-			if err := prepareSelectedAgentProfileFrom(profile, nativeSkillsBase, o.nativeProfile, a.NativeSkills, a.NativeSkillsRoot != ""); err != nil {
-				return o, err
-			}
-			if a.NativeSkillsRoot != "" {
-				fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, a.NativeSkills)
-				if err != nil || fingerprint != o.nativeSkillsFingerprint {
-					return o, errors.New("selected native skill source changed while preparing the Agent profile")
-				}
-			}
+		fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, selectedSkills)
+		if err != nil || fingerprint != o.nativeSkillsFingerprint {
+			return o, errors.New("selected native skill source changed while preparing the Agent profile")
 		}
 	}
 	return o, nil
 }
 
-// Legacy profiles share only managed settings; explicit Skill roots use empty
-// controlled settings. Conversation state and instruction files are never shared.
+// Routed Agent profiles always use controlled settings and exact Skill mounts.
+// Conversation state, ambient settings and unselected Skills are never shared.
 func prepareAgentProfile(base, destination string) error {
-	return prepareSelectedAgentProfile(base, destination, nil)
+	return prepareSelectedAgentProfile(base, destination, []string{})
 }
 
 func prepareSelectedAgentProfile(base, destination string, skills []string) error {
-	return prepareSelectedAgentProfileFrom(base, base, destination, skills, false)
+	return prepareSelectedAgentProfileFrom(base, destination, append([]string{}, skills...))
 }
 
-func prepareSelectedAgentProfileFrom(base, skillsBase, destination string, skills []string, controlledSettings bool) error {
+func prepareSelectedAgentProfileFrom(skillsBase, destination string, skills []string) error {
 	if err := os.MkdirAll(destination, 0700); err != nil {
 		return err
 	}
@@ -356,15 +340,6 @@ func prepareSelectedAgentProfileFrom(base, skillsBase, destination string, skill
 		return fmt.Errorf("agent native profile: %w", err)
 	}
 	settings := []byte("{}\n")
-	if !controlledSettings {
-		var err error
-		settings, err = os.ReadFile(filepath.Join(base, "settings.json"))
-		if errors.Is(err, os.ErrNotExist) {
-			settings = []byte("{}\n")
-		} else if err != nil {
-			return errors.New("cannot read shared native settings")
-		}
-	}
 	path := filepath.Join(destination, "settings.json")
 	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
 		return errors.New("agent native settings must be a regular file")
@@ -376,10 +351,7 @@ func prepareSelectedAgentProfileFrom(base, skillsBase, destination string, skill
 			return err
 		}
 	}
-	if skills == nil {
-		return inheritNativeSkills(base, destination)
-	}
-	return mountSelectedNativeSkills(skillsBase, destination, skills)
+	return mountSelectedNativeSkills(skillsBase, destination, append([]string{}, skills...))
 }
 
 func checkAgents(ctx context.Context, agents agentCatalog, o options) error {

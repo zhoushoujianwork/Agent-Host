@@ -46,6 +46,29 @@ func TestOffloadRoomsOverlapAndUnknownNeverResumeOrReplay(t *testing.T) {
 	}
 }
 
+func TestCleanNativeRoomContinuationReusesOriginalEnvironment(t *testing.T) {
+	f := newFixture(t)
+	profile := enableCleanNativeProfile(t, f)
+	firstInput := roomInput("first", "first")
+	firstInput.ReceivedAt = time.Now().UTC()
+	first, err := f.host.RunRoom(t.Context(), firstInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInput := roomInput("second", "second")
+	secondInput.ReceivedAt = time.Now().UTC()
+	second, err := f.host.RunRoom(t.Context(), secondInput)
+	if err != nil || second.NativeSessionID != first.NativeSessionID || second.SessionID == first.SessionID {
+		t.Fatalf("room continuation=%+v first=%+v err=%v", second, first, err)
+	}
+	if _, err = os.Stat(filepath.Join(profile, "environments", first.SessionID, "environment.json")); err != nil {
+		t.Fatal("original room environment missing", err)
+	}
+	if _, err = os.Stat(filepath.Join(profile, "environments", second.SessionID)); !os.IsNotExist(err) {
+		t.Fatal("room continuation created a disconnected environment", err)
+	}
+}
+
 func TestOffloadRoomLeaseAndRecoveryProtectActiveRun(t *testing.T) {
 	f := newFixture(t)
 	f.host.Sink = nil
@@ -55,6 +78,11 @@ func TestOffloadRoomLeaseAndRecoveryProtectActiveRun(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { _, err := f.host.RunRoom(ctx, roomInput("one", "slow")); done <- err }()
 	for deadline := time.Now().Add(5 * time.Second); f.calls() == 0 && time.Now().Before(deadline); {
+		select {
+		case err := <-done:
+			t.Fatalf("room execution ended before native startup: %v", err)
+		default:
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	if f.calls() != 1 {

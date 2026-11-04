@@ -687,6 +687,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 			return err
 		}
 	}
+	if err := selectNoCatalogChatProfile(command, &o); err != nil {
+		return err
+	}
 	if command == "chat" && o.oneShot {
 		applyNonOwnerDebugPolicy(&o)
 		o.retrievalQuery = o.message

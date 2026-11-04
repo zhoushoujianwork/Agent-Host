@@ -273,8 +273,9 @@ class SettingsStore:
                     raise ValueError("Every Agent needs a name.")
                 if agent.get("workspace") and (not isinstance(agent["workspace"], str) or not Path(agent["workspace"]).is_absolute() or not Path(agent["workspace"]).is_dir()):
                     raise ValueError("The Agent workspace must be an existing absolute directory.")
-                if is_web and agent.get("native_skills_root") and not agent.get("native_skills"):
-                    raise ValueError("Agent native Skill root requires an explicit nonempty selection.")
+                explicit_skills = None
+                if is_web and agent.get("native_skills_root"):
+                    explicit_skills = explicit_agent_skill_ids(path, agent["native_skills_root"])
                 for field, choices in (("native_skills", "skills"), ("knowledge_sources", "knowledge_sources")):
                     selected = agent.get(field)
                     if selected is None:
@@ -282,8 +283,7 @@ class SettingsStore:
                     if not isinstance(selected, list) or not all(isinstance(s, str) and s and s.strip() == s and not any(c in s for c in "\x00\r\n") for s in selected) or len(set(selected)) != len(selected):
                         raise ValueError("Agent capabilities must contain distinct installed identifiers.")
                     if is_web:
-                        explicit_root = agent.get("native_skills_root") if field == "native_skills" else None
-                        installed = explicit_agent_skill_ids(path, explicit_root) if explicit_root else {c["id"] for c in capability_options[choices]}
+                        installed = explicit_skills if field == "native_skills" and explicit_skills is not None else {c["id"] for c in capability_options[choices]}
                         if not set(selected) <= installed:
                             raise ValueError("Selected Agent capability is unavailable in this Web connection.")
         if path == self.handoff:

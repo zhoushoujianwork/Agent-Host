@@ -119,7 +119,7 @@ func TestAgentRuntimeUsesPinnedIdentityAndIndependentProfiles(t *testing.T) {
 		t.Fatalf("instance runtime not propagated: %+v", runtime)
 	}
 	entries, err := os.ReadDir(runtime.NativeProfile)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "settings.json" {
+	if err != nil || len(entries) != 2 || entries[0].Name() != "settings.json" || entries[1].Name() != "skills" {
 		t.Fatalf("private history/instructions copied: %+v %v", entries, err)
 	}
 	if _, _, err := child.ResolveHost(ctx, "b"); err == nil {

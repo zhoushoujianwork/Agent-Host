@@ -40,7 +40,7 @@ cat > "$dir/stdin.$n"
 (while [ $# -gt 0 ]; do case "$1" in --append-system-prompt-file) cp "$2" "$dir/instructions.$n";; esac; shift; done)
 session="native-$n"
 while [ $# -gt 0 ]; do
- case "$1" in --resume) session="$2"; shift;; esac
+ case "$1" in --resume|--session-id) session="$2"; shift;; esac
  shift
 done
 printf '{"type":"system","subtype":"init","session_id":"%s","model":"m"}\n' "$session"
@@ -319,8 +319,8 @@ func TestOffloadChannelFactoryAndNoLegacyRequirements(t *testing.T) {
 			t.Fatalf("%s check: %q %v", kind, out.String(), err)
 		}
 	}
-	if _, err := os.Stat(o.home); !os.IsNotExist(err) {
-		t.Fatalf("check created Host state: %v", err)
+	if entries, err := os.ReadDir(filepath.Join(o.nativeProfile, "skills")); err != nil || len(entries) != 0 {
+		t.Fatalf("check did not create an empty clean native profile: %+v %v", entries, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "count")); !os.IsNotExist(err) {
 		t.Fatal("check launched Offload")
@@ -346,7 +346,7 @@ func TestOffloadChannelTwoTurnsReuseNativeSessionAndCanonicalProfile(t *testing.
 			if run1.SessionID != run2.SessionID || m1.SessionID != m2.SessionID {
 				t.Fatalf("turns used different Host sessions: %s %s", run1.SessionID, run2.SessionID)
 			}
-			if run1.NativeSessionID != "native-1" || run2.NativeSessionID != "native-1" {
+			if state.IsOffloadPending(run1.NativeSessionID) || run1.NativeSessionID == "" || run2.NativeSessionID != run1.NativeSessionID {
 				t.Fatalf("native sessions = %q %q", run1.NativeSessionID, run2.NativeSessionID)
 			}
 			for _, run := range []state.Run{run1, run2} {
@@ -376,7 +376,7 @@ func TestOffloadChannelTwoTurnsReuseNativeSessionAndCanonicalProfile(t *testing.
 			if !strings.Contains(first1, "\n--print\n") || strings.Contains(first1, "\n--resume\n") {
 				t.Fatalf("first argv = %q", first1)
 			}
-			if !strings.Contains(second1, "\n--resume\nnative-1\n") {
+			if !strings.Contains(second1, "\n--resume\n"+run1.NativeSessionID+"\n") {
 				t.Fatalf("continuation argv = %q", second1)
 			}
 
@@ -552,8 +552,8 @@ func TestOffloadChannelRejectsUnsupportedSettingsBeforeLaunch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "count")); !os.IsNotExist(err) {
 		t.Fatal("an unsupported setting launched Offload")
 	}
-	if _, err := os.Stat(base.home); !os.IsNotExist(err) {
-		t.Fatalf("an unsupported setting created Host state: %v", err)
+	if _, err := os.Stat(filepath.Join(base.home, "state.db")); !os.IsNotExist(err) {
+		t.Fatalf("an unsupported setting created durable Host state: %v", err)
 	}
 }
 
@@ -583,7 +583,7 @@ func TestOffloadChannelRejectsFeishuMeetingCombinations(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "count")); !os.IsNotExist(err) {
 		t.Fatal("meeting combination launched Offload")
 	}
-	if _, err := os.Stat(o.home); !os.IsNotExist(err) {
-		t.Fatalf("meeting combination created Host state: %v", err)
+	if _, err := os.Stat(filepath.Join(o.home, "state.db")); !os.IsNotExist(err) {
+		t.Fatalf("meeting combination created durable Host state: %v", err)
 	}
 }

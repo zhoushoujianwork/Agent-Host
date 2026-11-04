@@ -35,42 +35,8 @@ func validateNativeSkillsRoot(root string) error {
 	return nil
 }
 
-// Skills are operator-installed capabilities, unlike audience conversation state.
-// Inherit only the explicit base profile's skill directory. Never discover a
-// different home profile implicitly or copy sessions, credentials or memory.
-func inheritNativeSkills(base, destination string) error {
-	source := filepath.Join(base, "skills")
-	target := filepath.Join(destination, "skills")
-	info, err := os.Stat(source)
-	if errors.Is(err, os.ErrNotExist) {
-		if link, linkErr := os.Readlink(target); linkErr == nil && link == source {
-			return os.Remove(target)
-		}
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return errors.New("base native skills must be a directory")
-	}
-	if existing, err := os.Lstat(target); err == nil {
-		if existing.IsDir() {
-			// An audience-specific directory is an explicit local override.
-			return nil
-		}
-		if link, err := os.Readlink(target); err == nil && link == source {
-			return nil
-		}
-		return errors.New("native skills destination conflicts with base inheritance")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return os.Symlink(source, target)
-}
-
-// Explicit selections only mount installed user skills from this native profile.
-// Native commands/plugins, workspace skills and Host-selected memory skills remain native.
+// Explicit selections mount only named Skills from the configured source.
+// Host-managed task Skills are assembled separately and never grant permissions.
 func validateNativeSkillSelection(base string, names []string) error {
 	seen := map[string]bool{}
 	for _, name := range names {
@@ -98,7 +64,10 @@ func nativeSkillSelectionFingerprint(base string, names []string) (string, error
 	ordered := append([]string(nil), names...)
 	sort.Strings(ordered)
 	digest := sha256.New()
-	writeNativeSkillDigestField(digest, base)
+	writeNativeSkillDigestField(digest, "exact-native-skills-v1")
+	if len(ordered) > 0 {
+		writeNativeSkillDigestField(digest, base)
+	}
 	for _, name := range ordered {
 		writeNativeSkillDigestField(digest, name)
 		root, err := filepath.EvalSymlinks(filepath.Join(base, "skills", name))
@@ -169,6 +138,13 @@ func mountSelectedNativeSkills(base, destination string, names []string) error {
 		return err
 	}
 	target := filepath.Join(destination, "skills")
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(target); err != nil {
+			return err
+		}
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := os.MkdirAll(target, 0700); err != nil {
 		return err
 	}

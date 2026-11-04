@@ -295,8 +295,11 @@ func TestFeishuMeetingAgentRuntimeRejectsCrossPlatformAndPrivateBindings(t *test
 		t.Fatal("meeting runtime did not retain public, isolated audience policy")
 	}
 	entries, err := os.ReadDir(h.Config.NativeProfile)
-	if err != nil || len(entries) != 1 || entries[0].Name() != "settings.json" {
+	if err != nil || len(entries) != 2 || entries[0].Name() != "settings.json" || entries[1].Name() != "skills" || !entries[1].IsDir() {
 		t.Fatalf("meeting profile inherited owner instructions or history: %+v %v", entries, err)
+	}
+	if skills, err := os.ReadDir(filepath.Join(h.Config.NativeProfile, "skills")); err != nil || len(skills) != 0 {
+		t.Fatalf("meeting profile inherited unselected Skills: %+v %v", skills, err)
 	}
 	for name, mutate := range map[string]func(*state.ChannelMessage){
 		"DingTalk audience": func(m *state.ChannelMessage) {

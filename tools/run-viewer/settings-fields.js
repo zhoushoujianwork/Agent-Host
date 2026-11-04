@@ -3,6 +3,10 @@
 // Only first-use choices are exposed. Unlisted values remain in the saved draft.
 window.AGHSettings = {
   section(file) { return file.category === "providers" ? "models" : file.category; },
+  capabilitySelection(field, mode, options) {
+    if (mode === "inherit") return null;
+    return field === "native_skills" ? [] : options.map(option => option.id);
+  },
   fields(value, category, secret = false) {
     const fields = [];
     const add = (path, label, hint = "", options = null, fallback = "") => {
