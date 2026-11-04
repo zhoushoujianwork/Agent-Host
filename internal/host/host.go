@@ -692,6 +692,14 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 				s.NativeSessionID, r.NativeSessionID = o.NativeSessionID, o.NativeSessionID
 			}
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
+			if o.Type == "skills_provided" {
+				if err := skillLoads.bindMount(skillPackage, o.SkillMount); err != nil {
+					return err
+				}
+				if o.SkillMount != nil {
+					e.Data["skill_mount"] = o.SkillMount
+				}
+			}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool
 			}

@@ -68,6 +68,14 @@ type Observation struct {
 	NativeSessionID string
 	Raw             json.RawMessage
 	Tool            *ToolObservation
+	SkillMount      *SkillMount
+}
+
+// SkillMount identifies a Host-controlled package copy used by the native
+// engine. It is trusted adapter metadata, never parsed from native output.
+type SkillMount struct {
+	Digest    string `json:"digest"`
+	Directory string `json:"directory"`
 }
 
 // ToolObservation normalizes native calls/results without inventing verification.

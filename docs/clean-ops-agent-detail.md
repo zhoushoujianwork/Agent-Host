@@ -54,6 +54,13 @@ symlink, nonprivate directory, or compatibility executor fails before dispatch.
 Full Host CLI chat without an Agent catalog selects the same controlled empty
 profile while preserving its explicitly configured projects, context, MCP,
 knowledge, memory, permission and task-scoped Skill package assembly.
+Codex copies each validated task-scoped Skill package into the conversation
+environment under its content digest. Equal published content therefore keeps
+one canonical native Skill path across turns, while changed content retains a
+different path and cannot silently resume the prior environment binding.
+Load evidence retains both the original published package root and the verified
+controlled mount root; reference attribution requires an exact path under one
+of those roots and never relies on a matching suffix.
 The canonical profile path plus `environment=v2;exact-skills=v1` participates in
 runtime compatibility, so sessions created by the former ambient path cannot be
 adopted. Serialized room continuations reuse the original room environment while
