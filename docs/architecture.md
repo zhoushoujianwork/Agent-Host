@@ -11,9 +11,11 @@ and project, assembles context and tools, executes through Offload and retains
 attributed evidence and reusable memory. Optional Web/Mac surfaces present the
 same Host records and configured conversation entries.
 
-`agent-host chat` uses the configured Offload default profile. Full Host deployments
-should pin an explicit `--offload-config` version 2 selector on each routed Agent so
-a global default change cannot silently switch their backend or capability set. ACP, direct
+`agent-host chat` uses the configured Offload default profile. Routed Agents without
+an explicit selector re-resolve the default for each request; configuration changes
+update runtime compatibility instead of silently reusing an incompatible session.
+Explicit Agent selectors and model overrides remain available. Deployments requiring
+Claude-only controls retain a compatible selector until Codex parity is verified. ACP, direct
 Host-managed native execution and Offload CLI compatibility are removed.
 [Execution scope and migration](offload-execution-boundary.md) distinguish source
 behavior from installed production adoption.
@@ -46,6 +48,10 @@ flowchart LR
 ```
 
 ## Delivered scope
+
+The initial [Codex owner path](codex-host-controls.md) supports MCP and native
+session continuation through the pinned companion Offload implementation. Other
+native controls remain explicitly unsupported; production cutover is pending.
 
 The full Host preserves Claude MCP, Skills, permissions, images, structured
 extraction, native forks and streamed evidence through package native controls.

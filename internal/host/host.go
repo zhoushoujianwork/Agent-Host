@@ -194,7 +194,11 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 }
 
 func (h *Host) newSession() state.Session {
-	return state.Session{AgentID: partitionAgent(h.Config.AgentID), AudienceID: partitionAudience(h.Config.AudienceID), Projects: append([]state.ProjectRef(nil), h.Config.Projects...), AdditionalDirectories: append([]string(nil), h.Config.AdditionalDirectories...), ID: ID(), Scope: h.Config.Scope, ProjectID: h.Config.ProjectID, ProjectName: h.Config.ProjectName, Workspace: h.workspace(), RuntimeFingerprint: h.Config.RuntimeFingerprint, Model: h.Config.Model, NativeSessionID: ID(), CreatedAt: time.Now().UTC()}
+	nativeID := ID()
+	if generator, ok := h.Runner.(interface{ GeneratesSessionID() bool }); ok && generator.GeneratesSessionID() {
+		nativeID = state.OffloadPendingPrefix + nativeID
+	}
+	return state.Session{AgentID: partitionAgent(h.Config.AgentID), AudienceID: partitionAudience(h.Config.AudienceID), Projects: append([]state.ProjectRef(nil), h.Config.Projects...), AdditionalDirectories: append([]string(nil), h.Config.AdditionalDirectories...), ID: ID(), Scope: h.Config.Scope, ProjectID: h.Config.ProjectID, ProjectName: h.Config.ProjectName, Workspace: h.workspace(), RuntimeFingerprint: h.Config.RuntimeFingerprint, Model: h.Config.Model, NativeSessionID: nativeID, CreatedAt: time.Now().UTC()}
 }
 
 type journal struct {
@@ -681,6 +685,12 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 			directories = nil
 		}
 		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+			if o.Type == "init" && state.IsOffloadPending(s.NativeSessionID) {
+				if err := h.Store.BindHostNativeSession(ctx, r.ID, s.NativeSessionID, o.NativeSessionID); err != nil {
+					return err
+				}
+				s.NativeSessionID, r.NativeSessionID = o.NativeSessionID, o.NativeSessionID
+			}
 			e := event.Event{Type: "native.evidence", Phase: "execute", Component: execution.Component, Status: "running", Model: o.Model, Message: o.Message, Data: map[string]any{"native_type": o.Type, "native_session_id": o.NativeSessionID, "raw": o.Raw}}
 			if o.Tool != nil {
 				e.Data["tool"] = o.Tool

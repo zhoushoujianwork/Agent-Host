@@ -25,7 +25,11 @@ type Adapter struct {
 	library *offloadexec.Library
 }
 
-func (a *Adapter) SupportsFork() bool { return true }
+func (a *Adapter) SupportsFork() bool { return !a.GeneratesSessionID() }
+
+func (a *Adapter) GeneratesSessionID() bool {
+	return a.library != nil && a.library.Backend() == "codex"
+}
 
 func New(binary string) *Adapter {
 	if binary == "" {
@@ -293,6 +297,9 @@ func (a *Adapter) Identity() harness.Identity {
 // Run assembles Host policy and observations, then delegates execution, timeout,
 // native subprocess ownership and history to Offload's public Go package.
 func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harness.Observation) error) (result harness.Result, runErr error) {
+	if a.GeneratesSessionID() {
+		return a.runCodex(ctx, req, emit)
+	}
 	result = harness.Result{Status: "failed", NativeSessionID: req.NativeSessionID, ExitCode: -1}
 	defer func() {
 		if runErr != nil {

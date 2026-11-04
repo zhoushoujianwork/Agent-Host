@@ -137,6 +137,7 @@ type options struct {
 	renewedFrom                                                                        string
 	executionFingerprint                                                               string
 	nativeExecution                                                                    bool
+	modelExplicit                                                                      bool
 	fullHost                                                                           bool
 	offloadConfig                                                                      string
 	offloadProfile                                                                     *offloadchannel.Profile
@@ -297,6 +298,11 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	if err := fs.Parse(args); err != nil {
 		return o, nil, err
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "model" {
+			o.modelExplicit = true
+		}
+	})
 	if name == "chat" {
 		o.monitorDirectory = cwd
 		fs.Visit(func(f *flag.Flag) {

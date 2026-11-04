@@ -212,6 +212,17 @@ func (a agentDefinition) projects(ctx context.Context, store *state.Store) ([]st
 
 func (a agentDefinition) options(base options, audience string, group, prepare bool) (options, error) {
 	o := base
+	if a.OffloadConfig == "" && base.offloadConfig == "" && base.offloadClient != nil {
+		// An inherited default is resolved for each admission, not frozen when a
+		// long-lived channel starts. Agent-local Model below remains explicit.
+		o.fullHost, o.nativeExecution, o.model = true, true, ""
+		if base.modelExplicit {
+			o.model = base.model
+		}
+		if err := loadExecutionOptions(&o); err != nil {
+			return o, err
+		}
+	}
 	if a.OffloadConfig != "" {
 		o.fullHost = true
 		o.offloadConfig = a.OffloadConfig

@@ -399,7 +399,9 @@ func TestStreamingArrivesBeforeNativeExit(t *testing.T) {
 	adapter, request := fixtureAdapter(t, "stream_gate")
 	marker := filepath.Join(t.TempDir(), "release")
 	t.Setenv("AGENT_HOST_FIXTURE_MARKER", marker)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	// The marker handshake proves delivery before exit; this budget only bounds
+	// process startup and owned cleanup under concurrent full-suite load.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var observations []harness.Observation
 	var output strings.Builder
