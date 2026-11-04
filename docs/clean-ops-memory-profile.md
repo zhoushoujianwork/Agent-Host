@@ -47,3 +47,14 @@ from the explicit source. The canonical source, selected names, and selected
 file contents participate in runtime compatibility; source or content changes
 are never silently adopted by an existing conversation. Agents without
 `native_skills_root` retain the existing base-settings inheritance behavior.
+
+The local settings viewer preserves the complete Agent catalog draft when
+changing a name or default selection, including unknown fields and
+`memory_offload_config`. For the Web Chat catalog it validates an Agent's named
+Skills against that Agent's explicit `native_skills_root` when present; legacy
+Agents continue to validate against the Web connection's base native profile.
+The explicit root and its `skills` directory must be canonical owner-private
+directories, and every selected Skill must provide a regular `SKILL.md`. This
+validation admits capability sources only; it does not import native settings,
+credentials, history or permissions. Production adoption remains a separate
+deployment and acceptance step.
