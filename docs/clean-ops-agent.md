@@ -1,9 +1,9 @@
 # Clean operations Agent
 
-Candidate source behavior for the local upgrade; this document does not claim production adoption.
+Source behavior for clean operations Agents; runtime adoption has separate evidence.
 See the [implementation contract](clean-ops-agent-detail.md).
 
-## Intended behavior
+## Behavior
 
 CLI chat, DingTalk and Feishu use the same Host execution path. Normal business
 turns follow the current Offload default; explicit selections remain available
@@ -43,7 +43,7 @@ child conversation cannot yet bind the original parent's private environment.
 
 ## Acceptance and rollout
 
-The source candidate is covered by controlled fixtures and an isolated live
+The source is covered by controlled fixtures and an isolated live
 Skills/continuation check. Production rollout remains separate: back up the local
 binary and configuration, preserve existing identities and evidence, start new
 compatible conversations, then verify CLI chat and each configured channel with
@@ -52,4 +52,5 @@ message is sent.
 
 Existing channel authorization policy is preserved; this upgrade does not claim
 new non-owner restrictions, change `shared-execution-v2`, or permit arbitrary
-operations during acceptance. No production deployment is claimed complete.
+operations during acceptance. Consult runtime receipts for deployment and channel
+acceptance outcomes.

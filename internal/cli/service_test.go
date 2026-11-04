@@ -173,8 +173,8 @@ func TestServiceConfigurationRequiresExplicitValidExecutionPolicy(t *testing.T) 
 	mutations := map[string]func(*serviceConfig){
 		"relative executable": func(c *serviceConfig) { c.Claude = "claude" },
 		"missing executable":  func(c *serviceConfig) { c.Claude = "/absent/native-claude" },
-		"empty model":         func(c *serviceConfig) { c.Model = "" },
 		"option model":        func(c *serviceConfig) { c.Model = "--dangerous" },
+		"padded model":        func(c *serviceConfig) { c.Model = " fixture-model " },
 		"empty Jev model":     func(c *serviceConfig) { c.JevModel = "" },
 		"provider":            func(c *serviceConfig) { c.JevProvider = "auto" },
 		"custom no endpoint":  func(c *serviceConfig) { c.JevProvider = "custom" },

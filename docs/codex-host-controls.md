@@ -2,10 +2,10 @@
 
 AGH can consume native Codex events through the Offload package while retaining
 Host tasks, routing, MCP evidence and memory ownership. The implementation is
-validated against a pinned companion Offload commit; production adoption remains
-pending.
+validated against the published Offload module. Runtime adoption and channel
+acceptance are recorded separately from source validation.
 
-The candidate path explicitly enables the Codex app-server control. Codex runs
+The owner path explicitly enables the Codex app-server control. Codex runs
 with a fresh, private cwd in the environment bound to the stable Host session;
 the task workspace and additional directories are passed as explicit resource
 roots. Codex generates the real thread identity, and AGH adopts it atomically.

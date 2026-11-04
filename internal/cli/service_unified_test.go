@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -97,6 +98,55 @@ func TestUnifiedDingTalkIndependentFeatures(t *testing.T) {
 				if err := runDWSChannel(ctx, "run", layout, c, &out, &out); err != nil {
 					t.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+func TestUnifiedServiceCheckResolvesOffloadDefaultWhenBusinessModelOmitted(t *testing.T) {
+	for _, channel := range []string{"dingtalk", "feishu"} {
+		t.Run(channel, func(t *testing.T) {
+			_, dir := unifiedFixture(t)
+			var host unifiedHost
+			if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+				t.Fatal(err)
+			}
+			profile := host.Profiles[host.DefaultProfile]
+			profile.Execution.Model = ""
+			host.Profiles[host.DefaultProfile] = profile
+			writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+			if channel == "dingtalk" {
+				writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
+			} else {
+				cfg := meetingConfigFixture()
+				cfg.MeetingID, cfg.IMChat, cfg.OwnerOpenID = "", true, "ou_owner"
+				writeBotJSON(t, filepath.Join(dir, "channels.feishu.json"), map[string]any{"version": 1, "enabled": true, "settings": cfg})
+				blockMeetingCheckNetwork(t)
+			}
+			channels, err := discoverUnifiedChannels(dir)
+			if err != nil || len(channels) != 1 {
+				t.Fatal(channels, err)
+			}
+			layout, config, _, err := loadService(channels[0].Root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config.Model != "" || slices.Contains(config.arguments(layout, "check"), "--model") {
+				t.Fatal("model-free service froze an explicit model", config.Model, config.arguments(layout, "check"))
+			}
+			if err := prepareUnifiedRuntime(layout.Root); err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			if err := runService(t.Context(), []string{"check", "--config-dir", dir}, &out, &out); err != nil {
+				t.Fatal(err)
+			}
+			var report map[string]any
+			if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report["model"] != "sonnet" || report["platform_verified"] != false || report["native_auth_verified"] != false {
+				t.Fatal("service check did not resolve the fixture Offload default locally", report)
 			}
 		})
 	}

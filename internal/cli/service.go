@@ -363,10 +363,11 @@ func (c serviceConfig) validate() error {
 	if !filepath.IsAbs(c.Claude) || strings.ContainsAny(c.Claude, "\x00\r\n") {
 		return errors.New("service claude must be an absolute executable path")
 	}
-	for _, model := range []string{c.Model, c.JevModel} {
-		if strings.TrimSpace(model) == "" || model != strings.TrimSpace(model) || len(model) > 512 || strings.ContainsAny(model, "\x00\r\n") || strings.HasPrefix(model, "-") {
-			return errors.New("service model and jev_model must be explicit valid model names")
-		}
+	if c.Model != "" && (c.Model != strings.TrimSpace(c.Model) || len(c.Model) > 512 || strings.ContainsAny(c.Model, "\x00\r\n") || strings.HasPrefix(c.Model, "-")) {
+		return errors.New("service model must be omitted or a valid model name")
+	}
+	if strings.TrimSpace(c.JevModel) == "" || c.JevModel != strings.TrimSpace(c.JevModel) || len(c.JevModel) > 512 || strings.ContainsAny(c.JevModel, "\x00\r\n") || strings.HasPrefix(c.JevModel, "-") {
+		return errors.New("service jev_model must be an explicit valid model name")
 	}
 	if err := validateJevProvider(c.JevProvider, c.JevEndpoint); err != nil {
 		return fmt.Errorf("service %w", err)
@@ -420,8 +421,11 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		return args
 	}
 	args := []string{command, "--config", path, "--home", layout.State,
-		"--workspace", layout.Workspace, "--claude", c.Claude, "--model", c.Model,
-		"--jev-provider", c.JevProvider, "--jev-model", c.JevModel, "--timeout", c.Timeout, "--format", "json"}
+		"--workspace", layout.Workspace, "--claude", c.Claude}
+	if c.Model != "" {
+		args = append(args, "--model", c.Model)
+	}
+	args = append(args, "--jev-provider", c.JevProvider, "--jev-model", c.JevModel, "--timeout", c.Timeout, "--format", "json")
 	concurrency := c.MaxConcurrentConversations
 	if concurrency == 0 {
 		concurrency = 4

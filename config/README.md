@@ -84,12 +84,14 @@ source selectors and limits. See [the guide](../docs/dingtalk-workspace.md).
 
 ## Native execution
 
-Execution uses the Offload Go package only. Without a selector, CLI chat resolves
-the explicit default in the private Offload config unless the routed Agent already
-binds an `offload_config` or model. Daily chat should normally inherit the current
+Execution uses the Offload Go package only. Without a selector, CLI chat and
+unified channel services resolve the explicit default in the private Offload
+config unless the routed Agent already binds an `offload_config` or model.
+Daily chat should normally inherit the current
 default; use an explicit selector only for a user request or an evidence-backed
 compatibility or troubleshooting need. Unbound routed Agents refresh the default
-on each request. Optional
+on each request. Unified execution profiles may omit `model` to inherit that
+default; `jev_model` remains explicit and independent. Optional
 `execution.offload.json` follows [execution.offload.example.json](execution.offload.example.json)
 (version 2); copy it to an owner-private `0600` file and set `config_path` and
 `profile`. Agent entries use `offload_config`. ACP `execution_config` and version 1

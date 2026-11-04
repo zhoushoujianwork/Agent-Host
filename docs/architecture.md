@@ -50,11 +50,11 @@ flowchart LR
 
 ## Delivered scope
 
-The candidate [Codex owner path](codex-host-controls.md) opts into the native
+The [Codex owner path](codex-host-controls.md) opts into the native
 app-server protocol through the pinned companion Offload implementation. It
 supports explicit Host-managed Skill roots, MCP, observed-model evidence and
 native thread continuation. Strict tool-free and restricted Codex requests fail
-before dispatch. Production cutover is pending.
+before dispatch. Deployment acceptance is separate from source validation.
 
 Claude and Codex business execution use a private environment per stable Host
 conversation. The native cwd is an empty Host-owned runtime workspace; the task
@@ -82,7 +82,7 @@ Unsupported capabilities retain
 their errors and evidence; they do not trigger provider fallback or automatic
 replay of work with side effects. Production configuration, binaries and channel
 identities remain separate from development tests. Existing channel authorization,
-including `shared-execution-v2`, is unchanged by this candidate.
+including `shared-execution-v2`, is unchanged by this execution path.
 
 ## Remaining work
 
