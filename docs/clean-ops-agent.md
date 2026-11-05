@@ -29,6 +29,26 @@ are excluded. Managed profile roots and digest-verified task packages are the on
 native Skill sources. Source references and a manifest make the mounted set
 reviewable. Loading a skill does not execute it or grant account permissions.
 
+## Explicit business runtime
+
+An Agent may opt into `business_runtime`: selected credential files are copied
+into its private HOME, and an operator-reviewed tools directory can be added to
+shell PATH. Omitted policy shares nothing. Selecting a global Skill alone does
+not share business authentication or shell initialization.
+The exact lowercase `.claude/build-hub/token` business credential is supported;
+all other `.claude` binding targets remain excluded.
+
+Copies refresh before every business turn, including continuation; extraction
+receives none. Source files stay unchanged. Binding policy changes select a new
+profile; rotating file contents does not change policy identity. Tools remain
+subject to the original task authorization, with no account fallback or automatic
+relogin/package installation. Native HOME/XDG, settings and Skill selection stay
+isolated. [Schema, limits and shell support](clean-ops-agent-detail.md#business-runtime-bindings)
+describe source behavior verified with synthetic files and isolated shell/fake
+native fixtures. A bounded local Codex check also verified configured POP,
+Tencent and Build Hub authentication with private HOME and 26 selected Skills;
+channel rollout and broader business acceptance remain separate.
+
 ## Model responsibilities
 
 The default Codex model handles supported business execution and native tool

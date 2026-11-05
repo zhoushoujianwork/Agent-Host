@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,22 +114,68 @@ func TestChannelSessionControlContinuesDingTalkAndFeishuWithoutIMDelivery(t *tes
 			if len(runner.requests) != 2 || runner.requests[1].ForkFromNativeSessionID != seed.NativeSessionID {
 				t.Fatal("lost native channel context", runner.requests)
 			}
-			if runner.requests[0].SkillPluginDigest == "" || runner.requests[1].SkillPluginDigest != runner.requests[0].SkillPluginDigest {
-				t.Fatal("Web continuation changed preselected source Skills", runner.requests)
+			var sharedSources [][]harness.SkillSource
+			for i, req := range runner.requests {
+				if req.SkillPluginDigest == "" {
+					t.Fatal("missing managed Skill package")
+				}
+				raw, err := os.ReadFile(filepath.Join(req.SkillPluginDir, "manifest.json"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var manifest harness.SkillManifest
+				if err = json.Unmarshal(raw, &manifest); err != nil {
+					t.Fatal(err)
+				}
+				var shared []harness.SkillSource
+				progress := false
+				for _, source := range manifest.Sources {
+					if strings.HasPrefix(source.Title, "plugin-channel_progress:") {
+						progress = true
+					} else {
+						shared = append(shared, source)
+					}
+				}
+				if progress != (i == 0) {
+					t.Fatal("progress guidance must follow the true Channel tool mount")
+				}
+				sharedSources = append(sharedSources, shared)
+			}
+			if !reflect.DeepEqual(sharedSources[0], sharedSources[1]) {
+				t.Fatal("Web continuation changed preselected shared Skills", sharedSources)
 			}
 			for i, req := range runner.requests {
-				if len(req.MCPServers) != 2 || req.MCPServers[0].Name != "host_context" || req.MCPServers[1].Name != "conversation_history" {
+				var shared []harness.MCPServer
+				progress := false
+				for _, server := range req.MCPServers {
+					if server.Name == "channel_progress" {
+						progress = true
+					} else {
+						shared = append(shared, server)
+					}
+				}
+				if progress != (i == 0) {
+					t.Fatal("progress must belong only to the true Channel run")
+				}
+				if len(shared) != 2 || shared[0].Name != "host_context" || shared[1].Name != "conversation_history" {
 					t.Fatal("Web continuation lost scoped memory or authenticated source history")
 				}
-				for j, server := range req.MCPServers {
-					if server.SessionKey == "" || server.SessionKey != runner.requests[0].MCPServers[j].SessionKey {
+				for _, server := range shared {
+					var originalKey string
+					for _, previous := range runner.requests[0].MCPServers {
+						if previous.Name == server.Name {
+							originalKey = previous.SessionKey
+						}
+					}
+					if server.SessionKey == "" || server.SessionKey != originalKey {
 						t.Fatalf("continuation %d changed capability compatibility: %s", i, server.Name)
 					}
 				}
-				if i > 0 && req.MCPServers[0].Args[4] == runner.requests[0].MCPServers[0].Args[4] {
-					t.Fatal("memory capability reused the previous run authority")
+				if i > 0 && shared[0].Args[4] == runner.requests[0].MCPServers[0].Args[4] {
+					t.Fatal("memory capability reused previous run authority")
 				}
 			}
+
 			invoke(original.ID, "web-1")
 			if len(runner.requests) != 2 {
 				t.Fatal("duplicate replayed native tools")

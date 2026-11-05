@@ -14,6 +14,7 @@ import (
 
 	"agent-host/internal/assembly"
 	"agent-host/internal/assistance"
+	"agent-host/internal/channelprogress"
 	"agent-host/internal/dingtalkworkspace"
 	"agent-host/internal/email"
 	"agent-host/internal/history"
@@ -223,7 +224,7 @@ func refreshManagedRuntime(ctx context.Context, store *state.Store, o *options) 
 	if err != nil {
 		return err
 	}
-	o.managedFingerprint = managedskills.Hash([]string{snapshot.Digest, digest, managedskills.ContractVersion, managedskills.Hash([]any{assistance.Tools(), assistance.Instructions, assistance.MemoryInstructions, history.ToolContract(), history.Instructions})})
+	o.managedFingerprint = managedskills.Hash([]string{snapshot.Digest, digest, managedskills.ContractVersion, managedskills.Hash([]any{assistance.Tools(), assistance.Instructions, assistance.MemoryInstructions, history.ToolContract(), history.Instructions, channelprogress.ToolContract(), channelprogress.Instructions})})
 	o.skillsPreselected = false
 	return nil
 }

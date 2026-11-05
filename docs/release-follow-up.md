@@ -1,10 +1,10 @@
 # Progress and next steps
 
-2026-11-02 source update: native execution now uses the Offload Go package only. ACP and direct Host-managed execution are removed; historical acceptance below remains tied to its original revision. Production adoption is separate. See [current migration scope](offload-execution-boundary.md).
-
-Source status reviewed on 2026-10-16; the shared ACP execution track was added
-on 2026-10-20, with the first Claude ACP runner implemented that day. This is the current backlog, not a release
-commitment. [Architecture](architecture.md) explains the technical route;
+Source status reviewed on 2026-11-05 at `9f40091`. Native execution uses the
+Offload Go package only; ACP, direct Host-managed native execution and Offload
+CLI compatibility are removed. Production adoption is separate. This is the
+current backlog, not a release commitment.
+[Architecture](architecture.md) explains the technical route;
 [validation notes](release-follow-up-detail.md) retain evidence and open checks.
 
 Reading aid / 阅读提示：see [key objects / 关键对象](architecture-detail.md#key-objects--关键对象)
@@ -55,11 +55,14 @@ lifecycle in [the profile proposal](person-profiles.md) remains separate.
 
 ## Skill consolidation and integration track
 
-This is the active continuation selected on 2026-10-23.
+This track continues the scope selected on 2026-10-23, with explicit capability
+selection under the current execution contract.
 
 1. **Delivered:** authored adoption/review/publication, eligible experience and
-   plugin guidance in the effective catalog, proactive default-Agent loading and
-   bounded local native acceptance.
+   plugin guidance in the effective catalog and bounded local native acceptance.
+   Native Skills require explicit selection, including for the default Agent;
+   omitted, null or empty `native_skills` selects none. Catalog availability and
+   publication do not enable a Skill.
 2. **Read-only Web inspection delivered:** authored catalog/revisions/full
    references and destination-scoped historical Agent snapshots. See the
    [Platform Skills design](platform-skills-web-design.md). Production rollout is
@@ -76,26 +79,60 @@ This is the active continuation selected on 2026-10-23.
 
 ## Execution integration track
 
-Adopt [shared ACP execution](offload-execution-boundary.md) for
-CLI, Web, DingTalk, Feishu and future conversation entries. This is a Host
-harness change shared by channels, not a Web-only Claude connection.
+The [Offload package boundary](offload-execution-boundary.md) serves Claude and
+Codex execution across CLI, Web and channels. Host owns routing, context,
+authorization, evidence, acceptance and memory; native harnesses own model/tool
+loops and conversation state. Unsupported capabilities fail explicitly, without
+backend fallback or task replay.
 
-1. **Implemented:** configurable Claude ACP adapter, Host context/tool policy,
-   streamed events, native continuation and execution cancellation. Bounded real
-   Claude checks passed; [setup and limits](acp-execution.md).
-2. **Owner-private platform acceptance passed:** the
-   [local DingTalk/Feishu rollout](acp-channel-rollout.md) verified real intake,
-   replies, tool/Skill use, memory and two-turn continuation. Group/meeting
-   acceptance and authenticated interaction/stop controls remain pending.
-3. Connect a second engine to prove switching; retain explicit legacy print
-   selection until required execution contracts pass. Never silently fall back
-   or reuse native sessions across engines/transports.
+- **Delivered:** interactive and one-shot CLI Chat, Web room/request IDs,
+  recorded-result deduplication, compatible continuation and independent room
+  concurrency. [Chat scope and limits](offload-chat.md).
+- **Delivered:** optional scoped recall and memory processing, caller/run
+  correlation, recorded-clock elapsed time, and separate user Task and Host
+  Instructions. Answers are available before memory closeout; execution,
+  delivery, acceptance, history persistence and memory outcomes remain distinct.
+  [Memory scope](offload-memory-plugin.md).
+- **Delivered:** explicit native Skill allowlists and private Claude/Codex
+  conversation environments. Continuation requires the original compatible
+  environment; isolated native forks remain unsupported.
+  [Clean execution contract](clean-ops-agent-detail.md).
+- **Pending:** production rollout and broader current channel/model acceptance.
+  Historical ACP validation applies only to its recorded revisions, not this
+  package contract. Bounded Offload canary evidence and remaining limits are in
+  the [validation notes](release-follow-up-detail.md#execution-and-mac-evidence).
 
-The second engine, warm bridge reuse, interactive channel controls and broader
-group/meeting platform acceptance remain open. The
-[detailed boundary](architecture-detail.md#shared-acp-execution--planned) records
-session isolation, capability limits and separate auxiliary extraction checks.
-The product proposals below remain a separate track.
+## Mac app source and acceptance
+
+The [Mac app](macos-app.md) source now includes an app-owned local runtime,
+shared readiness guidance, native menus, task inbox read/acknowledgement state,
+notifications and exact-record navigation. [Source-only updates](mac-app-updates.md)
+implement automatic stable updates and opt-in development updates with idle
+gating and recovery. `2970717` was integrated through PRs #63 and #64.
+
+Current desktop interaction, real notifications, accessibility and a complete
+Offload-backed app task remain separate acceptance work. Real updater candidate
+build/replacement/relaunch and rollback also remain pending. Headless checks,
+compilation and older desktop reports do not prove current desktop acceptance
+or adoption by an installed app or production service.
+
+## Proposed runtime and memory work
+
+The [capability runtime proposal](agent-capability-runtime.md) next calls for
+explicit memory/knowledge bindings and a reversible AGH-root/profile-binding
+migration while retaining native login. Capability validation and the narrow
+default-owner memory-tool fix are delivered; broader packaging and directory
+migration are proposed.
+
+[Dream memory rotation](dream-memory-rotation.md) now provides bounded evidence
+scanning, tool-free extraction, explicit candidate review, scoped TTL HOT
+documents, Skill drafts and reversible retirement. Full Host private Chat and
+channels preserve catalogs, business credentials and progress MCP while loading
+reviewed HOT; channel-owned background cycles remain opt-in. Automatic admission,
+procedure merging and physical deletion are not delivered. Production adoption
+and observed outcomes are recorded separately from source delivery.
+
+These technical proposals do not reorder the product proposals below.
 
 ## Proposed development order
 
@@ -113,7 +150,7 @@ The product proposals below remain a separate track.
    behavior on top of scoped memory and configured private profiles. Do not infer
    that identity initialization completes the preference product. [Profile scope](person-profiles.md).
 4. **Later expansion.** Personal memory domains, conversation learning beyond the
-   owner-answering pilot, proactive notifications, Codex execution and meeting audio need their own
+   owner-answering pilot, proactive notifications and meeting audio need their own
    implementation and acceptance. No delivery dates are assigned.
 
 ## Retired planning baseline
@@ -128,5 +165,18 @@ member permissions are defined by the [authorization guide](dangerous-operations
 Keep `/new`, `/status` and `/help` as current chat controls. Add retry/review/usage
 features only when observed use justifies them. The existing local workbench is
 delivered, including Web Chat submission through a separately configured Host CLI.
-Claude ACP execution is selectable through the common Host boundary. Additional
-engines, channel stop controls and a general plugin marketplace remain future work.
+Claude and Codex use the common Offload package boundary. Richer channel controls,
+additional backend capabilities and a general plugin marketplace remain future work.
+
+## Issue disposition snapshot
+
+The 2026-11-05 cleanup applied the following GitHub dispositions. These changes
+do not establish production or live acceptance. [Evidence and caveats](release-follow-up-detail.md#issue-review-evidence)
+remain tied to their source revisions.
+
+| Review disposition | Issues |
+| --- | --- |
+| Closed as completed | #45, #48, #50, #52, #54, #56 |
+| Open, remaining acceptance checklist updated | #36, #38, #39, #40, #41, #42 |
+| Open, remaining scope updated | #1, #9 |
+| Retain | #8, #13 |

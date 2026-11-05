@@ -95,6 +95,10 @@ replay of work with side effects. Production configuration, binaries and channel
 identities remain separate from development tests. Existing channel authorization,
 including `shared-execution-v2`, is unchanged by this execution path.
 
+Channel business runs can send bounded [progress updates](channel-progress.md)
+through a run-bound built-in MCP and a durable Channel outbox, independently of
+final replies, task acceptance and memory persistence.
+
 ## Remaining work
 
 Production rollout and broader live channel/model acceptance remain separate.
