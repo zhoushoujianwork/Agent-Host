@@ -20,6 +20,8 @@ import (
 // Store serializes SQLite work on its operational and optional file-memory
 // index connections. A writable host must hold the appropriate exclusive or
 // shared chat lock. Read-only inspection is safe while the host is running.
+// The run-bound Channel progress subprocess is a narrow writable exception:
+// OpenForChannelProgress reserves outbox rows in an existing schema only.
 type Store struct {
 	db                    *sql.DB
 	eventDB               *sql.DB
@@ -306,6 +308,11 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 			}
 			if version < 17 {
 				if _, err := tx.Exec(schemaOwnerAnsweringV17); err != nil {
+					return err
+				}
+			}
+			if version < 18 {
+				if _, err := tx.Exec(schemaChannelProgressV18); err != nil {
 					return err
 				}
 			}

@@ -201,17 +201,24 @@ func (s *Service) Work(ctx context.Context) error {
 		}
 		defer stop()
 	}
-	if s.DisableReactions {
-		return s.workMessages(ctx)
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	done := make(chan error, 2)
+	workers := 2
+	if !s.DisableReactions {
+		workers++
+	}
+	done := make(chan error, workers)
 	go func() { done <- s.workMessages(ctx) }()
-	go func() { done <- s.workReactions(ctx) }()
+	go func() { done <- s.workProgress(ctx) }()
+	if !s.DisableReactions {
+		go func() { done <- s.workReactions(ctx) }()
+	}
 	err := <-done
 	cancel()
-	return errors.Join(err, <-done)
+	for i := 1; i < workers; i++ {
+		err = errors.Join(err, <-done)
+	}
+	return err
 }
 
 // Fork-capable Hosts execute bounded independent message sessions, even in one

@@ -18,6 +18,7 @@ import (
 	"agent-host/internal/approval"
 	"agent-host/internal/assembly"
 	"agent-host/internal/assistance"
+	"agent-host/internal/channelprogress"
 	"agent-host/internal/event"
 	"agent-host/internal/experience"
 	"agent-host/internal/harness"
@@ -66,6 +67,8 @@ type Config struct {
 	MCPServers            []harness.MCPServer
 	KnowledgeHints        []knowledge.Hint
 	ValidateKnowledge     func() error
+	ProgressHome          string
+	ProgressExecutable    string
 	HistoryHome           string
 	HistoryExecutable     string
 	HistoryMessageID      string
@@ -326,7 +329,7 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 	return h.run(ctx, s, input, messageID, nil)
 }
 
-func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource) (state.Run, error) {
+func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource) (resultRun state.Run, resultErr error) {
 	h = h.partitioned()
 	var previousFeedback *taskfeedback.Plan
 	if h.Config.PrepareFeedback != nil {
@@ -368,8 +371,28 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		return r, err
 	}
 	j := &journal{h: h, run: r, start: time.Now()}
-	ctx, cancelRun := context.WithCancel(ctx)
-	defer cancelRun()
+	ctx, cancelExecution := context.WithCancel(ctx)
+	progressRunID := r.ID
+	var stopOnce sync.Once
+	var progressRevokeErr error
+	cancelRun := func() {
+		stopOnce.Do(func() {
+			if channelMessageID != "" && h.Config.ProgressHome != "" && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
+				revokeCtx, revokeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				progressRevokeErr = h.Store.RevokeChannelProgress(revokeCtx, progressRunID)
+				revokeCancel()
+			}
+			cancelExecution()
+		})
+	}
+	stopProgressCancellation := context.AfterFunc(ctx, cancelRun)
+	defer func() {
+		stopProgressCancellation()
+		cancelRun()
+		if progressRevokeErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("revoke channel progress: %w", progressRevokeErr))
+		}
+	}()
 	closeControl, err := startRunControl(h.Store.Home(), r.ID, cancelRun)
 	if err != nil {
 		return h.failBeforeExecution(j, fmt.Errorf("start run control: %w", err))
@@ -556,6 +579,21 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if err := j.emit(event.Event{Type: "context.assembled", Phase: "execute", Component: "assembly.context", Status: "completed", Message: "configured scoped read-only context and memory citations", Data: map[string]any{"binding_fingerprint": binding.Fingerprint, "selected_sources": len(binding.Sources), "memory_only": binding.MemoryOnly}}); err != nil {
 			return h.failBeforeExecution(j, err)
 		}
+	}
+	if r.Source != nil && r.Source.ChannelMessageID != "" && h.Config.ProgressHome != "" && !h.Config.ToolsDisabled && !h.Config.RestrictedReadOnly {
+		if err := h.Store.EnableChannelProgress(ctx, r.ID); err != nil {
+			return h.failBeforeExecution(j, fmt.Errorf("enable channel progress: %w", err))
+		}
+		binding, err := channelprogress.Resolve(h.Config.ProgressHome, r.Source.ChannelMessageID, r.ID)
+		if err != nil {
+			return h.failBeforeExecution(j, fmt.Errorf("assemble channel progress: %w", err))
+		}
+		server := binding.Server(h.Config.ProgressExecutable)
+		mcpServers = append(mcpServers, server)
+		if h.Config.ManagedCatalog {
+			managedEntries = append(managedEntries, managedskills.PluginUsage("channel_progress", channelprogress.ToolContract(), channelprogress.Instructions, server.SessionKey))
+		}
+		instructions += "\n\n" + channelprogress.Instructions
 	}
 	historyMessageID := channelMessageID
 	if historyMessageID == "" {

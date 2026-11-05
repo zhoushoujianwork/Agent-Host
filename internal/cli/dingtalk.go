@@ -175,6 +175,7 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	h.Config.ProcedureRecallHints = append([]state.ProcedureRecallHint(nil), o.procedureRecallHints...)
 	if o.historyEnabled && !o.noTools {
 		h.Config.HistoryHome, h.Config.HistoryExecutable = o.home, o.historyExecutable
+		h.Config.ProgressHome, h.Config.ProgressExecutable = o.home, o.historyExecutable
 	}
 	if o.contextExecutable != "" && !o.noTools {
 		h.Config.ContextHome, h.Config.ContextExecutable, h.Config.ContextConfig = o.home, o.contextExecutable, o.discoveryConfig
