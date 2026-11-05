@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -66,14 +67,23 @@ func reactionFailure(message string, cause error) error {
 }
 
 func (r *Reactor) AddReaction(ctx context.Context, conversationID, messageID, label string) error {
-	return r.reaction(ctx, reactionAddPath, conversationID, messageID, label)
+	return r.reaction(ctx, reactionAddPath, conversationID, messageID, label, false)
 }
 
 func (r *Reactor) RemoveReaction(ctx context.Context, conversationID, messageID, label string) error {
-	return r.reaction(ctx, reactionDelPath, conversationID, messageID, label)
+	return r.reaction(ctx, reactionDelPath, conversationID, messageID, label, false)
 }
 
-func (r *Reactor) reaction(ctx context.Context, path, conversationID, messageID, label string) error {
+// AddProgressReaction and RemoveProgressReaction use the bot text emotion
+// transport with a Host-bounded custom label, independently of stage validation.
+func (r *Reactor) AddProgressReaction(ctx context.Context, c, m, label string) error {
+	return r.reaction(ctx, reactionAddPath, c, m, label, true)
+}
+func (r *Reactor) RemoveProgressReaction(ctx context.Context, c, m, label string) error {
+	return r.reaction(ctx, reactionDelPath, c, m, label, true)
+}
+
+func (r *Reactor) reaction(ctx context.Context, path, conversationID, messageID, label string, custom bool) error {
 	if r == nil {
 		return reactionFailure("DingTalk reaction client is not configured", nil)
 	}
@@ -85,10 +95,16 @@ func (r *Reactor) reaction(ctx context.Context, path, conversationID, messageID,
 			return reactionFailure("DingTalk reaction requires valid robot, conversation and original message identifiers", nil)
 		}
 	}
-	switch label {
-	case "已收到", "处理中", "检索记忆", "AI执行", "Jev判断", "保存记忆", "整理证据", "提取经验", "Jev评估", "保存候选", "发送回复", "已完成", "打叉":
-	default:
-		return reactionFailure("DingTalk reaction label must be a supported execution stage", nil)
+	if custom {
+		if !utf8.ValidString(label) || label != strings.TrimSpace(label) || label == "" || utf8.RuneCountInString(label) > 12 || strings.IndexFunc(label, func(r rune) bool { return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' }) >= 0 {
+			return reactionFailure("DingTalk progress label is invalid", nil)
+		}
+	} else {
+		switch label {
+		case "已收到", "处理中", "检索记忆", "AI执行", "Jev判断", "保存记忆", "整理证据", "提取经验", "Jev评估", "保存候选", "发送回复", "已完成", "打叉":
+		default:
+			return reactionFailure("DingTalk reaction label must be a supported execution stage", nil)
+		}
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, replyTimeout)
 	defer cancel()

@@ -96,7 +96,8 @@ identities remain separate from development tests. Existing channel authorizatio
 including `shared-execution-v2`, is unchanged by this execution path.
 
 Channel business runs can send bounded [progress updates](channel-progress.md)
-through a run-bound built-in MCP and a durable Channel outbox, independently of
+as attached reactions through a run-bound built-in MCP and the shared durable
+Channel feedback queue, independently of
 final replies, task acceptance and memory persistence.
 
 ## Remaining work
