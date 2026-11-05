@@ -114,6 +114,14 @@ func fixture(mode string) {
 		}
 	}
 	prompt, _ := io.ReadAll(os.Stdin)
+	if mode == "business_runtime" {
+		cmd := exec.Command("/bin/zsh", "-c", "fixture-business")
+		raw, err := cmd.Output()
+		if err != nil || string(raw) != "BUSINESS_BOUNDARY_OK" {
+			fmt.Fprintln(os.Stderr, "business runtime fixture failed")
+			os.Exit(2)
+		}
+	}
 	if mode == "restricted_auth" {
 		body, _ := json.Marshal(map[string]string{"token": os.Getenv("ANTHROPIC_AUTH_TOKEN"), "base_url": os.Getenv("ANTHROPIC_BASE_URL"), "unreviewed": os.Getenv("UNREVIEWED_PROFILE_ENV")})
 		_ = os.WriteFile(os.Getenv("AGENT_HOST_FIXTURE_PROVIDER_ENV"), body, 0600)
