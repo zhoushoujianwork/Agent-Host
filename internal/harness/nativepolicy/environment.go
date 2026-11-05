@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"agent-host/internal/businessruntime"
 	"agent-host/internal/harness"
 	"github.com/zhoushoujianwork/offload/pkg/execution"
 )
@@ -25,6 +26,12 @@ func executionEnvironment(req harness.Request) (execution.Environment, func(), e
 		env, err := execution.NewEnvironment()
 		if err != nil {
 			return env, cleanup, err
+		}
+		if !req.Extraction {
+			if err := applyBusinessRuntime(req.NativeProfile, env.Root); err != nil {
+				_ = os.RemoveAll(env.Root)
+				return env, cleanup, err
+			}
 		}
 		return env, func() { _ = os.RemoveAll(env.Root) }, nil
 	}
@@ -55,13 +62,27 @@ func executionEnvironment(req harness.Request) (execution.Environment, func(), e
 		if err := validateExistingEnvironment(root); err != nil {
 			return execution.Environment{}, cleanup, fmt.Errorf("resume Host environment: %w", err)
 		}
+		if err := applyBusinessRuntime(req.NativeProfile, root); err != nil {
+			return execution.Environment{}, cleanup, err
+		}
 		return execution.Environment{Root: root, Workspace: filepath.Join(root, "workspace")}, cleanup, nil
 	}
 	env, err := execution.NewEnvironmentAt(root)
 	if err != nil {
 		return env, cleanup, fmt.Errorf("create Host environment: %w", err)
 	}
+	if err := applyBusinessRuntime(req.NativeProfile, env.Root); err != nil {
+		return env, cleanup, err
+	}
 	return env, cleanup, nil
+}
+
+func applyBusinessRuntime(profile, root string) error {
+	policy, err := businessruntime.Load(profile)
+	if err != nil {
+		return err
+	}
+	return policy.Apply(root)
 }
 
 func safeHostSessionID(id string) bool {

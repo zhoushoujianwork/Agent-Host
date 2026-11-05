@@ -605,7 +605,10 @@ func (s *Store) RecoverChannels(ctx context.Context) error {
 		if err := recoverChannelChoices(ctx, tx); err != nil {
 			return err
 		}
-		return recoverChannelReactions(ctx, tx)
+		if err := recoverChannelReactions(ctx, tx); err != nil {
+			return err
+		}
+		return recoverChannelProgress(ctx, tx)
 	})
 }
 

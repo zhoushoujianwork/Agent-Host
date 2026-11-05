@@ -10,10 +10,35 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import server
-from settings_store import SettingsStore, Conflict, KEEP_SECRET
+from settings_store import SettingsStore, Conflict, KEEP_SECRET, validate_business_runtime
 
 
 class SettingsTests(unittest.TestCase):
+    def test_business_runtime_path_policy_validation_and_roundtrip(self):
+        source = self.root / "fixture-credential"
+        source.write_text("synthetic-business-auth")
+        binding = {"home_files": [{"source": str(source), "target": ".tccli/test.credential"}], "bin_directory": str(self.root)}
+        row = self.row("agents.cli.json")
+        row["value"]["agents"][0]["business_runtime"] = binding
+        self.save(row, row["value"])
+        saved = json.loads((self.config / "agents.cli.json").read_text())
+        self.assertEqual(saved["agents"][0]["business_runtime"], binding)
+        binding["home_files"][0]["target"] = ".claude/build-hub/token"
+        row = self.row("agents.cli.json")
+        row["value"]["agents"][0]["business_runtime"] = binding
+        self.save(row, row["value"])
+        saved = json.loads((self.config / "agents.cli.json").read_text())
+        self.assertEqual(saved["agents"][0]["business_runtime"], binding)
+        for target in ("../escape", ".claude/settings.json", ".claude/skills/x/SKILL.md", ".claude/build-hub/other", ".claude/build-hub", ".claude/build-hub/token/child", ".Claude/build-hub/token", ".claude/Build-Hub/token", ".claude/build-hub/Token", ".claude/build-hub/./token", ".claude//build-hub/token", ".zshenv", "a//b", ".profile", ".bash_profile", ".bashrc"):
+            with self.assertRaises(ValueError):
+                validate_business_runtime({"home_files": [{"source": str(source), "target": target}]})
+        alias = self.root / "credential-alias"
+        alias.symlink_to(source)
+        with self.assertRaises(ValueError):
+            validate_business_runtime({"home_files": [{"source": str(alias), "target": "credential"}]})
+        with self.assertRaises(ValueError):
+            validate_business_runtime({"token": "must-not-be-configured"})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="settings-test-")
         self.addCleanup(self.temp.cleanup)
@@ -191,7 +216,7 @@ class SettingsTests(unittest.TestCase):
         web = self.write("web-chat.json", {"args": ["--agents-config", str(self.config / "agents.cli.json"), "--agent", "daily", "--home", str(self.root / "cli-state"), "--workspace", str(self.root), "--native-profile", str(profile)]})
         self.store.web_config = web
         catalog = {"default_agent": "daily", "agents": [
-            {"id": "daily", "name": "Daily", "native_skills_root": "../operations-capabilities", "native_skills": ["explicit-only"], "memory_offload_config": "memory.json", "raw_future_field": {"keep": True}},
+            {"id": "daily", "name": "Daily", "native_skills_root": "../operations-capabilities", "native_skills": ["explicit-only"], "memory_offload_config": "memory.json", "business_runtime": {"bin_directory": str(explicit)}, "raw_future_field": {"keep": True}},
             {"id": "other", "name": "Other"}]}
         self.write("agents.cli.json", catalog)
         row = self.row("agents.cli.json")
@@ -203,6 +228,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(saved["agents"][0]["native_skills_root"], "../operations-capabilities")
         self.assertEqual(saved["agents"][0]["native_skills"], ["explicit-only"])
         self.assertEqual(saved["agents"][0]["memory_offload_config"], "memory.json")
+        self.assertEqual(saved["agents"][0]["business_runtime"], {"bin_directory": str(explicit)})
         self.assertEqual(saved["agents"][0]["raw_future_field"], {"keep": True})
 
     def test_web_agent_explicit_skill_root_and_legacy_inventory_fail_closed(self):

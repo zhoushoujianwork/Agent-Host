@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"agent-host/internal/assembly"
+	"agent-host/internal/businessruntime"
 	"agent-host/internal/channel"
 	"agent-host/internal/channel/dingtalk"
 	"agent-host/internal/componentconfig"
@@ -24,20 +25,21 @@ import (
 
 // Instance configuration is local policy, never inferred from message content.
 type agentDefinition struct {
-	OffloadConfig       string   `json:"offload_config,omitempty"`
-	MemoryOffloadConfig string   `json:"memory_offload_config,omitempty"`
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	InstructionsFile    string   `json:"instructions_file,omitempty"`
-	InstructionsDir     string   `json:"instructions_dir,omitempty"`
-	UserFile            string   `json:"user_file,omitempty"`
-	Workspace           string   `json:"workspace,omitempty"`
-	Projects            []string `json:"projects"`
-	Plugins             []string `json:"plugins,omitempty"`
-	KnowledgeSources    []string `json:"knowledge_sources"`
-	NativeSkills        []string `json:"native_skills"`
-	NativeSkillsRoot    string   `json:"native_skills_root,omitempty"`
-	Model               string   `json:"model,omitempty"`
+	OffloadConfig       string                 `json:"offload_config,omitempty"`
+	MemoryOffloadConfig string                 `json:"memory_offload_config,omitempty"`
+	ID                  string                 `json:"id"`
+	Name                string                 `json:"name"`
+	InstructionsFile    string                 `json:"instructions_file,omitempty"`
+	InstructionsDir     string                 `json:"instructions_dir,omitempty"`
+	UserFile            string                 `json:"user_file,omitempty"`
+	Workspace           string                 `json:"workspace,omitempty"`
+	Projects            []string               `json:"projects"`
+	Plugins             []string               `json:"plugins,omitempty"`
+	KnowledgeSources    []string               `json:"knowledge_sources"`
+	NativeSkills        []string               `json:"native_skills"`
+	NativeSkillsRoot    string                 `json:"native_skills_root,omitempty"`
+	BusinessRuntime     businessruntime.Policy `json:"business_runtime,omitempty"`
+	Model               string                 `json:"model,omitempty"`
 	role                string
 	contextFiles        []assembly.ContextFile
 	userProfile         string
@@ -72,6 +74,9 @@ func loadAgents(path string) (agentCatalog, error) {
 	seen := map[string]bool{}
 	for i := range c.Agents {
 		a := &c.Agents[i]
+		if err := a.BusinessRuntime.Validate(); err != nil {
+			return c, fmt.Errorf("agent %s business runtime: %w", a.ID, err)
+		}
 		if a.OffloadConfig != "" {
 			if !filepath.IsAbs(a.OffloadConfig) {
 				a.OffloadConfig = filepath.Join(filepath.Dir(path), a.OffloadConfig)
@@ -310,6 +315,13 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 	o.nativeSkillsFingerprint = fingerprint
 	selectedSkills := append([]string{}, a.NativeSkills...)
 	o.nativeProfile = filepath.Join(profile, "instances", a.ID, "audiences", channel.Key(audience), "skill-sets", nativeSkillSelectionID(selectedSkills))
+	if err := a.BusinessRuntime.Validate(); err != nil {
+		return o, err
+	}
+	if id := a.BusinessRuntime.ID(); id != "" {
+		o.nativeProfile = filepath.Join(o.nativeProfile, "business-sets", id)
+		o.hostInstructions += a.BusinessRuntime.Guidance()
+	}
 	if prepare {
 		if err := prepareSelectedAgentProfileFrom(nativeSkillsBase, o.nativeProfile, selectedSkills); err != nil {
 			return o, err
@@ -317,6 +329,9 @@ func (a agentDefinition) options(base options, audience string, group, prepare b
 		fingerprint, err := nativeSkillSelectionFingerprint(nativeSkillsBase, selectedSkills)
 		if err != nil || fingerprint != o.nativeSkillsFingerprint {
 			return o, errors.New("selected native skill source changed while preparing the Agent profile")
+		}
+		if err := a.BusinessRuntime.Prepare(o.nativeProfile); err != nil {
+			return o, err
 		}
 	}
 	return o, nil

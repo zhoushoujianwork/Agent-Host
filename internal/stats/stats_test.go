@@ -26,7 +26,7 @@ func fixture(t *testing.T) (string, *sql.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	_, err = db.Exec(`PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE runs(id TEXT PRIMARY KEY,created_at TEXT,execution_status TEXT,memory_status TEXT,payload BLOB); CREATE TABLE events(run_id TEXT,seq INTEGER,payload BLOB,PRIMARY KEY(run_id,seq)); PRAGMA user_version=17;`)
+	_, err = db.Exec(fmt.Sprintf(`PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE runs(id TEXT PRIMARY KEY,created_at TEXT,execution_status TEXT,memory_status TEXT,payload BLOB); CREATE TABLE events(run_id TEXT,seq INTEGER,payload BLOB,PRIMARY KEY(run_id,seq)); PRAGMA user_version=%d;`, state.SchemaVersion))
 	if err != nil {
 		t.Fatal(err)
 	}
