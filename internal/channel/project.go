@@ -81,7 +81,11 @@ func (s *Service) conversationCommand(ctx context.Context, m state.ChannelMessag
 			return true, "已开始新对话，正在执行的消息仍会分别回复。", err
 		}
 		if !s.projectsConfigured() {
-			_, err := s.session(ctx, m.Binding, true)
+			h, _, err := prepareChannelHost(ctx, s.Host)
+			if err != nil {
+				return true, resultText(state.Run{}, err), err
+			}
+			_, _, err = s.sessionWithHost(ctx, h, m.Binding, true)
 			if err != nil {
 				return true, resultText(state.Run{}, err), err
 			}
@@ -91,7 +95,7 @@ func (s *Service) conversationCommand(ctx context.Context, m state.ChannelMessag
 		if err != nil {
 			return true, "当前处理环境不可用，没有开始新对话。请联系管理员。", err
 		}
-		_, _, err = s.routedSession(ctx, m, h, runtime, true)
+		_, _, _, err = s.routedSession(ctx, m, h, runtime, true)
 		if err != nil {
 			return true, resultText(state.Run{}, err), err
 		}
@@ -254,20 +258,24 @@ func (s *Service) resolveProjects(ctx context.Context, ids []string, primary str
 
 func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state.Run, string, error) {
 	if !s.projectsConfigured() {
-		if rooms, ok := s.Host.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
+		h, fingerprint, err := prepareChannelHost(ctx, s.Host)
+		if err != nil {
+			return state.Run{}, "", err
+		}
+		if rooms, ok := h.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
 			session, err := rooms.RoomChannelSession(ctx, m.ID)
 			if err != nil {
 				return state.Run{}, "", err
 			}
-			run, err := s.Host.RunChannel(ctx, session, m.Text, m.ID)
+			run, err := h.RunChannel(ctx, session, m.Text, m.ID)
 			return run, "", err
 		}
-		session, notice, err := s.sessionWithHost(ctx, s.Host, m.Binding, false)
+		session, notice, err := s.sessionWithPreparedHost(ctx, h, m.Binding, fingerprint)
 		if err != nil {
 			return state.Run{}, "", err
 		}
 		setReplyNotice(ctx, notice)
-		run, err := s.Host.RunChannel(ctx, session, m.Text, m.ID)
+		run, err := h.RunChannel(ctx, session, m.Text, m.ID)
 		return run, notice, err
 	}
 	ids, primary, decision, err := s.routeTask(ctx, m)
@@ -291,7 +299,14 @@ func (s *Service) runMessage(ctx context.Context, m state.ChannelMessage) (state
 }
 
 func (s *Service) runResolved(ctx context.Context, m state.ChannelMessage, h Host, runtime assembly.Runtime) (state.Run, string, error) {
-	if rooms, ok := h.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
+	prepared, fingerprint, err := prepareChannelHost(ctx, h)
+	if err != nil {
+		return state.Run{}, "", err
+	}
+	if fingerprint != "" {
+		runtime.Fingerprint = fingerprint
+	}
+	if rooms, ok := prepared.(roomHost); ok && rooms.RoomConcurrencyEnabled() {
 		binding := Key("room-execution-v1", m.Binding, m.ID, runtime.Fingerprint)
 		if err := s.Store.ResolveChannelProjects(ctx, m.ID, binding, runtime.ProjectID, runtime.Workspace, runtime.Scope, runtime.Fingerprint, runtime.Projects, runtime.AdditionalDirectories); err != nil {
 			return state.Run{}, "", err
@@ -300,19 +315,30 @@ func (s *Service) runResolved(ctx context.Context, m state.ChannelMessage, h Hos
 		if err != nil {
 			return state.Run{}, "", err
 		}
-		run, err := h.RunChannel(ctx, session, m.Text, m.ID)
+		run, err := prepared.RunChannel(ctx, session, m.Text, m.ID)
 		return run, "", err
 	}
-	session, notice, err := s.routedSession(ctx, m, h, runtime, false)
+	prepared, session, notice, err := s.routedSessionPrepared(ctx, m, prepared, runtime, false)
 	if err != nil {
 		return state.Run{ProjectID: runtime.ProjectID, ProjectName: runtime.ProjectName, Workspace: runtime.Workspace, Projects: runtime.Projects, AdditionalDirectories: runtime.AdditionalDirectories}, "", err
 	}
 	setReplyNotice(ctx, notice)
-	run, err := h.RunChannel(ctx, session, m.Text, m.ID)
+	run, err := prepared.RunChannel(ctx, session, m.Text, m.ID)
 	return run, notice, err
 }
 
-func (s *Service) routedSession(ctx context.Context, m state.ChannelMessage, h Host, runtime assembly.Runtime, fresh bool) (state.Session, string, error) {
+func (s *Service) routedSession(ctx context.Context, m state.ChannelMessage, h Host, runtime assembly.Runtime, fresh bool) (Host, state.Session, string, error) {
+	prepared, fingerprint, err := prepareChannelHost(ctx, h)
+	if err != nil {
+		return nil, state.Session{}, "", err
+	}
+	if fingerprint != "" {
+		runtime.Fingerprint = fingerprint
+	}
+	return s.routedSessionPrepared(ctx, m, prepared, runtime, fresh)
+}
+
+func (s *Service) routedSessionPrepared(ctx context.Context, m state.ChannelMessage, h Host, runtime assembly.Runtime, fresh bool) (Host, state.Session, string, error) {
 	ids := runtimeProjectIDs(runtime)
 	shape, _ := json.Marshal(struct{ IDs, Directories []string }{ids, runtime.AdditionalDirectories})
 	binding := Key(m.Binding, runtime.ProjectID, runtime.Workspace, runtime.Fingerprint, string(shape))
@@ -322,30 +348,30 @@ func (s *Service) routedSession(ctx context.Context, m state.ChannelMessage, h H
 		if err == nil {
 			changed = previous.ProjectID != runtime.ProjectID || previous.Workspace != runtime.Workspace || previous.RuntimeFingerprint != runtime.Fingerprint || !equalIDs(previous.AdditionalDirectories, runtime.AdditionalDirectories)
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			return state.Session{}, "", err
+			return nil, state.Session{}, "", err
 		} else {
 			legacyBinding := Key(s.Profile, m.TenantID, m.ConversationID, m.SenderID)
 			_, err := s.Store.ChannelSession(ctx, legacyBinding)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return state.Session{}, "", err
+				return nil, state.Session{}, "", err
 			}
 			changed = err == nil
 		}
 	}
 	session, notice, err := s.sessionWithHost(ctx, h, binding, fresh || changed)
 	if err != nil {
-		return state.Session{}, "", err
+		return nil, state.Session{}, "", err
 	}
 	if session.ProjectID != runtime.ProjectID || session.WorkingDirectory() != runtime.Workspace || session.Scope != runtime.Scope || session.RuntimeFingerprint != runtime.Fingerprint || !sameRuntimeProjects(session.Projects, runtime.Projects) || !equalIDs(session.AdditionalDirectories, runtime.AdditionalDirectories) {
-		return state.Session{}, "", errors.New("native session does not match assembled runtime")
+		return nil, state.Session{}, "", errors.New("native session does not match assembled runtime")
 	}
 	if err := s.Store.ResolveChannelProjects(ctx, m.ID, binding, runtime.ProjectID, runtime.Workspace, runtime.Scope, runtime.Fingerprint, runtime.Projects, runtime.AdditionalDirectories); err != nil {
-		return state.Session{}, "", err
+		return nil, state.Session{}, "", err
 	}
 	if changed {
 		notice = "当前处理方式已更新，已开始新的对话。"
 	}
-	return session, notice, nil
+	return h, session, notice, nil
 }
 
 func runtimeProjectIDs(runtime assembly.Runtime) []string {

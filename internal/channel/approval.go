@@ -138,17 +138,18 @@ func (s *Service) approvalReply(ctx context.Context, m state.ChannelMessage) (bo
 	var run state.Run
 	if err == nil {
 		m.Binding = Key(m.Binding, "approved-operation", a.ID)
-		approved, ok := h.(interface {
+		var prepared Host
+		var session state.Session
+		prepared, session, _, err = s.routedSession(ctx, m, h, runtime, true)
+		approved, ok := prepared.(interface {
 			RunApprovedChannel(context.Context, state.Session, string, string) (state.Run, error)
 		})
-		if !ok {
+		if err != nil {
+			// Keep the session preparation error as the authoritative failure.
+		} else if !ok {
 			err = errors.New("harness host does not support owner-approved execution")
 		} else {
-			var session state.Session
-			session, _, err = s.routedSession(ctx, m, h, runtime, true)
-			if err == nil {
-				run, err = approved.RunApprovedChannel(ctx, session, m.ID, a.ID)
-			}
+			run, err = approved.RunApprovedChannel(ctx, session, m.ID, a.ID)
 		}
 	}
 	cause := ""

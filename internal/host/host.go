@@ -93,6 +93,9 @@ type Config struct {
 
 func (h *Host) personalHOTSnapshot(ctx context.Context) (*Host, []harness.PresetDocument, error) {
 	copy := *h
+	if h.personalHOTPrepared {
+		return &copy, clonePresetDocuments(h.personalHOTDocuments), nil
+	}
 	if h.Config.PersonalHOTDocuments == nil {
 		return &copy, nil, nil
 	}
@@ -112,15 +115,38 @@ func (h *Host) personalHOTSnapshot(ctx context.Context) (*Host, []harness.Preset
 	return &copy, documents, nil
 }
 
+func clonePresetDocuments(documents []harness.PresetDocument) []harness.PresetDocument {
+	cloned := make([]harness.PresetDocument, len(documents))
+	for i, document := range documents {
+		cloned[i] = document
+		cloned[i].Content = append([]byte(nil), document.Content...)
+	}
+	return cloned
+}
+
+// PrepareChannel captures one immutable HOT snapshot for route/session binding
+// and later dispatch. A subsequent publication applies only to the next request.
+func (h *Host) PrepareChannel(ctx context.Context) (any, string, error) {
+	snapshot, documents, err := h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	snapshot.personalHOTPrepared = true
+	snapshot.personalHOTDocuments = clonePresetDocuments(documents)
+	return snapshot, snapshot.Config.RuntimeFingerprint, nil
+}
+
 type Host struct {
-	Store     *state.Store
-	Runner    harness.Runner
-	Decider   memory.Decider
-	Extractor experience.Extractor
-	Judge     experience.Judge
-	Objects   objectmemory.Extractor
-	Config    Config
-	Sink      event.Sink
+	Store                *state.Store
+	Runner               harness.Runner
+	Decider              memory.Decider
+	Extractor            experience.Extractor
+	Judge                experience.Judge
+	Objects              objectmemory.Extractor
+	Config               Config
+	Sink                 event.Sink
+	personalHOTPrepared  bool
+	personalHOTDocuments []harness.PresetDocument
 }
 
 func (h *Host) workspace() string {

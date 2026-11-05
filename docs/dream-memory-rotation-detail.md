@@ -149,10 +149,13 @@ type DreamCandidate struct {
 ## 5. Host 接口
 
 `dream scan/run/list/show/review/promote/export/archive/rotate/restore/status` 已交付。服务通过显式 `--dream-config`
-启用同一 Lifecycle 的串行周期；`enabled` 控制后台提炼，`hot_enabled` 独立控制运行时 HOT。周期随 owning
-context 取消并保存 status/error，每轮后重新投影 HOT；持久状态写入失败会停止服务。独立 pause/resume 命令仍未交付。
-Full Host 每次创建或继续会话都从权威记忆重算 HOT 摘要，用 Host 副本形成运行指纹，不修改共享配置；摘要变化或
-到期会拒绝旧会话。个人文档只进入认证本人的私聊，群聊、其他人和不匹配的 Agent/audience/scope 不继承个人原生状态。
+启用同一 Lifecycle 的串行周期；`enabled` 控制后台提炼，`hot_enabled` 独立控制运行时 HOT。调度器不在启动时调用模型，
+而是按 `activity_poll_interval` 检查所有配置状态目录；只有没有 queued/claimed 渠道消息、没有 running Host run，且从启动或
+最近前台活动起连续空闲 `idle_for` 后才准入。`interval` 是已准入周期之间的最短间隔，不是无条件模型调用周期。
+前台到达或探测失败只取消当前周期 context，记录 canceled/deferred 原因，稍后重新准入；周期不重叠，也不重放业务任务。
+周期随 owning context 取消并保存 status/error，每轮后重新投影 HOT；持久状态写入失败会停止服务。独立 pause/resume 命令仍未交付。
+Full Host 在路由和 session 绑定前冻结一次 HOT 摘要与文档，用同一 Host 副本完成创建/继续和派发，不修改共享配置；请求期间的
+新发布只影响下一请求。摘要变化或到期会拒绝旧会话。个人文档只进入认证本人的私聊，群聊、其他人和不匹配的 Agent/audience/scope 不继承个人原生状态。
 
 首版优先内部库与 CLI，不提供公共插件 API。当前交付命令：
 
@@ -179,9 +182,9 @@ revision。网络传输、模型协议和原生事件保持在 harness/Offload a
 
 ## 6. 单写者、事务与恢复
 
-手动单次 worker 先复用一个 Host Store 实例。后台版只能由明确启用的 Host 服务把 due job 放入
-同一单写者队列；不能让 cron 进程直接打开第二个可写数据库。调度配置记录 timezone、窗口、
-最大批量、总预算和下一次时间，默认关闭。
+手动单次 worker 先复用一个 Host Store 实例。后台版只能由明确启用的 Host 服务使用自己的 writer；活动探测以只读、
+当前 schema 方式打开其他状态目录，不迁移数据库、不获取 Host 独占锁，也不按 Agent/audience 分区过滤。显式目录缺失、
+schema 不兼容或 SQL/时间戳错误都 fail closed。调度默认关闭；CLI HOT-only 模式不启动调度器。
 
 队列使用有期限 lease，claim 与状态更新在本地事务中完成。提炼期间不持有写事务。发布拟复用并补足现有
 文件记忆事务恢复机制，增加梦境发布 outbox 协议：先记录 intent，原子发布权威文件，再恢复 SQLite receipt/index；
@@ -234,7 +237,8 @@ person、Agent、audience、scope、run/session 全部匹配时才标为 Host-ob
 `MEMORY.md`；后者包含明确标记的 active tasks。HostInstructions 保持独立，永不生成 AGENTS/SECURITY。
 每轮从权威 file memory 重算并核对 person+digest；群聊不选择个人文档，digest/到期变化拒绝旧 session。
 owner-private cache 使用 digest 目录原子发布文档与 manifest。后台周期默认关闭，随服务 Store writer
-lock 启停，限制 interval、batch、timeout，自动归档到期项并只创建 pending candidates。
+lock 启停，限制 idle window、poll interval、最短 cycle interval、batch、timeout，自动归档到期项并只创建
+pending candidates。同一调度器同时最多一轮；模型执行期间不持有数据库事务。
 
 The source scanner remains independently capped at 4,096 root entries and 256 `handoff-*` directories.
 `batch` limits new extraction attempts within that bounded scan; already extracted or diagnostic receipts do not
@@ -337,8 +341,24 @@ Full Host catalog/project 路由现已接入；不匹配的 person、Agent、aud
 CLI 单次 Chat 只加载 HOT，不启动后台循环。业务模型不指定时继续采用 Offload 默认配置。
 
 渠道后台将 `enabled` 改为 true，并补充 `source_root`、`memory_offload_config`、`interval`（例如 `30m`）、
-`timeout`（例如 `5m`）。person 必须等于渠道配置中认证 owner ID；不能把共享原始目录无区别归给多个用户。
+`timeout`（例如 `5m`）、`idle_for`（默认 `60s`）、`activity_poll_interval`（默认 `1s`）和
+`activity_state_homes`。自身 Store 总会被检查；生产配置应另外显式列出 DingTalk、Feishu 和 CLI state home 的
+干净绝对路径。person 必须等于渠道配置中认证 owner ID；不能把共享原始目录无区别归给多个用户。
 后台和 HOT 可分别开启，前者的模型配置位于这份 JSON 内，不要混用启用 Full Host 的 CLI `--memory-offload-config`。
+
+Dream 可使用独立、owner-private 的 Offload v2 selector，不改变业务默认 profile。已验证的 Haiku 选择示例：
+
+```json
+{
+  "version": 2,
+  "config_path": "/absolute/offload/config.json",
+  "profile": "claude-cc-haiku-5-5",
+  "model": "claude-haiku-5-5",
+  "timeout": "5m"
+}
+```
+
+profile 和 model 必须由本机 Offload 配置实际支持；失败会阻止提炼，不会回退到业务模型或较弱 provider。
 
 统一服务配置可在所选 execution profile 中写 `"dream_config": "dream.json"`；相对路径按同目录 `host.json`
 解析并作为 `--dream-config` 转发。Full Host 启动后台前会校验目标 person 是渠道 owner，且 Agent 与 scope 属于渠道 catalog。

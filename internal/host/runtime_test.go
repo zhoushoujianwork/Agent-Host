@@ -90,3 +90,39 @@ func TestPersonalHOTRefreshRotatesOnlyNewSessions(t *testing.T) {
 		t.Fatalf("expired HOT documents forwarded: %+v", runner.requests[2].PresetDocuments)
 	}
 }
+
+func TestPreparedPersonalHOTIsImmutableAcrossSessionAndDispatch(t *testing.T) {
+	h, runner := testHost(t)
+	h.Config.RuntimeFingerprint = "base-runtime"
+	h.Config.PersonalHOTPersonID = "person-1"
+	digest, content := "hot-v1", "approved first memory"
+	h.Config.PersonalHOTDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		return []harness.PresetDocument{{Name: "MEMORY.md", Content: []byte(content)}}, digest, nil
+	}
+
+	preparedAny, firstFingerprint, err := h.PrepareChannel(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := preparedAny.(*Host)
+	first := newSession(t, prepared)
+	digest, content = "hot-v2", "approved next memory"
+	runOK(t, prepared, first, "first")
+	if prepared.Config.RuntimeFingerprint != firstFingerprint || string(runner.requests[0].PresetDocuments[0].Content) != "approved first memory" {
+		t.Fatal("prepared HOT changed between session binding and dispatch")
+	}
+
+	nextAny, nextFingerprint, err := h.PrepareChannel(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nextFingerprint == firstFingerprint {
+		t.Fatal("next request reused stale HOT fingerprint")
+	}
+	next := nextAny.(*Host)
+	second := newSession(t, next)
+	runOK(t, next, second, "second")
+	if string(runner.requests[1].PresetDocuments[0].Content) != "approved next memory" {
+		t.Fatal("next request did not receive published HOT")
+	}
+}

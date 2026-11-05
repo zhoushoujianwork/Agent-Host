@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -137,6 +138,52 @@ func TestProjectIsolationResumeAndResetRetainScopedMemory(t *testing.T) {
 		if m.Binding != a.Binding || m.Scope != f.service.Scope || m.RouteBinding == "" || m.ResolvedScope != f.projects[m.ProjectID].Scope || m.RuntimeFingerprint != f.policy || strings.Contains(m.ReplyText, m.Workspace) || strings.Contains(m.ReplyText, m.SessionID) {
 			t.Fatalf("queue identity changed or execution route absent: %+v", m)
 		}
+	}
+}
+
+func TestProjectChannelFreezesHOTBeforeSessionBinding(t *testing.T) {
+	f := newProjectFixture(t)
+	f.host.Config.PersonalHOTPersonID = "owner"
+	call := 0
+	f.host.Config.PersonalHOTDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		call++
+		value := fmt.Sprintf("hot-v%d", call)
+		return []harness.PresetDocument{{Name: "MEMORY.md", Content: []byte(value)}}, value, nil
+	}
+	first := f.process(t, f.message(t, "hot-1", "Explain project alpha.", "text", "dm"))
+	second := f.process(t, f.message(t, "hot-2", "Explain project alpha again.", "text", "dm"))
+	requests := f.runner.snapshot()
+	if call != 2 || len(requests) != 2 {
+		t.Fatalf("HOT was read more than once per channel request: calls=%d requests=%d", call, len(requests))
+	}
+	if got := string(requests[0].PresetDocuments[0].Content); got != "hot-v1" {
+		t.Fatalf("first dispatch HOT = %q", got)
+	}
+	if got := string(requests[1].PresetDocuments[0].Content); got != "hot-v2" {
+		t.Fatalf("second dispatch HOT = %q", got)
+	}
+	if first.RuntimeFingerprint == f.policy || second.RuntimeFingerprint == first.RuntimeFingerprint || second.SessionID == first.SessionID {
+		t.Fatalf("effective HOT fingerprints did not rotate exact sessions: first=%+v second=%+v", first, second)
+	}
+}
+
+func TestDirectChannelFreezesHOTBeforeSessionBinding(t *testing.T) {
+	f := newServiceFixture(t)
+	f.host.Config.PersonalHOTPersonID = "owner"
+	call := 0
+	f.host.Config.PersonalHOTDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		call++
+		value := fmt.Sprintf("direct-hot-v%d", call)
+		return []harness.PresetDocument{{Name: "MEMORY.md", Content: []byte(value)}}, value, nil
+	}
+	first := f.process(t, f.message(t, "direct-hot-1", "First request.", "text", "dm"))
+	second := f.process(t, f.message(t, "direct-hot-2", "Second request.", "text", "dm"))
+	requests := f.runner.snapshot()
+	if call != 2 || len(requests) != 2 || first.SessionID == second.SessionID {
+		t.Fatalf("direct HOT did not bind one immutable session per publication: calls=%d first=%+v second=%+v", call, first, second)
+	}
+	if string(requests[0].PresetDocuments[0].Content) != "direct-hot-v1" || string(requests[1].PresetDocuments[0].Content) != "direct-hot-v2" {
+		t.Fatalf("direct dispatch did not preserve prepared HOT: %+v", requests)
 	}
 }
 
