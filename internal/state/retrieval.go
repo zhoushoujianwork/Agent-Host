@@ -125,7 +125,7 @@ func eligibleAnnotations(ctx context.Context, tx *sql.Tx, scope string, now time
 	fileIndex := fileMemorySQL(ctx, tx)
 	filter, args := partitionWhere("m.", partition...)
 	args = append([]any{scope, timestamp(now)}, args...)
-	query := `SELECT m.payload,a.version,a.payload FROM memories m LEFT JOIN memory_annotations a ON a.memory_id=m.id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?)` + filter + ` ORDER BY m.rowid`
+	query := `SELECT m.payload,a.version,a.payload FROM memories m LEFT JOIN memory_annotations a ON a.memory_id=m.id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND COALESCE(json_extract(m.payload,'$.source_type'),'')!='dream_reviewed'` + filter + ` ORDER BY m.rowid`
 	if !fileIndex {
 		query += " LIMIT 201"
 	}
@@ -264,7 +264,7 @@ func (s *Store) retrieve(ctx context.Context, scope, text string, limit int, for
 				args = append(args, key)
 			}
 			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
-			rows, err := tx.QueryContext(ctx, `SELECT t.memory_id,t.term FROM memory_terms t JOIN memories m ON m.id=t.memory_id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND m.agent_id=? AND m.audience_id=? AND t.term IN (`+placeholders+`) ORDER BY t.memory_id,t.term`, args...)
+			rows, err := tx.QueryContext(ctx, `SELECT t.memory_id,t.term FROM memory_terms t JOIN memories m ON m.id=t.memory_id WHERE m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND COALESCE(json_extract(m.payload,'$.source_type'),'')!='dream_reviewed' AND m.agent_id=? AND m.audience_id=? AND t.term IN (`+placeholders+`) ORDER BY t.memory_id,t.term`, args...)
 			if err != nil {
 				return wrap("search memory annotation index", err)
 			}
@@ -454,7 +454,7 @@ func indexedLexicalIDs(ctx context.Context, tx *sql.Tx, scope string, tokens []s
 	for i, token := range tokens {
 		clauses[i] = "\"" + token + "\""
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT m.id FROM memory_fts JOIN memories m ON m.id=memory_fts.memory_id WHERE memory_fts MATCH ? AND m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND m.agent_id=? AND m.audience_id=? ORDER BY bm25(memory_fts),m.id`, strings.Join(clauses, " OR "), scope, timestamp(now), agentID, audienceID)
+	rows, err := tx.QueryContext(ctx, `SELECT m.id FROM memory_fts JOIN memories m ON m.id=memory_fts.memory_id WHERE memory_fts MATCH ? AND m.scope=? AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>?) AND COALESCE(json_extract(m.payload,'$.source_type'),'')!='dream_reviewed' AND m.agent_id=? AND m.audience_id=? ORDER BY bm25(memory_fts),m.id`, strings.Join(clauses, " OR "), scope, timestamp(now), agentID, audienceID)
 	if err != nil {
 		return nil, wrap("search memory FTS", err)
 	}

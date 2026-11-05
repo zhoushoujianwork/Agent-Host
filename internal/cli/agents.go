@@ -418,6 +418,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	if err := agents.userOptions(&o, audience, message.ConversationType == "2"); err != nil {
 		return nil, fmt.Errorf("load user profile: %w", err)
 	}
+	if err := bindDreamHOT(parent.Store, &o, message.SenderID, message.ConversationType != "2"); err != nil {
+		return nil, err
+	}
 	owner := parent.OwnerID != "" && message.SenderID == parent.OwnerID
 	o.hostInstructions += "\n\n" + channelAuthorizationInstructions(parent.OwnerID, owner)
 	o.permissionMode = "bypassPermissions"
@@ -455,6 +458,9 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 			selected.projectID = ids[0]
 		}
 		if err := resolveOptions(ctx, store, &selected, true); err != nil {
+			return nil, assembly.Runtime{}, err
+		}
+		if err := bindDreamHOT(parent.Store, &selected, message.SenderID, message.ConversationType != "2"); err != nil {
 			return nil, assembly.Runtime{}, err
 		}
 		for _, p := range selected.projects {

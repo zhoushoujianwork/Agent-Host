@@ -120,6 +120,9 @@ func (c *Library) Run(ctx context.Context, req Request) (Result, error) {
 	sdkRequest := execution.Request{Caller: Caller, CallerRunID: req.CallerRunID,
 		Task: req.Prompt, Instructions: []byte(req.Instructions), Directory: req.Workspace,
 		NativeSessionID: req.Session, Model: c.model, Write: req.Write, Timeout: &c.timeout, RecordHistory: true, Monitor: &execution.MonitorOptions{CaptureTranscript: true, ResumeCommand: req.MonitorResumeCommand, ResumeDirectory: req.MonitorResumeDirectory}}
+	for _, document := range req.PresetDocuments {
+		sdkRequest.PresetDocuments = append(sdkRequest.PresetDocuments, execution.PresetDocument{Name: document.Name, Content: append([]byte(nil), document.Content...)})
+	}
 	if c.backend == "" || c.backend == "claude" {
 		sdkRequest.Native = &execution.NativeControls{CallerContext: true, PermissionMode: "bypassPermissions"}
 	}

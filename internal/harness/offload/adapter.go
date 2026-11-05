@@ -67,9 +67,13 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, observe func(har
 		}
 		return harness.Result{Status: status, ExitCode: -1, Error: err.Error()}, &harness.ExecutionError{Kind: kind, Cause: err}
 	}
-	r, err := a.client.Run(ctx, offloadexec.Request{MonitorResumeCommand: req.MonitorResumeCommand, MonitorResumeDirectory: req.MonitorResumeDirectory, CallerRunID: req.CallerRunID,
+	offloadRequest := offloadexec.Request{MonitorResumeCommand: req.MonitorResumeCommand, MonitorResumeDirectory: req.MonitorResumeDirectory, CallerRunID: req.CallerRunID,
 		Prompt: req.Prompt, Instructions: req.HostInstructions, Workspace: req.Workspace,
-		Session: req.NativeSessionID, ResumeProfile: req.NativeSessionProfile, Write: req.WriteIntent})
+		Session: req.NativeSessionID, ResumeProfile: req.NativeSessionProfile, Write: req.WriteIntent}
+	for _, document := range req.PresetDocuments {
+		offloadRequest.PresetDocuments = append(offloadRequest.PresetDocuments, offloadexec.PresetDocument{Name: document.Name, Content: append([]byte(nil), document.Content...)})
+	}
+	r, err := a.client.Run(ctx, offloadRequest)
 	status := "failed"
 	if r.Status == offloadexec.StatusCanceled {
 		status = "canceled"

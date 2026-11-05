@@ -2,8 +2,10 @@ package host
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"agent-host/internal/harness"
 	"agent-host/internal/memory"
 	"agent-host/internal/state"
 )
@@ -41,5 +43,50 @@ func TestProjectScopeSurvivesDirectoryChangeAndSessionDoesNot(t *testing.T) {
 	h.Config.RuntimeFingerprint = "configuration-v2"
 	if _, err := h.Session(context.Background(), fresh.ID); err == nil {
 		t.Fatal("resumed across runtime policy change")
+	}
+}
+
+func TestPersonalHOTRefreshRotatesOnlyNewSessions(t *testing.T) {
+	h, runner := testHost(t)
+	h.Config.RuntimeFingerprint = "base-runtime"
+	h.Config.PersonalHOTPersonID = "person-1"
+	digest, content := "hot-v1", "first reviewed memory"
+	h.Config.PersonalHOTDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		return []harness.PresetDocument{{Name: "MEMORY.md", Content: []byte(content)}}, digest, nil
+	}
+
+	first := newSession(t, h)
+	runOK(t, h, first, "first")
+	if got := string(runner.requests[0].PresetDocuments[0].Content); got != content {
+		t.Fatalf("first HOT content = %q", got)
+	}
+	if h.Config.RuntimeFingerprint != "base-runtime" {
+		t.Fatalf("shared Host fingerprint mutated: %q", h.Config.RuntimeFingerprint)
+	}
+
+	digest, content = "hot-v2", "newly accepted memory"
+	if _, err := h.Session(context.Background(), first.ID); err == nil || !strings.Contains(err.Error(), "start a new session") {
+		t.Fatalf("old session resumed after HOT changed: %v", err)
+	}
+	if _, err := h.Run(context.Background(), first, "stale"); err == nil {
+		t.Fatal("old session dispatched after HOT changed")
+	}
+	second := newSession(t, h)
+	runOK(t, h, second, "second")
+	if got := string(runner.requests[1].PresetDocuments[0].Content); got != content {
+		t.Fatalf("refreshed HOT content = %q", got)
+	}
+
+	digest, content = "hot-v3-expired", ""
+	h.Config.PersonalHOTDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		return nil, digest, nil
+	}
+	if _, err := h.Session(context.Background(), second.ID); err == nil {
+		t.Fatal("session survived HOT expiry")
+	}
+	third := newSession(t, h)
+	runOK(t, h, third, "after expiry")
+	if len(runner.requests[2].PresetDocuments) != 0 {
+		t.Fatalf("expired HOT documents forwarded: %+v", runner.requests[2].PresetDocuments)
 	}
 }

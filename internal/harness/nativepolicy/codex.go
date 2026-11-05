@@ -64,6 +64,9 @@ func (a *Adapter) runCodex(ctx context.Context, req harness.Request, emit func(h
 	instructions := req.HostInstructions + "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
 	resourceRoots := append([]string{req.Workspace}, req.AdditionalDirectories...)
 	sdk := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Directory: environment.Workspace, EnvironmentDirectory: environment.Root, Instructions: []byte(instructions), Model: req.Model, AdditionalDirectories: resourceRoots, Native: native}
+	for _, document := range req.PresetDocuments {
+		sdk.PresetDocuments = append(sdk.PresetDocuments, execution.PresetDocument{Name: document.Name, Content: append([]byte(nil), document.Content...)})
+	}
 	if req.Resume {
 		sdk.NativeSessionID = req.NativeSessionID
 	}

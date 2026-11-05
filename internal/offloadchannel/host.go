@@ -49,7 +49,9 @@ type Config struct {
 	Model              string
 	// Write sets Offload's task write intent (-w). Offload adds no sandbox
 	// either way; when false the worker is only told to stay read-only.
-	Write bool
+	Write        bool
+	HotPersonID  string
+	HotDocuments func(context.Context) ([]harness.PresetDocument, string, error)
 }
 
 // Host shares Offload execution between channel messages and local owner Chat.
@@ -85,6 +87,9 @@ func (h *Host) validate() error {
 		if err := validateCleanNativeProfile(c.NativeProfile); err != nil {
 			return err
 		}
+	}
+	if c.HotDocuments != nil && (c.HotPersonID == "" || c.NativeProfile == "") {
+		return errors.New("HOT documents require person and clean native execution")
 	}
 	return nil
 }
@@ -131,16 +136,35 @@ func (h *Host) store() *state.Store {
 	return h.Store.WithPartition(h.Config.AgentID, h.Config.AudienceID)
 }
 
-func (h *Host) newSession() state.Session {
+func (h *Host) runtimeSnapshot(ctx context.Context) (string, []harness.PresetDocument, error) {
+	c := h.Config
+	if c.HotDocuments == nil {
+		return c.RuntimeFingerprint, nil, nil
+	}
+	documents, digest, err := c.HotDocuments(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	if digest == "" {
+		return "", nil, errors.New("HOT snapshot has no digest")
+	}
+	return state.OffloadFingerprintPrefix + channel.Key("offload-hot-session-v1", c.RuntimeFingerprint, c.HotPersonID, digest), documents, nil
+}
+
+func (h *Host) newSession(ctx context.Context) (state.Session, error) {
 	agent, audience := h.store().Partition()
 	c := h.Config
+	fingerprint, _, err := h.runtimeSnapshot(ctx)
+	if err != nil {
+		return state.Session{}, err
+	}
 	s := state.Session{AgentID: agent, AudienceID: audience, ID: uuid.NewString(), Scope: c.Scope, ProjectID: c.ProjectID, ProjectName: c.ProjectName,
-		Workspace: c.Workspace, RuntimeFingerprint: c.RuntimeFingerprint, Model: c.Model,
+		Workspace: c.Workspace, RuntimeFingerprint: fingerprint, Model: c.Model,
 		NativeSessionID: state.OffloadPendingPrefix + uuid.NewString(), CreatedAt: time.Now().UTC()}
 	if c.ProjectID != "" {
 		s.Projects = []state.ProjectRef{{ID: c.ProjectID, Name: c.ProjectName, Scope: c.Scope, Workspace: c.Workspace}}
 	}
-	return s
+	return s, nil
 }
 
 // Session creates a fresh session when id is empty, otherwise it validates the
@@ -152,14 +176,17 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 	}
 	st := h.store()
 	if id == "" {
-		s := h.newSession()
+		s, err := h.newSession(ctx)
+		if err != nil {
+			return s, err
+		}
 		return s, st.CreateSession(ctx, s)
 	}
 	s, err := st.Session(ctx, id)
 	if err != nil {
 		return s, err
 	}
-	if err := h.checkSession(s); err != nil {
+	if err := h.checkSession(ctx, s); err != nil {
 		return s, err
 	}
 	if err := h.canResume(ctx, st, id); err != nil {
@@ -171,12 +198,16 @@ func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
 	return s, nil
 }
 
-func (h *Host) checkSession(s state.Session) error {
+func (h *Host) checkSession(ctx context.Context, s state.Session) error {
 	c := h.Config
 	if !strings.HasPrefix(s.RuntimeFingerprint, state.OffloadFingerprintPrefix) {
 		return errors.New("session was not created by the Offload engine and cannot be resumed by it; start a new session")
 	}
-	if s.RuntimeFingerprint != c.RuntimeFingerprint || s.Scope != c.Scope || s.WorkingDirectory() != c.Workspace || s.ProjectID != c.ProjectID || s.Model != c.Model {
+	fingerprint, _, err := h.runtimeSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if s.RuntimeFingerprint != fingerprint || s.Scope != c.Scope || s.WorkingDirectory() != c.Workspace || s.ProjectID != c.ProjectID || s.Model != c.Model {
 		return errors.New("session differs from the current Offload configuration; start a new session")
 	}
 	if s.Room != nil && (s.AudienceID != state.OwnerAudienceID || s.Room.SenderID != "local-owner" || s.Room.NativeContinuation != state.OffloadRoomFresh && s.Room.NativeContinuation != state.OffloadRoomResume) {
@@ -360,12 +391,30 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 			return state.Run{}, errors.New("direct Offload Chat requires the local owner audience")
 		}
 	}
+	personal := false
+	if h.Config.HotDocuments != nil {
+		personal = messageID == "" && h.Config.HotPersonID == "local-owner" || messageID != "" && m.ConversationType != "2" && m.SenderID == h.Config.HotPersonID
+		if messageID != "" && m.ConversationType != "2" && m.SenderID != h.Config.HotPersonID {
+			return state.Run{}, errors.New("HOT person does not match authenticated private sender")
+		}
+	}
 	cur, err := st.Session(ctx, s.ID)
 	if err != nil {
 		return state.Run{}, err
 	}
-	if err := h.checkSession(cur); err != nil {
+	if err := h.checkSession(ctx, cur); err != nil {
 		return state.Run{}, err
+	}
+	var hotDocuments []harness.PresetDocument
+	if personal {
+		fingerprint, documents, e := h.runtimeSnapshot(ctx)
+		if e != nil {
+			return state.Run{}, e
+		}
+		if fingerprint != cur.RuntimeFingerprint {
+			return state.Run{}, errors.New("HOT memory eligibility changed; start a new session")
+		}
+		hotDocuments = documents
 	}
 	if room != (cur.Room != nil) {
 		return state.Run{}, errors.New("use the room entry for room sessions")
@@ -442,6 +491,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, messageID string
 		}
 	}
 	req := harness.Request{CallerRunID: "agh:" + run.ID, Prompt: input, HostInstructions: instructions + "\n\n" + memoryContext + roomPrompt(cur.Room) + prompt("", m), Workspace: cur.WorkingDirectory(), WriteIntent: h.Config.Write, Resume: resume}
+	req.PresetDocuments = hotDocuments
 	if messageID == "" && !room && h.Config.ResumeCommand != nil {
 		req.MonitorResumeCommand, req.MonitorResumeDirectory = h.Config.ResumeCommand(run, cur)
 	}

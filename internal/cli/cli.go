@@ -36,6 +36,7 @@ Usage:
   agent-host status (--root ABSOLUTE_ROOT | --home PATH ...) [--window 24h | --since TIME] [--until TIME] [--stale-after 2h] [--viewer-port 8765] [--no-http] [--format text|json]
   agent-host stats (--root ABSOLUTE_ROOT | --home PATH ...) [--since 7d] [--compare] [--format text|json]
   agent-host chat [-m MESSAGE] [--resume SESSION] [options]
+  agent-host dream scan --source ABS --person ID --agent ID --audience ID --memory-scope SCOPE --format json
   agent-host skills list|import|review|publish|enable|disable|withdraw|rollback --root PATH [--help]
   agent-host memory search [options] QUERY
   agent-host memory connection [add|show|revoke] [options]
@@ -145,6 +146,7 @@ type options struct {
 	offloadClient                                                                      offloadexec.Executor
 	offloadMemory                                                                      *offloadchannel.MemoryPlugin
 	memoryOffloadConfig                                                                string
+	dreamConfig                                                                        string
 	memoryOffloadClient                                                                offloadexec.Executor
 	memoryExecutionFingerprint, memoryModel                                            string
 	requestFor, notifyTo, notifyChannel, feedbackConfigDir, feedbackOwnerID            string
@@ -177,6 +179,8 @@ type options struct {
 	knowledgeSources                                                                   []knowledge.ResolvedSource
 	knowledgeHints                                                                     []knowledge.Hint
 	mcpServers                                                                         []harness.MCPServer
+	hotPersonID, hotAgentID, hotAudienceID, hotScope                                   string
+	hotRefresh                                                                         func(context.Context) ([]harness.PresetDocument, string, error)
 	projectID, projectName, scope, runtimeFingerprint                                  string
 	projectIDs                                                                         []string
 	primaryProject, defaultWorkspace, defaultScope                                     string
@@ -244,6 +248,7 @@ func parse(name string, args []string, errout io.Writer) (options, []string, err
 	fs.StringVar(&o.binary, "claude", "claude", "Claude executable")
 	fs.StringVar(&o.offloadConfig, "offload-config", "", "Optional private Offload profile selector; omitted uses the Offload default profile")
 	fs.StringVar(&o.memoryOffloadConfig, "memory-offload-config", "", "Optional private Offload profile selector for internal memory extraction only")
+	fs.StringVar(&o.dreamConfig, "dream-config", "", "Explicit private dream lifecycle and HOT configuration")
 	fs.StringVar(&o.emailConfig, "email-config", "", "Private managed email configuration")
 	fs.StringVar(&o.dingtalkWorkspaceConfig, "dingtalk-workspace-config", "", "Private built-in DingTalk workspace configuration")
 	fs.Func("knowledge-config", "Private knowledge source configuration; repeat for multiple plugins", func(path string) error {
@@ -496,6 +501,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if args[0] == "skills" {
 		return runSkills(args[1:], out, errout)
 	}
+	if args[0] == "dream" {
+		return runDream(args[1:], out, errout)
+	}
 	if args[0] == "feedback" {
 		return runFeedback(ctx, args[1:], out, errout)
 	}
@@ -715,6 +723,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if err := resolveOptions(ctx, store, &o, command == "chat"); err != nil {
 		return err
 	}
+	if command == "chat" && o.offloadProfile == nil {
+		if err := validateFullHostChatDream(o); err != nil {
+			return err
+		}
+		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
+			return err
+		}
+	}
 	if command != "chat" {
 		if err := store.Recover(ctx); err != nil {
 			return fmt.Errorf("recover: %w", err)
@@ -781,6 +797,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		previous := s.RuntimeFingerprint
 		o.retrievalQuery = input
 		if err := resolveOptions(ctx, store, &o, true); err != nil {
+			return err
+		}
+		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
 			return err
 		}
 		h = composeHost(store, o, client, renderer.Render)

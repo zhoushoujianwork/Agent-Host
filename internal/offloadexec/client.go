@@ -33,6 +33,7 @@ const (
 
 // Request describes one Offload run.
 type Request struct {
+	PresetDocuments        []PresetDocument
 	MonitorResumeCommand   []string
 	MonitorResumeDirectory string
 	// CallerRunID optionally correlates this invocation with its owning task.
@@ -52,6 +53,11 @@ type Request struct {
 	ResumeProfile string
 	// Write sets the task write intent (-w). Offload adds no sandbox.
 	Write bool
+}
+
+type PresetDocument struct {
+	Name    string
+	Content []byte
 }
 
 // Result retains typed package execution and private raw evidence.

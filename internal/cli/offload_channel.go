@@ -28,6 +28,9 @@ func resolveOffloadChannelOptions(o *options) error {
 	if o.offloadProfile == nil || o.offloadClient == nil {
 		return errors.New("Offload channel execution requires an explicit profile")
 	}
+	if _, err := loadDreamRuntime(o.dreamConfig); err != nil {
+		return err
+	}
 	if _, ok := o.offloadClient.(*offloadexec.Library); !ok {
 		return errors.New("clean Offload execution requires a Go package profile; CLI compatibility selectors are unsupported")
 	}
@@ -147,10 +150,14 @@ func selectEmptyNativeChatProfile(o *options) error {
 }
 
 func composeOffloadChannelHost(store *state.Store, o options, sink event.Sink) channel.Host {
+	hotPerson, hotRefresh := o.hotPersonID, o.hotRefresh
+	if o.agentID != o.hotAgentID || o.audienceID != o.hotAudienceID || o.scope != o.hotScope {
+		hotPerson, hotRefresh = "", nil
+	}
 	return &offloadchannel.Host{Store: store.WithPartition(o.agentID, o.audienceID), Client: o.offloadClient,
 		Config: offloadchannel.Config{AgentID: o.agentID, AudienceID: o.audienceID, Scope: o.scope,
 			Workspace: o.workspace, NativeProfile: o.nativeProfile, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model,
-			Instructions: o.hostInstructions, Write: true}, Sink: sink, Memory: o.offloadMemory}
+			Instructions: o.hostInstructions, Write: true, HotPersonID: hotPerson, HotDocuments: hotRefresh}, Sink: sink, Memory: o.offloadMemory}
 }
 
 func configureOffloadChannel(service *channel.Service, o options, tenant string, sink event.Sink) {
@@ -194,7 +201,7 @@ func configureOffloadChannel(service *channel.Service, o options, tenant string,
 	}
 }
 
-func withOffloadChannelStore(ctx context.Context, o options, out io.Writer, serve func(*state.Store, event.Sink, func(string, string) error) error) (runErr error) {
+func withOffloadChannelStore(ctx context.Context, o options, out io.Writer, serve func(context.Context, *state.Store, event.Sink, func(string, string) error) error) (runErr error) {
 	release, err := state.Acquire(o.home)
 	if err != nil {
 		return err
@@ -218,11 +225,41 @@ func withOffloadChannelStore(ctx context.Context, o options, out io.Writer, serv
 	observe := func(kind, message string) error {
 		return sink(event.Event{Version: event.Version, At: time.Now().UTC(), Type: kind, Phase: "channel", Component: "channel.offload", Message: message})
 	}
-	return serve(store, sink, observe)
+	serviceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop, done, err := startDreamBackground(serviceCtx, store, o)
+	if err != nil {
+		return err
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- serve(serviceCtx, store, sink, observe) }()
+	if done == nil {
+		return <-serveDone
+	}
+	select {
+	case runErr = <-serveDone:
+		stop()
+		backgroundErr := <-done
+		if errors.Is(backgroundErr, context.Canceled) {
+			backgroundErr = nil
+		}
+		return errors.Join(runErr, backgroundErr)
+	case backgroundErr := <-done:
+		cancel()
+		return errors.Join(backgroundErr, <-serveDone)
+	}
 }
 
 func offloadChannelCheck(out io.Writer, kind string, o options) error {
-	_, err := fmt.Fprintf(out, "{\"status\":\"local_configuration_valid\",\"engine\":\"offload\",\"channel\":%q,\"memory_enabled\":%t,\"memory_processing_enabled\":%t,\"platform_verified\":false,\"native_auth_verified\":false}\n", kind, o.offloadMemory != nil, o.offloadMemory != nil && o.offloadMemory.Decider != nil)
+	dreamConfig, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil {
+		return err
+	}
+	dreamEnabled, hotEnabled := false, false
+	if dreamConfig != nil {
+		dreamEnabled, hotEnabled = dreamConfig.Enabled, dreamConfig.HotEnabled
+	}
+	_, err = fmt.Fprintf(out, "{\"status\":\"local_configuration_valid\",\"engine\":\"offload\",\"channel\":%q,\"memory_enabled\":%t,\"memory_processing_enabled\":%t,\"dream_enabled\":%t,\"dream_hot_enabled\":%t,\"platform_verified\":false,\"native_auth_verified\":false}\n", kind, o.offloadMemory != nil, o.offloadMemory != nil && o.offloadMemory.Decider != nil, dreamEnabled, hotEnabled)
 	return err
 }
 
@@ -230,17 +267,30 @@ func runOffloadDingTalk(ctx context.Context, command string, cfg dingtalk.Config
 	if err := resolveOffloadChannelOptions(&o); err != nil {
 		return err
 	}
+	dreamConfig, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil {
+		return err
+	}
+	if err = validateDreamRuntimeIdentity(dreamConfig, o, cfg.OwnerUserID); err != nil {
+		return err
+	}
 	if command == "check" {
 		return offloadChannelCheck(out, "dingtalk", o)
 	}
-	return withOffloadChannelStore(ctx, o, out, func(store *state.Store, sink event.Sink, observe func(string, string) error) error {
+	return withOffloadChannelStore(ctx, o, out, func(serviceCtx context.Context, store *state.Store, sink event.Sink, observe func(string, string) error) error {
+		if err := prepareDreamHOT(store, &o); err != nil {
+			return err
+		}
+		if o.hotPersonID != "" && o.hotPersonID != cfg.OwnerUserID {
+			return errors.New("dream HOT person must match configured DingTalk owner")
+		}
 		service := &channel.Service{Store: store, ClientID: cfg.ClientID, OwnerID: cfg.OwnerUserID,
 			Replier: dingtalk.Replier{}, Reactor: &dingtalk.Reactor{Config: cfg, RobotCode: cfg.RobotCode}, Observe: observe}
 		configureOffloadChannel(service, o, cfg.CorpID, sink)
 		if err := service.Validate(); err != nil {
 			return err
 		}
-		return serveChannel(ctx, dingtalk.Receiver{Config: cfg}, service, observe)
+		return serveChannel(serviceCtx, dingtalk.Receiver{Config: cfg}, service, observe)
 	})
 }
 
@@ -251,13 +301,26 @@ func runOffloadFeishu(ctx context.Context, command string, cfg feishumeeting.Con
 	if err := resolveOffloadChannelOptions(&o); err != nil {
 		return err
 	}
+	dreamConfig, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil {
+		return err
+	}
+	if err = validateDreamRuntimeIdentity(dreamConfig, o, cfg.OwnerOpenID); err != nil {
+		return err
+	}
 	if _, err := exec.LookPath("lark-cli"); err != nil {
 		return errors.New("lark-cli is unavailable")
 	}
 	if command == "check" {
 		return offloadChannelCheck(out, "feishu", o)
 	}
-	return withOffloadChannelStore(ctx, o, out, func(store *state.Store, sink event.Sink, observe func(string, string) error) error {
+	return withOffloadChannelStore(ctx, o, out, func(serviceCtx context.Context, store *state.Store, sink event.Sink, observe func(string, string) error) error {
+		if err := prepareDreamHOT(store, &o); err != nil {
+			return err
+		}
+		if o.hotPersonID != "" && o.hotPersonID != cfg.OwnerOpenID {
+			return errors.New("dream HOT person must match configured Feishu owner")
+		}
 		service := &channel.Service{Channel: state.ReplyTargetFeishu, Store: store, ClientID: cfg.AppID, OwnerID: cfg.OwnerOpenID,
 			TextReplier: feishu.Replier{Config: feishuIMConfig(cfg)}, DisableReactions: !cfg.IMReactions, Observe: observe}
 		if cfg.IMReactions {
@@ -267,6 +330,6 @@ func runOffloadFeishu(ctx context.Context, command string, cfg feishumeeting.Con
 		if err := service.Validate(); err != nil {
 			return err
 		}
-		return serveFeishuAutomaticEntry(ctx, cfg, o.home, service, sink, observe)
+		return serveFeishuAutomaticEntry(serviceCtx, cfg, o.home, service, sink, observe)
 	})
 }

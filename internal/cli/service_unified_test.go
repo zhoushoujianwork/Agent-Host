@@ -203,6 +203,33 @@ func TestUnifiedMemoryOffloadProfileResolvesAndForwardsSelector(t *testing.T) {
 	}
 }
 
+func TestUnifiedDreamConfigResolvesRelativeToHostAndForwards(t *testing.T) {
+	root, dir := unifiedFixture(t)
+	dreamPath := filepath.Join(dir, "dream.json")
+	if err := os.WriteFile(dreamPath, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var host unifiedHost
+	if err := readServiceJSON(filepath.Join(dir, "host.json"), &host); err != nil {
+		t.Fatal(err)
+	}
+	profile := host.Profiles[host.DefaultProfile]
+	profile.Execution.DreamConfig = "dream.json"
+	host.Profiles[host.DefaultProfile] = profile
+	writeBotJSON(t, filepath.Join(dir, "host.json"), host)
+	writeBotJSON(t, filepath.Join(dir, "channels.dingtalk.json"), map[string]any{"version": 1, "enabled": true, "settings": map[string]any{"bot": map[string]any{"enabled": true, "client_id": "fixture-app", "robot_code": "fixture-robot", "client_secret_file": "credentials/bot.secret", "corp_id": "fixture-corp", "owner_user_id": "fixture-owner"}}})
+	layout, config, _, err := loadUnifiedService(filepath.Join(root, "channels", "dingtalk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.DreamConfig != dreamPath {
+		t.Fatalf("dream config path = %q", config.DreamConfig)
+	}
+	if args := strings.Join(config.arguments(layout, "serve"), " "); !strings.Contains(args, "--dream-config "+dreamPath) {
+		t.Fatalf("dream config not forwarded: %s", args)
+	}
+}
+
 func TestUnifiedMemoryIdentitySurvivesWorkspaceChange(t *testing.T) {
 	root := channelDirectoryFixture(t)
 	store, err := state.Open(filepath.Join(root, "state"), false)
