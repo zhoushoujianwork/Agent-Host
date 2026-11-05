@@ -77,6 +77,53 @@ func TestMCPBoundedPendingAndSameAttempt(t *testing.T) {
 		t.Fatal("raw error escaped")
 	}
 }
+
+func TestMCPStageCorrectsRejectedExplanationWithoutSpendingAnAttempt(t *testing.T) {
+	s, b := fixture(t)
+	// Regression: both real calls were long explanations, so no custom badge
+	// was reserved and the user only saw the automatic processing marker.
+	long := `{"text":"已确认目标 VM，正在通过 JMS 只读检查资源使用；不会重启。","idempotency_key":"resource-check"}`
+	if _, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(long), time.Millisecond); err == nil || !strings.Contains(err.Error(), `"stage":"checking_resources"`) {
+		t.Fatal("validation must explain exactly how to correct the call", err)
+	}
+	p, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(`{"stage":"checking_resources","idempotency_key":"resource-check"}`), time.Millisecond)
+	if err != nil || p.Text != "检查资源" || p.Status != "pending" {
+		t.Fatal("stage retry did not reserve the short badge", p, err)
+	}
+	reaction, _, err := claimProgress(t.Context(), s)
+	if err != nil || reaction.ID != p.ID {
+		t.Fatal("stage attempt missing from feedback queue", reaction, err)
+	}
+	if err = s.FinishChannelReaction(t.Context(), p.ReactionID, "accepted", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(`{"stage":"checking_resources","idempotency_key":"resource-check"}`), time.Millisecond)
+	if err != nil || got.ID != p.ID || got.Status != "accepted" {
+		t.Fatal("same stage key replayed a badge", got, err)
+	}
+}
+
+func TestMCPStageCatalogAndInvalidStages(t *testing.T) {
+	tool := toolsList()[0]
+	properties := tool.InputSchema["properties"].(map[string]any)
+	if _, present := properties["text"]; present {
+		t.Fatal("new tool catalog must not invite free-text explanations")
+	}
+	if required := tool.InputSchema["required"].([]string); len(required) != 1 || required[0] != "stage" {
+		t.Fatal(required)
+	}
+	for _, stage := range progressStages {
+		if _, err := state.ValidateProgressText(stage.label); err != nil {
+			t.Fatal(stage, err)
+		}
+	}
+	s, b := fixture(t)
+	for _, raw := range []string{`{"stage":"invented"}`, `{"stage":"checking_resources","text":"different"}`, `{"stage":"checking_resources","destination":"other"}`} {
+		if _, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(raw), time.Millisecond); err == nil {
+			t.Fatal("invalid stage accepted", raw)
+		}
+	}
+}
 func TestMCPServerRequiresCurrentRunFingerprint(t *testing.T) {
 	s, b := fixture(t)
 	b.Receipt.Fingerprint = "stale"

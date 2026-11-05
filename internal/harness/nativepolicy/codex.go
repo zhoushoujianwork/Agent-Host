@@ -61,7 +61,7 @@ func (a *Adapter) runCodex(ctx context.Context, req harness.Request, emit func(h
 	for _, image := range req.Images {
 		native.Images = append(native.Images, execution.Image{Name: image.Name, MediaType: image.MediaType, Data: append([]byte(nil), image.Data...)})
 	}
-	instructions := req.HostInstructions + "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
+	instructions := req.HostInstructions + "\n\n" + harness.DirectExecutionInstructions + "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
 	resourceRoots := append([]string{req.Workspace}, req.AdditionalDirectories...)
 	sdk := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Directory: environment.Workspace, EnvironmentDirectory: environment.Root, Instructions: []byte(instructions), Model: req.Model, AdditionalDirectories: resourceRoots, Native: native}
 	for _, document := range req.PresetDocuments {

@@ -78,3 +78,10 @@ Existing channel authorization policy is preserved; this upgrade does not claim
 new non-owner restrictions, change `shared-execution-v2`, or permit arbitrary
 operations during acceptance. Consult runtime receipts for deployment and channel
 acceptance outcomes.
+
+Business Agents execute their task directly. Host retains the outer Offload
+execution and profile selection; native Agents must not invoke the Offload CLI,
+start another worker or recursively submit the same task through Host chat.
+Offload delegation Skills are rejected by directory or declared name. This is
+Host instruction and capability policy, not an additional OS sandbox. See
+[execution details](clean-ops-agent-detail.md).

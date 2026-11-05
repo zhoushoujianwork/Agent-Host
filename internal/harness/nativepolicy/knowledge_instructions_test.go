@@ -56,6 +56,9 @@ func TestKnowledgeUsageIsSystemGuidanceWithoutGrantingPermissions(t *testing.T) 
 			if !strings.Contains(captured.PromptInstructions, knowledge.CitationInstructions) || strings.Contains(captured.PromptInstructions, "source name and relative document path for local knowledge") {
 				t.Fatal("system prompt must use the shared citation policy without the old local-path rule")
 			}
+			if !strings.Contains(captured.PromptInstructions, harness.DirectExecutionInstructions) {
+				t.Fatal("native business execution lost the prohibition on nested Offload")
+			}
 			if strings.Contains(captured.PromptInstructions, knowledgeUsageInstructions) == tc.toolsDisabled {
 				t.Fatalf("knowledge tool guidance disagrees with tool availability: %v", captured.Args)
 			}

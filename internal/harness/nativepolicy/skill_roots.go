@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"agent-host/internal/harness"
 )
 
 // approvedSkillRoots resolves each explicitly selected Skill. Audience profiles
@@ -48,6 +50,13 @@ func approvedSkillRoots(profile, taskPackage string) ([]string, error) {
 			}
 			if info, err = os.Stat(filepath.Join(root, "SKILL.md")); err != nil || !info.Mode().IsRegular() {
 				return nil, fmt.Errorf("native Skill %s has no regular SKILL.md", name)
+			}
+			body, err := os.ReadFile(filepath.Join(root, "SKILL.md"))
+			if err != nil {
+				return nil, err
+			}
+			if err := harness.ValidateDirectExecutionSkill(name, body); err != nil {
+				return nil, err
 			}
 			if prior := byName[name]; prior != "" && prior != root {
 				return nil, fmt.Errorf("native Skill identity %s is duplicated", name)

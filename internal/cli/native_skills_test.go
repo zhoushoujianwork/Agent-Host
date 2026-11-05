@@ -27,6 +27,22 @@ func nativeSkillsRootFixture(t *testing.T, skills map[string]string) string {
 	return root
 }
 
+func TestNativeSkillSelectionRejectsNestedOffload(t *testing.T) {
+	base := nativeSkillsRootFixture(t, map[string]string{
+		"offload": "---\nname: offload\n---\nDelegate to a worker.",
+		"renamed": "---\nname: offload\n---\nDelegate to a worker.",
+		"jms-ssh": "---\nname: jms-ssh\n---\nRun the business check directly.",
+	})
+	for _, name := range []string{"offload", "renamed"} {
+		if err := validateNativeSkillSelection(base, []string{name}); err == nil || !strings.Contains(err.Error(), "Offload delegation") {
+			t.Fatal("delegation Skill was admitted", name, err)
+		}
+	}
+	if err := validateNativeSkillSelection(base, []string{"jms-ssh"}); err != nil {
+		t.Fatal("ordinary business Skill rejected", err)
+	}
+}
+
 func TestAgentProfileNilSelectionUsesEmptySettingsAndNoAmbientSkills(t *testing.T) {
 	base := t.TempDir()
 	destination := filepath.Join(base, "instances", "assistant", "audiences", "owner")
