@@ -36,7 +36,10 @@ func TestOffloadRoomsOverlapAndUnknownNeverResumeOrReplay(t *testing.T) {
 	if second.NativeSessionID == first.NativeSessionID || strings.Contains("\n"+f.read("argv.2"), "\n--resume\n") {
 		t.Fatal("overlapping intake inherited later native history")
 	}
-	seed := f.host.newSession()
+	seed, err := f.host.newSession(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, created, err := f.host.store().EnterOffloadRoom(t.Context(), seed, roomInput("interrupted", "never dispatched"))
 	if err != nil || !created {
 		t.Fatal(err)
@@ -94,7 +97,11 @@ func TestOffloadRoomLeaseAndRecoveryProtectActiveRun(t *testing.T) {
 	if err := f.store.RecoverIdleChatRuns(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	session, _, err := f.host.store().EnterOffloadRoom(t.Context(), f.host.newSession(), roomInput("one", "slow"))
+	fresh, err := f.host.newSession(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _, err := f.host.store().EnterOffloadRoom(t.Context(), fresh, roomInput("one", "slow"))
 	if err != nil {
 		t.Fatal(err)
 	}

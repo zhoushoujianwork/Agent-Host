@@ -466,6 +466,9 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	sdkReq := execution.Request{CallerRunID: req.CallerRunID, Task: req.Prompt, Instructions: []byte(instructions), Directory: environment.Workspace, EnvironmentDirectory: environment.Root,
 		Model: req.Model, AdditionalDirectories: resourceRoots, ToolsDisabled: req.ToolsDisabled, Native: native,
 		OnEvent: func(e execution.RawEvent) error { observerErr = decoder.consume(e.Data); return observerErr }}
+	for _, document := range req.PresetDocuments {
+		sdkReq.PresetDocuments = append(sdkReq.PresetDocuments, execution.PresetDocument{Name: document.Name, Content: append([]byte(nil), document.Content...)})
+	}
 	if req.Resume {
 		sdkReq.NativeSessionID = req.NativeSessionID
 	}

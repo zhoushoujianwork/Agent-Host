@@ -1,6 +1,7 @@
 # 梦境记忆轮转：实现设计
 
-状态：设计提案，本文所有新增 schema、状态、接口、命令和 worker 均为 **NOT DELIVERED**。
+状态：部分交付。Phase 0/1、私聊 HOT 注入与 Host-owned opt-in 周期已交付；策略自动准入和后续
+review/promotion 自动化仍为 **NOT DELIVERED**。
 现有实现仍以[架构](architecture.md)、[文件记忆细节](file-memory-design-detail.md)、
 [执行经验细节](experience-memory-detail.md)和[托管 Skills 细节](managed-skills-design-detail.md)
 为准。本文不改变当前生产配置、服务或数据。
@@ -14,6 +15,22 @@
 4. 先做最小离线单次路径，再考虑后台调度；所有失败显式，不切换弱提供者、不重放任务。
 5. 热记忆是正式版本上的有界检索集合。权威内容仍进入现有版本化文件记忆；SQLite 只作运行状态
    与可重建索引，不建立 `dream_truth` 一类平行真相表。
+
+### 1.1 可信分区与多文档投影
+
+Host 从可信调用参数取得 person/Agent/audience/scope 分区；交接内容中的同名字段只是证据，不能改写
+目标分区。未来 HOT 输出是现有权威 Memory 与 Skill revision 的有界、多文档投影：
+
+| 投影 | 内容与所有权 |
+| --- | --- |
+| `USER.md` | 仅本人已认证并确认的稳定工作偏好；单次行为、转述和模型推断保持待审，不做心理画像 |
+| `MEMORY.md` | 当前 scope 内有来源的事实、决定、约束和经验，服从 TTL、冲突、禁用与 revision |
+| 当前任务文档 | 正在进行的目标、约束、证据状态和未决项；结束后不自动升级为长期偏好 |
+| `AGENTS.md` | 操作者拥有的行为、职责与执行边界；梦境流程只读且永不覆盖 |
+| `SECURITY.md` | 操作者拥有的权限与安全规则；不得从来源或行为推断、扩张或覆盖 |
+
+投影可删除并从权威版本重建；正文不得在投影中独立修改。Skills 与等待退役的 archive 继续使用各自
+现有版本和生命周期，不能由 HOT 文档成为第三套权威状态。
 
 ## 2. 来源与不可变性
 
@@ -36,14 +53,15 @@
 
 ### 2.2 幂等身份
 
-拟议幂等键（NOT DELIVERED）：
+Phase 0 扫描键与 Phase 1 幂等收据均已交付：
 
 ```text
-sha256(destination_identity || canonical_run_id_or_empty ||
-       artifact_manifest_digest || dream_policy_version)
+sha256(source_identity || destination_identity || canonical_run_id_or_empty ||
+       canonical_session_id_or_empty || artifact_manifest_digest || dream_policy_version)
 ```
 
-`destination_identity` 是已配置 Host/Agent/audience/scope 绑定的稳定标识，不含凭据。相同键与相同
+`source_identity` 是规范绝对交接目录引用；`destination_identity` 是已配置
+Host/Agent/audience/scope 绑定的稳定标识，不含凭据。相同键与相同
 payload 返回原收据；相同键不同 payload 明确失败。策略升级产生新尝试，但必须关联先前收据，
 不能覆盖历史决定。若规范 Run 仍可读，必须复用其 `ToolEvidence`；不得把副本重新标为 Host-observed。
 
@@ -57,53 +75,49 @@ Offload package 启动独立干净提炼 Agent：空运行工作区、无 MCP、
 无业务工具、无网络工具、无 continuation；只允许结构化输出。配置必须显式选择兼容模型，失败不
 回退。提炼调用有输入字节、候选数、调用次数和时间硬上限；token 与成本仅在 provider 提供可验证计量/限制时使用。缺失成本为 unknown，不以零成本继续预算判断，也不声称具备美元硬限额。超限产生诊断，不截断后假装完整。
 
-**实现前可行性门槛：** 干净工作区不等于工具隔离。必须先探测所选 Offload/backend 是否真正支持禁用工具；不支持时 fail closed，不能靠提示词宣称无工具或悄悄换模型。当前调查未证明所有默认 Codex 配置满足此条件，需在 Phase 1 前完成 package 能力探针；若不支持，应先扩展 Offload 能力或由操作者明确选择支持的 backend。
+**已落实的可行性门槛：** 干净工作区不等于工具隔离。手动提炼只接受显式配置、支持严格
+tool-free structured extraction 的 Claude profile；Codex 与其他 backend 在派发前 fail closed，不靠提示词
+宣称无工具，也不静默换模型。
 
-提炼器最多输出三类候选：
+提炼器输出四类待审候选；失败另存收据诊断，不伪装成候选：
 
 - `knowledge`：有来源、适用条件和范围的事实/决定；
+- `working_preference`：本人历史工作方式；推断项保持 pending，显式接受前不能进入 HOT；
+- `task`：仍在进行的目标或待办，只进入有 TTL 的 `TASKS.md` 投影；
 - `procedure`：有条件、步骤、avoid 和精确证据引用的可复用方法；
-- `diagnostic`：阻塞、失败、未知、被拒或支持不足的信息，仅供检查。
 
 不得输出全局用户偏好。偏好只有在规范 Run 包含已认证、明确归属的用户陈述且目标范围相符时，
 才复用现有 user-statement policy；普通交接 brief、外部 Agent 转述或报告措辞不满足此条件。
 
-## 4. 拟议状态模型（NOT DELIVERED）
+## 4. 状态模型
 
 ### 4.1 Dream receipt
 
 ```go
 type DreamReceipt struct {
-    ID, IdempotencyKey, PolicyVersion string
-    DestinationID, AgentID, AudienceID, Scope string
-    CanonicalRunID, ArtifactManifestDigest string
-    SourceRef, SourceAttribution string
-    Status string // discovered, validated, extracting, assessed, committed,
-                  // diagnostic_only, failed, paused, canceled
-    LeaseOwner string
-    LeaseExpiresAt, CreatedAt, UpdatedAt time.Time
-    Budget DreamBudget
-    Items []DreamItemResult
+    ID, IdempotencyKey, Source, SourceDigest string
+    Partition DreamPartition // PersonID + AgentID + AudienceID + Scope
+    CanonicalRunID, CanonicalSessionID, Attribution string
+    Status string // scanned or extracted
+    CreatedAt time.Time
     Error string
 }
 ```
 
-`canceled` 只取消提炼/发布，不取消或改变原业务 Run。`paused` 由操作者或预算策略触发；恢复继续
-同一收据的未提交阶段。终态不得自动重新排队。
+上述手动收据已交付。后台 lease、`paused`/`canceled`、预算 cursor 和自动队列仍未交付；未来取消只
+取消提炼/发布，不取消或改变原业务 Run。
 
 ### 4.2 Candidate and hot lifecycle
 
 ```go
 type DreamCandidate struct {
-    ID, ReceiptID, Kind, Scope, Status string
-    // pending_review, hot, excluded, diagnostic_only, promotion_pending,
-    // retired, expired, failed
-    SourceRefs []EvidenceRef
-    DecisionActor, DecisionKind, DecisionReason string
-    PolicyVersion string
-    ExpiresAt *time.Time
-    MemoryID string
-    MemoryRevision int
+    ID, ReceiptID string
+    Partition DreamPartition
+    Kind, Text, Status string // pending, accepted, rejected, promoted
+    SourceRefs []string
+    ExpiresAt time.Time
+    Inferred bool
+    ReviewActor, ReviewNote, MemoryID, SkillID string
 }
 ```
 
@@ -132,15 +146,19 @@ type DreamCandidate struct {
 物理删除不在首版。未来清理器必须先构建反向引用：Run、候选、Memory revision、Skill revision、
 审计或法律保留仍引用的证据不可删除；其余也必须满足显式保留期限和已授权删除策略。
 
-## 5. 拟议 Host 接口（NOT DELIVERED）
+## 5. Host 接口
 
-首版优先内部库与 CLI，不提供公共插件 API：
+`dream scan/run/list/show/review/promote/export/archive/rotate/restore` 已交付。服务通过显式 `--dream-config`
+启用同一 Lifecycle 的串行周期；`enabled` 控制后台提炼，`hot_enabled` 独立控制运行时 HOT。周期随 owning
+context 取消并保存 status/error，每轮后重新投影 HOT；持久状态写入失败会停止服务。独立 pause/resume 命令仍未交付。
+
+首版优先内部库与 CLI，不提供公共插件 API。当前交付命令：
 
 ```text
-agent-host dream scan --source ABS --destination ID --policy VERSION --dry-run
-agent-host dream run  --source ABS --destination ID --policy VERSION --budget FILE
-agent-host dream show --receipt ID
-agent-host dream pause|resume|cancel --receipt ID --reason TEXT
+agent-host dream scan --source ABS --person ID --agent ID --audience ID --memory-scope SCOPE --format json
+agent-host dream run --home PATH --source ABS --memory-offload-config FILE --person ID --agent ID --audience ID --memory-scope SCOPE --format json
+agent-host dream list|show|review|promote|export|archive|rotate|restore ... --format json
+# NOT DELIVERED: background pause|resume|cancel
 ```
 
 内部边界建议：
@@ -192,33 +210,56 @@ Skill digest 变化都要求重新评估，不以旧决定提交。
 
 ### Phase 0：只读夹具与 manifest
 
-交付扫描、稳定摘要、symlink/变化拒绝、幂等键和预览 JSON。停止条件：零 Store mutation，且同一
-夹具重复扫描字节一致。
+**DELIVERED。** 扫描只接受显式绝对私有 root 下的 `handoff-*`；要求 `launch.json`、`request.txt`
+和与 stream format 对应的 `stdout.txt`/`events.jsonl`，允许缺少其他导出。它有目录、文件和总字节
+上限，拒绝 symlink、路径逃逸、非当前用户、非私有、hard link 与扫描中变化；按文件名排序并摘要
+全部文件。输出含可信目标分区、规范 Run/session 引用、manifest digest、策略版本和幂等键。非零
+exit、未定稿与无效来源只产生诊断，不执行命令、不写 Store、不调用模型。
 
-### Phase 1：手动单次候选
+### Phase 1：手动单次候选与 HOT 导出
 
-接入规范 Run 优先取证、孤立来源归属、干净提炼 Agent、预算和诊断收据。只提交候选/诊断；默认
-不自动 hot。停止条件：中断恢复不重复模型已提交结果，不重放任务。
+**DELIVERED。** 显式 `memory_offload_config` 只允许 Claude；严格 tool-free structured extraction 生成
+带 TTL 和来源摘要的 knowledge/working-preference/task/procedure 候选。规范 Run 只有在可信 Store 中的
+person、Agent、audience、scope、run/session 全部匹配时才标为 Host-observed，否则保留
+`external_agent_supplied`。显式 accept 把非 procedure 写入现有版本化文件记忆；procedure 只晋升为
+未审核、未发布、未启用的 managed authored revision。HOT export 从仍有效的权威 revision 生成有界
+`USER.md`、`MEMORY.md`、`TASKS.md` 与摘要 manifest；Phase 2 将其接到运行时。
 
-### Phase 2：TTL hot memory
+### Phase 2：运行时 HOT 与 Host-owned 周期
+
+**DELIVERED。** `execution.Request.PresetDocuments` 在 clean CallerContext 下接收 `USERS.md` 与
+`MEMORY.md`；后者包含明确标记的 active tasks。HostInstructions 保持独立，永不生成 AGENTS/SECURITY。
+每轮从权威 file memory 重算并核对 person+digest；群聊不选择个人文档，digest/到期变化拒绝旧 session。
+owner-private cache 使用 digest 目录原子发布文档与 manifest。后台周期默认关闭，随服务 Store writer
+lock 启停，限制 interval、batch、timeout，自动归档到期项并只创建 pending candidates。
+
+The source scanner remains independently capped at 4,096 root entries and 256 `handoff-*` directories.
+`batch` limits new extraction attempts within that bounded scan; already extracted or diagnostic receipts do not
+consume the batch, and skipped receipts are still returned for observability. An ordinary source or model error is
+persisted as a failed cycle and processing continues on the next tick. Only cycle-status persistence failure or
+parent cancellation terminates the background loop.
+
+首版 review gate：任何 working preference（包括历史行为推断）和 knowledge/task 都必须由显式 actor
+接受后才进入权威记忆；procedure 只能显式晋升为未 review/publish/enable 的 authored Skill revision。
+未来策略自动准入仍为 **NOT DELIVERED**。
+
+### 后续 A：策略自动准入（NOT DELIVERED）
 
 允许策略白名单类型自动 hot，复用文件记忆事务、scope、禁用锚点、expiry 和检索预算。停止条件：
 过期/禁用后所有入口均排除，缓存重建不改变结果。
 
-### Phase 3：Skill 候选与退役
+### 后续 B：跨层管理视图（NOT DELIVERED）
 
 复用现有 review/publish/enable 和 disable/withdraw/rollback；增加跨层只读投影。停止条件：晋升、
 回滚和恢复均不改变工具、插件或 native Skill allowlist。
 
-### Phase 4：可选后台调度
+### 后续 C：独立暂停控制与生产启用（NOT DELIVERED）
 
-增加默认关闭的 Host queue schedule、lease、pause/cancel 和运行状态。只有此前阶段通过隔离故障
-恢复及生产外 acceptance，才允许单个非生产 runtime 试运行；生产启用另行授权。
+已有默认关闭的 Host 后台周期、取消和运行状态；独立 pause/resume 控制尚未实现。生产启用不属于本次隔离验收。
 
 ## 9. 可复现隔离验证计划
 
-全部测试使用临时 home、临时 handoff root、假 Offload runner/模型、固定时钟和本地文件；禁止网络、
-真实服务和生产绑定。
+自动化回归使用临时 home、临时 handoff root、假 Offload runner/模型、固定时钟和本地文件，不访问真实服务或生产绑定。下述补充模型验收仅使用独立测试目录和虚构记录。
 
 | 夹具 | 必须证明 |
 | --- | --- |
@@ -240,7 +281,7 @@ Skill digest 变化都要求重新评估，不以旧决定提交。
 还必须用隔离的本地真实 Offload package 验证干净 Agent 确实没有业务工具，并检查实际事件中的
 模型、Skill、MCP、工具集合和零任务重放。文件存在或单元测试通过不能替代该观察。
 
-## 10. 当前可行性证据与未验证项
+## 10. 实现前的可行性证据（历史记录）
 
 2026-11-05 的只读调查运行了：
 
@@ -254,6 +295,46 @@ Go package tests通过（输出为 cached）；交接导出器 37 个测试通�
 收据、外部证据、经验判断、文件记忆和 Skill 生命周期，但没有执行本文拟议 scanner、worker、
 scheduler、TTL hot rotation 或 merger。
 
-当前未交付、未验证：原始交接 scanner；稳定 manifest 协议；dream schema/CLI；通用后台调度；
-跨程序合并；自动 retirement policy；真实模型提炼质量；长期召回收益；大规模性能；生产延迟与
-成本；物理删除安全性。任一后续实现都必须把源码验证、隔离 acceptance 和生产采用分别记录。
+上述是实现前的基线，不代表当前交付状态。当前实现范围以主文档和 Phase 0–2 的 DELIVERED 标记为准。
+Full Host catalog/project 路由尚未接入梦境运行时，配置混用明确拒绝，不能静默忽略。
+长期收益、大规模性能、生产延迟、自动准入及物理删除仍未验证或交付。
+
+
+## 11. 2026-11-05 隔离模型验收
+
+- 使用独立应用数据目录 `validation/dream-20261105`，没有导入真实生产事项，也没有启用生产后台。
+- 严格无工具提炼使用现有显式 Claude memory profile；首次暴露缺少 native session ID 的适配问题，修复后真实重试成功，生成一个带来源、范围和有效期的待审个人偏好。
+- 显式测试 actor 接受后，版本化记忆与 HOT 导出包含该偏好；私有 cache 自动生成三份文档和 manifest。
+- 后续干净 CLI Chat 使用默认 `gpt-5.6-sol`，实际回答保留了“仅合成验收测试、简洁中文、结果优先、2026-12-01 到期”的语义。Run `edf3e432-3a6c-4345-a94e-6dfa072e5db6` 完成约 22.2 秒，未观察到工具事件；费用不可用。
+- 显式 retire revision 1 后 HOT 为空；以 revision 2 恢复未过期记忆成功。原始执行文件保留。
+- Skill 晋升、批次前进、瞬时错误恢复、过期隔离和快照篡改拒绝由隔离回归测试覆盖；不声称已验证生产整理质量或长期收益。
+
+本机原始证据保存在应用数据目录的 `validation/dream-20261105/acceptance.json`、各阶段 JSON 和 stderr 中，仓库仅记录去敏结论。
+
+
+## 12. Runtime 配置示例
+
+先用 `memory migrate` 为独立 home 启用版本化文件记忆，再把以下配置写入 owner-private 的绝对路径 JSON 文件。
+路径、身份和 scope 必须替换为已确认的实际值，目录预先创建为 0700，配置文件为 0600：
+
+```json
+{
+  "enabled": false,
+  "hot_enabled": true,
+  "cache_root": "/absolute/application-data/dream-cache",
+  "person_id": "local-owner",
+  "agent_id": "default",
+  "audience_id": "owner",
+  "scope": "project:example",
+  "batch": 20
+}
+```
+
+直接 CLI Chat 传入 `--dream-config /absolute/dream.json --memory-scope project:example`，并显式指定对应 home、workspace 和 Agent。
+CLI 单次 Chat 只加载 HOT，不启动后台循环。业务模型不指定时继续采用 Offload 默认配置。
+
+渠道后台将 `enabled` 改为 true，并补充 `source_root`、`memory_offload_config`、`interval`（例如 `30m`）、
+`timeout`（例如 `5m`）。person 必须等于渠道配置中认证 owner ID；不能把共享原始目录无区别归给多个用户。
+后台和 HOT 可分别开启，前者的模型配置位于这份 JSON 内，不要混用启用 Full Host 的 CLI `--memory-offload-config`。
+
+本例只说明配置结构，不表示已在生产启用；任意个人的自动身份归因、Full Host catalog 路由和个人 Skill 发布权限仍需后续适配。

@@ -38,11 +38,24 @@ func runOffloadChat(ctx context.Context, o options, in io.Reader, out, errout io
 	if err := resolveOffloadChannelOptions(&o); err != nil {
 		return err
 	}
+	dreamConfig, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil {
+		return err
+	}
+	if err = validateDreamRuntimeIdentity(dreamConfig, o, "local-owner"); err != nil {
+		return err
+	}
 	store, release, err := openExecutionState(ctx, o.home, true)
 	if err != nil {
 		return err
 	}
 	defer func() { runErr = errors.Join(runErr, store.Close(), release()) }()
+	if err := prepareDreamHOT(store, &o); err != nil {
+		return err
+	}
+	if o.hotPersonID != "" && o.hotPersonID != "local-owner" {
+		return errors.New("local Chat HOT person must be local-owner")
+	}
 	var releaseSession func() error
 	defer func() {
 		if releaseSession != nil {
