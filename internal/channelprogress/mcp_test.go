@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -52,11 +53,11 @@ func TestMCPBoundedPendingAndSameAttempt(t *testing.T) {
 	if err != nil || p.Status != "pending" || p.Text != "working" {
 		t.Fatal(p, err)
 	}
-	got, _, err := s.ClaimNextChannelProgress(t.Context(), "p")
+	got, _, err := claimProgress(t.Context(), s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.FinishChannelProgress(t.Context(), got.ID, "unknown"); err != nil {
+	if err = s.FinishChannelReaction(t.Context(), got.ReactionID, "unknown", "test unknown"); err != nil {
 		t.Fatal(err)
 	}
 	next, err := send(t.Context(), s, b.Receipt, "send_progress", raw, time.Millisecond)
@@ -99,9 +100,9 @@ func TestMCPWaitsForTerminalDeliveryBeforeReturning(t *testing.T) {
 		ticker := time.NewTicker(time.Millisecond)
 		defer ticker.Stop()
 		for {
-			p, _, err := s.ClaimNextChannelProgress(t.Context(), "p")
+			p, _, err := claimProgress(t.Context(), s)
 			if err == nil {
-				worker <- s.FinishChannelProgress(t.Context(), p.ID, "accepted")
+				worker <- s.FinishChannelReaction(t.Context(), p.ReactionID, "accepted", "")
 				return
 			}
 			if !errors.Is(err, sql.ErrNoRows) {
@@ -116,9 +117,33 @@ func TestMCPWaitsForTerminalDeliveryBeforeReturning(t *testing.T) {
 			}
 		}
 	}()
-	p, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(`{"text":"Milestone completed","idempotency_key":"milestone"}`), time.Second)
+	p, err := send(t.Context(), s, b.Receipt, "send_progress", json.RawMessage(`{"text":"Milestone","idempotency_key":"milestone"}`), time.Second)
 	workerErr := <-worker
 	if err != nil || workerErr != nil || p.Status != "accepted" {
 		t.Fatal("returned before normal delivery finished", p, err, workerErr)
+	}
+}
+
+func claimProgress(ctx context.Context, s *state.Store) (state.ChannelProgress, state.ChannelMessage, error) {
+	for {
+		r, err := s.ClaimNextChannelReaction(ctx, "p")
+		if err != nil {
+			return state.ChannelProgress{}, state.ChannelMessage{}, err
+		}
+		if !strings.HasPrefix(r.Stage, "progress:") {
+			if err = s.SkipChannelReaction(ctx, r.ID, "test lifecycle omission"); err != nil {
+				return state.ChannelProgress{}, state.ChannelMessage{}, err
+			}
+			continue
+		}
+		if err = s.AuthorizeChannelReaction(ctx, r.ID); err != nil {
+			return state.ChannelProgress{}, state.ChannelMessage{}, err
+		}
+		var id int64
+		if _, err = fmt.Sscanf(r.Stage, "progress:%d", &id); err != nil {
+			return state.ChannelProgress{}, state.ChannelMessage{}, err
+		}
+		p, err := s.ChannelProgress(ctx, id)
+		return p, state.ChannelMessage{}, err
 	}
 }
