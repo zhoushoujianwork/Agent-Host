@@ -20,6 +20,7 @@ Manual dream lifecycle (all require exact person/agent/audience/scope and --form
   agent-host dream export --home PATH --limit N [partition flags]
   agent-host dream archive --home PATH --limit N [partition flags]
   agent-host dream rotate|restore --home PATH --id MEMORY --revision N --actor ID --note TEXT [partition flags]
+  agent-host dream status --home PATH --dream-config FILE --limit N --format json
 
 The scan reads private handoff-* directories and emits one deterministic JSON
 preview. It writes no state, invokes no model, and does not create receipts.

@@ -61,6 +61,7 @@ type serviceConfig struct {
 	SkillsRoot                 string   `json:"skills_root,omitempty"`
 	OffloadConfig              string   `json:"offload_config,omitempty"`
 	MemoryOffloadConfig        string   `json:"memory_offload_config,omitempty"`
+	DreamConfig                string   `json:"dream_config,omitempty"`
 	WorkspaceCache             string   `json:"-"`
 	KnowledgeConfigs           []string `json:"-"`
 	KnowledgeChannel           string   `json:"-"`
@@ -303,6 +304,14 @@ func loadService(root string) (serviceLayout, serviceConfig, map[string]string, 
 }
 
 func (c serviceConfig) validate() error {
+	if c.DreamConfig != "" {
+		if !filepath.IsAbs(c.DreamConfig) || filepath.Clean(c.DreamConfig) != c.DreamConfig {
+			return errors.New("service dream_config must resolve to a clean absolute path")
+		}
+		if _, err := loadDreamRuntime(c.DreamConfig); err != nil {
+			return fmt.Errorf("service dream configuration: %w", err)
+		}
+	}
 	if c.OffloadConfig != "" && c.MemoryOffloadConfig != "" {
 		return errors.New("service offload_config cannot be combined with Host memory_offload_config")
 	}
@@ -418,6 +427,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 		if c.MemoryScope != "" {
 			args = append(args, "--memory-scope", c.MemoryScope)
 		}
+		if c.DreamConfig != "" {
+			args = append(args, "--dream-config", c.DreamConfig)
+		}
 		return args
 	}
 	args := []string{command, "--config", path, "--home", layout.State,
@@ -443,6 +455,9 @@ func (c serviceConfig) arguments(layout serviceLayout, command string) []string 
 	}
 	if c.MemoryOffloadConfig != "" {
 		args = append(args, "--memory-offload-config", c.MemoryOffloadConfig)
+	}
+	if c.DreamConfig != "" {
+		args = append(args, "--dream-config", c.DreamConfig)
 	}
 	if c.WorkspaceCache != "" {
 		args = append(args, "--workspace-cache", c.WorkspaceCache)

@@ -165,6 +165,9 @@ func composeHost(store *state.Store, o options, client *jev.Client, sink event.S
 	}
 	var runner harness.Runner = native
 	h := &host.Host{Store: store.WithPartition(o.agentID, o.audienceID), Runner: runner, Decider: memory.New(client), Extractor: experience.NewExtractor(memoryNative, memoryModel), Judge: experience.NewJudge(client), Config: host.Config{AgentID: o.agentID, AudienceID: o.audienceID, NativeProfile: o.nativeProfile, PermissionMode: o.permissionMode, HostInstructions: o.hostInstructions, Projects: o.projects, AdditionalDirectories: o.additionalDirectories, Scope: o.scope, ProjectID: o.projectID, ProjectName: o.projectName, Workspace: o.workspace, RuntimeFingerprint: o.runtimeFingerprint, Model: o.model, DecisionModel: client.Model(), DecisionProvider: client.Provider(), ToolsDisabled: o.noTools, AllowedTools: o.allowedTools, MCPServers: o.mcpServers, KnowledgeHints: o.knowledgeHints, ValidateKnowledge: knowledgeValidator(o)}, Sink: sink}
+	if o.hotRefresh != nil && o.agentID == o.hotAgentID && o.audienceID == o.hotAudienceID && o.scope == o.hotScope {
+		h.Config.PersonalHOTPersonID, h.Config.PersonalHOTDocuments = o.hotPersonID, o.hotRefresh
+	}
 	h.Config.ContextFiles, h.Config.UserProfile, h.Config.WorkspaceCache = o.contextFiles, o.userProfile, o.workspaceCache
 	h.Objects = objectmemory.New(memoryNative, memoryModel)
 	h.Config.MemorySource, h.Config.MemoryFingerprint = o.memorySource, o.memoryFingerprint
@@ -257,7 +260,12 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		if err := checkAgents(ctx, agents, o); err != nil {
 			return err
 		}
-		inspectProject := o.projectID != ""
+		dreamConfig, dreamErr := loadDreamRuntime(o.dreamConfig)
+		if dreamErr != nil {
+			return dreamErr
+		}
+		dreamEnabled := dreamConfig != nil && (dreamConfig.Enabled || dreamConfig.HotEnabled)
+		inspectProject := o.projectID != "" || dreamEnabled
 		if o.knowledgeConfig != "" {
 			if _, err := os.Stat(filepath.Join(o.home, "state.db")); err == nil {
 				inspectProject = true
@@ -272,6 +280,9 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 			}
 			defer store.Close()
 			if err := resolveOptions(ctx, store, &o, true); err != nil {
+				return err
+			}
+			if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
 				return err
 			}
 		} else if err := resolveKnowledge(&o); err != nil {
@@ -293,6 +304,9 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 		return err
 	}
 	if err := resolveOptions(ctx, store, &o, true); err != nil {
+		return err
+	}
+	if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
 		return err
 	}
 	o.defaultWorkspace, o.defaultScope = o.workspace, o.scope
@@ -400,7 +414,9 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 			collector.WithOwnerAnswering(answering.Consume)
 		}
 	}
-	return serveChannelWithDiscovery(ctx, dingtalk.Receiver{Config: cfg}, service, observe, collector, sink)
+	return runWithDreamBackground(ctx, store, o, func(serviceCtx context.Context) error {
+		return serveChannelWithDiscovery(serviceCtx, dingtalk.Receiver{Config: cfg}, service, observe, collector, sink)
+	})
 }
 
 // Discovery shares the Host writer but has its own lifecycle and failure state.

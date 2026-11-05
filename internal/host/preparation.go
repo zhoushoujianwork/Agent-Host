@@ -6,12 +6,19 @@ import (
 	"errors"
 
 	"agent-host/internal/assistance"
+	"agent-host/internal/harness"
 	"agent-host/internal/state"
 )
 
 const preparationRequest = "Prepare a cited brief and checklist for the selected current matter. Separate observed facts, participant reports, open questions and useful next steps. Do not contact anyone or perform operational changes."
 
 func (h *Host) RunPreparation(ctx context.Context, session state.Session, id string, revision int) (state.Run, error) {
+	var personalDocuments []harness.PresetDocument
+	var err error
+	h, personalDocuments, err = h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Run{}, err
+	}
 	h = h.partitioned()
 	_, audience := h.Store.Partition()
 	if audience != state.OwnerAudienceID || session.ProjectID == "" || len(session.Projects) != 1 || h.Config.ContextConfig == "" {
@@ -29,7 +36,7 @@ func (h *Host) RunPreparation(ctx context.Context, session state.Session, id str
 		return state.Run{}, errors.New("suggestion changed, is unavailable, or was already selected; refresh the private list")
 	}
 	selection := &state.PreparationSource{SuggestionID: id, SuggestionRevision: revision, MatterID: r.MatterID, MatterRevision: r.MatterRevision, EvidenceIDs: append([]string(nil), view.Matter.Draft.EvidenceIDs...)}
-	return h.run(ctx, session, preparationRequest, "", selection)
+	return h.run(ctx, session, preparationRequest, "", selection, personalDocuments)
 }
 
 func (h *Host) preparationContext(ctx context.Context, run state.Run) (string, error) {

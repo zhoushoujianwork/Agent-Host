@@ -16,6 +16,15 @@ func (h *Host) RoomConcurrencyEnabled() bool {
 // RoomSession reserves one request without holding a room lock across a model
 // call. Only completed, sealed sessions may become its native fork source.
 func (h *Host) RoomSession(ctx context.Context, input state.RoomInput) (state.Session, error) {
+	var err error
+	h, _, err = h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Session{}, err
+	}
+	return h.roomSession(ctx, input)
+}
+
+func (h *Host) roomSession(ctx context.Context, input state.RoomInput) (state.Session, error) {
 	h = h.partitioned()
 	return h.Store.EnterRoom(ctx, h.newSession(), input)
 }
@@ -31,16 +40,26 @@ func (h *Host) RunRoom(ctx context.Context, input state.RoomInput) (state.Run, e
 // TakeoverSession forks the exact completed native context. It never mutates
 // the original channel receipt or impersonates its sender.
 func (h *Host) TakeoverSession(ctx context.Context, parent state.Session, requestID, text string) (state.Session, error) {
+	var err error
+	h, _, err = h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Session{}, err
+	}
 	h = h.partitioned()
 	if !h.RoomConcurrencyEnabled() || !h.matchesRuntime(parent) || parent.Model != h.Config.Model {
 		return state.Session{}, errors.New("selected session cannot continue with the current execution configuration")
 	}
-	return h.RoomSession(ctx, state.RoomInput{Key: "web-takeover:" + parent.ID, ContinueFrom: parent.ID,
+	return h.roomSession(ctx, state.RoomInput{Key: "web-takeover:" + parent.ID, ContinueFrom: parent.ID,
 		RequestID: requestID, SenderID: "local-owner", SenderName: "Local owner (Web)", Text: text})
 }
 
 // Channel provenance is always read from the authenticated durable receipt.
 func (h *Host) RoomChannelSession(ctx context.Context, receiptID string) (state.Session, error) {
+	var err error
+	h, _, err = h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Session{}, err
+	}
 	h = h.partitioned()
 	m, err := h.Store.ChannelMessage(ctx, receiptID)
 	if err != nil {
@@ -49,7 +68,7 @@ func (h *Host) RoomChannelSession(ctx context.Context, receiptID string) (state.
 	if m.AgentID != partitionAgent(h.Config.AgentID) || m.AudienceID != partitionAudience(h.Config.AudienceID) {
 		return state.Session{}, errors.New("room receipt belongs to a different agent or audience")
 	}
-	return h.RoomSession(ctx, state.RoomInput{ReceivedAt: m.ReceivedAt, Key: m.Binding, RequestID: m.MessageID, SenderID: m.SenderID, SenderName: m.SenderName, Text: m.Text, ReplyToID: m.ReplyToID})
+	return h.roomSession(ctx, state.RoomInput{ReceivedAt: m.ReceivedAt, Key: m.Binding, RequestID: m.MessageID, SenderID: m.SenderID, SenderName: m.SenderName, Text: m.Text, ReplyToID: m.ReplyToID})
 }
 
 func roomPrompt(turn *state.RoomTurn) string {

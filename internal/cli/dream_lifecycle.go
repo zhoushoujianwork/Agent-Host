@@ -20,13 +20,14 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	action := args[0]
 	fs := flag.NewFlagSet("dream "+action, flag.ContinueOnError)
 	fs.SetOutput(errout)
-	var home, source, person, agent, audience, scope, status, id, actor, note, config, skillsRoot, format string
+	var home, source, person, agent, audience, scope, status, id, actor, note, config, dreamConfig, skillsRoot, format string
 	var timeoutText string
 	var limit int
 	var revision int
 	for name, target := range map[string]*string{"home": &home, "source": &source, "person": &person, "agent": &agent, "audience": &audience, "memory-scope": &scope, "status": &status, "id": &id, "actor": &actor, "note": &note, "memory-offload-config": &config, "skills-root": &skillsRoot, "format": &format} {
 		fs.StringVar(target, name, "", name)
 	}
+	fs.StringVar(&dreamConfig, "dream-config", "", "canonical private dream runtime configuration")
 	fs.IntVar(&limit, "limit", 50, "bounded result limit")
 	fs.StringVar(&timeoutText, "timeout", "5m", "extraction timeout")
 	fs.IntVar(&revision, "revision", 0, "expected authoritative revision")
@@ -38,6 +39,21 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	}
 	if home == "" {
 		return errors.New("dream lifecycle command requires --home")
+	}
+	var runtimeConfig *dreamRuntimeConfig
+	if action == "status" {
+		if dreamConfig == "" {
+			return errors.New("dream status requires --dream-config")
+		}
+		var err error
+		runtimeConfig, err = loadDreamRuntime(dreamConfig)
+		if err != nil {
+			return err
+		}
+		if runtimeConfig == nil || !runtimeConfig.Enabled && !runtimeConfig.HotEnabled {
+			return errors.New("dream status requires an enabled dream capability")
+		}
+		person, agent, audience, scope = runtimeConfig.PersonID, runtimeConfig.AgentID, runtimeConfig.AudienceID, runtimeConfig.Scope
 	}
 	p := state.DreamPartition{PersonID: person, AgentID: agent, AudienceID: audience, Scope: scope}
 	ctx := context.Background()
@@ -59,6 +75,15 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	partitioned := store.WithPartition(agent, audience)
 	encode := func(value any) error { e := json.NewEncoder(out); e.SetIndent("", "  "); return e.Encode(value) }
 	switch action {
+	case "status":
+		cycles, err := partitioned.LatestDreamCycles(ctx, dreamRuntimeConfigID(dreamConfig, runtimeConfig), limit)
+		if err != nil {
+			return err
+		}
+		if limit < 1 || limit > 200 {
+			return errors.New("dream status requires --limit 1..200")
+		}
+		return encode(map[string]any{"config_id": dreamRuntimeConfigID(dreamConfig, runtimeConfig), "cycles": cycles, "bounded_history": limit})
 	case "run":
 		if config == "" || source == "" {
 			return errors.New("dream run requires --source and --memory-offload-config")

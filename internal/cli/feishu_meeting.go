@@ -240,7 +240,15 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		if err := checkAgents(ctx, agents, o); err != nil {
 			return err
 		}
-		inspect := o.projectID != ""
+		dreamConfig, dreamErr := loadDreamRuntime(o.dreamConfig)
+		if dreamErr != nil {
+			return dreamErr
+		}
+		dreamEnabled := dreamConfig != nil && (dreamConfig.Enabled || dreamConfig.HotEnabled)
+		if dreamEnabled && !cfg.IMChat {
+			return errors.New("Full Host dream runtime requires authenticated private Feishu IM admission")
+		}
+		inspect := o.projectID != "" || dreamEnabled
 		if o.knowledgeConfig != "" {
 			_, err := os.Stat(filepath.Join(o.home, "state.db"))
 			if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -255,6 +263,9 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 			}
 			defer store.Close()
 			if err := resolveOptions(ctx, store, &o, true); err != nil {
+				return err
+			}
+			if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
 				return err
 			}
 		} else if err := resolveKnowledge(&o); err != nil {
@@ -289,6 +300,14 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 		return err
 	}
 	if err := resolveOptions(ctx, store, &o, true); err != nil {
+		return err
+	}
+	if dreamConfig, dreamErr := loadDreamRuntime(o.dreamConfig); dreamErr != nil {
+		return dreamErr
+	} else if dreamConfig != nil && (dreamConfig.Enabled || dreamConfig.HotEnabled) && !cfg.IMChat {
+		return errors.New("Full Host dream runtime requires authenticated private Feishu IM admission")
+	}
+	if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
 		return err
 	}
 	o.defaultWorkspace, o.defaultScope = o.workspace, o.scope
@@ -350,11 +369,13 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	if cfg.Voice.Enabled {
 		voice = newMeetingVoice(asr, tts, service.ReceiveMessage, observe)
 	}
-	if cfg.AutoJoin || cfg.IMChat {
-		return serveFeishuAutomaticEntryVoice(ctx, cfg, o.home, service, voice, sink, observe)
-	}
-	receiver := feishumeeting.Receiver{Config: cfg, ProgressPath: filepath.Join(o.home, "feishu-meeting", channel.Key(cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID)+".json")}
-	return serveFeishuFixedMeeting(ctx, cfg, service, voice, observe, func(ctx context.Context, _ feishumeeting.Config, handle func(context.Context, channel.Message) error, observed func(string, string) error) error {
-		return receiver.Run(ctx, handle, observed)
+	return runWithDreamBackground(ctx, store, o, func(serviceCtx context.Context) error {
+		if cfg.AutoJoin || cfg.IMChat {
+			return serveFeishuAutomaticEntryVoice(serviceCtx, cfg, o.home, service, voice, sink, observe)
+		}
+		receiver := feishumeeting.Receiver{Config: cfg, ProgressPath: filepath.Join(o.home, "feishu-meeting", channel.Key(cfg.Profile, cfg.AppID, cfg.TenantID, cfg.BotOpenID, cfg.MeetingID)+".json")}
+		return serveFeishuFixedMeeting(serviceCtx, cfg, service, voice, observe, func(ctx context.Context, _ feishumeeting.Config, handle func(context.Context, channel.Message) error, observed func(string, string) error) error {
+			return receiver.Run(ctx, handle, observed)
+		})
 	})
 }
