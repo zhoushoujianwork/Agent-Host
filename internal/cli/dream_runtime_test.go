@@ -54,6 +54,81 @@ func TestDreamRuntimeHotOnlyAndStrictConfig(t *testing.T) {
 	}
 }
 
+func TestDreamRuntimeIdleDefaultsAndActivityRoots(t *testing.T) {
+	source, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	profileDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(profileDir, "extractor.json")
+	if err = os.WriteFile(profile, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	activityHome, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	activityStore, err := state.Open(activityHome, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = activityStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := writeDreamConfig(t, `{"enabled":true,"source_root":"`+source+`","memory_offload_config":"`+profile+`","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","interval":"2m","timeout":"1m","batch":10,"activity_state_homes":["`+activityHome+`"]}`)
+	c, err := loadDreamRuntime(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.IdleFor != "60s" || c.ActivityPollInterval != "1s" || len(c.ActivityStateHomes) != 1 {
+		t.Fatalf("idle defaults/config lost: %+v", c)
+	}
+	bad := writeDreamConfig(t, `{"enabled":true,"source_root":"`+source+`","memory_offload_config":"`+profile+`","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","interval":"2m","timeout":"1m","batch":10,"activity_state_homes":["relative"]}`)
+	if _, err = loadDreamRuntime(bad); err == nil {
+		t.Fatal("relative activity state home was accepted")
+	}
+}
+
+func TestDreamActivityProbeAggregatesRootsAndFailsClosed(t *testing.T) {
+	local, err := state.Open(t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { local.Close() })
+	otherHome := t.TempDir()
+	other, err := state.Open(otherHome, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partition := other.WithPartition("other", "other")
+	session := state.Session{ID: "activity-session", AgentID: "other", AudienceID: "other", Scope: "scope", NativeSessionID: "native"}
+	if err = partition.CreateSession(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	created := time.Date(2026, 11, 5, 1, 2, 3, 0, time.UTC)
+	run := state.Run{ID: "activity-run", SessionID: session.ID, AgentID: session.AgentID, AudienceID: session.AudienceID, Scope: session.Scope, Input: "foreground", NativeSessionID: session.NativeSessionID, ExecutionStatus: "running", MemoryStatus: "blocked", CreatedAt: created}
+	if err = partition.CreateRun(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	if err = other.Close(); err != nil {
+		t.Fatal(err)
+	}
+	activity, err := dreamActivityProbe(local, []string{otherHome})(context.Background())
+	if err != nil || !activity.Busy || !activity.LastForeground.Equal(created) {
+		t.Fatalf("aggregated activity=%+v err=%v", activity, err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
+	if _, err = dreamActivityProbe(local, []string{missing})(context.Background()); err == nil || !strings.Contains(err.Error(), missing) {
+		t.Fatal("missing explicit activity root did not fail closed", err)
+	}
+}
+
 func TestDreamRuntimeRejectsSymlinkAncestry(t *testing.T) {
 	real, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

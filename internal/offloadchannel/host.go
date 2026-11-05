@@ -57,11 +57,13 @@ type Config struct {
 // Host shares Offload execution between channel messages and local owner Chat.
 // Optional memory remains under AGH policy; native loops stay in Offload.
 type Host struct {
-	Store  *state.Store
-	Client offloadexec.Executor
-	Config Config
-	Sink   event.Sink
-	Memory *MemoryPlugin
+	Store                *state.Store
+	Client               offloadexec.Executor
+	Config               Config
+	Sink                 event.Sink
+	Memory               *MemoryPlugin
+	preparedHOT          bool
+	preparedHOTDocuments []harness.PresetDocument
 }
 
 var _ channel.Host = (*Host)(nil)
@@ -138,6 +140,9 @@ func (h *Host) store() *state.Store {
 
 func (h *Host) runtimeSnapshot(ctx context.Context) (string, []harness.PresetDocument, error) {
 	c := h.Config
+	if h.preparedHOT {
+		return c.RuntimeFingerprint, cloneHOTDocuments(h.preparedHOTDocuments), nil
+	}
 	if c.HotDocuments == nil {
 		return c.RuntimeFingerprint, nil, nil
 	}
@@ -149,6 +154,32 @@ func (h *Host) runtimeSnapshot(ctx context.Context) (string, []harness.PresetDoc
 		return "", nil, errors.New("HOT snapshot has no digest")
 	}
 	return state.OffloadFingerprintPrefix + channel.Key("offload-hot-session-v1", c.RuntimeFingerprint, c.HotPersonID, digest), documents, nil
+}
+
+func cloneHOTDocuments(documents []harness.PresetDocument) []harness.PresetDocument {
+	cloned := make([]harness.PresetDocument, len(documents))
+	for i, document := range documents {
+		cloned[i] = document
+		cloned[i].Content = append([]byte(nil), document.Content...)
+	}
+	return cloned
+}
+
+// PrepareChannel freezes the effective HOT fingerprint and documents for one
+// admitted foreground request.
+func (h *Host) PrepareChannel(ctx context.Context) (any, string, error) {
+	if err := h.validate(); err != nil {
+		return nil, "", err
+	}
+	fingerprint, documents, err := h.runtimeSnapshot(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	copy := *h
+	copy.Config.RuntimeFingerprint = fingerprint
+	copy.preparedHOT = true
+	copy.preparedHOTDocuments = cloneHOTDocuments(documents)
+	return &copy, fingerprint, nil
 }
 
 func (h *Host) newSession(ctx context.Context) (state.Session, error) {

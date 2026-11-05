@@ -53,7 +53,7 @@ type DreamCycle struct {
 }
 
 func (s *Store) SaveDreamCycle(ctx context.Context, c DreamCycle) error {
-	if s.readOnly || c.ID == "" || c.ConfigID == "" || (c.Status != "running" && c.Status != "completed" && c.Status != "failed" && c.Status != "canceled") {
+	if s.readOnly || c.ID == "" || c.ConfigID == "" || (c.Status != "running" && c.Status != "completed" && c.Status != "failed" && c.Status != "canceled" && c.Status != "deferred") {
 		return errors.New("invalid dream cycle")
 	}
 	raw, err := json.Marshal(c)

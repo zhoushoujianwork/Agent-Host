@@ -251,6 +251,47 @@ func TestCleanClaudeReceivesHOTPresetAndRejectsStaleDigest(t *testing.T) {
 	}
 }
 
+func TestPreparedHOTIsImmutableAcrossSessionAndDispatch(t *testing.T) {
+	f := newFixture(t)
+	enableCleanNativeProfile(t, f)
+	f.host.Config.HotPersonID = "local-owner"
+	digest := "hot-v1"
+	f.host.Config.HotDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		return []harness.PresetDocument{{Name: "MEMORY.md", Content: []byte(digest)}}, digest, nil
+	}
+	preparedAny, firstFingerprint, err := f.host.PrepareChannel(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := preparedAny.(*Host)
+	session, err := prepared.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest = "hot-v2"
+	if _, err = prepared.Run(t.Context(), session, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Config.RuntimeFingerprint != firstFingerprint || !strings.Contains(f.read("instructions.1"), "hot-v1") {
+		t.Fatal("prepared Offload HOT changed between session binding and dispatch")
+	}
+	nextAny, nextFingerprint, err := f.host.PrepareChannel(t.Context())
+	if err != nil || nextFingerprint == firstFingerprint {
+		t.Fatal("next Offload request did not rotate HOT", err)
+	}
+	next := nextAny.(*Host)
+	nextSession, err := next.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = next.Run(t.Context(), nextSession, "second"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.read("instructions.2"), "hot-v2") {
+		t.Fatal("next Offload request did not receive published HOT")
+	}
+}
+
 func TestGroupExcludesPersonalHOT(t *testing.T) {
 	f := newFixture(t)
 	enableCleanNativeProfile(t, f)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,18 +23,21 @@ import (
 )
 
 type dreamRuntimeConfig struct {
-	Enabled             bool   `json:"enabled"`
-	HotEnabled          bool   `json:"hot_enabled"`
-	SourceRoot          string `json:"source_root"`
-	MemoryOffloadConfig string `json:"memory_offload_config"`
-	CacheRoot           string `json:"cache_root"`
-	PersonID            string `json:"person_id"`
-	AgentID             string `json:"agent_id"`
-	AudienceID          string `json:"audience_id"`
-	Scope               string `json:"scope"`
-	Interval            string `json:"interval"`
-	Batch               int    `json:"batch"`
-	Timeout             string `json:"timeout"`
+	Enabled              bool     `json:"enabled"`
+	HotEnabled           bool     `json:"hot_enabled"`
+	SourceRoot           string   `json:"source_root"`
+	MemoryOffloadConfig  string   `json:"memory_offload_config"`
+	CacheRoot            string   `json:"cache_root"`
+	PersonID             string   `json:"person_id"`
+	AgentID              string   `json:"agent_id"`
+	AudienceID           string   `json:"audience_id"`
+	Scope                string   `json:"scope"`
+	Interval             string   `json:"interval"`
+	IdleFor              string   `json:"idle_for,omitempty"`
+	ActivityPollInterval string   `json:"activity_poll_interval,omitempty"`
+	ActivityStateHomes   []string `json:"activity_state_homes,omitempty"`
+	Batch                int      `json:"batch"`
+	Timeout              string   `json:"timeout"`
 }
 
 func dreamRuntimeConfigID(path string, c *dreamRuntimeConfig) string {
@@ -65,11 +69,13 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 	}
 	interval, _ := time.ParseDuration(c.Interval)
 	timeout, _ := time.ParseDuration(c.Timeout)
+	idleFor, _ := time.ParseDuration(c.IdleFor)
+	pollInterval, _ := time.ParseDuration(c.ActivityPollInterval)
 	cycleCtx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	pstore := store.WithPartition(c.AgentID, c.AudienceID)
 	extractor := host.DreamExtractor{Runner: nativepolicy.NewWithLibrary("", library), Model: library.Model(), Backend: library.Backend()}
-	runner := dream.Background{Store: pstore, ConfigID: dreamRuntimeConfigID(o.dreamConfig, c), Interval: interval, Timeout: timeout, Run: func(runCtx context.Context) ([]state.DreamReceipt, error) {
+	runner := dream.Background{Store: pstore, ConfigID: dreamRuntimeConfigID(o.dreamConfig, c), Interval: interval, Timeout: timeout, QuietWindow: idleFor, PollInterval: pollInterval, Probe: dreamActivityProbe(store, c.ActivityStateHomes), Run: func(runCtx context.Context) ([]state.DreamReceipt, error) {
 		count, archiveErr := pstore.ArchiveExpiredDream(runCtx, state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}, time.Now().UTC(), c.Batch)
 		_ = count
 		if archiveErr != nil {
@@ -140,6 +146,12 @@ func loadDreamRuntime(path string) (*dreamRuntimeConfig, error) {
 	if !c.Enabled {
 		return &c, nil
 	}
+	if c.IdleFor == "" {
+		c.IdleFor = "60s"
+	}
+	if c.ActivityPollInterval == "" {
+		c.ActivityPollInterval = "1s"
+	}
 	if err := validateDreamPath(c.SourceRoot, true); err != nil {
 		return nil, errors.New("dream source root: " + err.Error())
 	}
@@ -154,7 +166,58 @@ func loadDreamRuntime(path string) (*dreamRuntimeConfig, error) {
 	if err != nil || timeout <= 0 || timeout > interval {
 		return nil, errors.New("dream timeout must be positive and no greater than interval")
 	}
+	idleFor, err := time.ParseDuration(c.IdleFor)
+	if err != nil || idleFor <= 0 {
+		return nil, errors.New("dream idle_for must be positive")
+	}
+	pollInterval, err := time.ParseDuration(c.ActivityPollInterval)
+	if err != nil || pollInterval <= 0 {
+		return nil, errors.New("dream activity_poll_interval must be positive")
+	}
+	seenHomes := map[string]bool{}
+	for _, home := range c.ActivityStateHomes {
+		if !filepath.IsAbs(home) || filepath.Clean(home) != home || seenHomes[home] {
+			return nil, errors.New("dream activity_state_homes must contain unique clean absolute paths")
+		}
+		seenHomes[home] = true
+	}
 	return &c, nil
+}
+
+func dreamActivityProbe(local *state.Store, additional []string) dream.ActivityProbe {
+	homes := append([]string{local.Home()}, additional...)
+	return func(ctx context.Context) (dream.Activity, error) {
+		var result dream.Activity
+		seen := map[string]bool{}
+		for _, home := range homes {
+			if seen[home] {
+				continue
+			}
+			seen[home] = true
+			store := local
+			closeStore := false
+			if home != local.Home() {
+				var err error
+				store, err = state.OpenForActivityInspection(home)
+				if err != nil {
+					return result, fmt.Errorf("dream activity state %s: %w", home, err)
+				}
+				closeStore = true
+			}
+			activity, err := store.ForegroundActivity(ctx)
+			if closeStore {
+				err = errors.Join(err, store.Close())
+			}
+			if err != nil {
+				return result, fmt.Errorf("dream activity state %s: %w", home, err)
+			}
+			result.Busy = result.Busy || activity.Busy
+			if activity.LastForeground.After(result.LastForeground) {
+				result.LastForeground = activity.LastForeground
+			}
+		}
+		return result, nil
+	}
 }
 
 func validateDreamPath(path string, directory bool) error {
