@@ -24,17 +24,21 @@ supported `--offload-config` selector and a separate Agent catalog. Keep these
 diagnostic choices explicit and isolated; do not rewrite the production daily
 configuration as part of a handoff.
 
-Result mode creates a private evidence directory under the configuration's
-`handoffs/` directory, announces its path immediately on stderr, and returns one
-JSON object on stdout after execution. `--output-dir /absolute/new-directory`
-selects a new directory; an existing directory is never overwritten.
+Every execution format creates a private evidence directory under the
+configuration's `handoffs/` directory and announces its path immediately on
+stderr. Text and JSON modes continue to stream the child's stdout and stderr
+unchanged; result mode returns one projected JSON object on stdout. Child stderr
+is retained in every mode. `--output-dir /absolute/new-directory` applies to all
+formats and selects a new directory; an existing directory is never overwritten.
 
 | Result field | Meaning |
 | --- | --- |
 | `ref` | Configuration reference and observed Host session/run IDs. |
 | `report` | Canonical Host output when readable; otherwise the native final reply retained in events. Never streaming commentary or extraction text. |
 | `execution` | Actual process exit and observed Host execution, acceptance and memory outcomes. Host acceptance is separate from caller verification. |
-| `evidence_ref` | Private directory containing launch metadata, stdout events, stderr and the final result snapshot. |
+| `evidence_ref`, `artifacts` | Private directory and existing paths for the exact task brief, launch metadata, raw stdout/stderr, optional canonical run snapshot, result snapshot and Chinese-labelled raw Markdown record. Optional or failed exports are `null`. |
+| `stream_format` | Child stdout format: `text`, `json`, or the JSON event stream used to project `result`. |
+| `record_time` | UTC record creation and finalization timestamps. These are record times, not inferred execution states. |
 | `warnings` | Incomplete evidence, missing final report, or unavailable Host inspection. |
 | `stderr_tail` | Last 4 KiB of stderr after a nonzero exit, including errors before any run was created. Treat as diagnostic data. |
 | `requested_session_id` | Continuation input when present; distinct from actual returned IDs, which remain null if startup failed. |
@@ -83,8 +87,16 @@ Run ID exists, uses the original destination's read-only `run show`. It does not
 load provider credentials, start a model, replay work or change the receipt.
 Inspection success has exit zero; the original process exit remains in the
 returned object. A null process exit means unobserved, not success or stopped.
-The snapshot in `result.json` describes launch completion; inspection reads fresh
-Host evidence. Raw `text`/`json` modes do not create these launch receipts.
+The snapshot in `result.json` and `execution.md` describes launch completion;
+inspection reads fresh Host evidence without rewriting either snapshot. Exact
+validated `run show` stdout is retained once as `run.json` during launch
+finalization. JSON/result child stdout is `events.jsonl`; text stdout is
+`stdout.txt`. The exact submitted UTF-8 task brief is saved before child launch
+as `request.txt`, without command arguments or environment data. `execution.md`
+uses Chinese headings and labels while preserving the request, IDs, enum values
+and Agent report unchanged. Missing files are never advertised as completed
+artifacts. All directories are owner-only and all files are owner-readable and
+writable only, including under a permissive umask.
 
 `scripts/chat.py --format result --resume-from EVIDENCE_DIRECTORY -m MESSAGE`
 checks that the saved destination options and working directory still match,
@@ -102,6 +114,10 @@ it records an exit, inspect the evidence and actual process/external state; the
 child may still be running. A manual `--resume SESSION_ID` remains available only
 after resolving that uncertainty. There is no provider fallback or automatic
 replay, and inspection does not automatically continue blocked work.
+Raw stream export and console failures are explicit evidence warnings. A failed
+sink is disabled without stopping the other sink or pipe draining, so a verbose
+child cannot deadlock after artifact storage fails; the observed child exit still
+governs the launcher result.
 Host can reject continuation after an `unknown` execution even with an observed
 process exit. Preserve that failure and investigate partial effects; do not
 silently start a fresh session to bypass it.
