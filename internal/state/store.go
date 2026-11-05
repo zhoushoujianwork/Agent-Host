@@ -319,6 +319,11 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 					return err
 				}
 			}
+			if version < 19 {
+				if err := migrateChannelProgressV19(tx); err != nil {
+					return err
+				}
+			}
 			if _, err := tx.Exec(schemaApprovals); err != nil {
 				return err
 			}

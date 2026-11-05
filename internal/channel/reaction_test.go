@@ -58,6 +58,9 @@ func drainReactions(t *testing.T, s *Service) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if r.Status != "sending" {
+			continue
+		}
 		if err := s.processReaction(context.Background(), r); err != nil {
 			t.Fatal(err)
 		}
@@ -231,6 +234,10 @@ func TestReactionErrorsAreRecordedWithoutTextFallbackOrReplay(t *testing.T) {
 				return nil
 			}
 			input := f.message(t, "feedback-fail", "Explain this project.", "text", "dm")
+			if operation == "remove" {
+				f.receive(t, input)
+				drainReactions(t, f.service)
+			}
 			m := f.process(t, input)
 			drainReactions(t, f.service)
 			before := len(r.snapshot())
@@ -339,7 +346,7 @@ func TestReactionRemovalCrashDoesNotRepeatCleanupOrNativeWork(t *testing.T) {
 		t.Fatalf("crash repeated platform operation: %+v", calls)
 	}
 	got := f.receipt(t, input.ID)
-	if got.Status != "unknown" || got.Reactions[0].RemovalStatus != "unknown" || got.Reactions[len(got.Reactions)-1].Status != "unknown" || len(f.runner.snapshot()) != 0 || len(f.replier.snapshot()) != 0 {
+	if got.Status != "unknown" || got.Reactions[0].RemovalStatus != "unknown" || got.Reactions[len(got.Reactions)-1].Status != "skipped" || len(f.runner.snapshot()) != 0 || len(f.replier.snapshot()) != 0 {
 		t.Fatalf("crash state overclaimed or task replayed: %+v", got)
 	}
 }
@@ -371,4 +378,11 @@ func TestLegacyInternalReactionOutboxIsWithheldUnderPublicPolicy(t *testing.T) {
 			t.Fatal("legacy phase disclosed", call)
 		}
 	}
+}
+
+func (r *serviceReactor) AddProgressReaction(ctx context.Context, c, m, label string) error {
+	return r.call(ctx, reactionCall{"add", c, m, label})
+}
+func (r *serviceReactor) RemoveProgressReaction(ctx context.Context, c, m, label string) error {
+	return r.call(ctx, reactionCall{"remove", c, m, label})
 }

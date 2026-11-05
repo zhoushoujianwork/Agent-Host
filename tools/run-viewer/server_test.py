@@ -385,7 +385,7 @@ class CatalogTests(unittest.TestCase):
         conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'default'")
         conn.execute("ALTER TABLE memories ADD COLUMN audience_id TEXT NOT NULL DEFAULT 'owner'")
         conn.commit()
-        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18):
+        for version in (3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19):
             with self.subTest(version=version):
                 conn.execute(f"PRAGMA user_version={version}")
                 before = hashlib.sha256((self.home / "state.db").read_bytes()).hexdigest()

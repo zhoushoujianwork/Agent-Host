@@ -443,3 +443,40 @@ func TestReactionHonorsCancellationWithoutStartingOrRepeatingMutation(t *testing
 		}
 	}
 }
+
+func TestCustomProgressTextReactionValidationAndExactRemoval(t *testing.T) {
+	var calls []string
+	r := newTestReactor(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == reactionTokenPath {
+			return reactionResponse(req, 200, `{"accessToken":"fixture-token","expireIn":7200}`), nil
+		}
+		var body map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		text := body["textEmotion"].(map[string]any)
+		if body["openMsgId"] != "original-message" || body["openConversationId"] != "original-chat" || text["text"] != strings.Repeat("界", 12) || text["backgroundId"] != "im_bg_1" || text["emotionId"] != "2659900" {
+			t.Fatal(body)
+		}
+		calls = append(calls, req.URL.Path)
+		return reactionResponse(req, 200, `{"success":true}`), nil
+	})
+	label := strings.Repeat("界", 12)
+	if err := r.AddReaction(t.Context(), "original-chat", "original-message", label); err == nil {
+		t.Fatal("fixed API accepted custom label")
+	}
+	for _, bad := range []string{"", strings.Repeat("界", 13), "bad\nlabel", "bad\x00", " text", "\xff"} {
+		if err := r.AddProgressReaction(t.Context(), "original-chat", "original-message", bad); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+	if err := r.AddProgressReaction(t.Context(), "original-chat", "original-message", label); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RemoveProgressReaction(t.Context(), "original-chat", "original-message", label); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0] != reactionAddPath || calls[1] != reactionDelPath {
+		t.Fatal(calls)
+	}
+}

@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -29,7 +31,7 @@ func TestProgressUnicodeBoundaries(t *testing.T) {
 	for _, tt := range []struct {
 		text string
 		ok   bool
-	}{{"  hi\n", true}, {strings.Repeat("界", 200), true}, {strings.Repeat("😀", 200), true}, {strings.Repeat("界", 201), false}, {" \t\n", false}, {string([]byte{0xff}), false}, {strings.Repeat("e\u0301", 101), false}} {
+	}{{"  hi  ", true}, {"hi\n", false}, {"a\nb", false}, {"a\u2028b", false}, {"a\u2029b", false}, {"a\x00b", false}, {"a\tb", false}, {strings.Repeat("界", 12), true}, {strings.Repeat("😀", 12), true}, {strings.Repeat("界", 13), false}, {" \t\n", false}, {string([]byte{0xff}), false}, {strings.Repeat("e\u0301", 7), false}} {
 		got, err := ValidateProgressText(tt.text)
 		if (err == nil) != tt.ok || err == nil && got != strings.TrimSpace(tt.text) {
 			t.Fatalf("%q: %q %v", tt.text, got, err)
@@ -105,7 +107,7 @@ func TestProgressConcurrentReservationsIdempotencyCooldownQuota(t *testing.T) {
 	if _, err = s.ReserveChannelProgress(t.Context(), b, "sixth", ""); err == nil || !strings.Contains(err.Error(), "limit") {
 		t.Fatal("quota ignored", err)
 	}
-	if p, err := s.ReserveChannelProgress(t.Context(), b, "different text", "same"); err != nil || p.ID != id || p.Text != "first" {
+	if p, err := s.ReserveChannelProgress(t.Context(), b, "different", "same"); err != nil || p.ID != id || p.Text != "first" {
 		t.Fatal("idempotency lost at limit", p, err)
 	}
 }
@@ -259,7 +261,7 @@ func TestProgressMigrationFrom17AndRecoveryUnclaimed(t *testing.T) {
 	}
 	defer reopened.Close()
 	var version, count int
-	if err = reopened.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 18 {
+	if err = reopened.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
 	if err = reopened.db.QueryRow("SELECT COUNT(*) FROM channel_progress").Scan(&count); err != nil || count != 0 {
@@ -276,7 +278,7 @@ func TestProgressMigrationFrom17AndRecoveryUnclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := reopened.ReserveChannelProgress(t.Context(), b, "never dispatched", "")
+	p, err := reopened.ReserveChannelProgress(t.Context(), b, "not sent", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +371,7 @@ func TestProgressBindingSurvivesAuthorizedGeneratedNativeIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := s.ReserveChannelProgress(t.Context(), b, "before native init", "key")
+	p, err := s.ReserveChannelProgress(t.Context(), b, "before init", "key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,5 +385,132 @@ func TestProgressBindingSurvivesAuthorizedGeneratedNativeIdentity(t *testing.T) 
 	got, _, err := s.ClaimNextChannelProgress(t.Context(), m.Profile)
 	if err != nil || got.ID != p.ID || got.DispatchStartedAt == "" {
 		t.Fatal(got, err)
+	}
+}
+
+// Test harness drives the same queue and authority checks as the feedback worker.
+func (s *Store) ClaimNextChannelProgress(ctx context.Context, profile string) (ChannelProgress, ChannelMessage, error) {
+	for {
+		r, err := s.ClaimNextChannelReaction(ctx, profile)
+		if err != nil {
+			return ChannelProgress{}, ChannelMessage{}, err
+		}
+		if !strings.HasPrefix(r.Stage, "progress:") {
+			if err = s.SkipChannelReaction(ctx, r.ID, "test lifecycle omission"); err != nil {
+				return ChannelProgress{}, ChannelMessage{}, err
+			}
+			continue
+		}
+		if r.Status == "skipped" {
+			p, e := scanProgress(s.db.QueryRowContext(ctx, "SELECT "+progressColumns+" FROM channel_progress WHERE reaction_id=?", r.ID))
+			return p, ChannelMessage{}, e
+		}
+		err = s.AuthorizeChannelReaction(ctx, r.ID)
+		if err != nil {
+			if e := s.SkipChannelReaction(ctx, r.ID, "authority expired"); e != nil {
+				return ChannelProgress{}, ChannelMessage{}, e
+			}
+		}
+		p, e := scanProgress(s.db.QueryRowContext(ctx, "SELECT "+progressColumns+" FROM channel_progress WHERE reaction_id=?", r.ID))
+		if e != nil {
+			return p, ChannelMessage{}, e
+		}
+		m, e := s.ChannelMessage(ctx, p.MessageID)
+		return p, m, e
+	}
+}
+func (s *Store) FinishChannelProgress(ctx context.Context, id int64, status string) error {
+	p, err := s.ChannelProgress(ctx, id)
+	if err != nil {
+		return err
+	}
+	cause := ""
+	if status != "accepted" {
+		cause = "test transport outcome"
+	}
+	return s.FinishChannelReaction(ctx, p.ReactionID, status, cause)
+}
+
+func TestProgressTerminalBarrierAndAtomicLinkedOutcomes(t *testing.T) {
+	for _, claimed := range []bool{false, true} {
+		t.Run(fmt.Sprint(claimed), func(t *testing.T) {
+			s, m, _, b := progressFixture(t)
+			p, err := s.ReserveChannelProgress(t.Context(), b, "Reading", "one")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if claimed {
+				if _, _, err = s.ClaimNextChannelProgress(t.Context(), m.Profile); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err = s.transaction(t.Context(), func(tx *sql.Tx) error { return queueChannelReaction(t.Context(), tx, m, "completed") }); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.ReserveChannelProgress(t.Context(), b, "Late", "late"); !errors.Is(err, ErrProgressUnavailable) {
+				t.Fatal("terminal accepted progress", err)
+			}
+			if claimed {
+				if err = s.AuthorizeChannelReaction(t.Context(), p.ReactionID); !errors.Is(err, ErrProgressUnavailable) {
+					t.Fatal("terminal lost", err)
+				}
+				if err = s.SkipChannelReaction(t.Context(), p.ReactionID, "terminal barrier"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			saved, err := s.ChannelProgress(t.Context(), p.ID)
+			if err != nil || saved.Status != "failed" {
+				t.Fatal(saved, err)
+			}
+			rs, err := s.ChannelReactions(t.Context(), m.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range rs {
+				if r.ID == p.ReactionID && (r.Status != "skipped" || r.SourceRunID != "" || r.SourceEventSeq != 0) {
+					t.Fatal("invented event attribution or lost skip", r)
+				}
+			}
+		})
+	}
+}
+
+func TestProgressMigration18PreservesHistoryAndNeverReplaysLegacy(t *testing.T) {
+	s, m, _, b := progressFixture(t)
+	p, err := s.ReserveChannelProgress(t.Context(), b, "Legacy", "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Construct the actual v18 shape, with existing lifecycle history.
+	if _, err = s.db.Exec("DELETE FROM channel_reactions WHERE id=?", p.ReactionID); err == nil {
+		t.Fatal("foreign key did not protect linked reaction")
+	}
+	if _, err = s.db.Exec("UPDATE channel_progress SET reaction_id=NULL; DELETE FROM channel_reactions WHERE stage LIKE 'progress:%'; DROP INDEX channel_progress_reaction; ALTER TABLE channel_progress DROP COLUMN reaction_id; PRAGMA user_version=18"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.ChannelReactions(t.Context(), m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := s.Home()
+	if err = s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	upgraded, err := Open(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	got, err := upgraded.ChannelProgress(t.Context(), p.ID)
+	if err != nil || got.Status != "failed" || got.ReactionID != 0 || got.Text != "Legacy" {
+		t.Fatal(got, err)
+	}
+	after, err := upgraded.ChannelReactions(t.Context(), m.ID)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("history changed", before, after, err)
+	}
+	var version int
+	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 19 {
+		t.Fatal(version, err)
 	}
 }
