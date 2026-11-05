@@ -42,7 +42,9 @@ AGH 负责扫描、身份范围、审核、记忆轮转和后台周期；Offload
 已实现来源扫描、幂等提炼、候选审核、HOT 导出与私聊注入、后台周期、Skill 草稿晋升、到期归档及显式恢复。
 新候选全部先待审；没有自动审核、自动启用 Skill、自动扩权、业务任务重放或无界历史回填。
 
-运行时首版接入直接 Offload Chat/渠道路径，尚未接入 Full Host 的 Agent catalog/project 路由；混用配置会明确拒绝。
+运行时已接入直接 Offload 与 Full Host 的 CLI Chat、私聊渠道和 room 路径。Full Host 保留原有 Agent catalog、
+Skill、插件与记忆组装；只有认证本人且 Agent、audience、scope 精确匹配时才注入个人 HOT，群聊和其他人保持原行为。
+HOT 摘要变化会拒绝继续旧会话，要求新建会话。CLI Chat 仅支持 HOT，不拥有后台写入生命周期。
 
 Skill 目录目前不能表达任意个人权限，因此首版仅允许本地 owner 的方法晋升为草稿；其他个人的方法保留为候选。
 后续可在验证实际整理质量后，再增加明确的自动准入策略和个人 Skill 权限，不以模型输出替代审核。

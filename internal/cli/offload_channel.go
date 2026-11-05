@@ -151,7 +151,7 @@ func selectEmptyNativeChatProfile(o *options) error {
 
 func composeOffloadChannelHost(store *state.Store, o options, sink event.Sink) channel.Host {
 	hotPerson, hotRefresh := o.hotPersonID, o.hotRefresh
-	if o.audienceID != state.OwnerAudienceID {
+	if o.agentID != o.hotAgentID || o.audienceID != o.hotAudienceID || o.scope != o.hotScope {
 		hotPerson, hotRefresh = "", nil
 	}
 	return &offloadchannel.Host{Store: store.WithPartition(o.agentID, o.audienceID), Client: o.offloadClient,

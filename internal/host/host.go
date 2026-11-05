@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -79,8 +80,33 @@ type Config struct {
 	DecisionProvider      string
 	ToolsDisabled         bool
 	AllowedTools          []string
+	// PersonalHOTDocuments is caller-reviewed context for one trusted person.
+	// Admission owns identity; source content can never select this callback.
+	PersonalHOTPersonID  string
+	PersonalHOTDocuments func(context.Context) ([]harness.PresetDocument, string, error)
 	// RuntimeRecallQuery keeps a fork's selected Skills aligned with its source runtime.
 	RuntimeRecallQuery string
+}
+
+func (h *Host) personalHOTSnapshot(ctx context.Context) (*Host, []harness.PresetDocument, error) {
+	copy := *h
+	if h.Config.PersonalHOTDocuments == nil {
+		return &copy, nil, nil
+	}
+	if h.Config.PersonalHOTPersonID == "" {
+		return nil, nil, errors.New("personal HOT requires a trusted person")
+	}
+	documents, digest, err := h.Config.PersonalHOTDocuments(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if digest == "" {
+		return nil, nil, errors.New("personal HOT snapshot has no digest")
+	}
+	raw, _ := json.Marshal([]string{"full-host-personal-hot-v1", h.Config.RuntimeFingerprint, h.Config.PersonalHOTPersonID, digest})
+	sum := sha256.Sum256(raw)
+	copy.Config.RuntimeFingerprint = h.Config.RuntimeFingerprint + ":hot:" + hex.EncodeToString(sum[:])
+	return &copy, documents, nil
 }
 
 type Host struct {
@@ -172,6 +198,11 @@ func ID() string {
 }
 
 func (h *Host) Session(ctx context.Context, id string) (state.Session, error) {
+	var err error
+	h, _, err = h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Session{}, err
+	}
 	h = h.partitioned()
 	if id != "" {
 		s, err := h.Store.Session(ctx, id)
@@ -314,7 +345,11 @@ func (j *journal) phaseWithTicks(parent context.Context, name, component, model 
 }
 
 func (h *Host) Run(ctx context.Context, s state.Session, input string) (state.Run, error) {
-	return h.run(ctx, s, input, "", nil)
+	snapshot, documents, err := h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Run{}, err
+	}
+	return snapshot.run(ctx, s, input, "", nil, documents)
 }
 
 // RunChannel preserves the ordinary host loop while atomically linking its run
@@ -323,10 +358,14 @@ func (h *Host) RunChannel(ctx context.Context, s state.Session, input, messageID
 	if messageID == "" {
 		return state.Run{}, errors.New("channel message ID is required")
 	}
-	return h.run(ctx, s, input, messageID, nil)
+	snapshot, documents, err := h.personalHOTSnapshot(ctx)
+	if err != nil {
+		return state.Run{}, err
+	}
+	return snapshot.run(ctx, s, input, messageID, nil, documents)
 }
 
-func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource) (state.Run, error) {
+func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID string, preparation *state.PreparationSource, personalDocuments []harness.PresetDocument) (state.Run, error) {
 	h = h.partitioned()
 	var previousFeedback *taskfeedback.Plan
 	if h.Config.PrepareFeedback != nil {
@@ -684,7 +723,7 @@ func (h *Host) run(ctx context.Context, s state.Session, input, channelMessageID
 		if h.Config.RestrictedReadOnly {
 			directories = nil
 		}
-		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, HostSessionID: r.SessionID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers}, func(o harness.Observation) error {
+		result, runErr = h.Runner.Run(ctx, harness.Request{CallerRunID: "agh:" + r.ID, HostSessionID: r.SessionID, RestrictedReadOnly: h.Config.RestrictedReadOnly, SkillPluginDir: skillPackage.Path, SkillPluginDigest: skillPackage.Digest, NativeProfile: h.Config.NativeProfile, PermissionMode: h.Config.PermissionMode, HostInstructions: invocationInstructions(instructions, r), Images: images, ForkFromNativeSessionID: roomFork(s.Room), Prompt: roomPrompt(s.Room) + assembly.UserProfileContext(h.Config.UserProfile) + assembly.KnowledgeContext(h.Config.KnowledgeHints) + runtimePrompt(r) + recoveryContext + recentRequestsContext + material + legacySkillContext(h.Config.ManagedCatalog, skillPackage.Manifest, selected) + assembly.Prompt(input, promptMemories, notices), Workspace: s.WorkingDirectory(), AdditionalDirectories: directories, Model: h.Config.Model, NativeSessionID: s.NativeSessionID, Resume: resume, ToolsDisabled: h.Config.ToolsDisabled, AllowedTools: h.Config.AllowedTools, MCPServers: mcpServers, PresetDocuments: append([]harness.PresetDocument(nil), personalDocuments...)}, func(o harness.Observation) error {
 			if o.Type == "init" && state.IsOffloadPending(s.NativeSessionID) {
 				if err := h.Store.BindHostNativeSession(ctx, r.ID, s.NativeSessionID, o.NativeSessionID); err != nil {
 					return err

@@ -36,6 +36,13 @@ type dreamRuntimeConfig struct {
 	Timeout             string `json:"timeout"`
 }
 
+func dreamRuntimeConfigID(path string, c *dreamRuntimeConfig) string {
+	if c == nil {
+		return ""
+	}
+	return channel.Key("dream-config-v1", path, c.PersonID, c.AgentID, c.AudienceID, c.Scope)
+}
+
 func startDreamBackground(ctx context.Context, store *state.Store, o options) (func(), <-chan error, error) {
 	c, err := loadDreamRuntime(o.dreamConfig)
 	if err != nil {
@@ -62,7 +69,7 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 	done := make(chan error, 1)
 	pstore := store.WithPartition(c.AgentID, c.AudienceID)
 	extractor := host.DreamExtractor{Runner: nativepolicy.NewWithLibrary("", library), Model: library.Model(), Backend: library.Backend()}
-	runner := dream.Background{Store: pstore, ConfigID: channel.Key("dream-config-v1", o.dreamConfig, c.PersonID, c.AgentID, c.AudienceID, c.Scope), Interval: interval, Timeout: timeout, Run: func(runCtx context.Context) ([]state.DreamReceipt, error) {
+	runner := dream.Background{Store: pstore, ConfigID: dreamRuntimeConfigID(o.dreamConfig, c), Interval: interval, Timeout: timeout, Run: func(runCtx context.Context) ([]state.DreamReceipt, error) {
 		count, archiveErr := pstore.ArchiveExpiredDream(runCtx, state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}, time.Now().UTC(), c.Batch)
 		_ = count
 		if archiveErr != nil {
@@ -180,6 +187,7 @@ func validateDreamRuntimeIdentity(c *dreamRuntimeConfig, o options, personID str
 }
 
 func prepareDreamHOT(store *state.Store, o *options) error {
+	o.hotPersonID, o.hotAgentID, o.hotAudienceID, o.hotScope, o.hotRefresh = "", "", "", "", nil
 	c, err := loadDreamRuntime(o.dreamConfig)
 	if err != nil {
 		return err
@@ -188,7 +196,7 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 		return nil
 	}
 	if c.AgentID != o.agentID || c.AudienceID != o.audienceID || c.Scope != o.scope {
-		return errors.New("dream config does not match trusted runtime agent, audience and scope")
+		return nil
 	}
 	p := state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}
 	bundle, err := dream.ExportHOT(context.Background(), store.WithPartition(c.AgentID, c.AudienceID), p, time.Now().UTC(), c.Batch)
@@ -198,7 +206,7 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 	if _, err = dream.PublishHOT(c.CacheRoot, bundle); err != nil {
 		return err
 	}
-	o.hotPersonID = c.PersonID
+	o.hotPersonID, o.hotAgentID, o.hotAudienceID, o.hotScope = c.PersonID, c.AgentID, c.AudienceID, c.Scope
 	o.hotRefresh = func(ctx context.Context) ([]harness.PresetDocument, string, error) {
 		next, e := dream.ExportHOT(ctx, store.WithPartition(c.AgentID, c.AudienceID), p, time.Now().UTC(), c.Batch)
 		if e != nil {
@@ -210,4 +218,103 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 		return dream.PresetDocuments(next), next.Digest, nil
 	}
 	return nil
+}
+
+func bindDreamHOT(store *state.Store, o *options, personID string, private bool) error {
+	o.hotPersonID, o.hotAgentID, o.hotAudienceID, o.hotScope, o.hotRefresh = "", "", "", "", nil
+	if !private {
+		return nil
+	}
+	c, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil || c == nil || !c.HotEnabled {
+		return err
+	}
+	if c.PersonID != personID || c.AgentID != o.agentID || c.AudienceID != o.audienceID || c.Scope != o.scope {
+		return nil
+	}
+	return prepareDreamHOT(store, o)
+}
+
+func validateFullHostChatDream(o options) error {
+	c, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil || c == nil || !c.Enabled && !c.HotEnabled {
+		return err
+	}
+	if c.Enabled {
+		return errors.New("Full Host Chat supports HOT-only dream configuration; background lifecycle belongs to a channel Store owner")
+	}
+	if c.PersonID != "local-owner" || c.AudienceID != state.OwnerAudienceID {
+		return errors.New("Full Host Chat dream configuration must target the trusted local owner audience")
+	}
+	return nil
+}
+
+func validateFullHostChannelDream(ctx context.Context, store *state.Store, o options, agents agentCatalog, personID, channelID, accountID, tenantID string) error {
+	c, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil || c == nil || !c.Enabled && !c.HotEnabled {
+		return err
+	}
+	if personID == "" || c.PersonID != personID {
+		return errors.New("dream destination does not match the trusted channel owner")
+	}
+	audience := state.OwnerAudienceID
+	if agents.users != nil {
+		identity, resolveErr := agents.users.resolve(userAccount{Channel: channelID, AccountID: accountID, TenantID: tenantID, SenderID: personID}, agents.ownerID)
+		err = resolveErr
+		if err != nil {
+			return err
+		}
+		if identity != "owner" {
+			audience = "user:" + identity
+		}
+	}
+	if c.AudienceID != audience {
+		return errors.New("dream destination does not match the owner's trusted private audience")
+	}
+	a, err := agents.definition(c.AgentID)
+	if err != nil {
+		return errors.New("dream destination Agent is not present in the channel catalog")
+	}
+	selected, err := a.options(o, audience, false, false)
+	if err != nil {
+		return err
+	}
+	validScope := c.Scope == selected.scope || c.Scope == selected.defaultScope || c.Scope == selected.workspace
+	projects, projectErr := a.projects(ctx, store.WithPartition(c.AgentID, audience))
+	if projectErr != nil {
+		return projectErr
+	}
+	for _, project := range projects {
+		validScope = validScope || c.Scope == project.Scope
+	}
+	if !validScope {
+		return errors.New("dream destination scope is not selected by the configured channel Agent")
+	}
+	return nil
+}
+
+func runWithDreamBackground(ctx context.Context, store *state.Store, o options, serve func(context.Context) error) error {
+	serviceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop, done, err := startDreamBackground(serviceCtx, store, o)
+	if err != nil {
+		return err
+	}
+	if done == nil {
+		return serve(serviceCtx)
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- serve(serviceCtx) }()
+	select {
+	case serveErr := <-serveDone:
+		stop()
+		backgroundErr := <-done
+		if errors.Is(backgroundErr, context.Canceled) {
+			backgroundErr = nil
+		}
+		return errors.Join(serveErr, backgroundErr)
+	case backgroundErr := <-done:
+		cancel()
+		return errors.Join(backgroundErr, <-serveDone)
+	}
 }

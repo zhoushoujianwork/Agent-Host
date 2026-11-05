@@ -179,7 +179,7 @@ type options struct {
 	knowledgeSources                                                                   []knowledge.ResolvedSource
 	knowledgeHints                                                                     []knowledge.Hint
 	mcpServers                                                                         []harness.MCPServer
-	hotPersonID                                                                        string
+	hotPersonID, hotAgentID, hotAudienceID, hotScope                                   string
 	hotRefresh                                                                         func(context.Context) ([]harness.PresetDocument, string, error)
 	projectID, projectName, scope, runtimeFingerprint                                  string
 	projectIDs                                                                         []string
@@ -723,6 +723,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 	if err := resolveOptions(ctx, store, &o, command == "chat"); err != nil {
 		return err
 	}
+	if command == "chat" && o.offloadProfile == nil {
+		if err := validateFullHostChatDream(o); err != nil {
+			return err
+		}
+		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
+			return err
+		}
+	}
 	if command != "chat" {
 		if err := store.Recover(ctx); err != nil {
 			return fmt.Errorf("recover: %w", err)
@@ -789,6 +797,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		previous := s.RuntimeFingerprint
 		o.retrievalQuery = input
 		if err := resolveOptions(ctx, store, &o, true); err != nil {
+			return err
+		}
+		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
 			return err
 		}
 		h = composeHost(store, o, client, renderer.Render)

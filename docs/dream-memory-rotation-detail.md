@@ -148,9 +148,11 @@ type DreamCandidate struct {
 
 ## 5. Host 接口
 
-`dream scan/run/list/show/review/promote/export/archive/rotate/restore` 已交付。服务通过显式 `--dream-config`
+`dream scan/run/list/show/review/promote/export/archive/rotate/restore/status` 已交付。服务通过显式 `--dream-config`
 启用同一 Lifecycle 的串行周期；`enabled` 控制后台提炼，`hot_enabled` 独立控制运行时 HOT。周期随 owning
 context 取消并保存 status/error，每轮后重新投影 HOT；持久状态写入失败会停止服务。独立 pause/resume 命令仍未交付。
+Full Host 每次创建或继续会话都从权威记忆重算 HOT 摘要，用 Host 副本形成运行指纹，不修改共享配置；摘要变化或
+到期会拒绝旧会话。个人文档只进入认证本人的私聊，群聊、其他人和不匹配的 Agent/audience/scope 不继承个人原生状态。
 
 首版优先内部库与 CLI，不提供公共插件 API。当前交付命令：
 
@@ -158,6 +160,7 @@ context 取消并保存 status/error，每轮后重新投影 HOT；持久状态�
 agent-host dream scan --source ABS --person ID --agent ID --audience ID --memory-scope SCOPE --format json
 agent-host dream run --home PATH --source ABS --memory-offload-config FILE --person ID --agent ID --audience ID --memory-scope SCOPE --format json
 agent-host dream list|show|review|promote|export|archive|rotate|restore ... --format json
+agent-host dream status --home PATH --dream-config /absolute/dream.json --limit 20 --format json
 # NOT DELIVERED: background pause|resume|cancel
 ```
 
@@ -296,7 +299,7 @@ Go package tests通过（输出为 cached）；交接导出器 37 个测试通�
 scheduler、TTL hot rotation 或 merger。
 
 上述是实现前的基线，不代表当前交付状态。当前实现范围以主文档和 Phase 0–2 的 DELIVERED 标记为准。
-Full Host catalog/project 路由尚未接入梦境运行时，配置混用明确拒绝，不能静默忽略。
+Full Host catalog/project 路由现已接入；不匹配的 person、Agent、audience 或 scope 保持原运行行为且不注入个人 HOT。
 长期收益、大规模性能、生产延迟、自动准入及物理删除仍未验证或交付。
 
 
@@ -337,4 +340,16 @@ CLI 单次 Chat 只加载 HOT，不启动后台循环。业务模型不指定时
 `timeout`（例如 `5m`）。person 必须等于渠道配置中认证 owner ID；不能把共享原始目录无区别归给多个用户。
 后台和 HOT 可分别开启，前者的模型配置位于这份 JSON 内，不要混用启用 Full Host 的 CLI `--memory-offload-config`。
 
-本例只说明配置结构，不表示已在生产启用；任意个人的自动身份归因、Full Host catalog 路由和个人 Skill 发布权限仍需后续适配。
+统一服务配置可在所选 execution profile 中写 `"dream_config": "dream.json"`；相对路径按同目录 `host.json`
+解析并作为 `--dream-config` 转发。Full Host 启动后台前会校验目标 person 是渠道 owner，且 Agent 与 scope 属于渠道 catalog。
+本例只说明配置结构，不表示已在生产启用；个人 Skill 发布权限仍需后续适配。
+
+
+## 13. 生产记录体积与周期观察
+
+真实交接记录可能达到数 MB。提炼器保留原始文件和完整摘要，只向模型提供总计不超过 480 KiB 的确定性摘录；
+优先包含请求、定稿元数据和输出，每份来源有单独上限。截断和省略会明确标记，UTF-8 边界保持完整。
+引用不完整来源的 procedure 在结构化输出后被过滤，不能把摘录当成完整成功证据。提炼提示携带当前 UTC 时间。
+
+`dream status --home PATH --dream-config ABS --limit N --format json` 直接查询最新 N 个周期，N 为 1–200。
+历史超过 200 个周期仍可观察最新状态，不扫描或截断最早的记录来推断当前状态。

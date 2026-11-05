@@ -65,10 +65,22 @@ func (s *Store) SaveDreamCycle(ctx context.Context, c DreamCycle) error {
 }
 
 func (s *Store) DreamCycles(ctx context.Context, configID string, limit int) ([]DreamCycle, error) {
+	return s.dreamCycles(ctx, configID, limit, false)
+}
+
+func (s *Store) LatestDreamCycles(ctx context.Context, configID string, limit int) ([]DreamCycle, error) {
+	return s.dreamCycles(ctx, configID, limit, true)
+}
+
+func (s *Store) dreamCycles(ctx context.Context, configID string, limit int, latest bool) ([]DreamCycle, error) {
 	if configID == "" || limit < 1 || limit > 200 {
 		return nil, errors.New("invalid dream cycle query")
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT payload FROM dream_cycles WHERE config_id=? ORDER BY started_at,id LIMIT ?", configID, limit)
+	order := "started_at,id"
+	if latest {
+		order = "started_at DESC,id DESC"
+	}
+	rows, err := s.db.QueryContext(ctx, "SELECT payload FROM dream_cycles WHERE config_id=? ORDER BY "+order+" LIMIT ?", configID, limit)
 	if err != nil {
 		return nil, err
 	}

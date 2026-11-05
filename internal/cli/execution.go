@@ -10,9 +10,6 @@ import (
 )
 
 func loadExecutionOptions(o *options) error {
-	if o.dreamConfig != "" && fullHostOptions(*o) {
-		return errors.New("dream runtime currently requires direct Offload Chat or channel execution; Full Host catalog/project execution is not supported")
-	}
 	if err := loadMemoryExecutionOptions(o); err != nil {
 		return err
 	}
