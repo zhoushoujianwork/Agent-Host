@@ -1,8 +1,9 @@
-.PHONY: build install uninstall-service run package check viewer help
+.PHONY: build install uninstall-service run package check viewer macos-app help
 
 .DEFAULT_GOAL := help
 
 VIEWER_ARGS ?=
+APP_ARGS ?=
 VERSION ?=
 DIST_DIR ?= dist
 SINGLE_RUNTIME := $(if $(filter undefined,$(origin RUNTIME_ROOT)),,1)
@@ -14,7 +15,11 @@ export PYTHON
 INSTALL_ARGS ?=
 
 build:
-	go build -ldflags "-X agent-host/internal/buildinfo.Version=$(or $(VERSION),0.2.0-dev)" -o bin/agent-host ./cmd/agent-host
+	@rev="$$(git rev-parse --verify HEAD 2>/dev/null)" || rev=; \
+	if [ -n "$$rev" ] && status="$$(git status --porcelain 2>/dev/null)"; then \
+		if [ -n "$$status" ]; then modified=true; else modified=false; fi; \
+	else rev=; modified=; fi; \
+	go build -ldflags "-X agent-host/internal/buildinfo.Version=$(or $(VERSION),0.2.0-dev) -X agent-host/internal/buildinfo.SourceRevision=$$rev -X agent-host/internal/buildinfo.SourceModified=$$modified" -o bin/agent-host ./cmd/agent-host
 
 install: build
 	$(PYTHON) -B tools/install.py $(INSTALL_ARGS)
@@ -46,6 +51,7 @@ help:
 		'  run     Start or restart enabled channels and open the workbench in a browser' \
 		'  check   Check Go formatting, run go vet and tests' \
 		'  viewer  Start the local execution viewer (Python 3.9+)' \
+		'  macos-app Build a local macOS app; optional APP_ARGS selects advanced viewer state/config' \
 		'  help    Print this usage guide (default target)' \
 		'' \
 		'Viewer options: pass through VIEWER_ARGS' \
@@ -72,6 +78,9 @@ help:
 viewer:
 	$(PYTHON) -B tools/run-viewer/server.py $(VIEWER_ARGS)
 
+macos-app: build
+	$(PYTHON) -B tools/macos-app/build.py $(APP_ARGS)
+
 check:
 	@$(PYTHON) -c 'import sys; sys.exit("make check requires Python 3.9+") if sys.version_info < (3, 9) else None'
 	@unformatted="$$(gofmt -l cmd internal plugins)" && \
@@ -97,15 +106,17 @@ check:
 	$(PYTHON) -B tools/release/export_public_test.py
 	$(PYTHON) -B tools/run-viewer/server_test.py
 	$(PYTHON) -B tools/run-viewer/record_control_test.py
+	$(PYTHON) -B tools/run-viewer/maintenance_test.py
+	$(PYTHON) -B tools/macos-app/check.py
 	node --test tools/run-viewer/app_test.cjs tools/run-viewer/execution-control_test.cjs
 	$(PYTHON) -B tools/run-viewer/memory_view_test.py
 	$(PYTHON) -B tools/run-viewer/settings_test.py
 	$(PYTHON) -B tools/run-viewer/platform_skills_test.py
-	node --test tools/run-viewer/platform-skills_test.cjs tools/run-viewer/stats_test.cjs
+	node --test tools/run-viewer/platform-skills_test.cjs tools/run-viewer/stats_test.cjs tools/run-viewer/memory-scope_test.cjs
 	$(PYTHON) -B tools/run-viewer/agent_profiles_test.py
 	node --test tools/run-viewer/agent-profiles_test.cjs
 	$(PYTHON) -B tools/run-viewer/chat_runtime_test.py
 	$(PYTHON) -B tools/run-viewer/session_chat_test.py
-	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs
+	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs tools/run-viewer/readiness_test.cjs
 	$(PYTHON) -B experiments/history/dws_platform_test.py
 	$(PYTHON) -B experiments/experience/observe_test.py

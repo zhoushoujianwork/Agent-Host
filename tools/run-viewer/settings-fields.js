@@ -2,7 +2,28 @@
 
 // Only first-use choices are exposed. Unlisted values remain in the saved draft.
 window.AGHSettings = {
-  section(file) { return file.category === "providers" ? "models" : file.category; },
+  section(file) { return ["providers", "local-runtime"].includes(file.category) ? "models" : file.category; },
+  flagIndex(args, flag) {
+    return (args || []).findIndex((item, index) => typeof item === "string" &&
+      (item.startsWith(flag + "=") || item === flag && index + 1 < args.length));
+  },
+  getFlag(args, flag) {
+    const index = this.flagIndex(args, flag);
+    if (index < 0) return undefined;
+    return args[index].startsWith(flag + "=") ? args[index].slice(flag.length + 1) : args[index + 1];
+  },
+  setFlag(args, flag, value) {
+    const next = Array.isArray(args) ? args.slice() : [];
+    const index = this.flagIndex(next, flag), joined = index >= 0 && next[index].startsWith(flag + "=");
+    if (value === undefined || value === "") { if (index >= 0) next.splice(index, joined ? 1 : 2); }
+    else if (index < 0) next.push(flag, value);
+    else if (joined) next[index] = flag + "=" + value;
+    else next[index + 1] = value;
+    return next;
+  },
+  withoutEmpty(map) {
+    return Object.fromEntries(Object.entries(map || {}).filter(([, value]) => value !== "" && value !== null && value !== undefined));
+  },
   capabilitySelection(field, mode, options) {
     if (mode === "inherit") return null;
     return field === "native_skills" ? [] : options.map(option => option.id);
@@ -25,6 +46,10 @@ window.AGHSettings = {
       const id=value.default_profile || (Object.hasOwn(profiles,"default")?"default":Object.keys(profiles)[0]);
       if(profiles[id]) add(["profiles",id,"execution","model"], "默认模型", "留空使用原生工具的默认模型。");
       if (value.execution) add(["execution","model"], "模型", "留空使用原生工具的默认模型。");
+    } else if (category === "local-runtime") {
+      // App-owned execution intentionally inherits Offload's current default.
+      // The handoff remains visible for evidence, but the simple UI does not
+      // create model, ACP, native-profile or provider selectors.
     } else if (category === "providers") {
       add(["ANTHROPIC_BASE_URL"], "服务地址", "使用自定义模型网关时填写。默认连接无需修改。");
       for (const key of ["ANTHROPIC_AUTH_TOKEN","ANTHROPIC_API_KEY"]) {

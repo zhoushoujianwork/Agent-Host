@@ -29,3 +29,53 @@ func TestBuildIdentityUsesEmbeddedRevisionWithoutPrivateSettings(t *testing.T) {
 		t.Fatalf("build metadata disclosed unrelated settings: %s %v", raw, err)
 	}
 }
+
+const fixtureRevision = "0123456789abcdef0123456789abcdef01234567"
+
+func withSource(t *testing.T, revision, modified string) {
+	t.Helper()
+	oldRevision, oldModified := SourceRevision, SourceModified
+	SourceRevision, SourceModified = revision, modified
+	t.Cleanup(func() { SourceRevision, SourceModified = oldRevision, oldModified })
+}
+
+func TestSourceFallbackUsedWithoutNativeVCSSettings(t *testing.T) {
+	for _, tc := range []struct {
+		modified string
+		want     bool
+	}{{"false", false}, {"true", true}} {
+		withSource(t, fixtureRevision, tc.modified)
+		for _, b := range []*debug.BuildInfo{nil, {GoVersion: "go1.fixture", Settings: []debug.BuildSetting{{Key: "-buildmode", Value: "exe"}}}} {
+			info := fromBuildInfo(b)
+			if info.Revision != fixtureRevision || info.Modified != tc.want {
+				t.Fatalf("fallback not used for modified=%s: %+v", tc.modified, info)
+			}
+		}
+	}
+}
+
+func TestNativeVCSSettingsOverrideSourceFallback(t *testing.T) {
+	withSource(t, fixtureRevision, "true")
+	info := fromBuildInfo(&debug.BuildInfo{Settings: []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "native"}, {Key: "vcs.modified", Value: "false"},
+	}})
+	if info.Revision != "native" || info.Modified {
+		t.Fatalf("fallback overrode native metadata: %+v", info)
+	}
+	// Native revision without a modified flag is clean, never taken from the fallback.
+	info = fromBuildInfo(&debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "native"}}})
+	if info.Revision != "native" || info.Modified {
+		t.Fatalf("fallback leaked into native metadata: %+v", info)
+	}
+}
+
+func TestMalformedOrMissingSourceFallbackStaysUnknown(t *testing.T) {
+	for _, tc := range [][2]string{{"", ""}, {fixtureRevision, ""}, {"", "false"}, {"abc", "false"}, {strings.ToUpper(fixtureRevision), "false"},
+		{fixtureRevision + "0", "false"}, {fixtureRevision, "yes"}, {fixtureRevision, "True"}, {"HEAD", "true"}} {
+		withSource(t, tc[0], tc[1])
+		info := fromBuildInfo(nil)
+		if info.Revision != "" || info.Modified {
+			t.Fatalf("malformed fallback %q accepted: %+v", tc, info)
+		}
+	}
+}

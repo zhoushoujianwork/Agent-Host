@@ -12,7 +12,7 @@ import unittest
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, configured_launch, default_config
+from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, configured_launch, default_config, app_prerequisite_notice, APP_SETUP_NOTICE, APP_MARKER, APP_OWNER
 from server import Handler, Catalog, ThreadingHTTPServer
 
 HOST = r'''
@@ -483,6 +483,108 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(caught.exception.code,400)
         finally:
             server.shutdown();server.server_close();thread.join()
+
+
+class AppPrerequisiteTests(unittest.TestCase):
+    """App-owned Chat validates Host scope without selecting an execution backend."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve() / "runtime"
+        for name in ("config", "cli-state", "workspace"):
+            (self.root / name).mkdir(parents=True, exist_ok=True)
+        self.write(self.root / APP_MARKER, {"schema": 1, "owner": APP_OWNER})
+        self.binary = self.executable(self.root / "bundle/agent-host")
+        self.catalog = self.root / "config/agents.cli.json"
+        self.write(self.catalog, {"default_agent": "default", "agents": [
+            {"id": "default", "name": "Local assistant", "native_skills": []}]})
+        self.config = self.root / "config/web-chat.json"
+        self.args = ["--home", str(self.root / "cli-state"), "--agents-config", str(self.catalog),
+                     "--agent", "default", "--workspace", str(self.root / "workspace")]
+        self.save_config()
+        self.launched = []
+        def launcher(path, agent_id):
+            self.launched.append(agent_id)
+            raise ValueError("fixture launcher never starts a process")
+        self.runtime = AgentChatRuntime(self.config, launcher)
+        self.addCleanup(self.runtime.close)
+
+    def write(self, path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+
+    def executable(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\nexit 0\n")
+        path.chmod(0o755)
+        return str(path)
+
+    def save_config(self):
+        self.write(self.config, {"binary": self.binary, "cwd": str(self.root / "workspace"), "args": self.args})
+
+    def rejected_start(self):
+        self.launched.clear()
+        with self.assertRaises(ChatConflict):
+            self.runtime.start("request-1", "hello")
+        self.assertEqual(self.launched, [])
+
+    def test_offload_default_handoff_is_ready_without_acp_or_native_profile(self):
+        self.assertEqual(app_prerequisite_notice(self.config), "")
+        snapshot = self.runtime.snapshot()
+        self.assertTrue(snapshot["enabled"])
+        self.assertEqual(snapshot["selected_agent"], "default")
+        self.assertNotIn("--offload-config", self.args)
+        self.assertNotIn("--native-profile", self.args)
+        self.runtime.start("request-1", "hello")
+        deadline = time.time() + 5
+        while not self.launched and time.time() < deadline:
+            time.sleep(.02)
+        self.assertEqual(self.launched, ["default"])
+
+    def test_invalid_binary_catalog_or_backend_flag_fails_closed(self):
+        cases = {
+            "binary": lambda: os.chmod(self.binary, 0o600),
+            "catalog": lambda: self.write(self.catalog, {"agents": []}),
+            "ACP option": lambda: self.args.extend(["--execution-config", str(self.root / "config/acp.json")]),
+        }
+        for name, break_it in cases.items():
+            with self.subTest(name):
+                self.setUp()
+                break_it()
+                self.save_config()
+                self.assertEqual(app_prerequisite_notice(self.config), APP_SETUP_NOTICE)
+                self.assertFalse(self.runtime.snapshot()["enabled"])
+                self.rejected_start()
+
+    def test_app_scope_cannot_point_state_or_workspace_outside_its_root(self):
+        outside = self.root.parent / "outside"
+        outside.mkdir()
+        for flag in ("--home", "--workspace"):
+            with self.subTest(flag):
+                changed = list(self.args)
+                changed[changed.index(flag) + 1] = str(outside)
+                self.args = changed
+                self.save_config()
+                self.assertEqual(app_prerequisite_notice(self.config), APP_SETUP_NOTICE)
+                self.args = ["--home", str(self.root / "cli-state"), "--agents-config", str(self.catalog),
+                             "--agent", "default", "--workspace", str(self.root / "workspace")]
+
+    def test_app_owned_handoff_cannot_pin_an_offload_profile(self):
+        profile = self.root / "config/offload.json"
+        self.write(profile, {"version": 2, "provider": "codex"})
+        self.args += ["--offload-config", str(profile)]
+        self.save_config()
+        self.assertEqual(app_prerequisite_notice(self.config), APP_SETUP_NOTICE)
+
+    def test_non_app_configs_are_untouched(self):
+        os.unlink(self.root / APP_MARKER)
+        os.chmod(self.binary, 0o600)
+        self.args += ["--execution-config", "/legacy/acp.json"]
+        self.save_config()
+        self.assertEqual(app_prerequisite_notice(self.config), "")
+        self.assertTrue(self.runtime.snapshot()["enabled"])
 
 
 if __name__ == "__main__":

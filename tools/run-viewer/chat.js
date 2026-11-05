@@ -14,6 +14,12 @@
   let selectionFailed = false, viewEpoch = 0;
   const drafts = new Map();
   const requests = new Map();
+  // Chat state drives one readiness notice; it never starts its own polling.
+  function readiness(model) {
+    const shown = globalThis.AGHReadiness?.show(el("chat-readiness"),model,{retry:refresh}) === true;
+    if (shown) el("chat-state").textContent = "";
+    return shown;
+  }
   function controls() {
     const busy = pending || selecting > 0 || Boolean(state.active_id);
     el("send-chat").hidden = false;
@@ -117,7 +123,8 @@
     el("chat-session").hidden = !state.context_id;
     el("chat-session").textContent = state.context_id ? `Agent ${state.selected_agent} · Session ${(state.selected_session || "").slice(0,8)}\n${state.notice || ""}` : "";
     el("chat-welcome").hidden = state.turns.length > 0;
-    el("chat-notice").textContent = state.notice || "由配置的 Agent 执行，过程自动保留。";
+    const notReady = readiness(globalThis.AGHReadiness?.fromChat(state));
+    el("chat-notice").textContent = notReady ? "由配置的 Agent 执行，过程自动保留。" : state.notice || "由配置的 Agent 执行，过程自动保留。";
     const ids = new Set(state.turns.map(t => t.id));
     for (const [id, item] of rendered) if (!ids.has(id)) { item.root.remove(); rendered.delete(id); }
     for (const turn of state.turns) {
@@ -231,7 +238,7 @@
       if (latest?.status === "completed") el("chat-state").textContent = "执行完成，可以继续提问。";
       latestStatus = signature;
     }
-    if (state.context_id && state.needs_new && !pending && !selectionFailed) el("chat-state").textContent = state.notice;
+    if (state.context_id && state.needs_new && !pending && !selectionFailed && !notReady) el("chat-state").textContent = state.notice;
     if (follow && !globalThis.getSelection?.()?.toString()) scroll.scrollTop = scroll.scrollHeight;
     el("latest-chat").hidden = follow || !state.turns.length;
   }
@@ -245,6 +252,7 @@
     render();
   }
   async function action(path, value) {
+    if (globalThis.aghMaintenance) throw Error("工作区正在重新连接，草稿已保留，请稍后重试。");
     if (!token) throw Error("连接尚未就绪，请稍后重试。");
     const response = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json","X-Host-Action":token},body:JSON.stringify(value)});
     const result = await response.json();
@@ -324,7 +332,10 @@
   el("latest-chat").onclick = () => { follow = true; scroll.scrollTop = scroll.scrollHeight; el("latest-chat").hidden = true; };
   async function poll() {
     try { await refresh(); }
-    catch { el("chat-state").textContent = "连接中断，正在重连；不会自动重发。"; }
+    catch (error) {
+      const model = globalThis.AGHReadiness?.fromChat(null,{failed:true,error:error.message});
+      if (!readiness(model)) el("chat-state").textContent = "连接中断，正在重连；不会自动重发。";
+    }
     setTimeout(poll,state.active_id ? 350 : 2000);
   }
   poll();

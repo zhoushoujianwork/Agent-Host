@@ -8,7 +8,9 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/pages.css">
+  <link rel="stylesheet" href="/readiness.css">
   <script src="/theme.js"></script>
+  <script src="/readiness.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body data-page="executions">
@@ -28,6 +30,7 @@
     <section class="page-intro"><div class="page-kicker">EXECUTION JOURNAL</div><h1>从请求，到每一步行动。</h1><p>回看执行过程、工具证据与记忆流转。执行完成、业务验收与记忆保存分别记录。</p><div class="journal-controls"><span id="sync-state" role="status">正在连接</span><label><input id="auto-refresh" type="checkbox" checked> 自动刷新 · 执行中 1 秒 / 其他 5 秒</label><button id="refresh" class="button quiet">↻ 刷新记录</button></div></section>
     <div id="error" class="error-banner" role="alert" hidden></div>
     <div id="backup-status" class="snapshot-note" aria-live="polite" hidden></div>
+    <div id="readiness" class="readiness-slot" aria-live="polite"></div>
     <div id="source-status" class="snapshot-note" aria-live="polite"></div>
     <div id="empty" class="empty" hidden><span>◇</span><h1>还没有执行记录</h1><p>Check the source status above and confirm Chat uses the same state home.</p></div>
     <div id="content" hidden>

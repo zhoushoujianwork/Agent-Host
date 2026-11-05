@@ -59,3 +59,14 @@ test("direct settings links open over memory",()=>{
   const h=setup("#settings");assert.equal(h.node("memory").hidden,false);assert.equal(h.node("settings-dialog").open,true);
   h.node("settings-close").onclick();assert.equal(h.location.hash,"#memory");
 });
+
+test("settings section requests reach the loaded Settings frame by same-origin message without reloading it",()=>{
+  const posted=[],frame={contentWindow:{postMessage:(value,origin)=>posted.push([{...value},origin])},getAttribute(){return "/settings.html";}};
+  const h=setup("#memory","");h.location.origin="http://127.0.0.1:8765";
+  const dialog=h.node("settings-dialog");dialog.querySelector=()=>frame;
+  h.navigate("#settings?section=models");
+  assert.equal(dialog.open,true);
+  assert.deepEqual(posted,[[{type:"agh:settings-section",section:"models"},"http://127.0.0.1:8765"]]);
+  assert.equal(frame.src,undefined,"the frame is not reloaded");
+  h.navigate("#settings");assert.equal(posted.length,1,"a plain Settings route requests no section");
+});
