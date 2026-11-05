@@ -221,8 +221,8 @@ to repair extraction or delivery. Unavailable channel access remains pending.
 ## Direct execution policy
 
 Both Claude and Codex receive the Host direct-execution instruction on every
-business invocation, including continuation. The adapter policy version changes
-compatibility identity so old instructions are not silently retained. Offload
+business invocation, including continuation. The adapter advertises the policy
+version in its execution identity; resumed calls receive current instructions. Offload
 continues to own the outer model loop; Agents may not recursively invoke its CLI
 or workers. Native Skill admission and final assembly reject an `offload`
 directory or YAML declared name, including renamed directories. Other business
