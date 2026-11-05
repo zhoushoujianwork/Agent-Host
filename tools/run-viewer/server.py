@@ -23,12 +23,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 import record_control
+from maintenance import MaintenanceGate
 
 from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
 from platform_skills import export_skill, inspect as platform_skills
-from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config
+from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config, settings_handoff
 
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
@@ -998,7 +999,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = record_control.record(self.server.catalog, keys[0])
                     result["mutation_token"] = getattr(self.server, "mutation_token", None)
                     self.send(200, result)
-            elif target.path in {"/stats.html", "/stats.js", "/stats.css", "/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css"}:
+            elif target.path in {"/stats.html", "/stats.js", "/stats.css", "/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory-scope.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css", "/readiness.js", "/readiness.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
@@ -1010,9 +1011,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send(500, {"error": f"record read failed: {error}"})
 
     def do_POST(self):
+        gate = getattr(self.server, "maintenance_gate", None)
+        if gate is None:
+            return self.owner_POST()
+        with gate.lock:
+            return self.owner_POST()
+
+    def owner_POST(self):
         token = getattr(self.server, "mutation_token", None)
         route = urlsplit(self.path).path
-        if route not in {"/api/memory-action", "/api/settings", "/api/record/stop", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent", "/api/chat/session"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
+        if route not in {"/api/app/quiesce", "/api/app/resume", "/api/memory-action", "/api/settings", "/api/record/stop", "/api/chat", "/api/chat/stop", "/api/chat/new", "/api/chat/agent", "/api/chat/session"} or not token or route == "/api/settings" and not getattr(self.server, "settings_store", None):
             self.send(405, {"error": "this route is read-only"})
             return
         host = self.headers.get("Host", "")
@@ -1026,6 +1034,23 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("provide a bounded JSON action")
             self.connection.settimeout(10)
             value = decode(self.rfile.read(length))
+            gate = getattr(self.server, "maintenance_gate", None)
+            if route in {"/api/app/quiesce", "/api/app/resume"}:
+                if gate is None:
+                    raise ChatConflict("Workspace restart control is unavailable")
+                if route == "/api/app/resume" and value == {}:
+                    self.send(200, gate.resume())
+                elif route == "/api/app/quiesce" and isinstance(value, dict) and set(value) == {"purpose"}:
+                    try:
+                        result = gate.begin(self.server.catalog, getattr(self.server, "chat_runtime", None), value["purpose"])
+                    except ValueError as error:
+                        raise ChatConflict(str(error)) from None
+                    self.send(200, result)
+                else:
+                    raise ValueError("Invalid restart control request")
+                return
+            if gate is not None and gate.quiesced:
+                raise ChatConflict("Workspace is restarting. Your draft is retained; retry after reconnecting.")
             if route == "/api/record/stop":
                 if not isinstance(value, dict) or set(value) != {"key"} or not isinstance(value["key"], str) or not 0 < len(value["key"]) <= 256:
                     raise ValueError("provide exactly one bounded record key")
@@ -1062,7 +1087,24 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/settings":
                 if set(value) != {"file", "revision", "value"} or not isinstance(value["file"], str) or not isinstance(value["revision"], str):
                     raise ValueError("Provide a settings file, expected revision and value.")
-                self.send(200, self.server.settings_store.save(value["file"], value["revision"], value["value"]))
+                store = self.server.settings_store
+                if not store.app_root:
+                    self.send(200, store.save(value["file"], value["revision"], value["value"]))
+                    return
+                # An app-owned runtime changes launch configuration only while no
+                # task or closeout is active; the gate is held under the POST lock
+                # and released whatever the outcome. Nothing is replayed.
+                if gate is None:
+                    raise ChatConflict("Workspace restart control is unavailable")
+                try:
+                    gate.begin(self.server.catalog, getattr(self.server, "chat_runtime", None), "connect")
+                except ValueError as error:
+                    raise ChatConflict(str(error)) from None
+                try:
+                    result = store.save(value["file"], value["revision"], value["value"])
+                finally:
+                    gate.resume()
+                self.send(200, result)
                 return
             if set(value) != {"key", "action", "note", "revision"} or not all(isinstance(value[k], str) for k in ("key", "action", "note")) or type(value["revision"]) is not int or len(value["note"]) > 2000 or len(value["key"]) > 256 or value["action"] not in {"accept", "reject", "invalidate", "restructure"}:
                 raise ValueError("invalid memory action")
@@ -1120,14 +1162,14 @@ def main():
     except (OSError, ValueError, sqlite3.Error) as error:
         parser.error(str(error))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server.maintenance_gate = MaintenanceGate()
     server.catalog = catalog
     server.backup_root = args.backup_root
-    server.settings_store = SettingsStore(args.backup_root, args.host_binary,
-                                        Path.home() / ".config/agent-host/task-handoff.json",
-                                        web_config=args.chat_config or default_config(args.backup_root)) if args.backup_root else None
+    chat_config = args.chat_config or default_config(args.backup_root)
+    server.settings_store = SettingsStore(args.backup_root, args.host_binary, settings_handoff(args.backup_root, chat_config), web_config=chat_config) if args.backup_root else None
     server.stats_reader = StatsReader(catalog)
     server.mutation_token = secrets.token_urlsafe(32)
-    server.chat_runtime = AgentChatRuntime(args.chat_config or default_config(args.backup_root))
+    server.chat_runtime = AgentChatRuntime(chat_config)
     def stop_server(_signal, _frame):
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, stop_server)

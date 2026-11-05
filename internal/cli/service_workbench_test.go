@@ -75,7 +75,7 @@ func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
 				t.Fatal("browser failure was hidden")
 			}
 			client := &http.Client{Timeout: 2 * time.Second}
-			for _, path := range []string{"", "memory.html", "api/memories", "settings.html", "settings.js", "settings.css", "api/settings", "api/agent-profiles", "agent-profiles.js", "agent-profiles.css", "platform-skills.js", "platform-skills.css"} {
+			for _, path := range []string{"", "memory.html", "executions.html", "stats.html", "stats.js", "stats.css", "readiness.js", "readiness.css", "api/memories", "settings.html", "settings.js", "settings.css", "api/settings", "api/agent-profiles", "agent-profiles.js", "agent-profiles.css", "platform-skills.js", "platform-skills.css"} {
 				response, err := client.Get(address + path)
 				if err != nil {
 					t.Fatal(err)

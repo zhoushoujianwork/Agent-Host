@@ -1,0 +1,10 @@
+/* Shared readiness notice; colors come from theme.css. */
+.readiness-slot:empty { display: none; }
+.readiness { margin: 10px 0; padding: 12px 14px; border: 1px solid var(--line); border-left: 4px solid var(--warning); border-radius: 8px; background: var(--warning-soft); color: var(--ink); font-size: 12px; line-height: 1.6; }
+.readiness[data-state="unavailable"] { border-left-color: var(--danger); background: var(--danger-soft); }
+.readiness-summary { margin: 0 0 8px; }
+.readiness-action { padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.readiness-action:disabled { opacity: .6; cursor: default; }
+.readiness-details { margin-top: 8px; color: var(--muted); }
+.readiness-details summary { cursor: pointer; }
+.readiness-details pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px var(--mono, monospace); user-select: text; }

@@ -50,12 +50,18 @@
       const data = await response.json();
       if (!response.ok) throw Error(data.error || `HTTP ${response.status}`);
       if (current !== generation) return;
-      document.getElementById("report").innerHTML = render(data) + (data.previous ? render(data.previous, "前一等长窗口") : "");
-      document.getElementById("status").textContent = `生成时间：${data.generated_at}`;
+      const readiness = globalThis.AGHReadiness?.fromStats(data);
+      // Every source unreadable: zeros would be a misleading report, so show the notice only.
+      const unavailable = readiness?.state === "unavailable";
+      globalThis.AGHReadiness?.show(document.getElementById("readiness"), readiness, {retry: refresh});
+      document.getElementById("report").innerHTML = unavailable ? "" : render(data) + (data.previous ? render(data.previous, "前一等长窗口") : "");
+      document.getElementById("status").textContent = unavailable ? "" : `生成时间：${data.generated_at}`;
     } catch (error) {
       if (current !== generation) return;
       document.getElementById("report").replaceChildren();
-      document.getElementById("status").textContent = `统计不可用：${error.message}`;
+      const failure = globalThis.AGHReadiness?.fromStats(null, {error: error.message});
+      globalThis.AGHReadiness?.show(document.getElementById("readiness"), failure, {retry: refresh});
+      document.getElementById("status").textContent = failure ? "" : `统计不可用：${error.message}`;
     } finally {
       pending--;
     }

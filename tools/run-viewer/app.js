@@ -225,9 +225,23 @@ async function api(path) {
   return value;
 }
 function showError(error) {
-  $("error").hidden = false;
-  $("error").textContent = `读取失败：${error.message}\n${state.record ? "当前页面保留上次读取的数据；它可能已过时。" : "执行记录尚未加载。"}`;
+  const readiness = globalThis.AGHReadiness;
+  if (readiness) {
+    // One summary and Retry; the raw message stays under Details.
+    readiness.show($("readiness"), readiness.fromFailure(`读取失败。${state.record ? "当前页面保留上次读取的数据；它可能已过时。" : "执行记录尚未加载。"}`, error), {retry: refresh});
+  } else {
+    // Fallback when readiness.js did not load: keep the plain error banner.
+    $("error").hidden = false;
+    $("error").textContent = `读取失败：${error.message}\n${state.record ? "当前页面保留上次读取的数据；它可能已过时。" : "执行记录尚未加载。"}`;
+  }
   $("sync-state").textContent = "连接失败 · 数据未同步";
+}
+// A successful read clears a failed request but keeps any unreadable-source notice.
+function clearError() {
+  const readiness = globalThis.AGHReadiness;
+  if (!readiness) { $("error").hidden = true; return; }
+  const model = state.index ? readiness.fromSources(state.index) : null;
+  readiness.show($("readiness"), model, {retry: refresh});
 }
 async function select(key, attach = true) {
   const generation = ++state.generation;
@@ -243,7 +257,7 @@ async function select(key, attach = true) {
     const url = new URL(location.href);
     url.searchParams.set("key", key);
     history.replaceState(null, "", url);
-    $("error").hidden = true;
+    clearError();
     $("sync-state").textContent = `已同步 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
     renderRecord();
     if (attach) (window.parent?.document || document).dispatchEvent(new CustomEvent("agh:session-select", {detail:{key}}));
@@ -280,7 +294,7 @@ async function refresh() {
         renderRecord();
       }
     }
-    $("error").hidden = true;
+    clearError();
     $("sync-state").textContent = `已同步 ${new Date().toLocaleTimeString("zh-CN", {hour12: false})}`;
   } catch (error) { showError(error); }
   finally { state.busy = false; $("refresh").disabled = false; }
@@ -289,6 +303,11 @@ function renderSources() {
   renderEntryOptions();
   const node = $("source-status");
   node.replaceChildren();
+  const display = globalThis.AGHReadiness ? dom("details", "source-details") : node;
+  if (display !== node) { display.append(dom("summary", "", "来源详情")); node.append(display); }
+  // Unreadable sources are summarized once by the readiness notice, with the
+  // raw home and error under Details. Healthy and empty sources stay listed.
+  clearError();
   const statuses = {
     ready: "Records available",
     missing_database: "State is not initialized. Run chat with the state home shown below; also check that this is the intended runtime.",
@@ -297,10 +316,11 @@ function renderSources() {
     read_failed: "Source read failed. Check this runtime's state database.",
   };
   for (const source of array(state.index.sources)) {
-    node.append(dom("p", "note", `${source.channel || "local"}: ${statuses[source.status] || source.status} · ${source.home}${source.error ? " · " + source.error : ""}${source.notice ? " · " + source.notice : ""}`));
+    if (["read_failed", "missing_database"].includes(source.status) && globalThis.AGHReadiness) continue;
+    display.append(dom("p", "note", `${source.channel || "local"}: ${statuses[source.status] || source.status} · ${source.home}${source.error ? " · " + source.error : ""}${source.notice ? " · " + source.notice : ""}`));
   }
   if (state.index.channels && !state.index.channels.includes("cli")) {
-    node.append(dom("p", "note", "CLI source is not mounted. Use service run --config-dir ROOT/config, or service workbench for CLI-only use."));
+    display.append(dom("p", "note", "CLI source is not mounted. Use service run --config-dir ROOT/config, or service workbench for CLI-only use."));
   }
 }
 const expandedSessions = new Map();

@@ -1,5 +1,9 @@
 # Web interface
 
+The [macOS app](macos-app.md) embeds this same workspace in its app window and
+adds a persistent menu, inbox and notification bridge. The browser entry remains
+available for development inspection; the app needs no separately deployed Web product.
+
 AGH opens on the memory graph, with execution records and settings in the left
 navigation and Chat on the right. 左侧另有只读 Stats 页面。 The conversation canvas/workbench is temporarily
 disabled. [Implementation notes](web-workspace-detail.md).
@@ -22,7 +26,7 @@ disabled. [Implementation notes](web-workspace-detail.md).
   compact [settings page](settings-console.md). Advanced options stay in config.
 - Open or close the right Chat panel from the top bar. Switching modules keeps
   its current state. Enter sends to the configured Host Agent; Shift+Enter adds
-  a line. Claude replies render Markdown as they stream. Expand the activity summary
+  a line. Assistant replies render Markdown as they stream. Expand the activity summary
   to inspect actual tool calls, parameters, results and earlier commentary in order;
   the final reply stays visible below it. The summary counts tool calls, not Host phases.
 - Select message, reply or tool text with the mouse and copy with Ctrl/Cmd+C.
@@ -51,6 +55,11 @@ disabled. [Implementation notes](web-workspace-detail.md).
 - Chat reconnects to the current viewer conversation after refresh. New conversation
   clears that Web view while durable Host execution records remain available.
 - Choose light, dark or system appearance across all pages.
+- When Chat has no usable Host configuration, a record source or Stats cannot be
+  read, or a request fails, the page shows one plain summary with one action
+  (Connect, Settings or Retry). Raw errors and paths are under **Details**.
+  A configured source with no runs is shown as empty, not as a failure.
+  Drafts are kept and nothing is sent automatically once the connection works.
 
 Press **Cmd+W** to close the right Chat panel and stay on the current page.
 With Chat already closed, the shortcut closes a selected execution detail back
