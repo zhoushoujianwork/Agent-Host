@@ -24,6 +24,27 @@ type Host interface {
 	RunChannel(context.Context, state.Session, string, string) (state.Run, error)
 }
 
+// channelPreparer freezes request-scoped runtime material such as approved HOT
+// documents before route and session compatibility are persisted.
+type channelPreparer interface {
+	PrepareChannel(context.Context) (any, string, error)
+}
+
+func prepareChannelHost(ctx context.Context, h Host) (Host, string, error) {
+	if preparer, ok := h.(channelPreparer); ok {
+		prepared, fingerprint, err := preparer.PrepareChannel(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		preparedHost, ok := prepared.(Host)
+		if !ok || preparedHost == nil {
+			return nil, "", errors.New("prepared channel host is invalid")
+		}
+		return preparedHost, fingerprint, nil
+	}
+	return h, "", nil
+}
+
 type Replier interface {
 	Reply(context.Context, string, time.Time, dingtalk.ReplyMessage) (string, error)
 }
@@ -510,6 +531,28 @@ func (s *Service) sessionWithHost(ctx context.Context, h Host, binding string, f
 		}
 	}
 	return session, "", nil
+}
+
+func (s *Service) sessionWithPreparedHost(ctx context.Context, h Host, binding, fingerprint string) (state.Session, string, error) {
+	fresh := false
+	if fingerprint != "" {
+		id, err := s.Store.ChannelSession(ctx, binding)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return state.Session{}, "", err
+		}
+		if id != "" {
+			existing, err := s.Store.Session(ctx, id)
+			if err != nil {
+				return state.Session{}, "", err
+			}
+			fresh = existing.RuntimeFingerprint != fingerprint
+		}
+	}
+	session, notice, err := s.sessionWithHost(ctx, h, binding, fresh)
+	if err == nil && fresh {
+		notice = "当前处理方式已更新，已开始新的对话。"
+	}
+	return session, notice, err
 }
 
 func (s *Service) observe(kind, message string) error {
