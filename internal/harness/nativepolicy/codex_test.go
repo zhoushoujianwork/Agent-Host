@@ -68,7 +68,7 @@ printf '%%s\n' '{"type":"session_meta","payload":{"id":"%s"}}' > "$CODEX_HOME/se
 	if !adapter.GeneratesSessionID() {
 		t.Fatal("Codex session ownership missing")
 	}
-	request := harness.Request{Workspace: root, NativeProfile: root, HostSessionID: "host-session", Prompt: "task", NativeSessionID: "host-placeholder", PermissionMode: "bypassPermissions"}
+	request := harness.Request{Workspace: root, NativeProfile: root, HostSessionID: "host-session", Prompt: "task", NativeSessionID: "host-placeholder", PermissionMode: "bypassPermissions", PresetDocuments: []harness.PresetDocument{{Name: "USERS.md", Content: []byte("CODEX_HOT_USER_731")}, {Name: "MEMORY.md", Content: []byte("CODEX_HOT_MEMORY_732")}}}
 	init := 0
 	result, err := adapter.Run(context.Background(), request, func(o harness.Observation) error {
 		if o.Type == "init" {
@@ -78,6 +78,10 @@ printf '%%s\n' '{"type":"session_meta","payload":{"id":"%s"}}' > "$CODEX_HOME/se
 	})
 	if err != nil || result.Status != "completed" || result.Text != "Codex answer" || result.Model != "gpt-native" || result.NativeSessionID != threadID || init != 1 || result.Evidence.Backend != "codex" || result.Evidence.NativeProtocol != "codex-app-server" {
 		t.Fatalf("%+v evidence=%+v %v", result, result.Evidence, err)
+	}
+	logged, readErr := os.ReadFile(log)
+	if readErr != nil || !strings.Contains(string(logged), "CODEX_HOT_USER_731") || !strings.Contains(string(logged), "CODEX_HOT_MEMORY_732") {
+		t.Fatalf("Codex SDK request omitted preset documents: %v %s", readErr, logged)
 	}
 	request.NativeSessionID = result.NativeSessionID
 	request.Resume = true

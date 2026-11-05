@@ -193,6 +193,86 @@ func TestCleanNativeProfileBindsEnvironmentToHostSession(t *testing.T) {
 	}
 }
 
+func TestCleanClaudeReceivesHOTPresetAndRejectsStaleDigest(t *testing.T) {
+	f := newFixture(t)
+	enableCleanNativeProfile(t, f)
+	f.host.Config.HotPersonID = "local-owner"
+	digest := "hot-v1"
+	f.host.Config.HotDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		if digest == "hot-v3-expired" {
+			return nil, digest, nil
+		}
+		return []harness.PresetDocument{{Name: "USERS.md", Content: []byte("CLAUDE_HOT_USER_841 " + digest)}, {Name: "MEMORY.md", Content: []byte("CLAUDE_HOT_MEMORY_842")}}, digest, nil
+	}
+	session, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), session, "first"); err != nil {
+		t.Fatal(err)
+	}
+	instructions := f.read("instructions.1")
+	if !strings.Contains(instructions, "CLAUDE_HOT_USER_841") || !strings.Contains(instructions, "CLAUDE_HOT_MEMORY_842") {
+		t.Fatalf("Claude SDK request omitted HOT preset: %s", instructions)
+	}
+	digest = "hot-v2"
+	if _, err = f.host.Session(t.Context(), session.ID); err == nil || !strings.Contains(err.Error(), "start a new session") {
+		t.Fatalf("stale HOT resumed: %v", err)
+	}
+	if f.calls() != 1 {
+		t.Fatal("stale HOT dispatched native work")
+	}
+	fresh, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), fresh, "fresh"); err != nil {
+		t.Fatal("new session did not capture current HOT", err)
+	}
+	if f.calls() != 2 {
+		t.Fatal("fresh HOT session did not dispatch")
+	}
+	if !strings.Contains(f.read("instructions.2"), "hot-v2") {
+		t.Fatal("fresh session did not receive newly eligible HOT content")
+	}
+	digest = "hot-v3-expired"
+	if _, err = f.host.Session(t.Context(), fresh.ID); err == nil || !strings.Contains(err.Error(), "start a new session") {
+		t.Fatalf("session survived HOT expiry: %v", err)
+	}
+	afterExpiry, err := f.host.Session(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.Run(t.Context(), afterExpiry, "after expiry"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(f.read("instructions.3"), "CLAUDE_HOT_USER_841") {
+		t.Fatal("expired HOT content reached a new session")
+	}
+}
+
+func TestGroupExcludesPersonalHOT(t *testing.T) {
+	f := newFixture(t)
+	enableCleanNativeProfile(t, f)
+	f.host.Config.AudienceID = "group-audience"
+	f.host.Store = f.store.WithPartition("default", "group-audience")
+	f.host.Config.HotPersonID = "owner"
+	f.host.Config.HotDocuments = func(context.Context) ([]harness.PresetDocument, string, error) {
+		return []harness.PresetDocument{{Name: "USERS.md", Content: []byte("PRIVATE_GROUP_LEAK_913")}}, "hot", nil
+	}
+	message := f.enqueueAs("group-hot", "group question", nil, nil, "2", "member")
+	session, err := f.session(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.host.RunChannel(t.Context(), session, message.Text, message.ID); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(f.read("instructions.1"), "PRIVATE_GROUP_LEAK_913") {
+		t.Fatal("group received personal HOT document")
+	}
+}
+
 func TestCleanNativeProfileRejectsCompatibilityExecutorBeforeDispatch(t *testing.T) {
 	f := newFixture(t)
 	enableCleanNativeProfile(t, f)

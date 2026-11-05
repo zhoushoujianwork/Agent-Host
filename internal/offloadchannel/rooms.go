@@ -28,7 +28,11 @@ func (h *Host) RunRoom(ctx context.Context, input state.RoomInput) (result state
 		return result, err
 	}
 	defer func() { runErr = errors.Join(runErr, release()) }()
-	session, created, err := st.EnterOffloadRoom(ctx, h.newSession(), input)
+	fresh, err := h.newSession(ctx)
+	if err != nil {
+		return result, err
+	}
+	session, created, err := st.EnterOffloadRoom(ctx, fresh, input)
 	if err != nil {
 		return result, err
 	}

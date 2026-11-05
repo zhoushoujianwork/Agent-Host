@@ -30,7 +30,7 @@ func TestOwnerAnsweringMigrationAndClaims(t *testing.T) {
 	}
 	defer s.Close()
 	var version int
-	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 17 {
+	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal("migration failed", version, err)
 	}
 	r := OwnerAnsweringRecord{Key: "question:one", Payload: json.RawMessage(`{"status":"pending"}`)}

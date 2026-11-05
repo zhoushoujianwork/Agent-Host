@@ -8,6 +8,7 @@ import (
 // Request carries explicit native execution policy. An empty PermissionMode
 // preserves native defaults; business instances may explicitly select bypass.
 type Request struct {
+	PresetDocuments         []PresetDocument // Caller-reviewed context; never tool authority.
 	MonitorResumeCommand    []string
 	MonitorResumeDirectory  string
 	CallerRunID             string // Owning Host run correlation, never execution authority.
@@ -33,6 +34,11 @@ type Request struct {
 	Extraction              bool   // Isolated, tool-free, nonpersistent extraction invocation.
 	SkillPluginDir          string // Explicit task-scoped, instruction-only native package.
 	SkillPluginDigest       string // Expected snapshot digest; cache content cannot change it.
+}
+
+type PresetDocument struct {
+	Name    string
+	Content []byte
 }
 
 const (
