@@ -123,7 +123,7 @@ func (s *Service) Validate() error {
 	}
 	switch s.Channel {
 	case "", "dingtalk":
-		if s.Replier == nil || s.Reactor == nil || s.DisableReactions {
+		if s.Replier == nil || s.Reactor == nil {
 			return errors.New("DingTalk service requires its reply and reaction adapters")
 		}
 	case state.ReplyTargetFeishu:
@@ -177,8 +177,8 @@ func (s *Service) Receive(ctx context.Context, m dingtalk.Message) error {
 		binding = Key("agent-conversation-v1", "dingtalk", s.ClientID, m.TenantID, m.ConversationID, sender, selection.AgentID, selection.AudienceID)
 	}
 	message := state.ChannelMessage{
-		ReplyToID: m.ReplyToID,
-		ID:        Key("dingtalk", s.ClientID, m.ID), Channel: "dingtalk", AccountID: s.ClientID,
+		ReplyToID: m.ReplyToID, DisableReactions: s.DisableReactions,
+		ID: Key("dingtalk", s.ClientID, m.ID), Channel: "dingtalk", AccountID: s.ClientID,
 		TenantID: m.TenantID, MessageID: m.ID, ConversationID: m.ConversationID,
 		SenderName: m.SenderName, SenderID: m.SenderID, Profile: s.Profile, ConversationType: m.ConversationType,
 		AgentID: selection.AgentID, AudienceID: selection.AudienceID,
@@ -225,15 +225,9 @@ func (s *Service) Work(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	workers := 2
-	if !s.DisableReactions {
-		workers++
-	}
 	done := make(chan error, workers)
 	go func() { done <- s.workMessages(ctx) }()
-	go func() { done <- s.workProgress(ctx) }()
-	if !s.DisableReactions {
-		go func() { done <- s.workReactions(ctx) }()
-	}
+	go func() { done <- s.workReactions(ctx) }()
 	err := <-done
 	cancel()
 	for i := 1; i < workers; i++ {

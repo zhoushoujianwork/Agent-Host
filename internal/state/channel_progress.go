@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -20,6 +22,26 @@ CREATE TABLE IF NOT EXISTS channel_progress(id INTEGER PRIMARY KEY AUTOINCREMENT
 CREATE INDEX IF NOT EXISTS channel_progress_queue ON channel_progress(profile,status,id);
 PRAGMA user_version=18;
 `
+
+const schemaChannelProgressV19 = `
+CREATE UNIQUE INDEX IF NOT EXISTS channel_progress_reaction ON channel_progress(reaction_id);
+UPDATE channel_progress SET status=CASE WHEN dispatch_started_at='' THEN 'failed' ELSE 'unknown' END,error='legacy standalone progress retired without replay' WHERE status='pending' AND reaction_id IS NULL;
+PRAGMA user_version=19;
+`
+
+func migrateChannelProgressV19(tx *sql.Tx) error {
+	var exists bool
+	if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info('channel_progress') WHERE name='reaction_id')").Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := tx.Exec("ALTER TABLE channel_progress ADD COLUMN reaction_id INTEGER REFERENCES channel_reactions(id)"); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(schemaChannelProgressV19)
+	return err
+}
 
 var ErrProgressUnavailable = errors.New("channel progress is unavailable for this run")
 
@@ -31,6 +53,7 @@ type ChannelProgressBinding struct {
 }
 
 type ChannelProgress struct {
+	ReactionID        int64  `json:"-"`
 	ID                int64  `json:"attempt_id"`
 	RunID             string `json:"-"`
 	MessageID         string `json:"-"`
@@ -169,18 +192,21 @@ func ValidateProgressText(text string) (string, error) {
 	if !utf8.ValidString(text) {
 		return "", errors.New("progress text must be valid UTF-8")
 	}
+	if strings.IndexFunc(text, func(r rune) bool { return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' }) >= 0 {
+		return "", errors.New("progress label must contain 1 to 12 Unicode code points without controls")
+	}
 	text = strings.TrimSpace(text)
-	if text == "" || utf8.RuneCountInString(text) > 200 {
-		return "", errors.New("progress text must contain 1 to 200 Unicode code points")
+	if text == "" || utf8.RuneCountInString(text) > 12 || strings.IndexFunc(text, func(r rune) bool { return unicode.IsControl(r) || r == '\u2028' || r == '\u2029' }) >= 0 {
+		return "", errors.New("progress label must contain 1 to 12 Unicode code points without controls")
 	}
 	return text, nil
 }
 
-const progressColumns = "id,run_id,message_id,fingerprint,text,status,error,created_at,dispatch_started_at"
+const progressColumns = "id,run_id,message_id,fingerprint,text,status,error,created_at,dispatch_started_at,COALESCE(reaction_id,0)"
 
 func scanProgress(row reactionScanner) (ChannelProgress, error) {
 	var p ChannelProgress
-	err := row.Scan(&p.ID, &p.RunID, &p.MessageID, &p.Fingerprint, &p.Text, &p.Status, &p.Error, &p.CreatedAt, &p.DispatchStartedAt)
+	err := row.Scan(&p.ID, &p.RunID, &p.MessageID, &p.Fingerprint, &p.Text, &p.Status, &p.Error, &p.CreatedAt, &p.DispatchStartedAt, &p.ReactionID)
 	return p, err
 }
 func (s *Store) ChannelProgress(ctx context.Context, id int64) (ChannelProgress, error) {
@@ -199,6 +225,13 @@ func (s *Store) ReserveChannelProgress(ctx context.Context, b ChannelProgressBin
 	err = s.transaction(ctx, func(tx *sql.Tx) error {
 		current, err := progressCurrent(ctx, tx, b.MessageID, b.RunID, true)
 		if err != nil || current != b {
+			return ErrProgressUnavailable
+		}
+		var terminal bool
+		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_reactions WHERE channel_message_id=? AND stage IN ('completed','failed'))", b.MessageID).Scan(&terminal); err != nil {
+			return err
+		}
+		if terminal {
 			return ErrProgressUnavailable
 		}
 		if key != "" {
@@ -244,62 +277,87 @@ func (s *Store) ReserveChannelProgress(ctx context.Context, b ChannelProgressBin
 		if err != nil {
 			return err
 		}
+		stage := fmt.Sprintf("progress:%d", id)
+		nowText := now.Format(reactionTimeFormat)
+		result, err = tx.ExecContext(ctx, "INSERT INTO channel_reactions(channel_message_id,profile,stage,label,status,created_at,updated_at) VALUES(?,?,?,?,'ready',?,?)", m.ID, m.Profile, stage, text, nowText, nowText)
+		if err != nil {
+			return err
+		}
+		reactionID, err := result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE channel_progress SET reaction_id=? WHERE id=?", reactionID, id); err != nil {
+			return err
+		}
 		p, err = scanProgress(tx.QueryRowContext(ctx, "SELECT "+progressColumns+" FROM channel_progress WHERE id=?", id))
 		return err
 	})
 	return p, err
 }
 
-// ClaimNextChannelProgress atomically revalidates and records dispatch authority.
-func (s *Store) ClaimNextChannelProgress(ctx context.Context, profile string) (ChannelProgress, ChannelMessage, error) {
-	var p ChannelProgress
-	var m ChannelMessage
-	err := s.transaction(ctx, func(tx *sql.Tx) error {
-		var err error
-		p, err = scanProgress(tx.QueryRowContext(ctx, "SELECT "+progressColumns+" FROM channel_progress WHERE profile=? AND status='pending' AND dispatch_started_at='' ORDER BY id LIMIT 1", profile))
-		if err != nil {
-			return err
-		}
-		b, validErr := progressCurrent(ctx, tx, p.MessageID, p.RunID, true)
-		if validErr != nil || b.Fingerprint != p.Fingerprint {
-			_, err = tx.ExecContext(ctx, "UPDATE channel_progress SET status='failed',error='channel progress authorization expired' WHERE id=?", p.ID)
-			p.Status = "failed"
-			return err
-		}
-		m, err = readChannelMessage(ctx, tx, p.MessageID)
-		if err != nil {
-			return err
-		}
-		if m.ReplyTarget == nil && !m.ReplyExpiresAt.After(time.Now()) {
-			_, err = tx.ExecContext(ctx, "UPDATE channel_progress SET status='failed',error='channel progress transport expired' WHERE id=?", p.ID)
-			p.Status = "failed"
-			return err
-		}
-		p.DispatchStartedAt = time.Now().UTC().Format(reactionTimeFormat)
-		_, err = tx.ExecContext(ctx, "UPDATE channel_progress SET dispatch_started_at=? WHERE id=?", p.DispatchStartedAt, p.ID)
-		return err
-	})
-	return p, m, err
+// AuthorizeChannelReaction revalidates each linked progress mutation before network
+// dispatch. Queue claims serialize all feedback on the original receipt.
+func (s *Store) AuthorizeChannelReaction(ctx context.Context, id int64) error {
+	return s.transaction(ctx, func(tx *sql.Tx) error { return authorizeChannelReaction(ctx, tx, id) })
 }
-func (s *Store) FinishChannelProgress(ctx context.Context, id int64, status string) error {
-	if status != "accepted" && status != "failed" && status != "unknown" {
-		return errors.New("invalid progress delivery outcome")
-	}
-	cause := ""
-	if status != "accepted" {
-		cause = "channel progress delivery " + status
-	}
-	result, err := s.db.ExecContext(ctx, "UPDATE channel_progress SET status=?,error=? WHERE id=? AND status='pending' AND dispatch_started_at<>''", status, cause, id)
-	if err != nil {
+
+func authorizeChannelReaction(ctx context.Context, tx *sql.Tx, id int64) error {
+	var messageID, stage, status, label string
+	if err := tx.QueryRowContext(ctx, "SELECT channel_message_id,stage,status,label FROM channel_reactions WHERE id=?", id).Scan(&messageID, &stage, &status, &label); err != nil {
 		return err
 	}
-	n, err := result.RowsAffected()
-	if err == nil && n != 1 {
-		return errors.New("progress attempt is not dispatched pending")
+	if status != "sending" {
+		return ErrProgressUnavailable
 	}
+	if stage != "completed" && stage != "failed" {
+		var terminal bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_reactions WHERE channel_message_id=? AND stage IN ('completed','failed')) OR EXISTS(SELECT 1 FROM channel_messages WHERE id=? AND status NOT IN ('queued','claimed'))", messageID, messageID).Scan(&terminal); err != nil {
+			return err
+		}
+		if terminal {
+			return ErrProgressUnavailable
+		}
+	}
+	if !strings.HasPrefix(stage, "progress:") {
+		return ctx.Err()
+	}
+	p, err := scanProgress(tx.QueryRowContext(ctx, "SELECT "+progressColumns+" FROM channel_progress WHERE reaction_id=?", id))
+	if err != nil || p.Status != "pending" || p.MessageID != messageID || p.Text != label {
+		return ErrProgressUnavailable
+	}
+	b, err := progressCurrent(ctx, tx, p.MessageID, p.RunID, true)
+	if err != nil || b.Fingerprint != p.Fingerprint || stage != fmt.Sprintf("progress:%d", p.ID) {
+		return ErrProgressUnavailable
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE channel_progress SET dispatch_started_at=CASE WHEN dispatch_started_at='' THEN ? ELSE dispatch_started_at END WHERE id=?", time.Now().UTC().Format(reactionTimeFormat), p.ID)
+	return err
+}
+
+// settleProgressReactions runs inside the transaction changing reaction evidence.
+func settleProgressReactions(ctx context.Context, tx *sql.Tx) error {
+	// Lifecycle-only queues have no MCP attempts to settle; their outcomes
+	// do not depend on progress storage.
+	var hasProgress bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_reactions WHERE stage LIKE 'progress:%' AND status IN ('accepted','failed','unknown','skipped'))").Scan(&hasProgress); err != nil {
+		return err
+	}
+	if !hasProgress {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE channel_progress SET
+ status=CASE (SELECT status FROM channel_reactions WHERE id=reaction_id) WHEN 'accepted' THEN 'accepted' WHEN 'unknown' THEN 'unknown' ELSE 'failed' END,
+ error=CASE (SELECT status FROM channel_reactions WHERE id=reaction_id) WHEN 'accepted' THEN '' ELSE 'channel progress attachment not accepted' END
+ WHERE status='pending' AND reaction_id IN (SELECT id FROM channel_reactions WHERE status IN ('accepted','failed','unknown','skipped'))`)
 	return err
 }
 func recoverChannelProgress(ctx context.Context, tx *sql.Tx) error {
+	if err := settleProgressReactions(ctx, tx); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',error='progress authority expired at recovery' WHERE status='ready' AND id IN (SELECT reaction_id FROM channel_progress)"); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, "UPDATE channel_progress SET status='unknown',error='host stopped after dispatch authorization; progress was not replayed' WHERE status='pending' AND dispatch_started_at<>''")
 	if err != nil {
 		return err

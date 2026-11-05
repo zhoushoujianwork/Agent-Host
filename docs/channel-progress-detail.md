@@ -2,63 +2,50 @@
 
 [User contract](channel-progress.md).
 
-## Ownership and transport
+Host mounts `channel_progress` only for a persisted Source.ChannelMessageID on an
+admitted Channel business run. It enables durable run authority and revokes it
+on exit/cancellation. Private stdio MCP opens existing exact-schema SQLite in
+read/write mode, with immediate transactions, busy timeout, foreign keys and FULL
+sync. It does not migrate, recover, initialize memory or acquire the Host lock.
+No provider credentials or network transport are exposed in MCP.
 
-Host mounts `channel_progress` only for a true persisted
-`Source.ChannelMessageID` business run with tools enabled. A history-only source
-cannot grant progress permission. Host explicitly enables the run in SQLite and
-revokes it on cancellation and exit. The private `channel-progress-mcp` stdio
-subprocess opens an existing schema-18 database with `mode=rw`, foreign keys,
-a busy timeout, FULL synchronization and immediate transactions. It does not
-migrate, recover, initialize file memory, acquire a Host lock, receive provider
-credentials or use an HTTP/socket delivery bridge.
+The stable MCP SessionKey identifies the conversation authority. Private arguments
+and fingerprints bind each turn to its current receipt/run. Continuations keep
+the native conversation identity and rebind current MCP arguments. Managed
+catalog usage records the tool contract, guidance and stable authority key.
 
-The run-bound launch arguments and fingerprint change each turn. The stable MCP
-SessionKey covers conversation authority and runtime, preserving native
-continuation while current arguments rebind the subprocess. Run authority uses
-the stable Host session ID; a validated first-run transition from an Offload
-pending native ID to its generated native ID does not invalidate the mount.
-Each validation still requires matching persisted run/session native IDs. Extraction uses its
-own tool-free native request and never inherits this mount. Offload retains
-ownership of native execution and continuation. Managed catalogs include the
-progress tool contract and guidance with the stable authority SessionKey, so
-turn-specific run arguments do not change the Skill package identity.
+Schema 18 introduced authorization and progress attempts. Additive schema 19
+links each new attempt to a unique nullable reaction_id foreign key. Existing
+history is preserved; legacy unlinked pending sends become failed or unknown
+without replay. Reservation atomically inserts the quota-bearing attempt and a
+channel_reactions row with stage progress:<attemptID>. Event attribution stays
+empty/zero; provenance comes from the linked attempt/run, never a fabricated
+native event sequence.
 
-## Reservation and dispatch
+One Channel feedback worker consumes lifecycle and MCP reactions. The existing
+queue claim serializes each receipt, including across callers. Progress authority
+is revalidated at claim, before removal and again before addition using persisted receipt,
+run, session, partition, scope, runtime, enabled authority and fingerprint.
+Terminal enqueue supersedes queued nonterminal feedback and settles linked
+attempts; a terminal barrier forbids later progress dispatch. Already authorized
+mutations may finish, then terminal replacement runs last.
 
-Schema 18 adds `channel_progress_runs` authorization and a `channel_progress`
-outbox. Reservation transactions revalidate receipt provenance, active claimed
-message, run, session, current conversation/session binding, partition, project
-scope, runtime and the Host enablement record. A key lookup occurs before quota
-and cooldown checks, so repeated keys preserve the first text and attempt.
-Reservations serialize across processes; failed and unknown outcomes count.
+Removal is durably claimed before network calls and its outcome saved before
+addition. Exact prior custom labels are retained in reaction history. Confirmed
+reaction outcomes and linked attempt outcomes commit atomically. Supersession,
+skips and recovery also settle linked attempts. Dispatched operations and unknown
+removals/additions never replay; uncertainty blocks replacement. Recovery fails
+obsolete unclaimed progress and revokes old run authority.
 
-A separate Channel polling worker runs even when reactions are disabled. It
-atomically revalidates authority and commits `dispatch_started_at` before any
-provider operation. Dispatch uses the original receipt's API reply target or
-webhook and expiry directly, without `deliverChannelReply`. API sends derive a
-separate stable UUID from the durable progress attempt so provider deduplication
-cannot consume the final reply UUID. No progress code
-updates final-reply, completion, acceptance or memory fields. Platform calls
-have a 20-second timeout. MCP waits up to 25 seconds for a terminal outcome,
-then returns pending honestly when delivery remains unresolved. Pending cannot
-guarantee ordering relative to final delivery and must not trigger automatic
-replay. Tests inject short wait durations. Final outcome persistence uses a fresh bounded context
-so acknowledged results survive shutdown. Worker shutdown cancels and joins
-all workers. A cancellation that precedes dispatch revalidation forbids a new
-send; an already authorized in-flight operation can finish.
+DingTalk fixed lifecycle methods retain their stage whitelist. Separate custom
+methods validate the short label and use the existing bot textEmotion add/recall
+payload, fixed emotion ID 2659900 and background im_bg_1. Live custom-text bot
+acceptance remains unverified; provider failures are explicit with no message
+fallback. Feishu maps progress to Typing and uses saved provider IDs for removal.
+Unsupported feedback fails. Disabling automatic lifecycle reactions does not
+suppress explicitly requested supported MCP feedback.
 
-Only undispatched pending rows can be claimed. Restart recovery marks dispatched
-pending rows `unknown` and obsolete undispatched rows `failed`, revoking old
-run permissions. Neither unknown nor dispatched operations are replayed.
-Provider errors are reduced to fixed delivery classifications in persisted
-progress results; URLs, tokens and raw provider errors never cross MCP.
-
-## Verification boundary
-
-Isolated Go tests cover Unicode limits, cross-connection reservation and claim
-atomicity, cooldown/quota/idempotency, stale provenance, session and runtime
-bindings, migration/recovery, transport target binding, delivery outcomes,
-final-reply independence, disabled reactions, cancellation/join, Host gating and
-stable continuation with refreshed launch arguments. These tests do not claim
-production rollout or live DingTalk/Feishu delivery acceptance.
+No progress path calls text reply adapters or changes final reply fields. Final
+reply delivery, task completion, acceptance and memory remain independent. Only
+sanitized classifications cross MCP or feedback logs; raw provider errors and
+URLs are not forwarded.

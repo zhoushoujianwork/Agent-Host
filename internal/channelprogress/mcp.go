@@ -17,7 +17,7 @@ import (
 	"agent-host/internal/state"
 )
 
-const Instructions = `Use channel_progress.send_progress for a short user-facing update during this Channel task at meaningful milestones or blockers only. Do not send routine per-tool chatter, raw tool logs, credentials or internal reasoning. Text is trimmed and limited to 200 Unicode code points. At most five attempts are reserved per run, at least 15 seconds apart; failed and unknown attempts count. Reuse an idempotency_key to inspect the same attempt without sending again. Delivery is independent of task completion, acceptance and memory. The tool waits up to 25 seconds for delivery. pending means delivery has not been confirmed and cannot guarantee ordering relative to the final answer. Do not automatically replay pending or unknown attempts, including with a new key. The destination is the authenticated current receipt and cannot be selected by the agent. Continue to produce the normal final answer.`
+const Instructions = `Use channel_progress.send_progress for a concise attached reaction label during this Channel task at meaningful milestones or blockers only. Do not send routine per-tool chatter, raw tool logs, credentials or internal reasoning. Text is trimmed and must contain 1 to 12 Unicode code points without controls or multiline content. This is a Host policy, not a provider maximum. Progress never sends an ordinary text message. DingTalk displays the label; Feishu displays its native Typing status emoji. At most five attempts are reserved per run, at least 15 seconds apart; failed and unknown attempts count. Reuse an idempotency_key to inspect the same attempt without sending again. Delivery is independent of task completion, acceptance and memory. The tool waits up to 25 seconds for delivery. pending means delivery has not been confirmed and cannot guarantee ordering relative to the final answer. Do not automatically replay pending or unknown attempts, including with a new key. The destination is the authenticated current receipt and cannot be selected by the agent. Continue to produce the normal final answer.`
 
 type Binding struct {
 	Home    string
@@ -41,7 +41,7 @@ func (b Binding) Server(executable string) harness.MCPServer {
 	return harness.MCPServer{Name: "channel_progress", Command: executable, Args: []string{"channel-progress-mcp", "--home", b.Home, "--message", b.Receipt.MessageID, "--run", b.Receipt.RunID, "--fingerprint", b.Receipt.Fingerprint}, SessionKey: hex.EncodeToString(digest[:])}
 }
 func toolsList() []mcpstdio.Tool {
-	return []mcpstdio.Tool{{Name: "send_progress", Description: "Reserve and send a short progress update to the current authenticated Channel receipt. Returns accepted, failed, unknown, or pending after a bounded wait. Same nonempty idempotency_key returns the original attempt. No destination argument is accepted.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string", "minLength": 1, "maxLength": 200}, "idempotency_key": map[string]any{"type": "string", "maxLength": 256}}, "required": []string{"text"}, "additionalProperties": false}, Annotations: map[string]bool{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}}}
+	return []mcpstdio.Tool{{Name: "send_progress", Description: "Reserve a concise attached reaction label to the current authenticated Channel receipt. Returns accepted, failed, unknown, or pending after a bounded wait. Same nonempty idempotency_key returns the original attempt. No destination argument is accepted.", InputSchema: map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string", "minLength": 1, "maxLength": 12}, "idempotency_key": map[string]any{"type": "string", "maxLength": 256}}, "required": []string{"text"}, "additionalProperties": false}, Annotations: map[string]bool{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}}}
 }
 func ToolContract() any { return toolsList() }
 func send(ctx context.Context, s *state.Store, b state.ChannelProgressBinding, name string, raw json.RawMessage, wait time.Duration) (state.ChannelProgress, error) {
@@ -96,7 +96,7 @@ func publicError(err error) error {
 		return state.ErrProgressUnavailable
 	}
 	switch err.Error() {
-	case "progress text must be valid UTF-8", "progress text must contain 1 to 200 Unicode code points", "invalid progress idempotency key", "channel progress reservation limit reached", "channel progress requires 15 seconds between reservations":
+	case "progress text must be valid UTF-8", "progress label must contain 1 to 12 Unicode code points without controls", "invalid progress idempotency key", "channel progress reservation limit reached", "channel progress requires 15 seconds between reservations":
 		return err
 	}
 	return errors.New("channel progress reservation unavailable")

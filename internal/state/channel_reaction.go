@@ -68,6 +68,15 @@ func queueChannelReactionLabel(ctx context.Context, tx *sql.Tx, m ChannelMessage
 			return nil
 		}
 	}
+	if stage != "received" && stage != "completed" && stage != "failed" {
+		var terminal bool
+		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_reactions WHERE channel_message_id=? AND stage IN ('completed','failed'))", m.ID).Scan(&terminal); err != nil {
+			return err
+		}
+		if terminal {
+			return nil
+		}
+	}
 	if stage == "completed" || stage == "failed" {
 		var terminal bool
 		if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_reactions WHERE channel_message_id=? AND stage IN ('completed','failed'))", m.ID).Scan(&terminal); err != nil {
@@ -102,8 +111,11 @@ func queueChannelReactionLabel(ctx context.Context, tx *sql.Tx, m ChannelMessage
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',error=?,updated_at=? WHERE channel_message_id=? AND id<? AND status='ready' AND stage NOT IN ('received','completed','failed')", "superseded by a later durable stage", now, m.ID, id)
-	return wrap("supersede channel reactions", err)
+	_, err = tx.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',error=?,updated_at=? WHERE channel_message_id=? AND id<? AND status='ready' AND stage NOT IN ('completed','failed') AND (stage<>'received' OR ?) AND (stage NOT LIKE 'progress:%' OR ?)", "superseded by a later durable stage", now, m.ID, id, stage == "completed" || stage == "failed", stage == "processing" || stage == "completed" || stage == "failed")
+	if err != nil {
+		return wrap("supersede channel reactions", err)
+	}
+	return settleProgressReactions(ctx, tx)
 }
 
 // projectChannelPhase derives feedback solely from an attributed durable host
@@ -183,7 +195,24 @@ ORDER BY r.id LIMIT 1`, profile).Scan(&id); err != nil {
 		}
 		var err error
 		reaction, err = scanChannelReaction(tx.QueryRowContext(ctx, "SELECT "+reactionColumns+" FROM channel_reactions WHERE id=?", id))
-		return err
+		if err != nil {
+			return err
+		}
+		if strings.HasPrefix(reaction.Stage, "progress:") {
+			if err = authorizeChannelReaction(ctx, tx, id); err != nil {
+				if !errors.Is(err, ErrProgressUnavailable) {
+					return err
+				}
+				if _, err = tx.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',error='progress authority expired at claim',updated_at=? WHERE id=?", now, id); err != nil {
+					return err
+				}
+				if err = settleProgressReactions(ctx, tx); err != nil {
+					return err
+				}
+				reaction.Status = "skipped"
+			}
+		}
+		return nil
 	})
 	return reaction, wrap("claim channel reaction", err)
 }
@@ -299,8 +328,17 @@ func (s *Store) finishChannelReaction(ctx context.Context, id int64, providerID,
 		if err != nil {
 			return err
 		}
+		if api && m.DisableReactions {
+			var requested bool
+			if err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM channel_progress WHERE reaction_id=?)", id).Scan(&requested); err != nil {
+				return err
+			}
+			if !requested {
+				return errors.New("disabled automatic feedback cannot accept a lifecycle reaction")
+			}
+		}
 		if api {
-			if m.Channel != ReplyTargetFeishu || m.DisableReactions || !channelAPIReplyTargetValid(m) {
+			if m.Channel != ReplyTargetFeishu || !channelAPIReplyTargetValid(m) {
 				return errors.New("API reactions require an enabled Feishu IM receipt")
 			}
 		} else if m.ReplyTarget != nil {
@@ -317,7 +355,7 @@ func (s *Store) finishChannelReaction(ctx context.Context, id int64, providerID,
 		if count != 1 {
 			return errors.New("only sending channel reactions can finish")
 		}
-		return nil
+		return settleProgressReactions(ctx, tx)
 	})
 }
 
@@ -373,16 +411,18 @@ func (s *Store) SkipChannelReaction(ctx context.Context, id int64, reason string
 	if strings.TrimSpace(reason) == "" {
 		return errors.New("skipped channel reaction requires a reason")
 	}
-	result, err := s.db.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',active=0,error=?,updated_at=? WHERE id=? AND status='sending'", reason, time.Now().UTC().Format(reactionTimeFormat), id)
-	if err != nil {
-		return wrap("skip channel reaction", err)
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return errors.New("only sending channel reactions can be skipped")
-	}
-	return nil
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, "UPDATE channel_reactions SET status='skipped',active=0,error=?,updated_at=? WHERE id=? AND status='sending'", reason, time.Now().UTC().Format(reactionTimeFormat), id)
+		if err != nil {
+			return err
+		}
+		n, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return errors.New("only sending channel reactions can be skipped")
+		}
+		return settleProgressReactions(ctx, tx)
+	})
 }
