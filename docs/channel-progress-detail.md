@@ -9,6 +9,13 @@ read/write mode, with immediate transactions, busy timeout, foreign keys and FUL
 sync. It does not migrate, recover, initialize memory or acquire the Host lock.
 No provider credentials or network transport are exposed in MCP.
 
+The advertised tool schema requires a finite `stage` code. Host maps it to a
+short label before reservation. Legacy short `text` calls are accepted for
+continued native histories; long explanations fail with a concrete stage-call
+example and consume no quota. Invalid stages and mixed stage/text calls fail.
+The argument correction path is distinct from uncertain delivery, which must
+never be replayed.
+
 The stable MCP SessionKey identifies the conversation authority. Private arguments
 and fingerprints bind each turn to its current receipt/run. Continuations keep
 the native conversation identity and rebind current MCP arguments. Managed
@@ -49,3 +56,9 @@ No progress path calls text reply adapters or changes final reply fields. Final
 reply delivery, task completion, acceptance and memory remain independent. Only
 sanitized classifications cross MCP or feedback logs; raw provider errors and
 URLs are not forwarded.
+
+An opt-in `TestProgressStageNativeLive` verifies the current default native model
+chooses `checking_resources` and receives a confirmed fixture badge. It uses the
+outer Host execution adapter, never an inner Offload worker, and sends no platform
+messages. Enable it with `AGH_PROGRESS_NATIVE_LIVE=1` and a newly built
+`AGH_PROGRESS_NATIVE_EXECUTABLE`. Platform rendering remains a separate check.

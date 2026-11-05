@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"agent-host/internal/harness"
 )
 
 func validateNativeSkillsRoot(root string) error {
@@ -47,6 +49,13 @@ func validateNativeSkillSelection(base string, names []string) error {
 		info, err := os.Stat(filepath.Join(base, "skills", name, "SKILL.md"))
 		if err != nil || !info.Mode().IsRegular() {
 			return errors.New("selected native skill is unavailable in the configured base profile")
+		}
+		body, err := os.ReadFile(filepath.Join(base, "skills", name, "SKILL.md"))
+		if err != nil {
+			return err
+		}
+		if err := harness.ValidateDirectExecutionSkill(name, body); err != nil {
+			return err
 		}
 	}
 	return nil

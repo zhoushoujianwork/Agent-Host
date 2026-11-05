@@ -84,6 +84,9 @@ func validateSkillPlugin(root, expected string) (harness.SkillManifest, error) {
 	executables := map[string]bool{}
 	allowed := map[string]bool{".claude-plugin/plugin.json": true}
 	for _, source := range manifest.Sources {
+		if err := harness.ValidateDirectExecutionSkill(source.Title, nil); err != nil {
+			return manifest, err
+		}
 		if !hostSkillName.MatchString(source.Name) || source.Revision < 1 {
 			return manifest, errors.New("invalid native skill identity")
 		}

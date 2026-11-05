@@ -82,6 +82,9 @@ printf '%%s\n' '{"type":"session_meta","payload":{"id":"%s"}}' > "$CODEX_HOME/se
 		t.Fatalf("%+v evidence=%+v %v", result, result.Evidence, err)
 	}
 	logged, readErr := os.ReadFile(log)
+	if readErr == nil && !strings.Contains(string(logged), harness.DirectExecutionInstructions) {
+		t.Fatal("Codex execution did not receive the direct-execution policy")
+	}
 	if readErr != nil || !strings.Contains(string(logged), "CODEX_HOT_USER_731") || !strings.Contains(string(logged), "CODEX_HOT_MEMORY_732") {
 		t.Fatalf("Codex SDK request omitted preset documents: %v %s", readErr, logged)
 	}
