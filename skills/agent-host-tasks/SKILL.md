@@ -104,6 +104,12 @@ Artifact paths describe files that actually exist; unavailable optional snapshot
 remain null. Treat the Chinese Markdown labels as presentation only: IDs, enum
 values, request text and Agent output remain unchanged.
 
+Raw records are runtime data. New default records use
+`$XDG_DATA_HOME/agent-host/handoffs/` when `XDG_DATA_HOME` is nonempty and
+absolute, otherwise `~/.local/share/agent-host/handoffs/`. This location is
+independent of the launcher configuration and Host `--home`; retain old artifact
+paths for inspection and continuation rather than moving existing records.
+
 Read `report` and `execution` separately. `completed` or exit zero does not prove
 the requested work was done: a completed turn can report BLOCKED. Distinguish a
 missing user decision from unavailable tooling or account permission. Report the

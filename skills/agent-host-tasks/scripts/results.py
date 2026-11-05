@@ -98,14 +98,20 @@ def save_bytes(path, value):
         raise
 
 
+def default_handoff_root():
+    configured = os.environ.get("XDG_DATA_HOME")
+    base = Path(configured) if configured and Path(configured).is_absolute() else Path.home() / ".local/share"
+    return base / "agent-host" / "handoffs"
+
+
 def new_receipt(config, command, cwd, stream_format, output_dir=None):
     if output_dir:
         directory = Path(output_dir).absolute()
         directory.mkdir(mode=0o700)
         directory.chmod(0o700)
     else:
-        root = config.parent / "handoffs"
-        root.mkdir(mode=0o700, exist_ok=True)
+        root = default_handoff_root()
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix="handoff-", dir=root))
         directory.chmod(0o700)
     inspect_command = [command[0], "run", "show"]

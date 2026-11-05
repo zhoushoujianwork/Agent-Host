@@ -26,6 +26,13 @@ class HandoffTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="handoff with spaces ")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.isolated_home = self.root / "isolated-home"
+        self.isolated_home.mkdir()
+        self.isolated_xdg = self.root / "isolated-xdg"
+        environment = patch.dict(os.environ, {"HOME": str(self.isolated_home),
+                                               "XDG_DATA_HOME": str(self.isolated_xdg)})
+        environment.start()
+        self.addCleanup(environment.stop)
         self.credentials = self.root / "credentials.json"
         self.credentials.write_text(json.dumps({"ANTHROPIC_AUTH_TOKEN": "managed-token", "JEV_API_KEY": "managed-jev"}))
         self.credentials.chmod(0o600)
@@ -41,6 +48,73 @@ class HandoffTests(unittest.TestCase):
     def save(self):
         self.config.write_text(json.dumps(self.value))
         self.config.chmod(0o600)
+
+    def new_default_receipt(self, config=None, output_dir=None):
+        config = config or self.config
+        command = [sys.executable, "chat", "--home", str(self.root / "cli-state")]
+        return CHAT.new_receipt(config, command, str(self.root), "result", output_dir)
+
+    def test_default_receipt_root_falls_back_for_unset_empty_or_relative_xdg(self):
+        expected = self.isolated_home / ".local/share/agent-host/handoffs"
+        for index, value in enumerate((None, "", "relative-data")):
+            with self.subTest(value=value), patch.dict(os.environ, {"HOME": str(self.isolated_home)}, clear=False):
+                if value is None:
+                    os.environ.pop("XDG_DATA_HOME", None)
+                else:
+                    os.environ["XDG_DATA_HOME"] = value
+                directory, _ = self.new_default_receipt(self.root / f"config-{index}/handoff.json")
+                self.assertEqual(directory.parent, expected)
+                self.assertTrue(directory.is_absolute())
+
+    def test_absolute_xdg_root_is_independent_of_config_directory(self):
+        xdg = self.root / "runtime-data"
+        with patch.dict(os.environ, {"XDG_DATA_HOME": str(xdg)}):
+            first, _ = self.new_default_receipt(self.root / "config-a/handoff.json")
+            second, _ = self.new_default_receipt(self.root / "elsewhere/config-b/handoff.json")
+        expected = xdg / "agent-host/handoffs"
+        self.assertEqual(first.parent, expected)
+        self.assertEqual(second.parent, expected)
+        self.assertNotEqual(first, second)
+        self.assertEqual(expected.stat().st_mode & 0o777, 0o700)
+
+    def test_explicit_output_directory_overrides_default_data_root(self):
+        output = self.root / "explicit-evidence"
+        directory, _ = self.new_default_receipt(self.root / "config/handoff.json", output)
+        self.assertEqual(directory, output.absolute())
+        self.assertFalse((self.isolated_xdg / "agent-host/handoffs").exists())
+
+    def test_old_config_adjacent_receipt_remains_inspectable_by_path(self):
+        directory = self.root / "legacy-config/handoffs/handoff-old"
+        directory.mkdir(mode=0o700, parents=True)
+        receipt = {
+            "destination_ref": str(self.root / "legacy-config/task-handoff.json"),
+            "destination_key": "legacy-key",
+            "inspect_command": [sys.executable, "run", "show", "--home", str(self.root / "legacy-state")],
+            "cwd": str(self.root), "exit_code": 0, "elapsed_ms": 12,
+        }
+        CHAT.save_json(directory / "launch.json", receipt)
+        (directory / "events.jsonl").write_text(json.dumps({
+            "type": "agent.result", "session_id": "legacy-session", "phase": "execute",
+            "component": "harness.claude", "model": "legacy-model",
+            "data": {"raw": {"result": "legacy report"}},
+        }) + "\n")
+        (directory / "events.jsonl").chmod(0o600)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(CHAT.main(["--inspect", str(directory)]), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["evidence_ref"], str(directory.absolute()))
+        self.assertEqual(result["ref"]["session_id"], "legacy-session")
+        self.assertEqual(result["report"], "legacy report")
+        self.assertFalse((self.isolated_xdg / "agent-host/handoffs").exists())
+        self.fake_host()
+        command, cwd, _ = CHAT.configured_command(self.config)
+        receipt["destination_ref"] = str(self.config)
+        receipt["destination_key"] = CHAT.destination_key(command, cwd)
+        CHAT.save_json(directory / "launch.json", receipt)
+        self.result_launch(self.root / "continued-legacy", "--resume-from", str(directory))
+        chat_call = next(call for call in self.calls() if call[0] == "chat")
+        self.assertEqual(chat_call[-2:], ["--resume", "legacy-session"])
 
     def test_offload_destination_separates_native_and_classifier_credentials(self):
         profile=self.root/"offload.json"

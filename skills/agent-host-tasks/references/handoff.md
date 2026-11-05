@@ -24,12 +24,24 @@ supported `--offload-config` selector and a separate Agent catalog. Keep these
 diagnostic choices explicit and isolated; do not rewrite the production daily
 configuration as part of a handoff.
 
-Every execution format creates a private evidence directory under the
-configuration's `handoffs/` directory and announces its path immediately on
-stderr. Text and JSON modes continue to stream the child's stdout and stderr
-unchanged; result mode returns one projected JSON object on stdout. Child stderr
-is retained in every mode. `--output-dir /absolute/new-directory` applies to all
-formats and selects a new directory; an existing directory is never overwritten.
+Every execution format creates a private `handoff-*` evidence directory and
+announces its path immediately on stderr. The default runtime-data layout is:
+
+- `$XDG_DATA_HOME/agent-host/handoffs/handoff-*` when `XDG_DATA_HOME` is nonempty
+  and absolute.
+- `~/.local/share/agent-host/handoffs/handoff-*` when `XDG_DATA_HOME` is unset,
+  empty or relative.
+
+The root is independent of the launcher configuration directory and the Host
+`--home` CLI-state directory. `--output-dir /absolute/new-directory` still
+selects an explicit new directory for every format, and an existing directory is
+never overwritten. Text and JSON modes continue to stream the child's stdout and
+stderr unchanged; result mode returns one projected JSON object on stdout. Child
+stderr is retained in every mode.
+
+Receipts created under the former configuration-adjacent `handoffs/` layout keep
+their original absolute paths. Inspection and `--resume-from` continue to accept
+those paths directly; the launcher does not migrate, copy or delete old records.
 
 | Result field | Meaning |
 | --- | --- |
