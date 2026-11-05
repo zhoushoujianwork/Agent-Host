@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/pages.css">
   <script src="/theme.js"></script>
+  <script src="/memory-scope.js"></script>
   <script src="/memory.js" defer></script>
 </head>
 <body data-page="memory">
@@ -38,7 +39,7 @@
         <div class="graph-panel"><div class="panel-head"><div><div class="eyebrow">CONNECTED KNOWLEDGE</div><h2>记忆关系图</h2></div><div class="graph-legend"><span><i class="object-dot"></i>对象</span><span><i class="topic-dot"></i>主题</span><span><i class="memory-dot"></i>记忆</span></div></div><div id="graph" class="graph-canvas" aria-label="对象、主题和记忆的关系图"></div><div class="graph-foot"><span id="graph-note">点击节点，查看关联记录</span><span>SOURCE-LINKED · SCOPE-AWARE</span></div></div>
         <div class="recall-panel"><div class="panel-head"><div><div class="eyebrow">MEMORY IN ACTION</div><h2>最近一次记忆使用</h2></div><span class="small-orbit">↗</span></div><div id="recent-recall" class="recall-body"></div></div>
       </section>
-      <section class="library-section"><div class="library-heading"><div><h2>记忆库 <span id="library-count">—</span></h2><p>保留原始声明，追溯每一次判断与使用。</p></div><div class="library-controls"><label class="search-box"><span>⌕</span><input id="search" type="search" placeholder="搜索记忆、对象或主题" aria-label="搜索记忆"></label><select id="status-filter" aria-label="筛选记忆状态"><option value="all">全部状态</option><option value="active">可供召回</option><option value="conflicted">存在冲突</option><option value="invalidated">已失效</option><option value="expired">已到期</option></select></div></div><div id="active-filter" class="active-filter" hidden></div><div id="memory-grid" class="memory-grid" aria-live="polite"></div></section>
+      <section class="library-section"><div class="library-heading"><div><h2>记忆库 <span id="library-count">—</span></h2><p>保留原始声明，追溯每一次判断与使用。</p></div><div class="library-controls"><label class="search-box"><span>⌕</span><input id="search" type="search" placeholder="搜索记忆、对象或主题" aria-label="搜索记忆"></label><select id="scope-filter" aria-label="筛选记忆 Scope"><option value="__all_scopes__">全部 Scope</option></select><select id="status-filter" aria-label="筛选记忆状态"><option value="all">全部状态</option><option value="active">可供召回</option><option value="conflicted">存在冲突</option><option value="invalidated">已失效</option><option value="expired">已到期</option></select></div></div><div id="active-filter" class="active-filter" hidden></div><div id="memory-grid" class="memory-grid" aria-live="polite"></div></section>
       <section class="library-section review-section"><div class="library-heading"><div><h2><span class="page-number">03</span>经验审核 <span id="candidate-count">—</span></h2><p>查看适用条件与来源证据，再决定是否发布为长期记忆。</p></div><select id="candidate-filter" aria-label="筛选经验草稿"><option value="pending">待处理</option><option value="all">全部草稿</option><option value="accepted">已发布</option><option value="rejected">未采用</option></select></div><div id="candidate-grid" class="memory-grid" aria-live="polite"></div><p id="candidate-limit" class="detail-note"></p></section>
       <footer><span><span class="footer-mark">◇</span> Agent-Host · 记忆是上下文，来源是依据。</span><span id="scope-note"></span></footer>
     </div>

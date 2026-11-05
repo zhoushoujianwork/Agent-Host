@@ -16,6 +16,8 @@ import threading
 
 KEEP_SECRET = "__AGENT_HOST_KEEP_SECRET__"
 MAX_BYTES = 1 << 20
+APP_MARKER = ".agh-app-runtime.json"  # written by tools/macos-app/runtime.py
+APP_OWNER = "agent-host-macos-app"
 
 
 class Conflict(ValueError):
@@ -115,6 +117,16 @@ def atomic_write(path, data):
             os.unlink(temporary)
 
 
+def app_owned(root):
+    """True for a marked app runtime root (owner-private marker; no chat_runtime import)."""
+    try:
+        info = Path(root).lstat()
+        value = json.loads(private_bytes(Path(root).resolve() / APP_MARKER))
+        return stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and isinstance(value, dict) and value.get("owner") == APP_OWNER
+    except (OSError, ValueError, Conflict):
+        return False
+
+
 class SettingsStore:
     def __init__(self, root, binary, handoff=None, validator=None, web_config=None):
         self.root = Path(root).resolve()
@@ -125,6 +137,10 @@ class SettingsStore:
         self.web_config = Path(web_config) if web_config else None
         self.lock = threading.Lock()
         self.secret_key = secrets.token_bytes(32)
+        self.app_root = app_owned(self.root)
+
+    def is_app_file(self, path):
+        return self.app_root and path == self.handoff
 
     def masked(self, value, secret):
         tokens = {}
@@ -157,6 +173,10 @@ class SettingsStore:
         for name in ("AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md"):
             for path in sorted(self.config.glob("agents/*/" + name)):
                 add(path, "instructions", path.parent.name + " · " + name)
+        # An app-owned root shows only its own selected handoff, never a global
+        # one. Backend/model/provider selection remains owned by Offload.
+        if self.handoff and self.handoff.exists():
+            add(self.handoff, "local-runtime" if self.app_root else "handoff", "Local execution" if self.app_root else "CLI task handoff")
         # Only existing credential files explicitly referenced by known settings.
         def references(value):
             if isinstance(value, dict):
@@ -175,8 +195,6 @@ class SettingsStore:
                 references(json.loads(private_bytes(path)))
             except (OSError, ValueError):
                 continue
-        if self.handoff and self.handoff.exists():
-            add(self.handoff, "handoff", "CLI task handoff")
         return files
 
     def read(self, entry):
@@ -186,7 +204,7 @@ class SettingsStore:
         value = json.loads(data) if structured else data.decode()
         return {"category": category, "title": title, "path": str(path),
                 "format": "json" if structured else "text", "secret": secret,
-                "application": "cli" if path == self.handoff or path.name == "agents.cli.json" else "service",
+                "application": "cli" if path == self.handoff or path.name == "agents.cli.json" or self.is_app_file(path) else "service",
                 "revision": digest(data), "value": self.masked(value, secret)[0]}
 
     def index(self):
@@ -213,15 +231,26 @@ class SettingsStore:
             if args.count(flag) != 1 or args.index(flag) + 1 >= len(args):
                 raise ValueError("Web capability configuration is unavailable.")
             return args[args.index(flag) + 1]
-        profile = Path(option("--native-profile"))
-        if not profile.is_absolute():
-            raise ValueError("Web native profile must be absolute.")
         skills = []
-        directory = profile / "skills"
-        if directory.exists():
-            for path in sorted(directory.iterdir()):
-                if path.is_dir() and (path / "SKILL.md").is_file():
-                    skills.append({"id": path.name, "name": path.name})
+        if "--native-profile" in args:
+            profile = Path(option("--native-profile"))
+            if not profile.is_absolute():
+                raise ValueError("Web native profile must be absolute.")
+            directory = profile / "skills"
+            if directory.exists():
+                for path in sorted(directory.iterdir()):
+                    if path.is_dir() and (path / "SKILL.md").is_file():
+                        skills.append({"id": path.name, "name": path.name})
+        else:
+            # Current Offload-default app runtimes do not create or infer a
+            # native profile. Only explicitly configured per-Agent roots may
+            # contribute selectable Skills; an empty allowlist stays empty.
+            catalog = json.loads(private_bytes(Path(destination["agents_path"])))
+            names = set()
+            for agent in catalog.get("agents", []):
+                if agent.get("native_skills_root"):
+                    names.update(explicit_agent_skill_ids(Path(destination["agents_path"]), agent["native_skills_root"]))
+            skills = [{"id": name, "name": name} for name in sorted(names)]
         sources = []
         for i, arg in enumerate(args):
             if arg != "--knowledge-config":

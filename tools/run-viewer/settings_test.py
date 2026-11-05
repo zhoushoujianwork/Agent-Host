@@ -1,6 +1,7 @@
 """Exercise configuration boundaries, checked writes and owner-local HTTP actions."""
 
 import json
+import sys
 from pathlib import Path
 import tempfile
 import threading
@@ -305,6 +306,120 @@ class SettingsTests(unittest.TestCase):
         for asset in ("settings.html", "settings.js", "settings.css", "agent-profiles.js", "agent-profiles.css"):
             with urlopen(base + "/" + asset) as response:
                 self.assertEqual(response.status, 200)
+
+
+class AppRuntimeSettingsTests(unittest.TestCase):
+    """An app-owned root exposes Host/Agent settings without inventing a backend."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="settings-app-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve() / "runtime"
+        for name in ("config", "cli-state", "workspace"):
+            (self.root / name).mkdir(parents=True, mode=0o700)
+        self.write(self.root / ".agh-app-runtime.json", {"schema": 1, "owner": "agent-host-macos-app"})
+        self.agents = self.write(self.root / "config/agents.cli.json", {
+            "default_agent": "default", "agents": [{
+                "id": "default", "name": "Local assistant", "projects": [],
+                "native_skills": [], "knowledge_sources": []}]})
+        self.web = self.write(self.root / "config/web-chat.json", {
+            "binary": sys.executable, "cwd": str(self.root / "workspace"),
+            "args": ["--home", str(self.root / "cli-state"), "--agents-config", str(self.agents),
+                     "--agent", "default", "--workspace", str(self.root / "workspace")]})
+        self.validations = 0
+        def validator():
+            self.validations += 1
+        self.store = SettingsStore(self.root, "/bin/true", handoff=self.web,
+                                   validator=validator, web_config=self.web)
+
+    def write(self, path, value):
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+        return path
+
+    def rows(self):
+        return {Path(row["path"]).name: row for row in self.store.index()["files"]}
+
+    def test_app_root_lists_handoff_and_exact_agent_catalog_without_acp_rows(self):
+        rows = self.rows()
+        self.assertTrue(self.store.app_root)
+        self.assertEqual(rows["web-chat.json"]["category"], "local-runtime")
+        self.assertEqual(rows["web-chat.json"]["application"], "cli")
+        self.assertEqual(rows["agents.cli.json"]["application"], "cli")
+        self.assertNotIn("execution.acp.json", rows)
+        self.assertNotIn("environment.json", rows)
+        self.assertEqual(rows["agents.cli.json"]["value"]["agents"][0]["native_skills"], [])
+        self.assertEqual(self.store.agent_options()["skills"], [])
+
+    def test_agent_edit_preserves_empty_skill_allowlist_and_future_fields(self):
+        catalog = json.loads(self.agents.read_text())
+        catalog["agents"][0]["raw_future_field"] = {"keep": True}
+        self.write(self.agents, catalog)
+        row = self.rows()["agents.cli.json"]
+        row["value"]["agents"][0]["name"] = "Renamed"
+        result = self.store.save(row["id"], row["revision"], row["value"])
+        saved = json.loads(self.agents.read_text())
+        self.assertEqual(saved["agents"][0]["name"], "Renamed")
+        self.assertEqual(saved["agents"][0]["native_skills"], [])
+        self.assertEqual(saved["agents"][0]["raw_future_field"], {"keep": True})
+        self.assertEqual(result["status"], "saved")
+        self.assertEqual(self.validations, 1)
+
+    def test_non_app_root_keeps_generic_handoff_and_no_synthetic_rows(self):
+        (self.root / ".agh-app-runtime.json").unlink()
+        store = SettingsStore(self.root, "/bin/true", handoff=self.web, validator=lambda: None)
+        rows = {Path(row["path"]).name: row for row in store.index()["files"]}
+        self.assertFalse(store.app_root)
+        self.assertEqual(rows["web-chat.json"]["category"], "handoff")
+        self.assertNotIn("execution.acp.json", rows)
+
+    def test_active_task_blocks_http_save_before_write_and_releases_gate(self):
+        from http.server import ThreadingHTTPServer
+        from types import SimpleNamespace
+        from maintenance import MaintenanceGate
+        runtime = SimpleNamespace(lock=threading.RLock(), active="run", children={})
+        chat = SimpleNamespace(lock=threading.RLock(), contexts={"task": runtime})
+        http = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        http.settings_store, http.mutation_token = self.store, "owner-token"
+        http.maintenance_gate, http.chat_runtime = MaintenanceGate(), chat
+        http.catalog = SimpleNamespace(connection=lambda: (_ for _ in ()).throw(FileNotFoundError()))
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        base = "http://127.0.0.1:" + str(http.server_port)
+        headers = {"Content-Type": "application/json", "Origin": base, "X-Host-Action": "owner-token"}
+        row = self.rows()["agents.cli.json"]
+        row["value"]["agents"][0]["name"] = "Blocked edit"
+        payload = json.dumps({"file": row["id"], "revision": row["revision"], "value": row["value"]}).encode()
+        before = self.agents.read_bytes()
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(base + "/api/settings", payload, headers))
+        self.assertEqual(error.exception.code, 409)
+        self.assertEqual(self.agents.read_bytes(), before)
+        self.assertFalse(http.maintenance_gate.quiesced)
+        runtime.active = None
+        with urlopen(Request(base + "/api/settings", payload, headers)) as response:
+            self.assertEqual(json.load(response)["status"], "saved")
+        self.assertFalse(http.maintenance_gate.quiesced)
+
+    def test_non_app_settings_saves_do_not_use_gate(self):
+        from http.server import ThreadingHTTPServer
+        from maintenance import MaintenanceGate
+        (self.root / ".agh-app-runtime.json").unlink()
+        store = SettingsStore(self.root, "/bin/true", validator=lambda: None)
+        http = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        gate = MaintenanceGate()
+        gate.begin = lambda *args: (_ for _ in ()).throw(AssertionError("gate must not be used"))
+        http.settings_store, http.mutation_token, http.maintenance_gate = store, "owner-token", gate
+        threading.Thread(target=http.serve_forever, daemon=True).start()
+        self.addCleanup(http.server_close)
+        self.addCleanup(http.shutdown)
+        base = "http://127.0.0.1:" + str(http.server_port)
+        row = next(item for item in store.index()["files"] if item["path"].endswith("agents.cli.json"))
+        payload = json.dumps({"file": row["id"], "revision": row["revision"], "value": row["value"]}).encode()
+        headers = {"Content-Type": "application/json", "Origin": base, "X-Host-Action": "owner-token"}
+        with urlopen(Request(base + "/api/settings", payload, headers)) as response:
+            self.assertEqual(response.status, 200)
 
 
 if __name__ == "__main__":

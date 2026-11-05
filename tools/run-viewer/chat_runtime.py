@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 import signal
 import sqlite3
+import stat
 import subprocess
 import tempfile
 import sys
@@ -45,6 +46,23 @@ def native_text(value):
     return text if len(text) <= OUTPUT_LIMIT else text[:OUTPUT_LIMIT] + "\n[output truncated; full evidence remains in the execution record]"
 
 
+APP_MARKER = ".agh-app-runtime.json"  # written by tools/macos-app/runtime.py
+APP_OWNER = "agent-host-macos-app"
+
+
+def is_app_runtime(root):
+    """True for a root created by the macOS app: an owner-private marker file."""
+    try:
+        root = Path(root)
+        marker = root / APP_MARKER
+        info, parent = marker.lstat(), root.lstat()
+        value = json.loads(marker.read_bytes())
+        return (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and stat.S_ISDIR(parent.st_mode)
+                and parent.st_uid == os.getuid() and isinstance(value, dict) and value.get("owner") == APP_OWNER)
+    except (OSError, ValueError):
+        return False
+
+
 def default_config(root):
     """Never attach a development viewer to another root's CLI destination."""
     if root is None:
@@ -53,6 +71,10 @@ def default_config(root):
     local = root / "config/web-chat.json"
     if local.exists():
         return local
+    if is_app_runtime(root):
+        # An app-owned runtime is configured only by its own setup; it never
+        # falls back to a user-level handoff.
+        return None
     path = Path.home() / ".config/agent-host/task-handoff.json"
     try:
         value = json.loads(private_bytes(path))
@@ -62,6 +84,63 @@ def default_config(root):
         return path
     except (OSError, ValueError, KeyError, TypeError):
         return None
+
+
+APP_SETUP_NOTICE = "本地 Agent 的执行配置不可用。请打开“设置 → 模型与连接”检查配置。"
+APP_ALLOWED_FLAGS = {"--home", "--agents-config", "--agent", "--workspace",
+                     "--memory-scope", "--timeout"}
+
+
+def app_prerequisite_notice(config):
+    """Generic setup notice when an app-owned runtime cannot launch, else "".
+
+    Only a config at ROOT/config/<file> of a marked app root is checked; every
+    other configuration is untouched. Checks current files only: no subprocess,
+    network or sign-in probe, and no value is ever put in the notice.
+    """
+    if not config:
+        return ""
+    config = Path(config)
+    if not is_app_runtime(config.parent.parent):
+        return ""
+
+    def executable(value):
+        try:
+            path = Path(value)
+            return path.is_absolute() and path.is_file() and os.access(path, os.X_OK)
+        except (TypeError, ValueError, OSError):
+            return False
+
+    try:
+        value = json.loads(private_bytes(config))
+        args = value["args"]
+        flags = args[::2] if isinstance(args, list) and len(args) % 2 == 0 else []
+        destination = agent_destination(config)
+        root = config.parent.parent.resolve()
+        bounded = all(Path(destination[key]).resolve().is_relative_to(root)
+                      for key in ("state_home",) if destination.get(key))
+        workspace = destination.get("execution", {}).get("workspace")
+        if workspace:
+            bounded = bounded and Path(workspace).resolve().is_relative_to(root)
+        cwd = Path(value["cwd"])
+        bounded = bounded and cwd.is_absolute() and cwd.is_dir() and cwd.resolve().is_relative_to(root)
+        ready = (executable(value["binary"]) and bool(flags)
+                 and len(flags) == len(set(flags)) and set(flags) <= APP_ALLOWED_FLAGS
+                 and bounded and bool(destination.get("agents")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        ready = False
+    return "" if ready else APP_SETUP_NOTICE
+
+
+def settings_handoff(root, chat_config):
+    """The CLI handoff Settings may expose and edit for this root.
+
+    An app-owned runtime exposes only its own selected handoff, never the
+    user-level one. Other roots keep the explicit user-level default.
+    """
+    if root is not None and is_app_runtime(root):
+        return Path(chat_config) if chat_config else None
+    return Path.home() / ".config/agent-host/task-handoff.json"
 
 
 def agent_destination(path):
@@ -117,6 +196,24 @@ def configured_launch(path, agent_id=None):
     destination = agent_destination(path)
     if agent_id is not None and agent_id not in {a["id"] for a in destination["agents"]}:
         raise ValueError("所选智能体不在 Web 连接配置中。")
+    # The installed handoff helper still requires the removed native-profile
+    # shape when --offload-config is omitted. App-owned runtimes use the current
+    # Host contract directly: no explicit profile means inherit Offload's
+    # default. This exception is bounded by the owner marker and path checks in
+    # app_prerequisite_notice; other handoffs retain the established validator.
+    if is_app_runtime(Path(path).parent.parent):
+        if app_prerequisite_notice(path):
+            raise ValueError("本地 Agent 配置校验失败。")
+        if json.loads(private_bytes(path)) != value or agent_destination(path) != destination:
+            raise ValueError("Chat 配置已变化，请检查后重新发送。")
+        managed = {}
+        env = {key: item for key, item in os.environ.items() if key not in PROVIDER_KEYS and
+               not key.startswith(("ANTHROPIC_", "CLAUDE_CODE_")) and key not in ("CLAUDE_CONFIG_DIR", "CLAUDECODE")}
+        command, cwd = [value["binary"], "chat", *value["args"]], value["cwd"]
+        if agent_id is not None:
+            command[command.index("--agent") + 1] = agent_id
+        identity = hashlib.sha256(json.dumps([command, cwd, managed, destination], sort_keys=True).encode()).hexdigest()
+        return command, cwd, env, identity
     script = next((directory / "scripts/chat.py" for directory in
                    (ROOT / "skills/agent-host-tasks",
                     Path.home() / ".agents/skills/agent-host-tasks",
@@ -190,6 +287,15 @@ class AgentChatRuntime:
 
     def snapshot(self):
         with self.lock:
+            result = self._snapshot()
+            notice = app_prerequisite_notice(self.config)
+            if notice:
+                # Valid catalogs do not enable an app-owned runtime that cannot launch.
+                result.update(enabled=False, notice=notice)
+            return result
+
+    def _snapshot(self):
+        with self.lock:
             if self.current is not None and getattr(self.current, "attached", False):
                 result = self.current.snapshot()
                 result.update(selected_agent=self.selected_agent, agents=[])
@@ -232,6 +338,9 @@ class AgentChatRuntime:
 
     def start(self, request_id, message, agent_id=None, context_id=None):
         with self.lock:
+            notice = app_prerequisite_notice(self.config)
+            if notice:
+                raise ChatConflict(notice)
             snapshot = self.snapshot()
             if not snapshot["enabled"] or (agent_id is not None and agent_id != self.selected_agent) or (context_id is not None and context_id != snapshot.get("context_id", snapshot.get("room_id"))):
                 raise ChatConflict("当前智能体已变化，请刷新后重新发送。")

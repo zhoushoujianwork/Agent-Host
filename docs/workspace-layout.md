@@ -32,12 +32,20 @@
 ├── projects/                        # 共享工程登记与执行回执；源码保持原位
 ├── cli-state/
 ├── backup-state/                    # Automatic backup lock and health receipt
-└── backups/                         # Automatic archives and historical rollback data
+├── backups/                         # Automatic archives and historical rollback data
+└── validation/                      # 本地验收证据；属于运行数据，不进源码仓库
 ```
 
 Automatic `.tar.gz.age` archives and their checkpoint index use `backups/`
 directly; no `workspace/` subdirectory is required. Backup storage is excluded
 from exports. See the [backup and recovery guide](workspace-backup-design.md).
+
+`validation/` 是常设目录,专放人工验收/回归探针跑出来的原始报告和回执。运行根目录位于仓库外时，源码仓库的 `.gitignore` 不覆盖也不需要覆盖它；仅仓库内的开发运行根由顶层 `/.agent-host` 规则排除。
+不属于配置、学习结果或任务副本中任何一类。文件名按场景短名加日期,
+一次验收一个文件,不覆盖旧文件,故意保留失败证据链而非只留成功结果。
+原始证据可能含凭证字段或资源 ID,仅本机留痕,引用方式见
+[日常可靠性验收](release-daily-use-detail.md)和
+[程序性学习证据](procedural-learning-detail.md)。
 
 **学习后的 Skill 放在 `memory/domains/<domain-id>/skills/<id>/revisions/<revision>/SKILL.md`。**
 正式事实、偏好和决策放同域的 `entries/`。当前版本由来源发布清单决定，

@@ -23,6 +23,7 @@ function persist(message) {
   // Preserve dormant canvas layout and other saved values for a later return.
   try {
     localStorage.setItem(storageKey, JSON.stringify({...saved, draft:draft.value}));
+    window.webkit?.messageHandlers?.aghDraft?.postMessage(draft.value);
     $("draft-status").textContent = message || "已自动保存";
     $("draft-status").dataset.state = "saved";
   } catch {
@@ -31,6 +32,12 @@ function persist(message) {
   }
   updateComposer();
 }
+// Native restarts capture the current draft before quiescing this surface.
+window.aghSaveDraft = () => {
+  if (document.getElementById("settings-dialog")?.open) return null;
+  persist();
+  return $("draft-status").dataset.state === "saved" ? draft.value : null;
+};
 function showChat(show) {
   $("chat-panel").hidden = !show;
   $("chat-toggle").setAttribute("aria-expanded", String(show));
@@ -56,6 +63,13 @@ settingsDialog.addEventListener("click", event => {
   const rect = settingsDialog.getBoundingClientRect();
   if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeSettings();
 });
+// Ask the already-loaded Settings page to show a section (#settings?section=models).
+// The message is same-origin and never reloads the frame, so unsaved edits stay guarded there.
+function requestSettingsSection() {
+  if (location.hash.split("?")[0] !== "#settings") return;
+  const section = new URLSearchParams(location.hash.split("?")[1] || "").get("section");
+  if (section) settingsDialog.querySelector("iframe")?.contentWindow?.postMessage({type:"agh:settings-section", section}, location.origin);
+}
 function navigate() {
   const requested = location.hash.slice(1).split("?")[0];
   const settings = requested === "settings";
@@ -66,6 +80,7 @@ function navigate() {
     const frame = settingsDialog.querySelector("iframe");
     if (!frame.getAttribute("src")) frame.src = frame.dataset.src;
     if (!settingsDialog.open) settingsDialog.showModal();
+    requestSettingsSection();
   } else if (settingsDialog.open) settingsDialog.close();
   if (requested === "chat") showChat(true);
   document.querySelectorAll(".view").forEach(node => { node.hidden = node.id !== view; });
@@ -91,6 +106,7 @@ for (const frame of document.querySelectorAll("iframe")) frame.addEventListener(
   css.rel = "stylesheet"; css.href = "/embedded.css"; doc.head.append(css);
   if (frame.closest("#settings-dialog")) {
     doc.documentElement.classList.add("modal-settings");
+    requestSettingsSection();
     doc.addEventListener("keydown", event => {
       if (event.defaultPrevented || event.isComposing || event.key !== "Escape") return;
       event.preventDefault(); closeSettings();

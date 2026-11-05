@@ -15,7 +15,9 @@ const statuses = {active: "可供召回", conflicted: "存在冲突", invalidate
 const topics = {database: "数据库", port: "端口", timeout: "超时", owner: "负责人", "credential.type.key": "密钥类型", "credential.type.password": "密码类型", "credential.type.token": "令牌类型", "credential.type.certificate": "证书类型", "credential.rotation": "凭据轮换", "credential.rotation.period": "轮换周期", "physical.key": "实体钥匙"};
 const reasons = {different_object: "对象不匹配", different_topic: "属性不匹配", different_credential_type: "凭据类型不同", different_key_domain: "钥匙领域不同", missing_rotation_period: "缺少轮换周期", unresolved_query_object: "查询对象未确定", unresolved_memory_object: "记忆对象未确定", candidate_limit: "候选数量限制", compatible: "对象与属性适用"};
 const choices = {remember: "值得长期记忆", skip: "不应保存", independent: "相互独立", same: "语义重复", conflict: "存在冲突", uncertain: "关系未确定"};
-const state = {data: null, source: "", object: null, topic: null, busy: false, selected: null, candidate: null, mutating: false};
+const scopeModel = window.AGHMemoryScope;
+const state = {data: null, source: "", scope: scopeModel.ALL, object: null, topic: null, busy: false, selected: null, candidate: null, mutating: false};
+const scopeLabel = scopeModel.label;
 const candidateStatuses = {pending: "待处理", accepted: "已发布", rejected: "未采用"};
 const sourceCandidates = () => list(state.data?.candidates).filter((item) => state.source === "all" || item.source.id === state.source);
 const text = (value) => String(value || "");
@@ -52,6 +54,7 @@ function filteredItems() {
     const search = [item.memory.text, item.memory.id, item.memory.conditions,
       ...objectList(item).map((o) => o.name), ...topicList(item).flatMap((t) => [t.key, topics[t.key]])].join(" ").toLowerCase();
     return (!query || search.includes(query)) && (wanted === "all" || status(item) === wanted)
+      && scopeModel.matches(state.scope, item.memory.scope)
       && (!state.object || objectList(item).some((o) => `${item.source.id}:${o.id}` === state.object.key))
       && (!state.topic || topicList(item).some((t) => t.key === state.topic));
   });
@@ -121,6 +124,14 @@ function render() {
   if (objectValues.length > 20) $("object-list").append(dom("p", "rail-empty", `显示前 20 / ${objectValues.length} 个对象`));
   const source = state.data.sources.find((s) => s.id === state.source);
   $("source-note").textContent = source?.kind === "report" ? "归档实测 · 历史观察" : source?.kind === "database" ? "本机数据库 · 当前状态" : "按来源分别保留身份";
+  const scopeOptions = scopeModel.options(items);
+  if (!scopeOptions.some((option) => option.value === state.scope)) state.scope = scopeModel.ALL;
+  $("scope-filter").replaceChildren();
+  for (const scope of scopeOptions) {
+    const option = dom("option", "", scope.value === scopeModel.ALL ? scope.label : `${scope.label} (${scope.count})`);
+    option.value = scope.value; option.title = scope.label; $("scope-filter").append(option);
+  }
+  $("scope-filter").value = state.scope;
   const notice = $("snapshot-notice");
   notice.hidden = !items.some((item) => item.snapshot) && !state.data.truncated;
   notice.textContent = `${items.some((item) => item.snapshot) ? "归档快照：这里展示报告中观察到的记忆与关系。原始实验数据库已清理，历史 active 状态不代表当前仍有效。" : ""}${state.data.truncated ? ` 已载入最多 ${state.data.memory_limit} 条；观察总数 ${state.data.observed_total}，此视图并不完整。` : ""}`;
@@ -234,7 +245,8 @@ function renderCards(items) {
     if (!tags.childNodes.length) tags.append(tag("尚无对象或主题标注"));
     const foot = dom("div", "card-bottom");
     foot.append(dom("span", "", memory.external_receipt_id ? "外部 Agent 提供的证据" : memory.source_type === "reviewed_experience" ? "来自人工审核经验" : memory.source_type === "user_statement" ? "来自用户声明" : "来源类型未记录"), dom("strong", "", `已使用 ${item.uses.filter((use) => use.status === "injected").length} 次`));
-    card.append(top, dom("h3", "", memory.text.split("\n")[0]), tags,
+    const scopeTag = tag(`◆ ${scopeLabel(memory.scope)}`); scopeTag.title = memory.scope || "未记录 scope";
+    card.append(top, dom("h3", "", memory.text.split("\n")[0]), tags, scopeTag,
       dom("div", "card-proof", `Agent ${memory.agent_id || "default"} · ${!memory.audience_id || memory.audience_id === "owner" ? "私聊" : "群聊 " + short(memory.audience_id)}`), foot,
       dom("div", "card-proof", `MEM ${short(memory.id)} · REV ${memory.revision ?? "?"} · ${item.snapshot ? "ARCHIVED" : "CURRENT"}`), dom("span", "card-arrow", "↗"));
     card.addEventListener("click", () => openDetail(item)); $("memory-grid").append(card);
@@ -336,6 +348,7 @@ function renderDetail(item) {
   const body = $("detail-body"); body.replaceChildren();
   const memory = item.memory, decision = item.decision;
   const tags = dom("div", "detail-tags"); tags.append(tag(kinds[memory.kind] || memory.kind, kindClass[memory.kind]), tag(statuses[status(item)] || status(item)), tag(item.snapshot ? "归档观察" : "当前记录"));
+  const scopeDetail = tag(`◆ Scope ${scopeLabel(memory.scope)}`); scopeDetail.title = memory.scope || "未记录 scope"; tags.append(scopeDetail);
   body.append(tags, dom("p", "detail-statement", memory.kind === "procedure" ? memory.text.split("\nApplicable when:")[0] : memory.text));
   if (memory.kind === "procedure") {
     const procedure = section(body, "适用条件与执行步骤"); procedure.append(dom("p", "", memory.conditions));
@@ -397,7 +410,8 @@ function renderAvoid(body, items) {
   items.forEach((item) => sequence.append(dom("li", "", item))); warning.append(sequence);
 }
 
-$("source-filter").addEventListener("change", () => {state.source = $("source-filter").value; state.object = null; state.topic = null; state.selected = null; state.candidate = null; $("memory-detail").close(); render();});
+$("source-filter").addEventListener("change", () => {state.source = $("source-filter").value; state.scope = scopeModel.ALL; state.object = null; state.topic = null; state.selected = null; state.candidate = null; $("memory-detail").close(); render();});
+$("scope-filter").addEventListener("change", () => {state.scope = $("scope-filter").value; state.object = null; state.topic = null; state.selected = null; state.candidate = null; $("memory-detail").close(); render();});
 $("candidate-filter").addEventListener("change", renderCandidates);
 $("search").addEventListener("input", render);
 $("status-filter").addEventListener("change", render);

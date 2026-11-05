@@ -35,6 +35,37 @@ Validation includes the server HTTP boundary suite, JavaScript syntax checks,
 `make check` and isolated-fixture browser inspection. No production restart or
 configuration migration is part of this change.
 
+## Shared readiness notice
+
+`readiness.js` and `readiness.css` are loaded by the workspace, execution,
+Stats and Settings pages. Each page passes data it already fetched to a pure
+derivation (`fromChat`, `fromSources`, `fromStats`, `fromSettings`,
+`fromFailure`); the component adds no polling. `show(slot, model, {retry})`
+renders one summary, at most one primary button and a **Details** disclosure
+holding raw messages (clipped to 600 characters, set as text, never HTML). An
+identical model keeps its DOM so an open Details survives refreshes. `ready`
+and `empty` clear the slot: a configured source with no runs, or a readable
+Stats window with zero runs, is valid data. Stats shows the notice instead of
+numbers only when every source is unreadable.
+
+Connect is available when the top-level page exposes
+`window.webkit.messageHandlers.aghConnect`. Frames dispatch a
+`agh:connect-host` CustomEvent on the top document. If that document cannot be
+reached, a same-origin `postMessage` from a direct child frame is accepted
+instead. Only the top-level page installs the listener, which posts
+`{type: "connect-host"}` to the native handler. Handling that message and the
+file chooser are native concerns. Without a bridge, the primary action opens
+the existing Settings view; the Settings page itself offers no Settings action,
+so the fallback cannot loop. Details then name `--backup-root` and
+`--chat-config`; the component never reads or adopts a global config and shows
+no config contents.
+
+Chat and Settings keep their existing drafts and editors. Setup completion only
+re-enables Send; it never submits a message.
+
+Run `node --test tools/run-viewer/readiness_test.cjs` to verify derivation,
+escaping, bridge routing and the Chat integration.
+
 ## Shared page design and appearance
 
 `theme.css` owns semantic light/dark colors and shared controls. `pages.css`
@@ -84,7 +115,7 @@ headers, settings and favicon. It has no font or external asset dependency.
 private task-handoff configuration format. `--chat-config` explicitly selects a
 destination. Otherwise the viewer selects `config/web-chat.json` inside
 `--backup-root`, or the existing user CLI handoff only when its state, Agent
-catalog, workspace and native profile all belong to that root. A development
+catalog and workspace all belong to that root. A development
 viewer never implicitly launches another root's CLI task. The existing launcher
 validates configuration with `--check` before each launch. Provider credentials
 are loaded server-side and never returned to the browser.
@@ -95,7 +126,7 @@ loopback Host, same-Origin, token and bounded-JSON checks. Messages are at most
 16 KiB. Only one turn executes at a time. Request IDs are idempotent within the
 current conversation; a lost HTTP response must not cause automatic replay.
 
-Host emits NDJSON; Chat projects Claude text and native tool/status events in
+Host emits NDJSON; Chat projects assistant text and native tool/status events in
 arrival order. It does not display the Host phase summary or memory-extractor
 output. Tool calls show their actual names and parameters; Bash shows its original
 command with full parameters available inline. Tool results remain separate
@@ -125,15 +156,12 @@ blocks. Raw HTML stays text. Only HTTP(S) links are clickable and open with
 file viewer. Tool parameters and results remain literal native output. Stable
 Markdown blocks and native row nodes are reused across updates.
 
-This presentation does not require ACP. OpenFilm desktop's `src/agents.mjs`
-uses ACP adapters, while its `agent-activity-runs.ts` and Markdown components
-implement the presentation independently. AGH now supports either its existing
-Claude stream-json harness or the shared pinned Claude ACP runner behind Host. The chosen
-[shared ACP direction](offload-execution-boundary.md) places ACP
-at that harness boundary for Web, CLI and all chat channels. The
-[execution profile](acp-execution-detail.md#configuration) selects it for the Web
-CLI destination. ACP tool patches update the existing call, and native plans are
-shown inside activity. Interactive approval UI and file-diff cards remain pending.
+The presentation is protocol-neutral. Current execution uses the Offload package;
+the Web handoff either selects an explicit Offload profile or omits it to inherit
+Offload's current default. Retained historical protocol events remain displayable,
+but the workspace does not select ACP, add a Host model loop or silently fall back
+to another provider. Native plans and tool updates are shown inside activity.
+Interactive approval UI and file-diff cards remain pending.
 
 The browser polls the current projection every 350 ms during execution, keeping
 partial answers visible and preserving the user's expanded parameter controls and
