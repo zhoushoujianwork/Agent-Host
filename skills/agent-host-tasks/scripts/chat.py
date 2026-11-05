@@ -2,6 +2,7 @@
 """Run CLI handoffs using an explicit private configuration and provider environment."""
 
 import argparse
+import codecs
 import json
 import os
 from pathlib import Path
@@ -11,8 +12,9 @@ import subprocess
 import sys
 import signal
 import time
+import threading
 
-from results import destination_key, inspect_receipt, new_receipt, save_json
+from results import destination_key, execution_markdown, inspect_receipt, new_receipt, save_bytes, save_json, utc_now
 
 
 PROVIDER_KEYS = {
@@ -135,8 +137,79 @@ def configured_command(path):
     return [binary, "chat", *args], cwd, env
 
 
-def run_result(command, cwd, env, config, output_dir, base_command, feedback_args=None, caller=None):
-    directory, receipt = new_receipt(config, base_command, cwd, output_dir)
+class ConsoleBytes:
+    """Write bytes exactly to real consoles and incrementally to text test streams."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.binary = getattr(stream, "buffer", None)
+        self.decoder = None if self.binary is not None else codecs.getincrementaldecoder("utf-8")("replace")
+
+    def write(self, data):
+        if self.binary is not None:
+            self.binary.write(data)
+            self.binary.flush()
+        else:
+            self.stream.write(self.decoder.decode(data))
+            self.stream.flush()
+
+    def finish(self):
+        if self.decoder is not None:
+            tail = self.decoder.decode(b"", final=True)
+            if tail:
+                self.stream.write(tail)
+            self.stream.flush()
+
+
+def private_output(path):
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    return os.fdopen(descriptor, "wb")
+
+
+def tee(source, artifact, console, errors, stream_name):
+    def warn_once(value):
+        if value not in errors:
+            errors.append(value)
+
+    try:
+        while True:
+            try:
+                chunk = os.read(source.fileno(), 64 * 1024)
+            except OSError as error:
+                warn_once(f"stream_read_failed: {stream_name}: {type(error).__name__}")
+                break
+            if not chunk:
+                break
+            if artifact is not None:
+                try:
+                    artifact.write(chunk)
+                    artifact.flush()
+                except OSError as error:
+                    warn_once(f"artifact_tee_failed: {stream_name}: {type(error).__name__}")
+                    artifact = None
+            if console is not None:
+                try:
+                    console.write(chunk)
+                except OSError as error:
+                    warn_once(f"console_tee_failed: {stream_name}: {type(error).__name__}")
+                    console = None
+    finally:
+        if console is not None:
+            try:
+                console.finish()
+            except OSError as error:
+                warn_once(f"console_tee_failed: {stream_name}: {type(error).__name__}")
+        try:
+            source.close()
+        except OSError as error:
+            warn_once(f"stream_close_failed: {stream_name}: {type(error).__name__}")
+
+
+def run_recorded(command, cwd, env, config, output_dir, base_command, stream_format,
+                 request, feedback_args=None, caller=None):
+    directory, receipt = new_receipt(config, base_command, cwd, stream_format, output_dir)
+    print(f"Handoff evidence: {directory}", file=sys.stderr, flush=True)
+    save_bytes(directory / "request.txt", request.encode("utf-8"))
     receipt["caller"] = caller
     save_json(directory / "launch.json", receipt)
     if feedback_args:
@@ -145,13 +218,21 @@ def run_result(command, cwd, env, config, output_dir, base_command, feedback_arg
     if "--resume" in command:
         receipt["requested_session_id"] = command[command.index("--resume") + 1]
         save_json(directory / "launch.json", receipt)
-    print(f"Handoff evidence: {directory}", file=sys.stderr, flush=True)
     started = time.monotonic()
     handlers = {}
     child = None
+    export_warnings = []
     try:
-        with (directory / "events.jsonl").open("xb") as output, (directory / "stderr.log").open("xb") as errors:
-            child = subprocess.Popen(command, cwd=cwd, env=env, stdout=output, stderr=errors, start_new_session=True)
+        stdout_path = directory / ("stdout.txt" if stream_format == "text" else "events.jsonl")
+        with private_output(stdout_path) as output, private_output(directory / "stderr.log") as errors:
+            child = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     start_new_session=True)
+            stdout_console = None if stream_format == "result" else ConsoleBytes(sys.stdout)
+            stderr_console = ConsoleBytes(sys.stderr)
+            pumps = [threading.Thread(target=tee, args=(child.stdout, output, stdout_console, export_warnings, "stdout")),
+                     threading.Thread(target=tee, args=(child.stderr, errors, stderr_console, export_warnings, "stderr"))]
+            for pump in pumps:
+                pump.start()
 
             def forward(signum, _frame):
                 try:
@@ -162,6 +243,8 @@ def run_result(command, cwd, env, config, output_dir, base_command, feedback_arg
             for signum in (signal.SIGINT, signal.SIGTERM):
                 handlers[signum] = signal.signal(signum, forward)
             code = child.wait()
+            for pump in pumps:
+                pump.join()
             receipt["exit_code"] = code if code >= 0 else 128 - code
     except OSError as error:
         receipt["exit_code"] = 2
@@ -170,10 +253,35 @@ def run_result(command, cwd, env, config, output_dir, base_command, feedback_arg
         for signum, handler in handlers.items():
             signal.signal(signum, handler)
         receipt["elapsed_ms"] = round((time.monotonic() - started) * 1000)
-        save_json(directory / "launch.json", receipt)
-    result = inspect_receipt(directory, private_json)
-    save_json(directory / "result.json", result)
-    print(json.dumps(result, ensure_ascii=False))
+        receipt["finalized_at_utc"] = utc_now()
+        try:
+            save_json(directory / "launch.json", receipt)
+        except OSError as error:
+            export_warnings.append("artifact_export_failed: launch.json: " + type(error).__name__)
+    result = inspect_receipt(directory, private_json, save_run=True, receipt=receipt)
+    result["warnings"].extend(export_warnings)
+    for warning in result["warnings"]:
+        if warning.startswith(("artifact_export_failed:", "artifact_tee_failed:", "console_tee_failed:",
+                               "stream_read_failed:", "stream_close_failed:")):
+            print("Handoff artifact warning: " + warning, file=sys.stderr, flush=True)
+    execution_path = str(directory / "execution.md")
+    try:
+        save_bytes(directory / "execution.md", execution_markdown(result, request).encode("utf-8"))
+        result["artifacts"]["execution_record"] = execution_path
+    except OSError as error:
+        result["artifacts"]["execution_record"] = None
+        result["warnings"].append("artifact_export_failed: execution.md: " + type(error).__name__)
+        print("Handoff artifact export failed: execution.md", file=sys.stderr, flush=True)
+    result_path = str(directory / "result.json")
+    result["artifacts"]["result"] = result_path
+    try:
+        save_json(directory / "result.json", result)
+    except OSError as error:
+        result["artifacts"]["result"] = None
+        result["warnings"].append("artifact_export_failed: result.json: " + type(error).__name__)
+        print("Handoff artifact export failed: result.json", file=sys.stderr, flush=True)
+    if stream_format == "result":
+        print(json.dumps(result, ensure_ascii=False))
     return receipt["exit_code"]
 
 
@@ -193,7 +301,7 @@ def main(argv=None):
     parser.add_argument("--resume")
     parser.add_argument("--resume-from", type=Path, help="continue a completed launch using its evidence directory")
     parser.add_argument("--inspect", type=Path, help="read a launch evidence directory without executing work")
-    parser.add_argument("--output-dir", type=Path, help="new private evidence directory for result mode")
+    parser.add_argument("--output-dir", type=Path, help="new private evidence directory for this execution")
     parser.add_argument("--format", choices=("text", "json", "result"), default="json")
     options = parser.parse_args(argv)
     if options.caller_pid is not None and (options.caller_pid <= 1 or options.caller_pid == os.getpid()):
@@ -214,8 +322,6 @@ def main(argv=None):
         parser.error("--check cannot be combined with execution options")
     if options.resume and options.resume_from:
         parser.error("choose --resume or --resume-from")
-    if options.output_dir and options.format != "result":
-        parser.error("--output-dir requires --format result")
     try:
         if options.inspect:
             print(json.dumps(inspect_receipt(options.inspect, private_json), ensure_ascii=False))
@@ -252,10 +358,8 @@ def main(argv=None):
         command += ["--format", "json" if options.format == "result" else options.format, "-m", options.message]
         if options.resume:
             command += ["--resume", options.resume]
-        if options.format == "result":
-            return run_result(command, cwd, env, options.config.absolute(), options.output_dir, base_command, feedback_args, caller)
-        result = subprocess.run(command, cwd=cwd, env=env, check=False)
-        return result.returncode if result.returncode >= 0 else 128 - result.returncode
+        return run_recorded(command, cwd, env, options.config.absolute(), options.output_dir, base_command,
+                            options.format, options.message, feedback_args, caller)
     except HandoffError as error:
         print(str(error), file=sys.stderr)
         return 2
