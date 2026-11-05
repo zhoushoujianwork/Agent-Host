@@ -29,6 +29,61 @@ def sensitive(key):
     return not key.endswith(("_file", "_path")) and bool(re.search(r"secret|password|(?:^|_)token$|access_token|refresh_token|auth_token|bearer|api[_-]?key|authorization|^key$", key))
 
 
+def validate_business_runtime(policy):
+    """Check path policy without reading credential contents or tool directories."""
+    if policy is None:
+        return
+    message = "Business runtime requires bounded explicit canonical paths and safe HOME targets."
+    if not isinstance(policy, dict) or set(policy) - {"home_files", "bin_directory"}:
+        raise ValueError(message)
+    files = policy.get("home_files", [])
+    if files is None:
+        files = []
+    if not isinstance(files, list) or len(files) > 16:
+        raise ValueError(message)
+
+    def path_info(value, directory=False):
+        if not isinstance(value, str) or not value or len(value) > 4096 or any(c in value for c in "\x00\r\n"):
+            raise ValueError(message)
+        path = Path(value)
+        try:
+            info = path.lstat()
+            if not path.is_absolute() or str(path) != value or os.path.normpath(value) != value or path.resolve(strict=True) != path:
+                raise ValueError(message)
+            if not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)) or not os.access(path, os.R_OK):
+                raise ValueError(message)
+            return info
+        except OSError:
+            raise ValueError(message) from None
+
+    if policy.get("bin_directory"):
+        if not isinstance(policy["bin_directory"], str) or ":" in policy["bin_directory"]:
+            raise ValueError(message)
+        path_info(policy["bin_directory"], directory=True)
+    elif "bin_directory" in policy and not isinstance(policy["bin_directory"], str):
+        raise ValueError(message)
+    targets, total = [], 0
+    reserved = {".claude", ".codex", ".agents", "skills", "claude.md", "agents.md", ".profile", ".zprofile", ".zlogin", ".zlogout", ".pam_environment", ".kshrc", ".cshrc", ".tcshrc", ".login", ".logout", "fish"}
+    for binding in files:
+        if not isinstance(binding, dict) or set(binding) != {"source", "target"}:
+            raise ValueError(message)
+        target = binding["target"]
+        if not isinstance(target, str) or not target or len(target) > 1024 or target.startswith("/") or any(c in target for c in "\\\x00\r\n"):
+            raise ValueError(message)
+        parts = target.split("/")
+        # Build Hub business auth has one exact lowercase exception, not a root grant.
+        if target != ".claude/build-hub/token" and any(part in {"", ".", ".."} or part.lower() in reserved or part.lower().startswith((".zsh", ".bash")) for part in parts):
+            raise ValueError(message)
+        normalized = target.lower()
+        if any(normalized == old or normalized.startswith(old + "/") or old.startswith(normalized + "/") for old in targets):
+            raise ValueError(message)
+        targets.append(normalized)
+        size = path_info(binding["source"]).st_size
+        total += size
+        if size > MAX_BYTES or total > 4 * MAX_BYTES:
+            raise ValueError(message)
+
+
 def private_bytes(path, max_bytes=MAX_BYTES):
     info = path.lstat()
     if path.resolve() != path or not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
@@ -298,6 +353,7 @@ class SettingsStore:
             web_key = capability_options.get("file_id") if capability_options else None
             is_web = web_key and self.files()[web_key][0] == path
             for agent in agents:
+                validate_business_runtime(agent.get("business_runtime"))
                 if not isinstance(agent.get("name"), str) or not agent["name"].strip() or len(agent["name"]) > 200 or any(c in agent["name"] for c in "\x00\r\n"):
                     raise ValueError("Every Agent needs a name.")
                 if agent.get("workspace") and (not isinstance(agent["workspace"], str) or not Path(agent["workspace"]).is_absolute() or not Path(agent["workspace"]).is_dir()):
