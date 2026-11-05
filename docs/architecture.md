@@ -36,6 +36,9 @@ Execution completion, business acceptance, delivery, Offload history persistence
 and Host memory outcomes remain independent. Source content cannot grant access
 or prove external success.
 
+Business Agents execute directly inside that outer Offload loop. They may not
+invoke Offload again; delegation Skills are rejected before native dispatch.
+
 ```mermaid
 flowchart LR
     C[CLI / DingTalk / Feishu] --> H[Host: tasks, routing, context, tools]
@@ -99,6 +102,7 @@ Channel business runs can send bounded [progress updates](channel-progress.md)
 as attached reactions through a run-bound built-in MCP and the shared durable
 Channel feedback queue, independently of
 final replies, task acceptance and memory persistence.
+Agents select a bounded stage code; Host generates the short display label.
 
 ## Remaining work
 

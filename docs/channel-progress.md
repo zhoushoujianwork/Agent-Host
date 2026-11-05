@@ -1,15 +1,20 @@
 # Channel progress
 
 Channel business runs with tools enabled receive the built-in
-`channel_progress.send_progress(text, idempotency_key?)` MCP tool for meaningful
+`channel_progress.send_progress(stage, idempotency_key?)` MCP tool for meaningful
 milestones or blockers. Progress uses attached reactions on the original question.
 It never sends an ordinary text or webhook message, including on failure. Each
 question retains its ordinary final answer through the existing final reply path.
 The agent cannot choose a destination. Tool-free runs, restricted reads,
 extraction and ordinary CLI runs do not receive this capability.
 
-Labels are trimmed, valid UTF-8, and contain 1–12 Unicode code points without
-controls or multiline content. Twelve is Host policy, not a provider maximum.
+Select a stage such as `checking_permissions`, `connecting`,
+`checking_resources` or `blocked`. Host renders the short label (for example,
+“检查权限” or “检查资源”); the model does not compose a progress sentence. For a
+multistep task, report the first concrete stage before starting tool work.
+Legacy short `text` labels remain compatible, with a 12-code-point Host limit.
+Rejected arguments reserve no attempt: correct the stage and retry. Pending or
+unknown delivery is different and must not be replayed.
 DingTalk uses a custom text reaction; Feishu uses its native Typing emoji for
 progress and native status emoji for lifecycle markers. Unsupported feedback
 fails explicitly. DingTalk custom bot text acceptance still needs live verification.

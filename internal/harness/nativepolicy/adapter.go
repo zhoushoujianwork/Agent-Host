@@ -306,7 +306,7 @@ func (a *Adapter) Identity() harness.Identity {
 	if a.GeneratesSessionID() {
 		protocol = "codex-app-server"
 	}
-	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion + ";native=" + protocol + ";environment=v2;exact-skills=v1"}
+	return harness.Identity{Agent: "offload", Component: "harness.offload", Engine: "offload", Transport: "go-package", Version: offloadexec.LibraryVersion + ";native=" + protocol + ";environment=v2;exact-skills=v1;direct-execution=v1"}
 }
 
 // Run assembles Host policy and observations, then delegates execution, timeout,
@@ -417,6 +417,7 @@ func (a *Adapter) Run(ctx context.Context, req harness.Request, emit func(harnes
 	}
 	if !req.Extraction {
 		instructions = withKnowledgeGuidance(instructions, req.ToolsDisabled || req.RestrictedReadOnly)
+		instructions += "\n\n" + harness.DirectExecutionInstructions
 		instructions += "\n\nThe Host task working directory is " + req.Workspace + ". Treat the isolated native cwd as private runtime state, not as task scope or source evidence."
 	}
 	lib := a.library

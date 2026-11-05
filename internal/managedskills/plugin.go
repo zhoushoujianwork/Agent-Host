@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"agent-host/internal/harness"
 )
 
 // ContractDigest normalizes JSON objects so typed adapter definitions and their
@@ -33,6 +35,9 @@ func PluginUsage(name string, contract any, instructions, fingerprint string) En
 func ReadyEntries(entries []Entry) ([]Entry, map[string]string, error) {
 	plugins := map[string]Plugin{}
 	for _, e := range entries {
+		if err := harness.ValidateDirectExecutionSkill(e.Name, []byte(e.Files["SKILL.md"])); err != nil {
+			return nil, nil, err
+		}
 		if e.Kind != "plugin_usage" {
 			continue
 		}
