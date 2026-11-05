@@ -24,6 +24,8 @@ HOT 按本人、Agent、会话受众和记忆范围隔离。私聊使用本人�
 1. 对应用数据目录中的原始交接记录执行 `dream scan`，只读检查来源是否完整、稳定。
 2. 用 `dream run` 提炼待审候选，查看来源并通过 `dream review` 接受或拒绝。
 3. 接受后的记忆进入现有版本化存储；显式配置 `--dream-config` 后，私聊与 CLI Chat 加载 HOT 快照。
+
+增量整理第一阶段现已从同一 Host state 按可信分区轮转检查 canonical run，并用 `dream work-list|work-show` 查看持久检查点。相同证据不重复提炼；未完成、验收未决或事件不完整会保留缺失原因，证据 digest 变化后重评。Skill 修订和物理清理尚未交付，见[增量整理设计](dream-incremental-learning.md)。
 4. 启用后台周期后，AGH 只在所有配置状态目录持续空闲达到 quiet window 后提炼；前台到达会取消本轮模型调用，稍后重新准入。周期结果可查询，失败不会伪装为成功。
 
 数据放在应用数据目录，配置文件只保存开关与路径。HOT 文件是可重建的快照，正式记忆和 Skill 版本才是权威来源。

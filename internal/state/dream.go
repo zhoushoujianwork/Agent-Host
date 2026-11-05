@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS dream_cycles(id TEXT PRIMARY KEY,config_id TEXT NOT N
 CREATE INDEX IF NOT EXISTS dream_cycles_config ON dream_cycles(config_id,started_at);
 `
 
+const schemaDreamWorkV20 = `
+CREATE TABLE IF NOT EXISTS dream_cleanup(id TEXT PRIMARY KEY,person_id TEXT NOT NULL,agent_id TEXT NOT NULL,audience_id TEXT NOT NULL,scope TEXT NOT NULL,status TEXT NOT NULL,payload BLOB NOT NULL);
+CREATE TABLE IF NOT EXISTS dream_work_items(id TEXT PRIMARY KEY,source_key TEXT NOT NULL,person_id TEXT NOT NULL,agent_id TEXT NOT NULL,audience_id TEXT NOT NULL,scope TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL,payload BLOB NOT NULL,UNIQUE(person_id,agent_id,audience_id,scope,source_key));
+CREATE INDEX IF NOT EXISTS dream_work_partition ON dream_work_items(person_id,agent_id,audience_id,scope,state,updated_at);
+CREATE TABLE IF NOT EXISTS dream_scan_cursors(person_id TEXT NOT NULL,agent_id TEXT NOT NULL,audience_id TEXT NOT NULL,scope TEXT NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(person_id,agent_id,audience_id,scope));
+PRAGMA user_version=20;
+`
+
 type DreamPartition struct {
 	PersonID, AgentID, AudienceID, Scope string
 }
@@ -40,6 +48,16 @@ type DreamCandidate struct {
 	CreatedAt                                  time.Time
 	ReviewedAt                                 *time.Time
 	ReviewActor, ReviewNote, MemoryID, SkillID string
+	SkillRevision                              int        `json:"skill_revision,omitempty"`
+	SkillDigest                                string     `json:"skill_digest,omitempty"`
+	TargetSkillID                              string     `json:"target_skill_id,omitempty"`
+	TargetSkillRevision                        int        `json:"target_skill_revision,omitempty"`
+	TargetSkillDigest                          string     `json:"target_skill_digest,omitempty"`
+	SkillDraftStatus                           string     `json:"skill_draft_status,omitempty"`
+	SkillDraftReason                           string     `json:"skill_draft_reason,omitempty"`
+	SkillDraftKey                              string     `json:"skill_draft_key,omitempty"`
+	SkillDraftAttempts                         int        `json:"skill_draft_attempts,omitempty"`
+	SkillDraftUpdatedAt                        *time.Time `json:"skill_draft_updated_at,omitempty"`
 }
 
 type DreamCycle struct {
@@ -290,9 +308,9 @@ func (s *Store) DreamReceipt(ctx context.Context, id string) (DreamReceipt, erro
 	return r, err
 }
 
-func (s *Store) MarkDreamSkillPromoted(ctx context.Context, id, actor, skillID string) error {
-	if actor == "" || skillID == "" {
-		return errors.New("Skill promotion requires actor and Skill ID")
+func (s *Store) MarkDreamSkillPromoted(ctx context.Context, id, actor, skillID string, revision int, digest string) error {
+	if actor == "" || skillID == "" || revision < 1 || digest == "" {
+		return errors.New("Skill promotion requires actor and exact Skill revision")
 	}
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		var raw []byte
@@ -307,7 +325,7 @@ func (s *Store) MarkDreamSkillPromoted(ctx context.Context, id, actor, skillID s
 			return errors.New("candidate is not a promotable procedure")
 		}
 		now := time.Now().UTC()
-		c.Status, c.SkillID, c.ReviewActor, c.ReviewedAt = "promoted", skillID, actor, &now
+		c.Status, c.SkillID, c.SkillRevision, c.SkillDigest, c.ReviewActor, c.ReviewedAt = "promoted", skillID, revision, digest, actor, &now
 		payload, _ := json.Marshal(c)
 		_, err := tx.ExecContext(ctx, "UPDATE dream_candidates SET status=?,payload=? WHERE id=? AND status='pending'", c.Status, payload, id)
 		return err

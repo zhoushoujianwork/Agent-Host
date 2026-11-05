@@ -21,6 +21,7 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	fs := flag.NewFlagSet("dream "+action, flag.ContinueOnError)
 	fs.SetOutput(errout)
 	var home, source, person, agent, audience, scope, status, id, actor, note, config, dreamConfig, skillsRoot, format string
+	var targetSkillID, targetSkillDigest string
 	var timeoutText string
 	var limit int
 	var revision int
@@ -31,6 +32,10 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	fs.IntVar(&limit, "limit", 50, "bounded result limit")
 	fs.StringVar(&timeoutText, "timeout", "5m", "extraction timeout")
 	fs.IntVar(&revision, "revision", 0, "expected authoritative revision")
+	var targetSkillRevision int
+	fs.StringVar(&targetSkillID, "target-skill-id", "", "exact managed Skill target")
+	fs.IntVar(&targetSkillRevision, "target-skill-revision", 0, "exact observed managed Skill revision")
+	fs.StringVar(&targetSkillDigest, "target-skill-digest", "", "exact observed managed Skill digest")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -118,6 +123,27 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 			return err
 		}
 		return encode(items)
+	case "cleanup-list":
+		items, err := partitioned.DreamCleanupRecords(ctx, p, status, limit)
+		if err != nil {
+			return err
+		}
+		return encode(items)
+	case "work-list":
+		items, err := partitioned.DreamWorkItems(ctx, p, status, limit)
+		if err != nil {
+			return err
+		}
+		return encode(items)
+	case "work-show":
+		if id == "" {
+			return errors.New("dream work-show requires --id")
+		}
+		item, err := partitioned.DreamWorkItem(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		return encode(item)
 	case "show":
 		if id == "" {
 			return errors.New("dream show requires --id")
@@ -183,7 +209,7 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 		if item.Partition != p {
 			return errors.New("dream candidate does not match exact requested partition")
 		}
-		entry, err := dream.PromoteSkill(ctx, partitioned, id, skillsRoot, actor)
+		entry, err := dream.PromoteSkillWithTarget(ctx, partitioned, id, skillsRoot, actor, dream.SkillTarget{ID: targetSkillID, Revision: targetSkillRevision, Digest: targetSkillDigest})
 		if err != nil {
 			return err
 		}
