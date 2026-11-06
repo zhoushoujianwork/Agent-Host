@@ -101,6 +101,59 @@ class DreamViewTests(unittest.TestCase):
         metadata["manifest_sha256"][digest] = hashlib.sha256(raw).hexdigest()
         self.write_private(metadata_path, (json.dumps(metadata) + "\n").encode())
 
+    def go_empty_shared_bundle(self):
+        source = """package main
+
+import (
+    "encoding/json"
+    "os"
+    "strings"
+    "time"
+
+    "agent-host/internal/dream"
+    "agent-host/internal/state"
+)
+
+func main() {
+    target := state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+    sourcePartition := state.DreamPartition{PersonID: "raw-source", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+    source := dream.SharedHOTSource{Metadata: dream.HOTProjectionSource{
+        ID: "source", StateHome: "/operator/configured/source", Partition: sourcePartition,
+        Account: &dream.HOTProjectionAccount{Channel: "dingtalk", AccountID: "app", TenantID: "tenant", SenderID: "raw-source"},
+        Kinds: []string{"preference"},
+    }}
+    bundle, err := dream.ExportSharedHOT(target, "alice", "alice-share", 2, strings.Repeat("b", 64), strings.Repeat("c", 64), []dream.SharedHOTSource{source}, time.Unix(0, 0).UTC())
+    if err != nil {
+        panic(err)
+    }
+    if err := json.NewEncoder(os.Stdout).Encode(bundle); err != nil {
+        panic(err)
+    }
+}
+"""
+        repository = HERE.parents[1]
+        with tempfile.TemporaryDirectory(prefix="dream-go-fixture-", dir=repository) as directory:
+            program = Path(directory) / "main.go"
+            program.write_text(source)
+            completed = subprocess.run(["go", "run", "."], cwd=directory, check=False, capture_output=True)
+        self.assertEqual(completed.returncode, 0, completed.stdout.decode() + completed.stderr.decode())
+        return json.loads(completed.stdout), completed.stdout
+
+    def install_go_bundle(self, bundle, raw):
+        partition_root, _ = self.publication()
+        digest = bundle["digest"]
+        version = partition_root / "versions" / digest
+        version.mkdir(mode=0o700)
+        for name, text in bundle["documents"].items():
+            self.write_private(version / name, text.encode())
+        self.write_private(version / "manifest.json", raw)
+        metadata_path = partition_root / "partition.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["manifest_sha256"][digest] = hashlib.sha256(raw).hexdigest()
+        self.write_private(metadata_path, (json.dumps(metadata) + "\n").encode())
+        (partition_root / "current").unlink()
+        (partition_root / "current").symlink_to("versions/" + digest)
+
     def coordination(self):
         coordination = self.root.parent / "coordination"
         anchor_dir = self.home / ".dream-coordination" / "targets"
@@ -177,11 +230,40 @@ class DreamViewTests(unittest.TestCase):
         detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
         self.assertEqual(detail["current"]["projection"]["canonical_person_id"], "alice")
         self.assertEqual(detail["current"]["projection"]["sources"][0]["state_home"], "/operator/configured/source")
+        references = projection["memories"]
+        projection["memories"] = None
+        self.rewrite_manifest("dream-hot-v2", manifest)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "error")
+        self.assertIn("do not match", detail["error"])
+        projection["memories"] = references
         projection["memories"][0]["source_id"] = "unknown"
         self.rewrite_manifest("dream-hot-v2", manifest)
         detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
         self.assertEqual(detail["status"], "error")
         self.assertIn("memory reference", detail["error"])
+        projection["memories"][0]["source_id"] = "ding"
+        del projection["memories"]
+        self.rewrite_manifest("dream-hot-v2", manifest)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "error")
+        self.assertIn("projection identity", detail["error"])
+        projection["memories"] = {}
+        self.rewrite_manifest("dream-hot-v2", manifest)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "error")
+        self.assertIn("projection limits", detail["error"])
+
+    def test_real_go_empty_shared_projection_null_is_normalized(self):
+        bundle, raw = self.go_empty_shared_bundle()
+        self.assertIsNone(bundle["memories"])
+        self.assertIn("memories", bundle["projection"])
+        self.assertIsNone(bundle["projection"]["memories"])
+        self.install_go_bundle(bundle, raw)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "current")
+        self.assertEqual(detail["current"]["memories"], [])
+        self.assertEqual(detail["current"]["projection"]["memories"], [])
 
     def test_authorization_and_unified_cleanup_are_read_only_metadata(self):
         self.publication()

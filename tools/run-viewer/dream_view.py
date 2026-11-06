@@ -112,6 +112,11 @@ def _projection(value, memories):
         raise ValueError("invalid Dream shared projection authorization")
     sources = value["sources"]
     references = value["memories"]
+    normalized = value
+    if references is None:
+        references = []
+        normalized = dict(value)
+        normalized["memories"] = references
     if not isinstance(sources, list) or not 1 <= len(sources) <= PROJECTION_SOURCE_LIMIT or not isinstance(references, list) or len(references) > PROJECTION_MEMORY_LIMIT:
         raise ValueError("invalid Dream shared projection limits")
     source_ids = set()
@@ -158,7 +163,7 @@ def _projection(value, memories):
         observed_order.append(item)
     if observed != expected or observed_order != expected_order or observed_order != sorted(observed_order):
         raise ValueError("Dream shared memory references do not match the manifest")
-    return value
+    return normalized
 
 
 def _catalogs(catalog):

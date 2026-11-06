@@ -15,6 +15,7 @@
 - `sharing_policy` 是 Dream 配置中的显式可选绝对路径；使用它必须同时启用 `hot_enabled` 并配置 `hot_root`。策略和 `users.json` 均须是 canonical、owner-private 文件，并在每次请求/刷新/后台发布时从可信配置位置重读。删除、变化、歧义、来源不可读或绑定错位都会失败，不回退本地 v1 或磁盘旧 `current`。
 - 来源只读 API 精确读取 `person + Agent + audience + scope` 下 `active`、未过期、`source_type=dream_reviewed` 的当前 memory revision。每个显式来源按 ID 确定顺序最多读取 200 条，再按策略 kinds 过滤；这个读取预算独立于 Dream 提炼 `batch`，因此较小的提炼批次不会让未挂载 kind 挤掉后续可共享项。SQLite 以 `mode=ro`、`query_only` 打开且不迁移；file-memory 直接有界验证 marker/manifest/current revision，domain 元数据和选中 revision 共用 32 MiB 总预算，不取锁、不创建 cache、不回写来源。
 - `dream-hot-v2` 在 v1 文档与 memory manifest 外保存 canonical person、mount、generation、策略/绑定摘要、来源账户/分区/kinds 和 memory revision 引用。正文先按完全相同的 `kind + text` 分组，在实际 `USER/MEMORY/TASKS` 行中以 `[source:<id,...>]` 标注全部来源，再按确定顺序套用 12 KiB 总正文预算；不同文本不做语义融合或冲突裁决。目标仍是策略指定的既有四维分区，旧 DB 的 raw person 和主键不改名。
+- Go 对无记忆共享投影会把明确存在的 `projection.memories` 编码为 `null`；工作台仅在 manifest 同样没有 memory 引用时把它规范化为空列表。字段缺失、其他类型或与非空 manifest 引用不一致仍按损坏快照拒绝，原始 manifest 字节及摘要验证不变。
 - 共享仅限私人入口。渠道身份必须逐项等于准入得到的 provider/account/tenant/sender；群聊无 HOT。CLI 只承认硬编码 `local-owner`、`owner` audience 和 canonical `owner`，不能自报其他 person。来源与目标必须同 Agent；`project_fact`、`active_task` 必须同 scope，只有显式列出的 `preference` 可以跨 scope。
 - 多来源读取不是跨 DB 全局事务：每个来源分别取得经过前后 manifest 校验的只读快照，然后再次核验策略与绑定摘要。任何一步变化都会中止本次发布。正文、generation 或 binding digest 的任一变化都会改变 runtime fingerprint；已经在途的模型上下文无法被擦除。
 
