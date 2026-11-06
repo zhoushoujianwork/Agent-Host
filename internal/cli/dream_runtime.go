@@ -32,6 +32,8 @@ type dreamRuntimeConfig struct {
 	SourceRoot           string   `json:"source_root"`
 	MemoryOffloadConfig  string   `json:"memory_offload_config"`
 	CacheRoot            string   `json:"cache_root"`
+	HotRoot              string   `json:"hot_root,omitempty"`
+	SharingPolicy        string   `json:"sharing_policy,omitempty"`
 	PersonID             string   `json:"person_id"`
 	AgentID              string   `json:"agent_id"`
 	AudienceID           string   `json:"audience_id"`
@@ -54,6 +56,9 @@ func dreamRuntimeConfigID(path string, c *dreamRuntimeConfig) string {
 func startDreamBackground(ctx context.Context, store *state.Store, o options) (func(), <-chan error, error) {
 	c, err := loadDreamRuntime(o.dreamConfig)
 	if err != nil {
+		if invalidateErr := dream.InvalidateAuthorizationsForConfig(ctx, store.Home(), o.dreamConfig, "runtime", "dream configuration is unavailable"); invalidateErr != nil {
+			return nil, nil, errors.Join(err, invalidateErr)
+		}
 		return nil, nil, err
 	}
 	if c == nil || !c.Enabled {
@@ -104,12 +109,9 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 			}
 		}
 		if c.HotEnabled {
-			bundle, exportErr := dream.ExportHOT(runCtx, pstore, partition, time.Now().UTC(), c.Batch)
+			bundle, exportErr := exportAndPublishRuntimeHOT(runCtx, store, o, c)
 			if exportErr != nil {
 				return receipts, errors.Join(processErr, exportErr)
-			}
-			if _, publishErr := dream.PublishHOT(c.CacheRoot, bundle); publishErr != nil {
-				return receipts, errors.Join(processErr, publishErr)
 			}
 			retention, _ := time.ParseDuration(c.CleanupRetention)
 			cleanup, cleanupErr := dream.CleanupHOT(runCtx, pstore, c.CacheRoot, bundle, time.Now().UTC(), retention, c.Batch)
@@ -117,6 +119,13 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("dream HOT cleanup skipped: %v", cleanup.Skipped))
 			}
 			processErr = errors.Join(processErr, cleanupErr)
+			if c.HotRoot != "" {
+				currentCleanup, currentCleanupErr := dream.CleanupCurrent(runCtx, c.HotRoot, dream.HOTSource{StateHome: store.Home(), ConfigID: dreamRuntimeConfigID(o.dreamConfig, c)}, partition, time.Now().UTC(), retention, c.Batch)
+				if len(currentCleanup.Skipped) > 0 {
+					currentCleanupErr = errors.Join(currentCleanupErr, fmt.Errorf("dream current cleanup skipped: %v", currentCleanup.Skipped))
+				}
+				processErr = errors.Join(processErr, currentCleanupErr)
+			}
 		}
 		return receipts, processErr
 	}}
@@ -161,6 +170,32 @@ func loadDreamRuntime(path string) (*dreamRuntimeConfig, error) {
 	}
 	if c.DraftSkills && !c.Enabled {
 		return nil, errors.New("draft_skills requires enabled idle Dream lifecycle")
+	}
+	if c.HotRoot != "" {
+		if !c.HotEnabled {
+			return nil, errors.New("dream hot_root requires hot_enabled")
+		}
+		if err := validateDreamPath(c.HotRoot, true); err != nil {
+			return nil, errors.New("dream unified HOT root: " + err.Error())
+		}
+	}
+	if c.SharingPolicy != "" {
+		if !c.HotEnabled {
+			return nil, errors.New("dream sharing_policy requires hot_enabled")
+		}
+		if c.HotRoot == "" {
+			return nil, errors.New("dream sharing_policy requires hot_root for durable coordination")
+		}
+		if !filepath.IsAbs(c.SharingPolicy) || filepath.Clean(c.SharingPolicy) != c.SharingPolicy {
+			return nil, errors.New("dream sharing policy must be an absolute clean path")
+		}
+		canonical, pathErr := filepath.EvalSymlinks(c.SharingPolicy)
+		if pathErr != nil || canonical != c.SharingPolicy {
+			return nil, errors.New("dream sharing policy must exist without symlink ancestry")
+		}
+		if _, pathErr = privateServicePath(c.SharingPolicy, false); pathErr != nil {
+			return nil, errors.New("dream sharing policy: " + pathErr.Error())
+		}
 	}
 	if !c.Enabled && !c.HotEnabled {
 		return &c, nil
@@ -308,26 +343,68 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 	if c.AgentID != o.agentID || c.AudienceID != o.audienceID || c.Scope != o.scope {
 		return nil
 	}
-	p := state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}
-	bundle, err := dream.ExportHOT(context.Background(), store.WithPartition(c.AgentID, c.AudienceID), p, time.Now().UTC(), c.Batch)
+	_, err = exportAndPublishRuntimeHOT(context.Background(), store, *o, c)
 	if err != nil {
-		return err
-	}
-	if _, err = dream.PublishHOT(c.CacheRoot, bundle); err != nil {
 		return err
 	}
 	o.hotPersonID, o.hotAgentID, o.hotAudienceID, o.hotScope = c.PersonID, c.AgentID, c.AudienceID, c.Scope
 	o.hotRefresh = func(ctx context.Context) ([]harness.PresetDocument, string, error) {
-		next, e := dream.ExportHOT(ctx, store.WithPartition(c.AgentID, c.AudienceID), p, time.Now().UTC(), c.Batch)
+		next, e := exportAndPublishRuntimeHOT(ctx, store, *o, c)
 		if e != nil {
-			return nil, "", e
-		}
-		if _, e = dream.PublishHOT(c.CacheRoot, next); e != nil {
 			return nil, "", e
 		}
 		return dream.PresetDocuments(next), next.Digest, nil
 	}
 	return nil
+}
+
+func publishDreamCurrent(ctx context.Context, c *dreamRuntimeConfig, configPath, stateHome string, bundle dream.HOTBundle) error {
+	if c == nil || c.HotRoot == "" {
+		return nil
+	}
+	_, err := dream.PublishCurrentContext(ctx, c.HotRoot, dream.HOTSource{StateHome: stateHome, ConfigID: dreamRuntimeConfigID(configPath, c)}, bundle)
+	return err
+}
+
+func exportAndPublishRuntimeHOT(ctx context.Context, store *state.Store, o options, captured *dreamRuntimeConfig) (dream.HOTBundle, error) {
+	if captured == nil {
+		return dream.HOTBundle{}, errors.New("dream HOT runtime configuration is missing")
+	}
+	target := state.DreamPartition{PersonID: captured.PersonID, AgentID: captured.AgentID, AudienceID: captured.AudienceID, Scope: captured.Scope}
+	if captured.SharingPolicy == "" {
+		hadSharedAuthorization, revokeErr := dream.InvalidateAuthorizationIfPresent(ctx, dream.CoordinationTarget{StateHome: store.Home(), Partition: target}, "runtime", "sharing_policy was removed from the trusted target configuration")
+		if revokeErr != nil {
+			return dream.HOTBundle{}, revokeErr
+		}
+		if hadSharedAuthorization {
+			return dream.HOTBundle{}, errors.New("dream shared authorization was revoked; local HOT cannot replace it implicitly")
+		}
+		fresh, err := loadDreamRuntime(o.dreamConfig)
+		if err != nil || fresh == nil || !fresh.HotEnabled || fresh.SharingPolicy != "" || (state.DreamPartition{PersonID: fresh.PersonID, AgentID: fresh.AgentID, AudienceID: fresh.AudienceID, Scope: fresh.Scope}) != target {
+			if err == nil {
+				err = errors.New("dream runtime configuration changed; restart is required")
+			}
+			return dream.HOTBundle{}, err
+		}
+		bundle, err := exportRuntimeHOT(ctx, store, o, fresh)
+		if err == nil {
+			_, err = dream.PublishHOT(fresh.CacheRoot, bundle)
+		}
+		if err == nil {
+			err = publishDreamCurrent(ctx, fresh, o.dreamConfig, store.Home(), bundle)
+		}
+		return bundle, err
+	}
+	coordinationTarget := dream.CoordinationTarget{StateHome: store.Home(), ConfigID: dreamRuntimeConfigID(o.dreamConfig, captured), ConfigPath: o.dreamConfig, HotRoot: captured.HotRoot, PolicyPath: captured.SharingPolicy, Partition: target}
+	bundle, _, err := dream.CoordinateSharedPublish(ctx, coordinationTarget, func() (dream.AuthorizationObservation, dream.SharedHOTBuilder, error) {
+		return prepareRuntimeSharedHOT(ctx, store, o, captured)
+	}, func(bundle dream.HOTBundle) error {
+		if _, publishErr := dream.PublishHOT(captured.CacheRoot, bundle); publishErr != nil {
+			return publishErr
+		}
+		return publishDreamCurrent(ctx, captured, o.dreamConfig, store.Home(), bundle)
+	})
+	return bundle, err
 }
 
 func bindDreamHOT(store *state.Store, o *options, personID string, private bool) error {
@@ -336,11 +413,25 @@ func bindDreamHOT(store *state.Store, o *options, personID string, private bool)
 		return nil
 	}
 	c, err := loadDreamRuntime(o.dreamConfig)
-	if err != nil || c == nil || !c.HotEnabled {
+	if err != nil {
+		if store != nil {
+			_, invalidateErr := dream.InvalidateAuthorizationIfPresent(context.Background(), dream.CoordinationTarget{StateHome: store.Home(), Partition: state.DreamPartition{PersonID: personID, AgentID: o.agentID, AudienceID: o.audienceID, Scope: o.scope}}, "runtime", "dream configuration is unavailable for the trusted target")
+			err = errors.Join(err, invalidateErr)
+		}
 		return err
+	}
+	if c == nil {
+		return nil
 	}
 	if c.PersonID != personID || c.AgentID != o.agentID || c.AudienceID != o.audienceID || c.Scope != o.scope {
 		return nil
+	}
+	if !c.HotEnabled {
+		if store == nil {
+			return nil
+		}
+		_, invalidateErr := dream.InvalidateAuthorizationIfPresent(context.Background(), dream.CoordinationTarget{StateHome: store.Home(), Partition: state.DreamPartition{PersonID: personID, AgentID: o.agentID, AudienceID: o.audienceID, Scope: o.scope}}, "runtime", "dream sharing was disabled for the trusted target")
+		return invalidateErr
 	}
 	return prepareDreamHOT(store, o)
 }
@@ -403,6 +494,7 @@ func validateFullHostChannelDream(ctx context.Context, store *state.Store, o *op
 	}
 	p := state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}
 	o.dreamValidatedPartition = &p
+	o.dreamSharingIdentity = dreamSharingIdentity{Account: &userAccount{Channel: channelID, AccountID: accountID, TenantID: tenantID, SenderID: personID}, OwnerID: personID}
 	return nil
 }
 

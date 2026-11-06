@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/dream"
 	"agent-host/internal/state"
 )
 
@@ -41,6 +42,15 @@ func workbenchFixture(t *testing.T) serviceLayout {
 	}
 	store.Close()
 	return layout
+}
+
+func TestServiceAppRootMatchesManagedAndCLILayouts(t *testing.T) {
+	if got := serviceAppRoot(serviceLayout{Root: "/app/channels/dingtalk"}); got != "/app" {
+		t.Fatal("unified managed service root mismatch", got)
+	}
+	if got := serviceAppRoot(serviceLayout{Root: "/app", Config: "/app/config"}); got != "/app" {
+		t.Fatal("CLI workbench root mismatch", got)
+	}
 }
 
 func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
@@ -222,6 +232,71 @@ func TestServiceWorkbenchIncludesCLIStateSource(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(index.Channels, ","), "cli") {
 		t.Fatal("workbench omitted the CLI chat source", index)
+	}
+}
+
+func TestServiceWorkbenchReadsGoPublishedDreamCurrent(t *testing.T) {
+	python, err := exec.LookPath(testWorkbenchPython())
+	if err != nil {
+		t.Fatal("workbench requires Python 3.9+:", err)
+	}
+	layout := workbenchFixture(t)
+	hotRoot := filepath.Join(layout.Root, "dream", "hot")
+	if err = os.MkdirAll(hotRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	partition := state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+	bundle, err := dream.ExportSharedHOT(partition, "owner", "owner-share", 2, strings.Repeat("a", 64), strings.Repeat("b", 64), []dream.SharedHOTSource{{
+		Metadata: dream.HOTProjectionSource{ID: "cli", StateHome: layout.State, Partition: partition, LocalOwner: true, Kinds: []string{"preference"}},
+		Memories: []state.Memory{{ID: "memory", SenderID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope", Kind: "preference", Text: "user", Status: "active", Revision: 2, SourceType: "dream_reviewed"}},
+	}}, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dream.PublishCurrent(hotRoot, dream.HOTSource{StateHome: layout.State, ConfigID: "config-id"}, bundle); err != nil {
+		t.Fatal(err)
+	}
+	var notice bytes.Buffer
+	stop, err := startServiceWorkbench(t.Context(), layout, python, 0, false, &notice, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	address := strings.Fields(notice.String())[2]
+	response, err := http.Get(address + "api/dream/partitions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var index struct {
+		Partitions []struct {
+			ID string `json:"id"`
+		} `json:"partitions"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&index)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || len(index.Partitions) != 1 {
+		t.Fatal("Go Dream publication was not listed", index, response.StatusCode, err)
+	}
+	response, err = http.Get(address + "api/dream/partition?id=" + index.Partitions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var detail struct {
+		Status  string `json:"status"`
+		Error   string `json:"error"`
+		Current struct {
+			Digest     string            `json:"digest"`
+			Documents  map[string]string `json:"documents"`
+			Projection struct {
+				CanonicalPersonID string `json:"canonical_person_id"`
+				Generation        int    `json:"generation"`
+			} `json:"projection"`
+		} `json:"current"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&detail)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || detail.Status != "current" || detail.Current.Digest != bundle.Digest || detail.Current.Documents["USER.md"] != bundle.Documents["USER.md"] || detail.Current.Projection.CanonicalPersonID != "owner" || detail.Current.Projection.Generation != 2 {
+		t.Fatal("Python viewer did not verify Go Dream bytes", detail, response.StatusCode, err)
 	}
 }
 

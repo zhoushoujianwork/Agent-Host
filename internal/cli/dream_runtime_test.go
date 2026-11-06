@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"agent-host/internal/dream"
 	"agent-host/internal/harness"
 	"agent-host/internal/state"
 )
@@ -51,6 +54,75 @@ func TestDreamRuntimeHotOnlyAndStrictConfig(t *testing.T) {
 	oversized := writeDreamConfig(t, strings.Repeat(" ", 65<<10))
 	if _, err = loadDreamRuntime(oversized); err == nil {
 		t.Fatal("oversized dream config was accepted")
+	}
+}
+
+func TestDreamRuntimeUnifiedHotRootOptInAndCompatibility(t *testing.T) {
+	cache, _ := filepath.EvalSymlinks(t.TempDir())
+	hotRoot, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(cache, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(hotRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := `"hot_enabled":true,"cache_root":"` + cache + `","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","batch":10`
+	path := writeDreamConfig(t, `{`+base+`,"hot_root":"`+hotRoot+`"}`)
+	c, err := loadDreamRuntime(path)
+	if err != nil || c.HotRoot != hotRoot {
+		t.Fatalf("unified HOT root did not load: %+v %v", c, err)
+	}
+	disabled := writeDreamConfig(t, `{"hot_root":"`+hotRoot+`"}`)
+	if _, err = loadDreamRuntime(disabled); err == nil || !strings.Contains(err.Error(), "requires hot_enabled") {
+		t.Fatal("disabled Dream accepted hot_root", err)
+	}
+	linked := filepath.Join(t.TempDir(), "hot")
+	if err = os.Symlink(hotRoot, linked); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := writeDreamConfig(t, `{`+base+`,"hot_root":"`+linked+`"}`)
+	if _, err = loadDreamRuntime(unsafe); err == nil {
+		t.Fatal("symlinked hot_root was accepted")
+	}
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o := options{home: home, dreamConfig: path, agentID: "agent", audienceID: "owner", scope: "scope"}
+	if err = prepareDreamHOT(store, &o); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(hotRoot)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("unified HOT publication missing: %v %v", entries, err)
+	}
+	if _, err = os.Readlink(filepath.Join(hotRoot, entries[0].Name(), "current")); err != nil {
+		t.Fatal("unified current missing", err)
+	}
+	if o.hotRefresh == nil {
+		t.Fatal("HOT refresh was not installed")
+	}
+	if _, _, err = o.hotRefresh(t.Context()); err != nil {
+		t.Fatal("HOT refresh did not republish unified current", err)
+	}
+
+	legacyPath := writeDreamConfig(t, `{`+base+`}`)
+	legacy, err := loadDreamRuntime(legacyPath)
+	if err != nil || legacy.HotRoot != "" {
+		t.Fatalf("legacy config changed: %+v %v", legacy, err)
+	}
+	before, _ := os.ReadDir(hotRoot)
+	if err = publishDreamCurrent(context.Background(), legacy, legacyPath, home, dream.HOTBundle{}); err != nil {
+		t.Fatal("empty hot_root did not preserve legacy behavior", err)
+	}
+	after, _ := os.ReadDir(hotRoot)
+	if len(after) != len(before) {
+		t.Fatal("legacy config published unified HOT")
 	}
 }
 
@@ -149,6 +221,9 @@ func TestDreamSkillDraftOptInRequiresValidatedOwnerToken(t *testing.T) {
 	want := state.DreamPartition{PersonID: "owner", AgentID: "agent", AudienceID: state.OwnerAudienceID, Scope: "scope"}
 	if validated.dreamValidatedPartition == nil || *validated.dreamValidatedPartition != want {
 		t.Fatalf("validated token mismatch: %+v", validated.dreamValidatedPartition)
+	}
+	if validated.dreamSharingIdentity.Account == nil || *validated.dreamSharingIdentity.Account != (userAccount{Channel: "dingtalk", AccountID: "app", TenantID: "tenant", SenderID: "owner"}) || validated.dreamSharingIdentity.OwnerID != "owner" {
+		t.Fatalf("validated channel identity mismatch: %+v", validated.dreamSharingIdentity)
 	}
 	if err = validateFullHostChannelDream(context.Background(), store, &validated, agents, "other", "dingtalk", "app", "tenant"); err == nil || validated.dreamValidatedPartition != nil {
 		t.Fatal("failed validation retained prior trust token", err)
@@ -276,6 +351,101 @@ func TestDreamHOTExcludesGroupsAndDifferentPeopleBeforeStoreAccess(t *testing.T)
 	}
 }
 
+func TestBindDreamHOTMismatchDoesNotRevokeAnotherPartition(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	home, hot, cache := filepath.Join(root, "home"), filepath.Join(root, "hot"), filepath.Join(root, "cache")
+	for _, path := range []string{home, hot, cache} {
+		if err = os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dreamPath := writeDreamConfig(t, `{"hot_enabled":true,"cache_root":"`+cache+`","hot_root":"`+hot+`","person_id":"other-person","agent_id":"other-agent","audience_id":"other-audience","scope":"other-scope","batch":1}`)
+	p := state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+	target := dream.CoordinationTarget{StateHome: home, ConfigID: "config", ConfigPath: dreamPath, HotRoot: hot, PolicyPath: filepath.Join(root, "sharing.json"), Partition: p}
+	_, _, err = dream.CoordinateSharedPublish(context.Background(), target, func() (dream.AuthorizationObservation, dream.SharedHOTBuilder, error) {
+		return dream.AuthorizationObservation{Generation: 1, PolicyDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), MountID: "mount", CanonicalPersonID: "person"}, func(a dream.HOTAuthority) (dream.HOTBundle, error) {
+			return dream.HOTBundle{Digest: strings.Repeat("d", 64), Authority: &a}, nil
+		}, nil
+	}, func(dream.HOTBundle) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o := options{dreamConfig: dreamPath, agentID: p.AgentID, audienceID: p.AudienceID, scope: p.Scope}
+	if err = bindDreamHOT(store, &o, p.PersonID, true); err != nil {
+		t.Fatal(err)
+	}
+	status, err := dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "active" {
+		t.Fatal("mismatched private request revoked another partition", status, err)
+	}
+	if err = os.WriteFile(dreamPath, []byte(`{"broken":`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = bindDreamHOT(store, &o, "another-person", true); err == nil {
+		t.Fatal("invalid config was silently accepted")
+	}
+	status, err = dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "active" {
+		t.Fatal("another private request revoked the target partition", status, err)
+	}
+	if err = bindDreamHOT(store, &o, p.PersonID, true); err == nil {
+		t.Fatal("invalid config was silently accepted for the target")
+	}
+	status, err = dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "invalid" {
+		t.Fatal("target config failure did not revoke its authorization", status, err)
+	}
+	if err = os.WriteFile(dreamPath, []byte(`{"person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = bindDreamHOT(store, &o, p.PersonID, true); err != nil {
+		t.Fatal(err)
+	}
+	status, err = dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "invalid" {
+		t.Fatal("restoring old target configuration bypassed invalid authorization", status, err)
+	}
+	_, _, err = dream.CoordinateSharedPublish(context.Background(), target, func() (dream.AuthorizationObservation, dream.SharedHOTBuilder, error) {
+		return dream.AuthorizationObservation{Generation: 2, PolicyDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), MountID: "mount", CanonicalPersonID: "person"}, func(a dream.HOTAuthority) (dream.HOTBundle, error) {
+			return dream.HOTBundle{Digest: strings.Repeat("e", 64), Authority: &a}, nil
+		}, nil
+	}, func(dream.HOTBundle) error { return nil })
+	if err != nil {
+		t.Fatal("higher generation did not restore fixture", err)
+	}
+	if err = os.Remove(dreamPath); err != nil {
+		t.Fatal(err)
+	}
+	if err = bindDreamHOT(store, &o, p.PersonID, true); err == nil {
+		t.Fatal("deleted target config was silently accepted")
+	}
+	status, err = dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "invalid" {
+		t.Fatal("deleted target config did not revoke authorization", status, err)
+	}
+	if err = os.WriteFile(dreamPath, []byte(`{"person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = bindDreamHOT(store, &o, p.PersonID, true); err != nil {
+		t.Fatal(err)
+	}
+	status, err = dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: home, Partition: p})
+	if err != nil || status.State != "invalid" {
+		t.Fatal("restoring deleted config bypassed invalid authorization", status, err)
+	}
+}
+
 func TestServiceForwardsDreamConfig(t *testing.T) {
 	path := "/private/config/dream.json"
 	for _, offload := range []string{"", "/private/config/offload.json"} {
@@ -335,4 +505,77 @@ func TestDreamStatusUsesCanonicalConfigIdentityAndReturnsLatestFirst(t *testing.
 	if result.ConfigID != dreamRuntimeConfigID(configPath, c) || len(result.Cycles) != 1 || result.Cycles[0].Status != "failed" {
 		t.Fatalf("unexpected status result: %+v", result)
 	}
+}
+
+func TestDreamAuthorizationAndRevokeCLIWithoutOpeningStateDB(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	home, hot := filepath.Join(root, "home"), filepath.Join(root, "hot")
+	for _, path := range []string{home, hot} {
+		if err = os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+	target := dream.CoordinationTarget{StateHome: home, ConfigID: "config", ConfigPath: filepath.Join(root, "dream.json"), HotRoot: hot, PolicyPath: filepath.Join(root, "sharing.json"), Partition: p}
+	_, _, err = dream.CoordinateSharedPublish(context.Background(), target, func() (dream.AuthorizationObservation, dream.SharedHOTBuilder, error) {
+		observation := dream.AuthorizationObservation{Generation: 1, PolicyDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), MountID: "mount", CanonicalPersonID: "person"}
+		return observation, func(authority dream.HOTAuthority) (dream.HOTBundle, error) {
+			return dream.HOTBundle{Digest: strings.Repeat("d", 64), Authority: &authority}, nil
+		}, nil
+	}, func(dream.HOTBundle) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"--home", home, "--person", p.PersonID, "--agent", p.AgentID, "--audience", p.AudienceID, "--memory-scope", p.Scope, "--format", "json"}
+	before := dreamTestFileSnapshot(t, root)
+	var out bytes.Buffer
+	if err = runDreamLifecycle(append([]string{"authorization"}, base...), &out, &out); err != nil {
+		t.Fatal(err, out.String())
+	}
+	if after := dreamTestFileSnapshot(t, root); !reflect.DeepEqual(before, after) {
+		t.Fatal("read-only authorization changed coordination files", before, after)
+	}
+	if strings.Contains(out.String(), `"state": "invalid"`) {
+		t.Fatal(out.String())
+	}
+	out.Reset()
+	args := append([]string{"revoke"}, base...)
+	args = append(args, "--actor", "operator", "--note", "explicit revoke")
+	if err = runDreamLifecycle(args, &out, &out); err != nil {
+		t.Fatal(err, out.String())
+	}
+	if !strings.Contains(out.String(), `"state": "invalid"`) {
+		t.Fatal(out.String())
+	}
+	if _, err = os.Lstat(filepath.Join(home, "state.db")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("authorization CLI opened business DB", err)
+	}
+}
+
+func dreamTestFileSnapshot(t *testing.T, root string) map[string]string {
+	t.Helper()
+	result := map[string]string{}
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type().IsRegular() {
+			body, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			name, _ := filepath.Rel(root, path)
+			result[name] = string(body)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return result
 }

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dream · Agent-Host</title>
+  <link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/dream.css">
+  <script src="/theme.js"></script><script src="/dream.js" defer></script>
+</head>
+<body>
+  <header><div><h1>Dream</h1><p>统一 HOT 的本地只读投影；查看不代表可注入授权。</p></div><button id="refresh" type="button">刷新</button></header>
+  <main>
+    <section class="selector"><label for="partition">分区 / 来源</label><select id="partition"></select><span id="state" role="status">正在加载…</span></section>
+    <section id="error" class="notice error" hidden></section><section id="warning" class="notice warning" hidden></section><section id="empty" class="notice" hidden>尚无统一 HOT 产物。</section>
+    <div id="content" hidden>
+      <section class="summary"><h2>当前 HOT</h2><dl id="summary"></dl></section>
+      <section><div id="document-tabs" class="tabs"></div><pre id="document"></pre></section>
+      <section><h2>快照记忆版本</h2><div id="memories"></div></section>
+      <section id="sharing" hidden><h2>共享投影来源</h2><div id="sharing-sources"></div><h3>来源记忆引用</h3><div id="sharing-memories"></div></section>
+      <section><h2>持久授权</h2><div id="authorization"></div></section>
+      <section><h2>统一版本回收</h2><div id="current-cleanup"></div></section>
+      <section class="grid">
+        <article><h2>整理周期</h2><div id="cycles"></div></article>
+        <article><h2>工作与待补证据</h2><div id="work"></div></article>
+        <article><h2>候选与 Skill 草稿</h2><div id="candidates"></div></article>
+        <article><h2>清理记录</h2><div id="cleanup"></div></article>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
