@@ -24,6 +24,8 @@ handoff 文件使用独立的持久名称游标，每轮读取最多 64 个目�
 
 每轮 canonical 分页上限为 64（较大的显式 batch 可提高到 batch，最大仍受 Store 200 条限制）。canonical 与 handoff 共用同一 `Batch` 模型尝试预算；已处理、待补证据和仍在退避的条目不消耗预算。提炼失败先持久化为 `retryable`，退避从一分钟开始并封顶一小时；Dream 不重放原业务任务。
 
+空闲检测对 schema 19 提供唯一的升级兼容例外：只读检查可读取未变化的 `runs` 和 `channel_messages` 前台活动字段，不初始化文件记忆、不写入或创建 schema 20 Dream 表。普通 Host、历史检查以及 schema 17、未知或未来版本仍严格拒绝未迁移状态；活跃的原生会话不需要为观察空闲状态而被中断或强制迁移。
+
 提炼输入把 `canonical-outcome.json` 放在原请求之前，并保留最终 execution/acceptance、输出与错误，避免仅因历史请求文本把已完成事项复活为 TASKS。模型只能引用 Host 建立的 artifact/event/tool allowlist。
 
 检查命令：
