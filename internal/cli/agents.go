@@ -412,9 +412,12 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 		id, audience = "default", "owner"
 	}
 	expectedPrivate := state.OwnerAudienceID
+	var admittedAccount *userAccount
 	if message.ConversationType != "2" && agents.users != nil {
+		account := userAccount{Channel: provider, AccountID: parent.ClientID, TenantID: message.TenantID, SenderID: message.SenderID}
+		admittedAccount = &account
 		var err error
-		expectedPrivate, err = agents.privateAudience(userAccount{Channel: provider, AccountID: parent.ClientID, TenantID: message.TenantID, SenderID: message.SenderID})
+		expectedPrivate, err = agents.privateAudience(account)
 		if err != nil {
 			return nil, err
 		}
@@ -433,6 +436,7 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 	if err := agents.userOptions(&o, audience, message.ConversationType == "2"); err != nil {
 		return nil, fmt.Errorf("load user profile: %w", err)
 	}
+	o.dreamSharingIdentity = dreamSharingIdentity{Account: admittedAccount, OwnerID: agents.ownerID}
 	if err := bindDreamHOT(parent.Store, &o, message.SenderID, message.ConversationType != "2"); err != nil {
 		return nil, err
 	}
@@ -475,6 +479,7 @@ func resolveAgentChannel(ctx context.Context, parent *channel.Service, agents ag
 		if err := resolveOptions(ctx, store, &selected, true); err != nil {
 			return nil, assembly.Runtime{}, err
 		}
+		selected.dreamSharingIdentity = dreamSharingIdentity{Account: admittedAccount, OwnerID: agents.ownerID}
 		if err := bindDreamHOT(parent.Store, &selected, message.SenderID, message.ConversationType != "2"); err != nil {
 			return nil, assembly.Runtime{}, err
 		}

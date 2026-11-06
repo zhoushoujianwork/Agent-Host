@@ -220,6 +220,9 @@ func TestDreamSkillDraftOptInRequiresValidatedOwnerToken(t *testing.T) {
 	if validated.dreamValidatedPartition == nil || *validated.dreamValidatedPartition != want {
 		t.Fatalf("validated token mismatch: %+v", validated.dreamValidatedPartition)
 	}
+	if validated.dreamSharingIdentity.Account == nil || *validated.dreamSharingIdentity.Account != (userAccount{Channel: "dingtalk", AccountID: "app", TenantID: "tenant", SenderID: "owner"}) || validated.dreamSharingIdentity.OwnerID != "owner" {
+		t.Fatalf("validated channel identity mismatch: %+v", validated.dreamSharingIdentity)
+	}
 	if err = validateFullHostChannelDream(context.Background(), store, &validated, agents, "other", "dingtalk", "app", "tenant"); err == nil || validated.dreamValidatedPartition != nil {
 		t.Fatal("failed validation retained prior trust token", err)
 	}

@@ -15,6 +15,10 @@ FILE_LIMIT = 8 << 20
 DOCUMENT_LIMIT = 1 << 20
 RECORD_LIMIT = 1 << 20
 RECORD_TOTAL_LIMIT = 4 << 20
+PROJECTION_SOURCE_LIMIT = 8
+PROJECTION_MEMORY_LIMIT = 1600
+SHARED_KINDS = {"preference", "project_fact", "active_task"}
+SAFE_ID_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 
 
 def _private_regular(path, limit):
@@ -39,9 +43,75 @@ def _partition(value):
     if not isinstance(value, dict) or set(value) != {"PersonID", "AgentID", "AudienceID", "Scope"}:
         raise ValueError("invalid Dream partition identity")
     result = tuple(value[name] for name in ("PersonID", "AgentID", "AudienceID", "Scope"))
-    if any(not isinstance(item, str) or not item or item.strip() != item for item in result):
+    if any(not isinstance(item, str) or not item or len(item) > 512 or item.strip() != item for item in result):
         raise ValueError("invalid Dream partition identity")
     return result
+
+
+def _safe_id(value):
+    return (isinstance(value, str) and 1 <= len(value) <= 64 and value[0] in SAFE_ID_CHARACTERS[:-2]
+            and all(character in SAFE_ID_CHARACTERS for character in value))
+
+
+def _digest(value):
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def _projection(value, memories):
+    required = {"canonical_person_id", "mount_id", "generation", "policy_digest", "binding_digest", "sources", "memories"}
+    if not isinstance(value, dict) or set(value) != required or not _safe_id(value["canonical_person_id"]) or not _safe_id(value["mount_id"]):
+        raise ValueError("invalid Dream shared projection identity")
+    if type(value["generation"]) is not int or value["generation"] < 1 or not _digest(value["policy_digest"]) or not _digest(value["binding_digest"]):
+        raise ValueError("invalid Dream shared projection authorization")
+    sources = value["sources"]
+    references = value["memories"]
+    if not isinstance(sources, list) or not 1 <= len(sources) <= PROJECTION_SOURCE_LIMIT or not isinstance(references, list) or len(references) > PROJECTION_MEMORY_LIMIT:
+        raise ValueError("invalid Dream shared projection limits")
+    source_ids = set()
+    previous_source = ""
+    for source in sources:
+        if not isinstance(source, dict) or not {"id", "state_home", "partition", "kinds"}.issubset(source) or not set(source) <= {"id", "state_home", "partition", "account", "local_owner", "kinds"}:
+            raise ValueError("invalid Dream shared source")
+        identifier, home, kinds = source["id"], source["state_home"], source["kinds"]
+        local_owner, account = source.get("local_owner", False), source.get("account")
+        if not _safe_id(identifier) or identifier in source_ids or identifier <= previous_source or not isinstance(home, str) or len(home) > 4096 or not os.path.isabs(home) or os.path.normpath(home) != home:
+            raise ValueError("invalid Dream shared source identity")
+        if type(local_owner) is not bool or (account is None) == (not local_owner):
+            raise ValueError("invalid Dream shared source admission")
+        if account is not None:
+            if not isinstance(account, dict) or set(account) != {"channel", "account_id", "tenant_id", "sender_id"} or account["channel"] not in {"dingtalk", "feishu"}:
+                raise ValueError("invalid Dream shared source account")
+            if any(not isinstance(account[name], str) or not account[name] or len(account[name]) > 512 or account[name].strip() != account[name] for name in ("account_id", "tenant_id", "sender_id")):
+                raise ValueError("invalid Dream shared source account")
+        if not isinstance(kinds, list) or not kinds or kinds != sorted(kinds) or len(kinds) > len(SHARED_KINDS) or len(set(kinds)) != len(kinds) or any(kind not in SHARED_KINDS for kind in kinds):
+            raise ValueError("invalid Dream shared source kinds")
+        _partition(source["partition"])
+        source_ids.add(identifier)
+        previous_source = identifier
+    expected, expected_order = set(), []
+    if len(memories) > PROJECTION_MEMORY_LIMIT:
+        raise ValueError("invalid Dream shared memory reference limit")
+    for memory in memories:
+        if not isinstance(memory, dict) or not isinstance(memory.get("id"), str) or ":" not in memory["id"]:
+            raise ValueError("invalid Dream shared manifest memory")
+        source_id, memory_id = memory["id"].split(":", 1)
+        item = (source_id, memory_id, memory.get("revision"), memory.get("kind"))
+        if item in expected:
+            raise ValueError("duplicate Dream shared manifest memory")
+        expected.add(item)
+        expected_order.append(item)
+    observed, observed_order = set(), []
+    for reference in references:
+        if not isinstance(reference, dict) or set(reference) != {"source_id", "memory_id", "revision", "kind"}:
+            raise ValueError("invalid Dream shared memory reference")
+        item = (reference["source_id"], reference["memory_id"], reference["revision"], reference["kind"])
+        if reference["source_id"] not in source_ids or not isinstance(reference["memory_id"], str) or not reference["memory_id"] or type(reference["revision"]) is not int or reference["revision"] < 1 or reference["kind"] not in SHARED_KINDS or item in observed:
+            raise ValueError("invalid Dream shared memory reference")
+        observed.add(item)
+        observed_order.append(item)
+    if observed != expected or observed_order != expected_order or observed_order != sorted(observed_order):
+        raise ValueError("Dream shared memory references do not match the manifest")
+    return value
 
 
 def _catalogs(catalog):
@@ -177,7 +247,8 @@ class DreamReader:
         if hashlib.sha256(manifest_raw).hexdigest() != expected:
             raise ValueError("Dream manifest bytes changed")
         manifest = _object(manifest_raw, "Dream manifest")
-        if manifest.get("version") != "dream-hot-v1" or manifest.get("digest") != digest or _partition(manifest.get("partition")) != _partition(row["partition"]):
+        version = manifest.get("version")
+        if version not in {"dream-hot-v1", "dream-hot-v2"} or manifest.get("digest") != digest or _partition(manifest.get("partition")) != _partition(row["partition"]):
             raise ValueError("Dream manifest identity mismatch")
         documents = manifest.get("documents")
         if not isinstance(documents, dict) or set(documents) != {"USER.md", "MEMORY.md", "TASKS.md"}:
@@ -197,10 +268,16 @@ class DreamReader:
                     expired = expired or datetime.datetime.fromisoformat(expiry.replace("Z", "+00:00")) <= now
                 except (TypeError, ValueError):
                     raise ValueError("Dream manifest expiry is invalid")
+        projection = manifest.get("projection")
+        if version == "dream-hot-v1" and projection is not None:
+            raise ValueError("Dream v1 manifest cannot contain a shared projection")
+        if version == "dream-hot-v2":
+            projection = _projection(projection, memories)
         source_mtime = datetime.datetime.fromtimestamp(manifest_info.st_mtime, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
         return {"status": "expired" if expired else "current", "snapshot_valid": not expired, "digest": digest,
                 "documents": documents, "memories": memories, "manifest_sha256": expected,
-                "source_mtime": source_mtime, "source_mtime_kind": "filesystem_mtime_not_content_generation"}
+                "source_mtime": source_mtime, "source_mtime_kind": "filesystem_mtime_not_content_generation",
+                "projection": projection}
 
     def _records(self, row):
         person, agent, audience, scope = _partition(row["partition"])

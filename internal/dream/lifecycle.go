@@ -280,11 +280,12 @@ type HOTManifestEntry struct {
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 type HOTBundle struct {
-	Version   string               `json:"version"`
-	Partition state.DreamPartition `json:"partition"`
-	Documents map[string]string    `json:"documents"`
-	Memories  []HOTManifestEntry   `json:"memories"`
-	Digest    string               `json:"digest"`
+	Version    string               `json:"version"`
+	Partition  state.DreamPartition `json:"partition"`
+	Documents  map[string]string    `json:"documents"`
+	Memories   []HOTManifestEntry   `json:"memories"`
+	Projection *HOTProjection       `json:"projection,omitempty"`
+	Digest     string               `json:"digest"`
 }
 
 func ExportHOT(ctx context.Context, store *state.Store, p state.DreamPartition, now time.Time, limit int) (HOTBundle, error) {
@@ -314,12 +315,24 @@ func ExportHOT(ctx context.Context, store *state.Store, p state.DreamPartition, 
 }
 
 func hotBundleDigest(b HOTBundle) string {
-	raw, _ := json.Marshal(struct {
+	legacy := struct {
 		Version   string
 		Partition state.DreamPartition
 		Documents map[string]string
 		Memories  []HOTManifestEntry
-	}{b.Version, b.Partition, b.Documents, b.Memories})
+	}{b.Version, b.Partition, b.Documents, b.Memories}
+	if b.Projection == nil {
+		raw, _ := json.Marshal(legacy)
+		sum := sha256.Sum256(raw)
+		return hex.EncodeToString(sum[:])
+	}
+	raw, _ := json.Marshal(struct {
+		Version    string
+		Partition  state.DreamPartition
+		Documents  map[string]string
+		Memories   []HOTManifestEntry
+		Projection *HOTProjection
+	}{b.Version, b.Partition, b.Documents, b.Memories, b.Projection})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
