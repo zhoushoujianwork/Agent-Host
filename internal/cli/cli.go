@@ -125,6 +125,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 `
 
 type options struct {
+	dreamValidatedPartition                                                            *state.DreamPartition
 	monitorResumeArgs                                                                  []string
 	monitorDirectory                                                                   string
 	resumeCanceledRun                                                                  string

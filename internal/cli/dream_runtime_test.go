@@ -62,6 +62,9 @@ func TestDreamRuntimeIdleDefaultsAndActivityRoots(t *testing.T) {
 	if err = os.Chmod(source, 0700); err != nil {
 		t.Fatal(err)
 	}
+	if err = os.Chmod(source, 0700); err != nil {
+		t.Fatal(err)
+	}
 	profileDir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -92,6 +95,83 @@ func TestDreamRuntimeIdleDefaultsAndActivityRoots(t *testing.T) {
 	bad := writeDreamConfig(t, `{"enabled":true,"source_root":"`+source+`","memory_offload_config":"`+profile+`","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","interval":"2m","timeout":"1m","batch":10,"activity_state_homes":["relative"]}`)
 	if _, err = loadDreamRuntime(bad); err == nil {
 		t.Fatal("relative activity state home was accepted")
+	}
+}
+
+func TestDreamSkillDraftOptInRequiresValidatedOwnerToken(t *testing.T) {
+	source, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	profileRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filepath.Join(profileRoot, "extractor.json")
+	if err = os.WriteFile(profile, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	skills, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(skills, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := writeDreamConfig(t, `{"enabled":true,"draft_skills":true,"skills_root":"`+skills+`","source_root":"`+source+`","memory_offload_config":"`+profile+`","person_id":"owner","agent_id":"agent","audience_id":"owner","scope":"scope","interval":"2m","timeout":"1m","batch":10}`)
+	c, err := loadDreamRuntime(path)
+	if err != nil || !c.DraftSkills || c.SkillsRoot != skills {
+		t.Fatalf("draft opt-in did not load: %+v %v", c, err)
+	}
+	store, err := state.Open(t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	base := options{dreamConfig: path, agentID: "agent", audienceID: state.OwnerAudienceID, scope: "scope"}
+	if _, _, err = startDreamBackground(context.Background(), store, base); err == nil || !strings.Contains(err.Error(), "authenticated channel Dream partition") {
+		t.Fatal("legacy runtime bypassed automatic draft trust token", err)
+	}
+	wrong := base
+	wrongPartition := state.DreamPartition{PersonID: "owner", AgentID: "agent", AudienceID: state.OwnerAudienceID, Scope: "other"}
+	wrong.dreamValidatedPartition = &wrongPartition
+	if _, _, err = startDreamBackground(context.Background(), store, wrong); err == nil || !strings.Contains(err.Error(), "matching authenticated") {
+		t.Fatal("mismatched trust token started automatic drafts", err)
+	}
+	agents := agentCatalog{DefaultAgent: "agent", Agents: []agentDefinition{{ID: "agent", Name: "Agent"}}, ownerID: "owner"}
+	validated := base
+	if err = validateFullHostChannelDream(context.Background(), store, &validated, agents, "owner", "dingtalk", "app", "tenant"); err != nil {
+		t.Fatal(err)
+	}
+	want := state.DreamPartition{PersonID: "owner", AgentID: "agent", AudienceID: state.OwnerAudienceID, Scope: "scope"}
+	if validated.dreamValidatedPartition == nil || *validated.dreamValidatedPartition != want {
+		t.Fatalf("validated token mismatch: %+v", validated.dreamValidatedPartition)
+	}
+	if err = validateFullHostChannelDream(context.Background(), store, &validated, agents, "other", "dingtalk", "app", "tenant"); err == nil || validated.dreamValidatedPartition != nil {
+		t.Fatal("failed validation retained prior trust token", err)
+	}
+}
+
+func TestDreamSkillDraftOptInRejectsNonOwnerAudience(t *testing.T) {
+	source, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(source, 0700); err != nil {
+		t.Fatal(err)
+	}
+	profileRoot, _ := filepath.EvalSymlinks(t.TempDir())
+	profile := filepath.Join(profileRoot, "extractor.json")
+	if err := os.WriteFile(profile, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	skills, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(skills, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := writeDreamConfig(t, `{"enabled":true,"draft_skills":true,"skills_root":"`+skills+`","source_root":"`+source+`","memory_offload_config":"`+profile+`","person_id":"member","agent_id":"agent","audience_id":"group","scope":"scope","interval":"2m","timeout":"1m","batch":10}`)
+	if _, err := loadDreamRuntime(path); err == nil || !strings.Contains(err.Error(), "owner audience") {
+		t.Fatal("group/nonowner automatic draft config was accepted", err)
 	}
 }
 

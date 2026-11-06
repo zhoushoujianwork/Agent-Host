@@ -510,7 +510,7 @@ func TestProgressMigration18PreservesHistoryAndNeverReplaysLegacy(t *testing.T) 
 		t.Fatal("history changed", before, after, err)
 	}
 	var version int
-	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 19 {
+	if err = upgraded.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != SchemaVersion {
 		t.Fatal(version, err)
 	}
 }

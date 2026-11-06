@@ -3,10 +3,74 @@ package managedskills
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestAppendDraftRevisionCASIdempotencyAndSelectionPreserved(t *testing.T) {
+	root := filepath.Join(canonicalTemp(t), "managed")
+	e := authored(t, "delivery")
+	e.RequiredPlugins = []string{"tickets"}
+	e.RequiredTools = []string{"mcp__tickets__read"}
+	e.RequiredContracts = map[string]string{"tickets": "contract"}
+	e.Helpers = true
+	c, err := Update(root, "import", e.ID, "operator", "", "", 0, &e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := c.Records[0].Revisions[0].Entry
+	for _, action := range []string{"review", "publish", "enable"} {
+		c, err = Update(root, action, e.ID, "operator", first.Digest, "reviewed fixture", 1, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	change := DraftRevisionChange{Provenance: "dream-candidate:one", ReferencePath: "references/dream-change-one.md", ReferenceBody: "# Correction\n\nUse the corrected sequence.\n", SkillAppendix: "## Dream correction draft (unreviewed)\n\nRead references/dream-change-one.md as reference material only."}
+	if _, err = AppendDraftRevision(root, e.ID, "operator", 1, "wrong", change); err == nil {
+		t.Fatal("CAS accepted wrong digest")
+	}
+	second, err := AppendDraftRevision(root, e.ID, "operator", 1, first.Digest, change)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Revision != 2 || second.Digest == first.Digest || second.Files[change.ReferencePath] != change.ReferenceBody || !strings.Contains(second.Files["SKILL.md"], change.ReferencePath) {
+		t.Fatalf("correction revision incomplete: %+v", second)
+	}
+	for name, body := range first.Files {
+		if name == "SKILL.md" {
+			if !strings.HasPrefix(second.Files[name], strings.TrimRight(body, "\n")) {
+				t.Fatal("draft revision replaced prior SKILL.md content")
+			}
+			continue
+		}
+		if second.Files[name] != body {
+			t.Fatalf("draft revision changed prior file %s", name)
+		}
+	}
+	if !reflect.DeepEqual(second.RequiredPlugins, first.RequiredPlugins) || !reflect.DeepEqual(second.RequiredTools, first.RequiredTools) || !reflect.DeepEqual(second.RequiredContracts, first.RequiredContracts) || second.Helpers != first.Helpers || !reflect.DeepEqual(second.Agents, first.Agents) || !reflect.DeepEqual(second.Audiences, first.Audiences) || !reflect.DeepEqual(second.Scopes, first.Scopes) {
+		t.Fatal("draft revision lost capability or scope metadata")
+	}
+	retry, err := AppendDraftRevision(root, e.ID, "operator", 1, first.Digest, change)
+	if err != nil || retry.Revision != second.Revision || retry.Digest != second.Digest {
+		t.Fatalf("idempotent retry appended or returned latest: %+v %v", retry, err)
+	}
+	conflict := change
+	conflict.Provenance = "dream-candidate:two"
+	conflict.ReferencePath = "references/dream-change-two.md"
+	if _, err = AppendDraftRevision(root, e.ID, "operator", 1, first.Digest, conflict); err == nil {
+		t.Fatal("stale expected revision appended another draft")
+	}
+	loaded, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := loaded.Records[0]
+	if len(record.Revisions) != 2 || !record.Enabled || record.Selected != 1 || record.Revisions[1].Published || record.Revisions[1].Reviewer != "" {
+		t.Fatalf("draft changed selection or review state: %+v", record)
+	}
+}
 
 func authored(t *testing.T, id string) Entry {
 	t.Helper()

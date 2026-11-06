@@ -157,6 +157,8 @@ type DreamCandidate struct {
 Full Host 在路由和 session 绑定前冻结一次 HOT 摘要与文档，用同一 Host 副本完成创建/继续和派发，不修改共享配置；请求期间的
 新发布只影响下一请求。摘要变化或到期会拒绝旧会话。个人文档只进入认证本人的私聊，群聊、其他人和不匹配的 Agent/audience/scope 不继承个人原生状态。
 
+增量整理 slice 1 还交付了 canonical Host run 的分区轮转扫描、`dream_work_items` 唤醒账本、证据变化重评与 `dream work-list|work-show`。相同 handoff 引用到可信且匹配的 canonical run/session 时只保留一个逻辑 work source。Skill revision 演进、tombstone 与物理缓存清理仍未交付。
+
 首版优先内部库与 CLI，不提供公共插件 API。当前交付命令：
 
 ```text
