@@ -97,14 +97,14 @@ PRAGMA user_version=7;
 `
 
 func Open(home string, readOnly bool) (*Store, error) {
-	return open(home, readOnly, false, false, false)
+	return open(home, readOnly, false, false, false, false)
 }
 
 // OpenForHistoryInspection reads current-schema operational receipts without
 // loading file memory, acquiring its publication lock or rebuilding its index.
 // History access still validates its receipt-derived identity and project grants.
 func OpenForHistoryInspection(home string) (*Store, error) {
-	return open(home, true, false, false, true)
+	return open(home, true, false, false, true, false)
 }
 
 // OpenForProjectInspection opens project registration data without migrating
@@ -114,17 +114,17 @@ func OpenForHistoryInspection(home string) (*Store, error) {
 // the additive discovery migration. Other inspection stays
 // strict and this compatibility exception never permits writes.
 func OpenForProjectInspection(home string) (*Store, error) {
-	return open(home, true, true, false, false)
+	return open(home, true, true, false, false, false)
 }
 
 // OpenForMemoryInspection lets startup verify schema-14 through 19 file publications
 // before the owning worker performs additive operational migrations. It never
 // writes operational state or relies on the new tables.
 func OpenForMemoryInspection(home string) (*Store, error) {
-	return open(home, true, false, true, false)
+	return open(home, true, false, true, false, false)
 }
 
-func open(home string, readOnly, projectInspection, memoryInspection, historyInspection bool) (*Store, error) {
+func open(home string, readOnly, projectInspection, memoryInspection, historyInspection, activityInspection bool) (*Store, error) {
 	if home == "" {
 		return nil, errors.New("state home is required")
 	}
@@ -188,7 +188,8 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 	if readOnly {
 		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
 		compatibleMemory := memoryInspection && version >= 14 && version <= 19
-		if version != SchemaVersion && !compatibleProjects && !compatibleMemory {
+		compatibleActivity := activityInspection && version == 19
+		if version != SchemaVersion && !compatibleProjects && !compatibleMemory && !compatibleActivity {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
 	} else {
@@ -342,7 +343,7 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 		}
 	}
 	store := &Store{db: db, home: filepath.Dir(path), readOnly: readOnly, legacyProjectMetadata: readOnly && version < 9}
-	if !projectInspection && !historyInspection {
+	if !projectInspection && !historyInspection && !activityInspection {
 		if err := store.openFileMemory(context.Background()); err != nil {
 			return fail(err)
 		}

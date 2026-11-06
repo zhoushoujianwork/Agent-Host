@@ -14,10 +14,11 @@ type ForegroundActivity struct {
 	LastForeground time.Time
 }
 
-// OpenForActivityInspection opens an existing current-schema database without
-// migration, Host locking, or file-memory initialization.
+// OpenForActivityInspection opens an existing schema-19 or current-schema
+// database without migration, Host locking, or file-memory initialization.
+// Schema 20 only adds Dream tables; foreground activity uses unchanged tables.
 func OpenForActivityInspection(home string) (*Store, error) {
-	return open(home, true, false, false, true)
+	return open(home, true, false, false, false, true)
 }
 
 // ForegroundActivity reports queued/claimed channel work and running Host runs
