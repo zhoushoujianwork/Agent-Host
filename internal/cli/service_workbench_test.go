@@ -245,17 +245,11 @@ func TestServiceWorkbenchReadsGoPublishedDreamCurrent(t *testing.T) {
 	if err = os.MkdirAll(hotRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
-	bundle := dream.HOTBundle{Version: "dream-hot-v1", Partition: state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}, Documents: map[string]string{"USER.md": "user\n", "MEMORY.md": "memory\n", "TASKS.md": "tasks\n"}}
-	// Export through the real Store so the digest and manifest bytes are produced
-	// by Go rather than duplicated in the Python verifier fixture.
-	store, err := state.Open(layout.State, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bundle, err = dream.ExportHOT(t.Context(), store.WithPartition("agent", "owner"), bundle.Partition, time.Now().UTC(), 10)
-	if closeErr := store.Close(); err == nil {
-		err = closeErr
-	}
+	partition := state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}
+	bundle, err := dream.ExportSharedHOT(partition, "owner", "owner-share", 2, strings.Repeat("a", 64), strings.Repeat("b", 64), []dream.SharedHOTSource{{
+		Metadata: dream.HOTProjectionSource{ID: "cli", StateHome: layout.State, Partition: partition, LocalOwner: true, Kinds: []string{"preference"}},
+		Memories: []state.Memory{{ID: "memory", SenderID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope", Kind: "preference", Text: "user", Status: "active", Revision: 2, SourceType: "dream_reviewed"}},
+	}}, time.Now().UTC())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,13 +285,17 @@ func TestServiceWorkbenchReadsGoPublishedDreamCurrent(t *testing.T) {
 		Status  string `json:"status"`
 		Error   string `json:"error"`
 		Current struct {
-			Digest    string            `json:"digest"`
-			Documents map[string]string `json:"documents"`
+			Digest     string            `json:"digest"`
+			Documents  map[string]string `json:"documents"`
+			Projection struct {
+				CanonicalPersonID string `json:"canonical_person_id"`
+				Generation        int    `json:"generation"`
+			} `json:"projection"`
 		} `json:"current"`
 	}
 	err = json.NewDecoder(response.Body).Decode(&detail)
 	response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusOK || detail.Status != "current" || detail.Current.Digest != bundle.Digest || detail.Current.Documents["MEMORY.md"] != bundle.Documents["MEMORY.md"] {
+	if err != nil || response.StatusCode != http.StatusOK || detail.Status != "current" || detail.Current.Digest != bundle.Digest || detail.Current.Documents["USER.md"] != bundle.Documents["USER.md"] || detail.Current.Projection.CanonicalPersonID != "owner" || detail.Current.Projection.Generation != 2 {
 		t.Fatal("Python viewer did not verify Go Dream bytes", detail, response.StatusCode, err)
 	}
 }

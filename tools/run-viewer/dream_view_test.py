@@ -87,6 +87,18 @@ class DreamViewTests(unittest.TestCase):
         conn.commit()
         conn.close()
 
+    def rewrite_manifest(self, version, manifest):
+        partition_root = self.root / self.identifier
+        digest = "a" * 64
+        path = partition_root / "versions" / digest / "manifest.json"
+        manifest.update({"version": version, "partition": self.partition, "digest": digest})
+        raw = (json.dumps(manifest, separators=(",", ":")) + "\n").encode()
+        self.write_private(path, raw)
+        metadata_path = partition_root / "partition.json"
+        metadata = json.loads(metadata_path.read_text())
+        metadata["manifest_sha256"][digest] = hashlib.sha256(raw).hexdigest()
+        self.write_private(metadata_path, (json.dumps(metadata) + "\n").encode())
+
     def test_current_and_exact_read_only_records(self):
         self.publication()
         self.records()
@@ -106,6 +118,28 @@ class DreamViewTests(unittest.TestCase):
             conn.execute("DELETE FROM dream_cycles")
         conn.close()
         self.assertEqual(hashlib.sha256((self.home / "state.db").read_bytes()).hexdigest(), before)
+
+    def test_v2_projection_is_strictly_validated_and_only_returned_as_metadata(self):
+        self.publication()
+        projection = {"canonical_person_id": "alice", "mount_id": "alice-share", "generation": 2,
+                      "policy_digest": "b" * 64, "binding_digest": "c" * 64,
+                      "sources": [{"id": "ding", "state_home": "/operator/configured/source",
+                                   "partition": {"PersonID": "raw-alice", "AgentID": "agent", "AudienceID": "user:alice", "Scope": "scope"},
+                                   "account": {"channel": "dingtalk", "account_id": "app", "tenant_id": "tenant", "sender_id": "raw-alice"},
+                                   "kinds": ["preference"]}],
+                      "memories": [{"source_id": "ding", "memory_id": "memory", "revision": 2, "kind": "preference"}]}
+        manifest = {"documents": {"USER.md": "user\n", "MEMORY.md": "memory\n", "TASKS.md": "tasks\n"},
+                    "memories": [{"id": "ding:memory", "revision": 2, "kind": "preference", "expires_at": None}],
+                    "projection": projection}
+        self.rewrite_manifest("dream-hot-v2", manifest)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["current"]["projection"]["canonical_person_id"], "alice")
+        self.assertEqual(detail["current"]["projection"]["sources"][0]["state_home"], "/operator/configured/source")
+        projection["memories"][0]["source_id"] = "unknown"
+        self.rewrite_manifest("dream-hot-v2", manifest)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "error")
+        self.assertIn("memory reference", detail["error"])
 
     def test_truncation_expiry_empty_and_unmounted_source(self):
         self.publication(expiry="2020-01-01T00:00:00Z")

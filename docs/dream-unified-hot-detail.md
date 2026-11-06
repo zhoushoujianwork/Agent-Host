@@ -1,6 +1,6 @@
 # Dream 统一 HOT 与身份分区：详细设计
 
-主方案见[设计主文档](dream-unified-hot.md)。状态：**第一阶段已在源码实现，尚未部署；第二、三阶段仍仅设计。** 本稿区分当前单精确分区投影与尚未交付的身份、挂载和协调能力。
+主方案见[设计主文档](dream-unified-hot.md)。状态：**第一、二阶段已在源码实现，尚未部署；第三阶段仍仅设计。** 本稿区分当前兼容投影与尚未交付的持久撤销、全局协调和版本回收能力。
 
 ## 0. 第一阶段源码行为
 
@@ -9,6 +9,69 @@
 - 发布按分区文件锁串行，验证 owner、权限、普通文件、硬链接、固定文件集、manifest、文档字节和分区摘要。链接替换前的失败保留旧 `current`；链接替换后若父目录同步失败，发布结果明确标为不确定并要求重新核验，不能误报回滚。现有模型仍使用内存中的已验证 bundle；统一入口只是查看投影，不授予注入权限。
 - 工作台提供 GET-only `/api/dream/partitions` 与 `/api/dream/partition?id=<opaque-id>`。它只读取启动时固定 root，每次请求重新验证 root 的 canonical、owner-private 属性，且 metadata 的 state home 必须已经挂载。cycle/work 返回最近 50 条，candidate/cleanup 在没有可信时间列时只承诺有界的最多 50 条；各类均明确 `has_more/truncated`，cycle 只按该来源 config ID 查询。记录读取同时执行单条与整次响应字节上限，超限显式报错。
 - 第一阶段不清理 unified `versions`，避免误删 `current`。旧 cache 清理器保持原样。工作台把未过期且通过校验的内容标为“快照有效”，把过期内容标为“快照过期”；这不是运行时注入授权，授权仍由运行时独立检查。工作台不提供审核、发布、启用或路径选择动作。
+
+## 0.1 第二阶段源码行为与配置
+
+- `sharing_policy` 是 Dream 配置中的显式可选绝对路径；使用它必须同时启用 `hot_enabled`。策略和 `users.json` 均须是 canonical、owner-private 文件，并在每次请求/刷新/后台发布时从可信配置位置重读。删除、变化、歧义、来源不可读或绑定错位都会失败，不回退本地 v1 或磁盘旧 `current`。
+- 来源只读 API 精确读取 `person + Agent + audience + scope` 下 `active`、未过期、`source_type=dream_reviewed` 的当前 memory revision。每个显式来源按 ID 确定顺序最多读取 200 条，再按策略 kinds 过滤；这个读取预算独立于 Dream 提炼 `batch`，因此较小的提炼批次不会让未挂载 kind 挤掉后续可共享项。SQLite 以 `mode=ro`、`query_only` 打开且不迁移；file-memory 直接有界验证 marker/manifest/current revision，domain 元数据和选中 revision 共用 32 MiB 总预算，不取锁、不创建 cache、不回写来源。
+- `dream-hot-v2` 在 v1 文档与 memory manifest 外保存 canonical person、mount、generation、策略/绑定摘要、来源账户/分区/kinds 和 memory revision 引用。正文先按完全相同的 `kind + text` 分组，在实际 `USER/MEMORY/TASKS` 行中以 `[source:<id,...>]` 标注全部来源，再按确定顺序套用 12 KiB 总正文预算；不同文本不做语义融合或冲突裁决。目标仍是策略指定的既有四维分区，旧 DB 的 raw person 和主键不改名。
+- 共享仅限私人入口。渠道身份必须逐项等于准入得到的 provider/account/tenant/sender；群聊无 HOT。CLI 只承认硬编码 `local-owner`、`owner` audience 和 canonical `owner`，不能自报其他 person。来源与目标必须同 Agent；`project_fact`、`active_task` 必须同 scope，只有显式列出的 `preference` 可以跨 scope。
+- 多来源读取不是跨 DB 全局事务：每个来源分别取得经过前后 manifest 校验的只读快照，然后再次核验策略与绑定摘要。任何一步变化都会中止本次发布。正文、generation 或 binding digest 的任一变化都会改变 runtime fingerprint；已经在途的模型上下文无法被擦除。
+
+最小配置示例（路径必须替换成当前安装的真实 canonical 私有目录）：
+
+`<agents-config-directory>/users.json`：
+
+```json
+{
+  "version": 1,
+  "users": [{
+    "id": "alice",
+    "accounts": [
+      {"channel":"dingtalk","account_id":"ding-app","tenant_id":"tenant-a","sender_id":"ding-alice"},
+      {"channel":"feishu","account_id":"fei-app","tenant_id":"tenant-a","sender_id":"fei-alice"}
+    ]
+  }]
+}
+```
+
+`/private/config/dream-sharing.json`：
+
+```json
+{
+  "version": 1,
+  "generation": 1,
+  "mounts": [{
+    "id": "alice-personal",
+    "canonical_person_id": "alice",
+    "target_state_home": "/private/state/dingtalk",
+    "target": {"PersonID":"ding-alice","AgentID":"assistant","AudienceID":"user:alice","Scope":"personal"},
+    "target_account": {"channel":"dingtalk","account_id":"ding-app","tenant_id":"tenant-a","sender_id":"ding-alice"},
+    "sources": [
+      {"id":"ding","state_home":"/private/state/dingtalk","partition":{"PersonID":"ding-alice","AgentID":"assistant","AudienceID":"user:alice","Scope":"personal"},"account":{"channel":"dingtalk","account_id":"ding-app","tenant_id":"tenant-a","sender_id":"ding-alice"},"kinds":["preference","project_fact","active_task"]},
+      {"id":"fei","state_home":"/private/state/feishu","partition":{"PersonID":"fei-alice","AgentID":"assistant","AudienceID":"user:alice","Scope":"personal"},"account":{"channel":"feishu","account_id":"fei-app","tenant_id":"tenant-a","sender_id":"fei-alice"},"kinds":["preference","project_fact","active_task"]}
+    ]
+  }]
+}
+```
+
+Dream runtime config：
+
+```json
+{
+  "hot_enabled": true,
+  "cache_root": "/private/app/dream/cache",
+  "hot_root": "/private/app/dream/hot",
+  "sharing_policy": "/private/config/dream-sharing.json",
+  "person_id": "ding-alice",
+  "agent_id": "assistant",
+  "audience_id": "user:alice",
+  "scope": "personal",
+  "batch": 50
+}
+```
+
+策略恢复或重新授权时必须递增 `generation`；第二阶段没有持久单调账本，不能防止操作者回退文件代次。canonical owner 的 CLI 策略必须使用 `target_local_owner/source.local_owner=true`、分区 person `local-owner`、audience `owner`，且 `users.json` 中显式存在 ID `owner`。
 
 ## 1. 现有接口证据与缺口
 
@@ -19,7 +82,7 @@
 - canonical 来源摘要覆盖 run/session/native session、执行与验收状态、输出、事件和工具证据，并形成 `host-run:<run-id>` 稳定来源；提炼输入保留 `host_observed` provenance（[`internal/dream/canonical.go:125-166`](../internal/dream/canonical.go#L125-L166)）。外部 handoff 仍明确标为 `external_agent_supplied`，不会伪装成 Host 观察（[`internal/dream/lifecycle.go:129-142`](../internal/dream/lifecycle.go#L129-L142)）。
 - 渠道 Run/Message 已保存 channel、account、tenant、conversation、sender、session 和 run 等原始身份字段（[`internal/state/types.go:181-196`](../internal/state/types.go#L181-L196)、[`internal/state/types.go:212-243`](../internal/state/types.go#L212-L243)）。因此统一 person 不需要、也不应抹除来源身份。
 
-缺口：当前 Dream `PersonID` 是调用方提供的精确值，尚没有 Dream 专用的“canonical person + 共享挂载 + 授权代次”投影层；现有 work 幂等键也没有身份映射版本或共享策略摘要。
+第二阶段的兼容投影保留现有 Dream `PersonID`，另把 canonical person、共享 mount 和授权摘要写入 v2 provenance；它没有把全部旧分区改名为 canonical，也没有给现有 work 幂等键增加全局协调代次。
 
 ### 1.2 身份映射
 
@@ -36,14 +99,14 @@
 - Full Host 把 person 与 HOT digest 纳入 runtime fingerprint，并为一次已准入请求冻结文档（[`internal/host/host.go:86-136`](../internal/host/host.go#L86-L136)）。Offload channel 同样把 HOT digest 纳入 session fingerprint，并在摘要变化时拒绝继续旧 session（[`internal/offloadchannel/host.go:141-182`](../internal/offloadchannel/host.go#L141-L182)、[`internal/offloadchannel/host.go:425-448`](../internal/offloadchannel/host.go#L425-L448)）。
 - 运行时只在 person、Agent、audience、scope 全部匹配且是私人入口时绑定 HOT；不匹配和群聊不加载（[`internal/cli/dream_runtime.go:289-345`](../internal/cli/dream_runtime.go#L289-L345)）。
 
-缺口：当前摘要不包含独立的 identity/mount authorization generation，撤销授权但内容摘要恰好未变时，不能仅依赖文档 digest 证明旧会话已失效。第一阶段固定入口只是只读投影，尚未成为带授权代次的 runtime loader。
+第二阶段共享摘要包含 policy、binding 和 generation；因此正文不变时授权变化仍会轮换会话。缺口是持久单调撤销账本和跨进程协调，且已在途执行不声称能擦除上下文。
 
 ### 1.4 CLI 与本地工作台
 
 - CLI 已有精确分区的 `status`、`list/show`、`work-list/work-show`、`cleanup-list` 和 `export`，其中查询路径以只读 Store 打开（[`internal/cli/dream_lifecycle.go:19-81`](../internal/cli/dream_lifecycle.go#L19-L81)、[`internal/cli/dream_lifecycle.go:120-200`](../internal/cli/dream_lifecycle.go#L120-L200)）。
 - 工作台监听 `127.0.0.1`，GET 要求 loopback Host；静态页面与 GET API 是显式 allowlist（[`tools/run-viewer/server.py:920-1007`](../tools/run-viewer/server.py#L920-L1007)、[`tools/run-viewer/server.py:1136-1176`](../tools/run-viewer/server.py#L1136-L1176)）。写请求另受显式路由 allowlist、same-origin、随机 token 和长度限制约束（[`tools/run-viewer/server.py:1020-1034`](../tools/run-viewer/server.py#L1020-L1034)）。服务启动器会移除 provider 凭据并校验 loopback URL（[`internal/cli/service_workbench.go:93-124`](../internal/cli/service_workbench.go#L93-L124)、[`internal/cli/service_workbench.go:147-164`](../internal/cli/service_workbench.go#L147-L164)）。
 
-第一阶段已补齐 Dream GET/静态 allowlist和不透明分区选择；身份映射、共享挂载和授权代次仍未实现。
+第一阶段已补齐 Dream GET/静态 allowlist和不透明分区选择；第二阶段页面验证并展示 v2 canonical person、来源账户/分区和 memory revision 引用，但这些路径只作 manifest 元数据，绝不用于打开额外 DB。
 
 ## 2. 规范数据模型
 
@@ -189,9 +252,9 @@ sha256(target_partition || sorted(source_identity + source_version) ||
 
 ### Phase 2：显式身份、共享挂载与跨源投影
 
-- 只有精确 binding 能解析 canonical person；姓名、alias 和未配置账户不能跨渠道合并。
-- binding 不自动共享；只有显式 mount 允许的已审核个人偏好、个人事实或任务可跨渠道进入目标分区。
-- 群聊、项目 scope 和 Agent 交叉测试均不泄漏；旧 DB 保持字节/主键不变，关闭适配器可回退。
+- 源码仅用精确 binding 解析 canonical person；姓名、alias 和未配置账户不能跨渠道合并。
+- binding 不自动共享；只有显式 mount 允许的已审核个人偏好、个人事实或任务可跨渠道进入目标既有分区。
+- 群聊、项目 scope 和 Agent 交叉测试均 fail closed；只读适配器不迁移旧 DB 或创建 file-memory cache。
 
 ### Phase 3：协调去重、撤销回收与验证
 
@@ -201,7 +264,7 @@ sha256(target_partition || sorted(source_identity + source_version) ||
 
 ## 9. 未决风险（不扩展本期架构）
 
-1. **canonical person 管理入口：** 现有 `users.json` 可提供显式绑定基础，但是否直接演进该格式或增加 Host-owned binding ledger，需要实现阶段依据可回退性决定；无论选择哪种，不能用自动摘要 ID 证明跨渠道同一人。
+1. **canonical person 持久账本：** 第二阶段直接使用 `users.json` 的显式绑定；第三阶段是否增加 Host-owned、单调代次的 binding/revocation ledger 仍未决定。无论选择哪种，不能用自动摘要 ID 证明跨渠道同一人。
 2. **`current` 的跨平台原子表示：** 第一阶段使用 Unix 受控相对 symlink；其他平台仍需验证等价目录指针，验收标准是读者只能看到完整旧版或完整新版。
 3. **统一版本保留：** 第一阶段故意不清理 `hot_root` 下的 immutable versions。后续清理器必须解析并保护已验证的 `current` 目标后才能启用。
 4. **撤销后的在途请求：** 已冻结并正在执行的请求无法从 native model 上下文中擦除内容；最小安全语义应是阻止后续 continuation 和新派发，并在撤销审计中记录可能已暴露的 run/session。是否主动取消在途执行需要单独策略决定。

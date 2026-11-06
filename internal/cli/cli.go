@@ -126,6 +126,7 @@ Pending, conflicted, expired, and invalidated experiences are excluded from reca
 
 type options struct {
 	dreamValidatedPartition                                                            *state.DreamPartition
+	dreamSharingIdentity                                                               dreamSharingIdentity
 	monitorResumeArgs                                                                  []string
 	monitorDirectory                                                                   string
 	resumeCanceledRun                                                                  string
@@ -731,6 +732,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		if err := validateFullHostChatDream(o); err != nil {
 			return err
 		}
+		o.dreamSharingIdentity = dreamSharingIdentity{LocalOwner: true}
 		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
 			return err
 		}
@@ -803,6 +805,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errout io.Writer
 		if err := resolveOptions(ctx, store, &o, true); err != nil {
 			return err
 		}
+		o.dreamSharingIdentity = dreamSharingIdentity{LocalOwner: true}
 		if err := bindDreamHOT(store, &o, "local-owner", true); err != nil {
 			return err
 		}
