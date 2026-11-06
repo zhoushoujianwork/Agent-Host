@@ -62,6 +62,25 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	}
 	p := state.DreamPartition{PersonID: person, AgentID: agent, AudienceID: audience, Scope: scope}
 	ctx := context.Background()
+	encode := func(value any) error { e := json.NewEncoder(out); e.SetIndent("", "  "); return e.Encode(value) }
+	if action == "authorization" || action == "revoke" {
+		target := dream.CoordinationTarget{StateHome: home, Partition: p}
+		if action == "authorization" {
+			value, readErr := dream.ReadAuthorization(ctx, target)
+			if readErr != nil {
+				return readErr
+			}
+			return encode(value)
+		}
+		if actor == "" || note == "" {
+			return errors.New("dream revoke requires --actor and --note")
+		}
+		value, revokeErr := dream.RevokeAuthorization(ctx, target, actor, note)
+		if revokeErr != nil {
+			return revokeErr
+		}
+		return encode(value)
+	}
 	write := action == "run" || action == "review" || action == "archive" || action == "rotate" || action == "restore" || action == "promote"
 	var release func() error
 	var err error
@@ -78,7 +97,6 @@ func runDreamLifecycle(args []string, out, errout io.Writer) error {
 	}
 	defer store.Close()
 	partitioned := store.WithPartition(agent, audience)
-	encode := func(value any) error { e := json.NewEncoder(out); e.SetIndent("", "  "); return e.Encode(value) }
 	switch action {
 	case "status":
 		cycles, err := partitioned.LatestDreamCycles(ctx, dreamRuntimeConfigID(dreamConfig, runtimeConfig), limit)

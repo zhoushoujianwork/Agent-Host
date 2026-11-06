@@ -285,6 +285,7 @@ type HOTBundle struct {
 	Documents  map[string]string    `json:"documents"`
 	Memories   []HOTManifestEntry   `json:"memories"`
 	Projection *HOTProjection       `json:"projection,omitempty"`
+	Authority  *HOTAuthority        `json:"coordination_authority,omitempty"`
 	Digest     string               `json:"digest"`
 }
 
@@ -321,8 +322,19 @@ func hotBundleDigest(b HOTBundle) string {
 		Documents map[string]string
 		Memories  []HOTManifestEntry
 	}{b.Version, b.Partition, b.Documents, b.Memories}
-	if b.Projection == nil {
+	if b.Projection == nil && b.Authority == nil {
 		raw, _ := json.Marshal(legacy)
+		sum := sha256.Sum256(raw)
+		return hex.EncodeToString(sum[:])
+	}
+	if b.Authority == nil {
+		raw, _ := json.Marshal(struct {
+			Version    string
+			Partition  state.DreamPartition
+			Documents  map[string]string
+			Memories   []HOTManifestEntry
+			Projection *HOTProjection
+		}{b.Version, b.Partition, b.Documents, b.Memories, b.Projection})
 		sum := sha256.Sum256(raw)
 		return hex.EncodeToString(sum[:])
 	}
@@ -332,7 +344,8 @@ func hotBundleDigest(b HOTBundle) string {
 		Documents  map[string]string
 		Memories   []HOTManifestEntry
 		Projection *HOTProjection
-	}{b.Version, b.Partition, b.Documents, b.Memories, b.Projection})
+		Authority  *HOTAuthority
+	}{b.Version, b.Partition, b.Documents, b.Memories, b.Projection, b.Authority})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }

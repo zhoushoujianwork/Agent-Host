@@ -1,14 +1,18 @@
 package dream
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"agent-host/internal/state"
 )
@@ -33,6 +37,293 @@ func currentFixture(t *testing.T) (string, HOTSource, HOTBundle) {
 	return root, HOTSource{StateHome: home, ConfigID: "config-id"}, b
 }
 
+func publishCurrentVersion(t *testing.T, root string, source HOTSource, base HOTBundle, text string) HOTBundle {
+	t.Helper()
+	b := base
+	b.Documents = map[string]string{"USER.md": text, "MEMORY.md": "memory", "TASKS.md": "tasks"}
+	b.Digest = hotBundleDigest(b)
+	if _, err := PublishCurrent(root, source, b); err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestCleanupCurrentProtectsCurrentAndYoungAndRetiresOld(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old")
+	young := publishCurrentVersion(t, root, source, base, "young")
+	current := publishCurrentVersion(t, root, source, base, "current")
+	id := targetCoordinationKey(base.Partition)
+	versions := filepath.Join(root, id, "versions")
+	oldTime := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(filepath.Join(versions, old.Digest), oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	result, err := CleanupCurrent(context.Background(), root, source, base.Partition, time.Now(), 24*time.Hour, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Completed) != 1 {
+		t.Fatalf("expected one retired version: %#v", result)
+	}
+	if _, err = os.Lstat(filepath.Join(versions, old.Digest)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("old version remains", err)
+	}
+	for _, digest := range []string{young.Digest, current.Digest} {
+		if _, err = os.Lstat(filepath.Join(versions, digest)); err != nil {
+			t.Fatal("protected version missing", digest, err)
+		}
+	}
+	metadata, err := loadCurrentPartition(filepath.Join(root, id), id, source, base.Partition)
+	if err != nil || metadata.Manifests[old.Digest] != "" || metadata.Manifests[current.Digest] == "" {
+		t.Fatal("manifest index mismatch", metadata, err)
+	}
+}
+
+func TestCleanupCurrentSkipsModifiedAndHardlinkedVersions(t *testing.T) {
+	for _, hardlink := range []bool{false, true} {
+		t.Run(fmt.Sprint("hardlink=", hardlink), func(t *testing.T) {
+			root, source, base := currentFixture(t)
+			old := publishCurrentVersion(t, root, source, base, "old")
+			_ = publishCurrentVersion(t, root, source, base, "current")
+			path := filepath.Join(root, targetCoordinationKey(base.Partition), "versions", old.Digest)
+			oldTime := time.Now().Add(-48 * time.Hour)
+			_ = os.Chtimes(path, oldTime, oldTime)
+			file := filepath.Join(path, "USER.md")
+			if hardlink {
+				body, _ := os.ReadFile(file)
+				outside := filepath.Join(t.TempDir(), "outside")
+				_ = os.WriteFile(outside, body, 0600)
+				_ = os.Remove(file)
+				if err := os.Link(outside, file); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(file, []byte("changed"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(path, oldTime, oldTime); err != nil {
+				t.Fatal(err)
+			}
+			result, err := CleanupCurrent(context.Background(), root, source, base.Partition, time.Now(), 24*time.Hour, 200)
+			if err != nil || len(result.Completed) != 0 || result.Skipped[old.Digest] == "" {
+				t.Fatal("unsafe version was not skipped", result, err)
+			}
+			if _, err = os.Lstat(path); err != nil {
+				t.Fatal("unsafe version was deleted", err)
+			}
+		})
+	}
+}
+
+func TestCleanupCurrentResumesPartialQuarantine(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old")
+	_ = publishCurrentVersion(t, root, source, base, "current")
+	id := targetCoordinationKey(base.Partition)
+	partitionRoot := filepath.Join(root, id)
+	path := filepath.Join(partitionRoot, "versions", old.Digest)
+	oldTime := time.Now().Add(-48 * time.Hour)
+	_ = os.Chtimes(path, oldTime, oldTime)
+	metadata, err := loadCurrentPartition(partitionRoot, id, source, base.Partition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent, err := buildCleanupIntent(path, root, source, base.Partition, old.Digest, metadata.Manifests[old.Digest], time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRoot, err := cleanupIntentRoot(root, base.Partition, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quarantine := filepath.Join(partitionRoot, ".retired-"+intent.ID)
+	if err = os.Rename(path, quarantine); err != nil {
+		t.Fatal(err)
+	}
+	if err = writeAtomicJSON(intentRoot, intent.ID+".json", intent); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(quarantine, "USER.md")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := CleanupCurrent(context.Background(), root, source, base.Partition, time.Now(), 24*time.Hour, 200)
+	if err != nil || len(result.Completed) != 1 {
+		t.Fatal("partial quarantine not recovered", result, err)
+	}
+	if _, err = os.Lstat(quarantine); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("quarantine remains", err)
+	}
+}
+
+func TestCleanupCurrentWaitsForPythonSharedReader(t *testing.T) {
+	root, source, base := currentFixture(t)
+	_ = publishCurrentVersion(t, root, source, base, "current")
+	lock := filepath.Join(root, targetCoordinationKey(base.Partition), ".publish.lock")
+	command := exec.Command("python3", "-c", `import fcntl,os,sys,time
+fd=os.open(sys.argv[1],os.O_RDONLY|getattr(os,"O_NOFOLLOW",0))
+fcntl.flock(fd,fcntl.LOCK_SH)
+print("locked",flush=True)
+time.sleep(2)`, lock)
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = command.Process.Kill(); _ = command.Wait() }()
+	if line, readErr := bufio.NewReader(stdout).ReadString('\n'); readErr != nil || line != "locked\n" {
+		t.Fatal("python reader did not lock", line, readErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err = CleanupCurrent(ctx, root, source, base.Partition, time.Now(), 24*time.Hour, 200); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("exclusive cleanup ignored Python shared reader", err)
+	}
+}
+
+func TestCleanupCurrentSkipsReplacedInode(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old")
+	_ = publishCurrentVersion(t, root, source, base, "current")
+	id := targetCoordinationKey(base.Partition)
+	partitionRoot, versions := filepath.Join(root, id), filepath.Join(root, id, "versions")
+	path := filepath.Join(versions, old.Digest)
+	metadata, _ := loadCurrentPartition(partitionRoot, id, source, base.Partition)
+	intent, err := buildCleanupIntent(path, root, source, base.Partition, old.Digest, metadata.Manifests[old.Digest], time.Now().Add(-48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRoot, _ := cleanupIntentRoot(root, base.Partition, true)
+	if err = writeAtomicJSON(intentRoot, intent.ID+".json", intent); err != nil {
+		t.Fatal(err)
+	}
+	backup := filepath.Join(t.TempDir(), "old")
+	if err = os.Rename(path, backup); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _ := json.MarshalIndent(old, "", "  ")
+	manifest = append(manifest, '\n')
+	if err = publishCurrentSnapshot(versions, path, old, manifest); err != nil {
+		t.Fatal(err)
+	}
+	result, err := CleanupCurrent(context.Background(), root, source, base.Partition, time.Now(), 24*time.Hour, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(path); err != nil {
+		t.Fatal("replacement inode was deleted", err)
+	}
+	if len(result.Completed) != 0 {
+		t.Fatal("replacement was reported deleted", result)
+	}
+}
+
+func TestPublishCurrentDoesNotLetOldIntentDeleteRepublishedDigest(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old")
+	_ = publishCurrentVersion(t, root, source, base, "current")
+	id := targetCoordinationKey(base.Partition)
+	partitionRoot, versions := filepath.Join(root, id), filepath.Join(root, id, "versions")
+	path := filepath.Join(versions, old.Digest)
+	metadata, _ := loadCurrentPartition(partitionRoot, id, source, base.Partition)
+	intent, err := buildCleanupIntent(path, root, source, base.Partition, old.Digest, metadata.Manifests[old.Digest], time.Now().Add(-48*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRoot, _ := cleanupIntentRoot(root, base.Partition, true)
+	quarantine := filepath.Join(partitionRoot, ".retired-"+intent.ID)
+	if err = os.Rename(path, quarantine); err != nil {
+		t.Fatal(err)
+	}
+	when := time.Now()
+	intent.Status = "quarantined"
+	intent.QuarantinedAt = &when
+	if err = writeAtomicJSON(intentRoot, intent.ID+".json", intent); err != nil {
+		t.Fatal(err)
+	}
+	manifest, _ := json.MarshalIndent(old, "", "  ")
+	manifest = append(manifest, '\n')
+	if err = publishCurrentSnapshot(versions, path, old, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = PublishCurrent(root, source, old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Lstat(path); err != nil {
+		t.Fatal("republished version was removed by stale intent", err)
+	}
+	if target := currentTarget(t, filepath.Join(partitionRoot, "current")); target != "versions/"+old.Digest {
+		t.Fatal("republished digest is not current", target)
+	}
+}
+
+func TestPublishCurrentProtectsDiskCurrentWhileRecoveringOldPlan(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old-current")
+	id := targetCoordinationKey(base.Partition)
+	partitionRoot, versions := filepath.Join(root, id), filepath.Join(root, id, "versions")
+	metadata, _ := loadCurrentPartition(partitionRoot, id, source, base.Partition)
+	intent, err := buildCleanupIntent(filepath.Join(versions, old.Digest), root, source, base.Partition, old.Digest, metadata.Manifests[old.Digest], time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRoot, _ := cleanupIntentRoot(root, base.Partition, true)
+	if err = writeAtomicJSON(intentRoot, intent.ID+".json", intent); err != nil {
+		t.Fatal(err)
+	}
+	newBundle := base
+	newBundle.Documents = map[string]string{"USER.md": "new", "MEMORY.md": "memory", "TASKS.md": "tasks"}
+	newBundle.Digest = hotBundleDigest(newBundle)
+	bad := filepath.Join(versions, newBundle.Digest)
+	if err = os.Mkdir(bad, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = PublishCurrent(root, source, newBundle); err == nil {
+		t.Fatal("corrupt incoming version was accepted")
+	}
+	if target := currentTarget(t, filepath.Join(partitionRoot, "current")); target != "versions/"+old.Digest {
+		t.Fatal("failed publication lost old current", target)
+	}
+	if _, err = os.Lstat(filepath.Join(versions, old.Digest)); err != nil {
+		t.Fatal("old current was deleted before failed publish", err)
+	}
+	if err = os.Remove(bad); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = PublishCurrent(root, source, newBundle); err != nil {
+		t.Fatal(err)
+	}
+	if target := currentTarget(t, filepath.Join(partitionRoot, "current")); target != "versions/"+newBundle.Digest {
+		t.Fatal("successful publication did not switch", target)
+	}
+	if _, err = os.Lstat(filepath.Join(versions, old.Digest)); err != nil {
+		t.Fatal("old current was deleted during switch recovery", err)
+	}
+}
+
+func TestPublishCurrentRejectsMisnamedCleanupIntent(t *testing.T) {
+	root, source, base := currentFixture(t)
+	old := publishCurrentVersion(t, root, source, base, "old")
+	id := targetCoordinationKey(base.Partition)
+	partitionRoot := filepath.Join(root, id)
+	metadata, _ := loadCurrentPartition(partitionRoot, id, source, base.Partition)
+	intent, err := buildCleanupIntent(filepath.Join(partitionRoot, "versions", old.Digest), root, source, base.Partition, old.Digest, metadata.Manifests[old.Digest], time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	intentRoot, _ := cleanupIntentRoot(root, base.Partition, true)
+	if err = writeAtomicJSON(intentRoot, "wrong.json", intent); err != nil {
+		t.Fatal(err)
+	}
+	newBundle := base
+	newBundle.Documents = map[string]string{"USER.md": "new", "MEMORY.md": "memory", "TASKS.md": "tasks"}
+	newBundle.Digest = hotBundleDigest(newBundle)
+	if _, err = PublishCurrent(root, source, newBundle); err == nil || !strings.Contains(err.Error(), "invalid HOT cleanup intent") {
+		t.Fatal("misnamed intent was accepted", err)
+	}
+}
+
 func currentTarget(t *testing.T, current string) string {
 	t.Helper()
 	target, err := os.Readlink(current)
@@ -53,6 +344,13 @@ func TestPublishCurrentSuccessRepeatAndMetadata(t *testing.T) {
 	}
 	if again, err := PublishCurrent(root, source, bundle); err != nil || again != current {
 		t.Fatal("repeat publication was not idempotent", again, err)
+	}
+	locked := false
+	if err := WithCurrentPartitionLock(context.Background(), root, bundle.Partition, func(partitionRoot string) error {
+		locked = filepath.Dir(current) == partitionRoot
+		return nil
+	}); err != nil || !locked {
+		t.Fatal("current partition maintenance lock seam failed", err)
 	}
 	var metadata currentPartition
 	raw, err := os.ReadFile(filepath.Join(filepath.Dir(current), "partition.json"))

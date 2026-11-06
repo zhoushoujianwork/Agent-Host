@@ -1,6 +1,6 @@
 # Dream 统一 HOT 与身份分区：详细设计
 
-主方案见[设计主文档](dream-unified-hot.md)。状态：**第一、二阶段已在源码实现，尚未部署；第三阶段仍仅设计。** 本稿区分当前兼容投影与尚未交付的持久撤销、全局协调和版本回收能力。
+主方案见[设计主文档](dream-unified-hot.md)。状态：**第一至第三阶段源码切片已实现，尚未部署。** 第三阶段包含 unified versions 回收、持久 intent 恢复、Python 共享读锁，以及授权/回收只读展示。
 
 ## 0. 第一阶段源码行为
 
@@ -8,11 +8,11 @@
 - 原有 `<cache-root>/dream-hot/...` 发布成功后，Host 才把同一 bundle 发布到 `<hot_root>/<partition-hash>/versions/<digest>`，然后原子切换相对链接 `current -> versions/<digest>`。`partition.json` 固定记录四维分区、可信 state home、Dream config ID 和各 manifest 原始字节摘要；同一分区出现不同来源会失败，不合并。
 - 发布按分区文件锁串行，验证 owner、权限、普通文件、硬链接、固定文件集、manifest、文档字节和分区摘要。链接替换前的失败保留旧 `current`；链接替换后若父目录同步失败，发布结果明确标为不确定并要求重新核验，不能误报回滚。现有模型仍使用内存中的已验证 bundle；统一入口只是查看投影，不授予注入权限。
 - 工作台提供 GET-only `/api/dream/partitions` 与 `/api/dream/partition?id=<opaque-id>`。它只读取启动时固定 root，每次请求重新验证 root 的 canonical、owner-private 属性，且 metadata 的 state home 必须已经挂载。cycle/work 返回最近 50 条，candidate/cleanup 在没有可信时间列时只承诺有界的最多 50 条；各类均明确 `has_more/truncated`，cycle 只按该来源 config ID 查询。记录读取同时执行单条与整次响应字节上限，超限显式报错。
-- 第一阶段不清理 unified `versions`，避免误删 `current`。旧 cache 清理器保持原样。工作台把未过期且通过校验的内容标为“快照有效”，把过期内容标为“快照过期”；这不是运行时注入授权，授权仍由运行时独立检查。工作台不提供审核、发布、启用或路径选择动作。
+- 旧 cache 清理器保持原样。第三阶段另在 sibling `coordination/cleanup/<target-key>/` 保存统一版本回收 intent；它只处理固定 partition 下已验证的 immutable version，不打开原始业务 DB，也不删除 memory、Skill 或授权账本。工作台把未过期且通过校验的内容标为“快照有效”，把过期内容标为“快照过期”；这不是运行时注入授权，授权仍由运行时独立检查。工作台不提供审核、发布、启用或路径选择动作。
 
 ## 0.1 第二阶段源码行为与配置
 
-- `sharing_policy` 是 Dream 配置中的显式可选绝对路径；使用它必须同时启用 `hot_enabled`。策略和 `users.json` 均须是 canonical、owner-private 文件，并在每次请求/刷新/后台发布时从可信配置位置重读。删除、变化、歧义、来源不可读或绑定错位都会失败，不回退本地 v1 或磁盘旧 `current`。
+- `sharing_policy` 是 Dream 配置中的显式可选绝对路径；使用它必须同时启用 `hot_enabled` 并配置 `hot_root`。策略和 `users.json` 均须是 canonical、owner-private 文件，并在每次请求/刷新/后台发布时从可信配置位置重读。删除、变化、歧义、来源不可读或绑定错位都会失败，不回退本地 v1 或磁盘旧 `current`。
 - 来源只读 API 精确读取 `person + Agent + audience + scope` 下 `active`、未过期、`source_type=dream_reviewed` 的当前 memory revision。每个显式来源按 ID 确定顺序最多读取 200 条，再按策略 kinds 过滤；这个读取预算独立于 Dream 提炼 `batch`，因此较小的提炼批次不会让未挂载 kind 挤掉后续可共享项。SQLite 以 `mode=ro`、`query_only` 打开且不迁移；file-memory 直接有界验证 marker/manifest/current revision，domain 元数据和选中 revision 共用 32 MiB 总预算，不取锁、不创建 cache、不回写来源。
 - `dream-hot-v2` 在 v1 文档与 memory manifest 外保存 canonical person、mount、generation、策略/绑定摘要、来源账户/分区/kinds 和 memory revision 引用。正文先按完全相同的 `kind + text` 分组，在实际 `USER/MEMORY/TASKS` 行中以 `[source:<id,...>]` 标注全部来源，再按确定顺序套用 12 KiB 总正文预算；不同文本不做语义融合或冲突裁决。目标仍是策略指定的既有四维分区，旧 DB 的 raw person 和主键不改名。
 - 共享仅限私人入口。渠道身份必须逐项等于准入得到的 provider/account/tenant/sender；群聊无 HOT。CLI 只承认硬编码 `local-owner`、`owner` audience 和 canonical `owner`，不能自报其他 person。来源与目标必须同 Agent；`project_fact`、`active_task` 必须同 scope，只有显式列出的 `preference` 可以跨 scope。
@@ -39,7 +39,7 @@
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "generation": 1,
   "mounts": [{
     "id": "alice-personal",
@@ -71,7 +71,16 @@ Dream runtime config：
 }
 ```
 
-策略恢复或重新授权时必须递增 `generation`；第二阶段没有持久单调账本，不能防止操作者回退文件代次。canonical owner 的 CLI 策略必须使用 `target_local_owner/source.local_owner=true`、分区 person `local-owner`、audience `owner`，且 `users.json` 中显式存在 ID `owner`。
+策略恢复、修改 policy/users 中任何相关内容或重新授权时必须递增 `generation`；完整 policy/users 摘要采用保守语义，同代次任何摘要变化都会持久失效。version 1 共享策略被明确拒绝。canonical owner 的 CLI 策略必须使用 `target_local_owner/source.local_owner=true`、分区 person `local-owner`、audience `owner`，且 `users.json` 中显式存在 ID `owner`。
+
+## 0.2 第三阶段持久协调与撤销源码行为
+
+- 协调根固定从 `hot_root` 的 canonical、owner-private 父目录派生为 sibling `coordination`；不安全或无法派生时失败，不选择其他根。global policy key 是规范策略绝对路径摘要，target key 是现有精确四维分区摘要。每个 target state home 保存 `.dream-coordination/targets/<target-id>.json` anchor，固定绑定 coordination root、hot root、config、policy、state home 和分区；anchor 存在而账本丢失或损坏时 fail closed。
+- 锁顺序是 target anchor → global policy → target authorization → partition publication。锁使用 no-follow、owner-private、单硬链接和 inode 重验，并以非阻塞 flock、context 取消及五秒上限等待。锁内先持久接受 policy/target generation 高水位，再读取有界来源快照，随后重读完整 Dream config、policy 和 users，最后生成 bundle 并发布；临时来源错误不会丢失已经接受的高水位。模型执行和提炼不在锁内。
+- policy 与 target 账本用连续不可变事件保存完整 next state、前态摘要和单调序号；事件先 fsync，再原子替换并 fsync head。读取逐事件验证 ledger 类型与 anchor 身份，head 必须精确对应其 sequence 的事件。head 落后时只读查询报告 `needs_recovery`，写路径会恢复 head 而不伪造新事件。低 generation 只拒绝；同 generation 的 policy、binding、mount 或 canonical 摘要变化会同时持久 invalid global policy 与 target，恢复旧文件也不能激活，只有更高 generation 可以重新授权。
+- policy 删除/解析失败、binding 撤销、关闭 sharing 或显式 `dream revoke` 会使 global policy 与当前 target 失效；global 状态对该 policy 的其他 targets 同样生效。来源数据库临时不可读只使本次发布失败，不永久撤权。目标仍是各自既有分区，账本不合并 audience/scope，也不提供跨 DB 原子快照或 canonical person 目录迁移。
+- `agent-host dream authorization --home ... --person ... --agent ... --audience ... --memory-scope ... --format json` 查询有效状态；`dream revoke` 另要求 `--actor` 与 `--note`。两者只从 target home 的受保护 anchor 定位权威账本，不打开业务 DB、不运行模型、不接收 coordination/policy 任意路径。
+- shared HOT 顶层 `coordination_authority` 保存 target authority ID/revision 并进入新协调发布的 v2 digest；authority 为空的第二阶段旧 v2 bundle 保持原摘要兼容。native 仍只注入本次锁内验证的内存 bundle，不读取磁盘 `current`。已经在途的 native 模型上下文不会被声称擦除。
 
 ## 1. 现有接口证据与缺口
 
@@ -99,7 +108,7 @@ Dream runtime config：
 - Full Host 把 person 与 HOT digest 纳入 runtime fingerprint，并为一次已准入请求冻结文档（[`internal/host/host.go:86-136`](../internal/host/host.go#L86-L136)）。Offload channel 同样把 HOT digest 纳入 session fingerprint，并在摘要变化时拒绝继续旧 session（[`internal/offloadchannel/host.go:141-182`](../internal/offloadchannel/host.go#L141-L182)、[`internal/offloadchannel/host.go:425-448`](../internal/offloadchannel/host.go#L425-L448)）。
 - 运行时只在 person、Agent、audience、scope 全部匹配且是私人入口时绑定 HOT；不匹配和群聊不加载（[`internal/cli/dream_runtime.go:289-345`](../internal/cli/dream_runtime.go#L289-L345)）。
 
-第二阶段共享摘要包含 policy、binding 和 generation；因此正文不变时授权变化仍会轮换会话。缺口是持久单调撤销账本和跨进程协调，且已在途执行不声称能擦除上下文。
+共享摘要包含 policy、binding、generation 和持久 authority revision；因此正文不变时授权变化仍会轮换会话。持久单调撤销账本和跨进程协调已在第三阶段首个切片实现；已在途执行仍不声称能擦除上下文。
 
 ### 1.4 CLI 与本地工作台
 
@@ -256,16 +265,16 @@ sha256(target_partition || sorted(source_identity + source_version) ||
 - binding 不自动共享；只有显式 mount 允许的已审核个人偏好、个人事实或任务可跨渠道进入目标既有分区。
 - 群聊、项目 scope 和 Agent 交叉测试均 fail closed；只读适配器不迁移旧 DB 或创建 file-memory cache。
 
-### Phase 3：协调去重、撤销回收与验证
+### Phase 3：协调去重、撤销回收与验证（源码已实现，未部署）
 
-- 两渠道同时提交相同来源版本只产生一次整理/发布；相同幂等键不重复生成候选或快照。
+- 同一既有 target 的并发共享发布按高水位串行，旧请求不能覆盖较新 generation，幂等 bundle 不重复写账本事件。不同 targets 仍各自生成兼容投影，不声称是一次跨 DB/target 发布。
 - 撤销 binding/mount 后新加载立即失败或排除，旧 native session 因授权指纹变化拒绝继续。
 - 重建失败不加载旧权限，清理失败保留最后有效且仍获授权的版本；原始证据和审核记录保持可追溯。
 
 ## 9. 未决风险（不扩展本期架构）
 
-1. **canonical person 持久账本：** 第二阶段直接使用 `users.json` 的显式绑定；第三阶段是否增加 Host-owned、单调代次的 binding/revocation ledger 仍未决定。无论选择哪种，不能用自动摘要 ID 证明跨渠道同一人。
+1. **canonical person 全局目录：** 当前 Host-owned 单调账本协调既有 target 投影，但不把旧分区重命名或合并成一个 canonical person DB/目录；自动摘要 ID 仍不能证明跨渠道同一人。
 2. **`current` 的跨平台原子表示：** 第一阶段使用 Unix 受控相对 symlink；其他平台仍需验证等价目录指针，验收标准是读者只能看到完整旧版或完整新版。
-3. **统一版本保留：** 第一阶段故意不清理 `hot_root` 下的 immutable versions。后续清理器必须解析并保护已验证的 `current` 目标后才能启用。
+3. **统一版本保留：** 清理器保护 `current` 和未满保留期的版本，严格验证 manifest、文件、owner、权限、硬链接数及 inode/dev 后才隔离并逐文件删除；异常版本只报告跳过。intent 或完成状态同步失败会报告不确定，不捏造成功。
 4. **撤销后的在途请求：** 已冻结并正在执行的请求无法从 native model 上下文中擦除内容；最小安全语义应是阻止后续 continuation 和新派发，并在撤销审计中记录可能已暴露的 run/session。是否主动取消在途执行需要单独策略决定。
-5. **多 DB 协调 lease 的持久位置：** 必须有一个 Host-owned 权威协调点，但不应通过合并旧 DB 实现。实现前需选定已有服务 Store 或独立派生状态目录，并验证崩溃恢复和单写者行为。
+5. **读者与跨库边界：** Python 工作台只打开既有 `.publish.lock` 并短时持有共享锁，将 metadata、current manifest 和三份文档读入内存后释放；发布和回收持有排他锁。授权展示按 policy→target 顺序进行稳定双采样，并按 Go 账本规则计算 effective invalid；缺失或落后的 head 仅在完整事件链验证后显示 `needs_recovery`。回收恢复若发现 source 与 quarantine 均已缺失，只记录“既往删除结果未知”的 skipped 状态，不伪报 completed。该锁不是跨多个来源 DB 的事务或长期租约，records 查询在释放文件锁后独立执行并可独立报错。

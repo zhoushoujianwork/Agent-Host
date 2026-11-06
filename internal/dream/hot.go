@@ -2,6 +2,7 @@ package dream
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"agent-host/internal/harness"
 	"agent-host/internal/state"
@@ -114,6 +116,12 @@ func PublishHOT(cacheRoot string, bundle HOTBundle) (string, error) {
 // PublishCurrent publishes a read-only projection of an already verified HOT
 // bundle. It does not grant runtime access and is never read back for injection.
 func PublishCurrent(hotRoot string, source HOTSource, bundle HOTBundle) (string, error) {
+	return PublishCurrentContext(context.Background(), hotRoot, source, bundle)
+}
+
+// PublishCurrentContext is PublishCurrent with cancellable bounded lock
+// acquisition for coordinated shared publication.
+func PublishCurrentContext(ctx context.Context, hotRoot string, source HOTSource, bundle HOTBundle) (string, error) {
 	if err := validateCurrentRoot(hotRoot); err != nil {
 		return "", err
 	}
@@ -135,7 +143,7 @@ func PublishCurrent(hotRoot string, source HOTSource, bundle HOTBundle) (string,
 	if err != nil {
 		return "", err
 	}
-	release, err := acquireCurrentLock(partitionRoot)
+	release, err := acquireCurrentLockContext(ctx, partitionRoot)
 	if err != nil {
 		return "", err
 	}
@@ -143,6 +151,13 @@ func PublishCurrent(hotRoot string, source HOTSource, bundle HOTBundle) (string,
 
 	metadata, err := loadCurrentPartition(partitionRoot, id, source, bundle.Partition)
 	if err != nil {
+		return "", err
+	}
+	protectedDigest, err := currentDigest(partitionRoot)
+	if err != nil {
+		return "", err
+	}
+	if err = recoverCurrentCleanupBeforePublish(ctx, hotRoot, partitionRoot, &metadata, protectedDigest); err != nil {
 		return "", err
 	}
 	versions, err := ensurePrivateChild(partitionRoot, "versions")
@@ -190,6 +205,10 @@ func validateCurrentRoot(root string) error {
 }
 
 func acquireCurrentLock(root string) (func(), error) {
+	return acquireCurrentLockContext(context.Background(), root)
+}
+
+func acquireCurrentLockContext(ctx context.Context, root string) (func(), error) {
 	path := filepath.Join(root, ".publish.lock")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
@@ -209,9 +228,26 @@ func acquireCurrentLock(root string) (func(), error) {
 		f.Close()
 		return nil, err
 	}
-	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
-		return nil, err
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			f.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, ctx.Err()
+		case <-deadline.C:
+			f.Close()
+			return nil, errors.New("HOT current publication lock wait exceeded 5s")
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 	if err = valid(); err != nil {
 		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
@@ -219,6 +255,30 @@ func acquireCurrentLock(root string) (func(), error) {
 		return nil, err
 	}
 	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
+}
+
+// WithCurrentPartitionLock holds the existing partition publication lock for a
+// bounded maintenance callback. Callers must already hold any authorization
+// locks required by their operation.
+func WithCurrentPartitionLock(ctx context.Context, hotRoot string, partition state.DreamPartition, fn func(string) error) error {
+	if fn == nil || !validSharedPartition(partition) {
+		return errors.New("HOT current partition lock requires an exact partition and callback")
+	}
+	if err := validateCurrentRoot(hotRoot); err != nil {
+		return err
+	}
+	id := hashStrings(partition.PersonID, partition.AgentID, partition.AudienceID, partition.Scope)[:24]
+	root := filepath.Join(hotRoot, id)
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil || canonical != root || validatePrivateDir(root) != nil {
+		return errors.New("HOT current partition is missing or unsafe")
+	}
+	release, err := acquireCurrentLockContext(ctx, root)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return fn(root)
 }
 
 func loadCurrentPartition(root, id string, source HOTSource, partition state.DreamPartition) (currentPartition, error) {
