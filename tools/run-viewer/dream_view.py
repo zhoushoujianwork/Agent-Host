@@ -1,11 +1,14 @@
 """Read the fixed, Host-published Dream HOT projection without granting access."""
 
 import datetime
+import fcntl
 import hashlib
 import json
 import os
 import sqlite3
 import stat
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -17,6 +20,10 @@ RECORD_LIMIT = 1 << 20
 RECORD_TOTAL_LIMIT = 4 << 20
 PROJECTION_SOURCE_LIMIT = 8
 PROJECTION_MEMORY_LIMIT = 1600
+COORDINATION_FILE_LIMIT = 512 << 10
+COORDINATION_EVENT_LIMIT = 4096
+COORDINATION_LEDGER_LIMIT = 32 << 20
+CLEANUP_INTENT_LIMIT = 512
 SHARED_KINDS = {"preference", "project_fact", "active_task"}
 SAFE_ID_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
 
@@ -25,18 +32,58 @@ def _private_regular(path, limit):
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 or info.st_nlink != 1 or info.st_size > limit:
         raise ValueError(f"unsafe Dream file: {path.name}")
-    with path.open("rb") as handle:
-        body = handle.read(limit + 1)
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        opened = os.fstat(descriptor)
+        if (not stat.S_ISREG(opened.st_mode) or opened.st_uid != os.getuid() or opened.st_mode & 0o077
+                or opened.st_nlink != 1 or (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino)):
+            raise ValueError(f"unsafe Dream file: {path.name}")
+        with os.fdopen(descriptor, "rb", closefd=False) as handle:
+            body = handle.read(limit + 1)
+    finally:
+        os.close(descriptor)
     if len(body) > limit:
         raise ValueError(f"Dream file exceeds limit: {path.name}")
     return body
 
 
 def _object(body, label):
-    value = json.loads(body)
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"{label} contains duplicate fields")
+            value[key] = item
+        return value
+    value = json.loads(body, object_pairs_hook=unique)
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be an object")
     return value
+
+
+def _private_directory(path, label):
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid()
+            or info.st_mode & 0o077 or path.resolve(strict=True) != path):
+        raise ValueError(f"{label} is unsafe")
+    return path
+
+
+def _bounded_names(path, limit, label):
+    names = []
+    with os.scandir(path) as entries:
+        for entry in entries:
+            names.append(entry.name)
+            if len(names) > limit:
+                raise ValueError(f"{label} limit exceeded")
+    names.sort()
+    return names
+
+
+def _go_json(value):
+    encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+    return (encoded.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")).encode()
 
 
 def _partition(value):
@@ -161,13 +208,44 @@ class DreamReader:
                         errors.append(f"Unexpected Dream root entry: {path.name}")
                         continue
                     try:
-                        rows.append(self._metadata(path))
+                        with self._publish_lock(path):
+                            rows.append(self._metadata(path))
                     except (OSError, ValueError, json.JSONDecodeError) as error:
                         rows.append({"id": path.name, "error": str(error)})
         except OSError as error:
             return [], [f"Dream root read failed: {error}"], "unsafe"
         rows.sort(key=lambda row: row["id"])
         return rows, errors, "ready"
+
+    @contextmanager
+    def _publish_lock(self, path):
+        lock = path / ".publish.lock"
+        descriptor = os.open(lock, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            before = lock.lstat()
+            opened = os.fstat(descriptor)
+            if (not stat.S_ISREG(opened.st_mode) or opened.st_uid != os.getuid() or opened.st_mode & 0o077
+                    or opened.st_nlink != 1 or stat.S_ISLNK(before.st_mode)
+                    or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)):
+                raise ValueError("Dream publication lock is unsafe")
+            deadline = time.monotonic() + 0.5
+            while True:
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ValueError("Dream publication lock wait exceeded 0.5s")
+                    time.sleep(0.01)
+            after = lock.lstat()
+            if (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino):
+                raise ValueError("Dream publication lock changed while opening")
+            yield
+        finally:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
 
     def _metadata(self, path):
         info = path.lstat()
@@ -210,12 +288,23 @@ class DreamReader:
         if row.get("error"):
             return {"id": identifier, "status": "error", "error": row["error"], "root_errors": errors}
         try:
-            current = self._current(row)
-            records = self._records(row)
-            return {"id": identifier, "status": current["status"], "partition": row["partition"], "source": row["source"],
-                    "current": current, "records": records, "root_errors": errors}
+            # Re-read metadata after acquiring SH; the list row is discovery
+            # only and must never be paired with a newer current link.
+            with self._publish_lock(row["_path"]):
+                row = self._metadata(row["_path"])
+                current = self._current(row)
+            authority = self._authorization(row)
+            unified_cleanup = self._cleanup_intents(row)
         except (OSError, ValueError, sqlite3.Error, json.JSONDecodeError) as error:
             return {"id": identifier, "status": "error", "partition": row["partition"], "source": row["source"], "error": str(error), "root_errors": errors}
+        try:
+            records, records_error = self._records(row), None
+        except (OSError, ValueError, sqlite3.Error, json.JSONDecodeError) as error:
+            records, records_error = {}, str(error)
+        display_errors = errors + ([f"business records unavailable: {records_error}"] if records_error else [])
+        return {"id": identifier, "status": current["status"], "partition": row["partition"], "source": row["source"],
+                "current": current, "authorization": authority, "current_cleanup": unified_cleanup,
+                "records": records, "records_error": records_error, "root_errors": display_errors}
 
     def _current(self, row):
         link = row["_path"] / "current"
@@ -239,7 +328,7 @@ class DreamReader:
             info = directory.lstat()
             if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
                 raise ValueError("unsafe Dream version directory")
-        entries = {item.name for item in base.iterdir()}
+        entries = set(_bounded_names(base, 4, "Dream current file"))
         if entries != {"USER.md", "MEMORY.md", "TASKS.md", "manifest.json"}:
             raise ValueError("Dream current snapshot contains unexpected files")
         manifest_raw = _private_regular(base / "manifest.json", FILE_LIMIT)
@@ -273,11 +362,179 @@ class DreamReader:
             raise ValueError("Dream v1 manifest cannot contain a shared projection")
         if version == "dream-hot-v2":
             projection = _projection(projection, memories)
+        authority = manifest.get("coordination_authority")
+        if authority is not None and (version != "dream-hot-v2" or not isinstance(authority, dict)
+                                      or set(authority) != {"id", "revision"} or not _safe_id(authority["id"])
+                                      or type(authority["revision"]) is not int or authority["revision"] < 1):
+            raise ValueError("Dream coordination authority is invalid")
         source_mtime = datetime.datetime.fromtimestamp(manifest_info.st_mtime, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
         return {"status": "expired" if expired else "current", "snapshot_valid": not expired, "digest": digest,
                 "documents": documents, "memories": memories, "manifest_sha256": expected,
                 "source_mtime": source_mtime, "source_mtime_kind": "filesystem_mtime_not_content_generation",
-                "projection": projection}
+                "projection": projection, "authority": authority}
+
+    def _coordination_root(self):
+        root = self.root.parent / "coordination"
+        return _private_directory(root, "Dream coordination root")
+
+    def _authorization(self, row):
+        anchor_path = Path(row["_metadata"]["source"]["state_home"]) / ".dream-coordination" / "targets" / f"{row['id']}.json"
+        try:
+            _private_directory(anchor_path.parent.parent, "Dream coordination anchor root")
+            _private_directory(anchor_path.parent, "Dream coordination anchor directory")
+            anchor = _object(_private_regular(anchor_path, COORDINATION_FILE_LIMIT), "Dream coordination anchor")
+        except FileNotFoundError:
+            return {"status": "unavailable", "error": "no shared authorization anchor"}
+        except (OSError, ValueError, json.JSONDecodeError, KeyError) as error:
+            return {"status": "unknown", "needs_recovery": True, "error": str(error)}
+        try:
+            root = self._coordination_root()
+            required = {"version", "target_key", "coordination_root", "state_home", "config_id", "config_path", "hot_root", "policy_path", "policy_key", "partition"}
+            if (set(anchor) != required or anchor["version"] != "dream-coordination-v1" or anchor["target_key"] != row["id"]
+                    or anchor["coordination_root"] != str(root) or anchor["hot_root"] != str(self.root)
+                    or anchor["state_home"] != row["_metadata"]["source"]["state_home"]
+                    or anchor["config_id"] != row["_metadata"]["source"]["config_id"]
+                    or _partition(anchor["partition"]) != _partition(row["partition"])):
+                raise ValueError("Dream coordination anchor identity mismatch")
+            if any(not isinstance(anchor[name], str) or not os.path.isabs(anchor[name]) or os.path.normpath(anchor[name]) != anchor[name]
+                   for name in ("coordination_root", "state_home", "config_path", "hot_root", "policy_path")):
+                raise ValueError("Dream coordination anchor path is invalid")
+            policy_key = hashlib.sha256(anchor["policy_path"].encode()).hexdigest()
+            if anchor["policy_key"] != policy_key:
+                raise ValueError("Dream coordination policy key mismatch")
+            policy_root, target_root = root / "policies" / policy_key, root / "targets" / row["id"]
+            stable = None
+            for _ in range(2):
+                policy, target = self._ledger(policy_root, "policy", anchor), self._ledger(target_root, "target", anchor)
+                policy_check, target_check = self._ledger(policy_root, "policy", anchor), self._ledger(target_root, "target", anchor)
+                if policy["token"] == policy_check["token"] and target["token"] == target_check["token"]:
+                    stable = policy_check, target_check
+                    break
+            if stable is None:
+                raise ValueError("Dream coordination ledgers changed during read")
+            policy, target = stable
+            policy_value, value = policy["state"], target["state"]
+            status, reason = value["state"], value.get("reason", "")
+            if policy_value["state"] == "invalid":
+                status, reason = "invalid", policy_value.get("reason", "")
+            elif value["highest_generation"] < policy_value["highest_generation"]:
+                status, reason = "invalid", "target has not observed the current policy generation"
+            return {"status": status, "reason": reason,
+                    "highest_generation": max(value["highest_generation"], policy_value["highest_generation"]),
+                    "authorization_revision": value["authorization_revision"],
+                    "last_committed_hot_digest": value.get("last_committed_hot_digest", ""),
+                    "needs_recovery": policy["needs_recovery"] or target["needs_recovery"]}
+        except (OSError, ValueError, json.JSONDecodeError, KeyError) as error:
+            return {"status": "unknown", "needs_recovery": True, "error": str(error)}
+
+    def _ledger(self, root, kind, anchor):
+        _private_directory(root, "Dream coordination ledger")
+        events_path = root / "events"
+        _private_directory(events_path, "Dream coordination event directory")
+        names = _bounded_names(events_path, COORDINATION_EVENT_LIMIT, "Dream coordination event")
+        if not names or len(names) > COORDINATION_EVENT_LIMIT:
+            raise ValueError("Dream coordination event count is invalid")
+        previous = "0" * 64
+        states = []
+        total_bytes = 0
+        previous_generation, previous_revision = 0, 0
+        for index, name in enumerate(names, 1):
+            if name != f"{index:020d}.json":
+                raise ValueError("Dream coordination event sequence is invalid")
+            event_raw = _private_regular(events_path / name, COORDINATION_FILE_LIMIT)
+            total_bytes += len(event_raw)
+            if total_bytes > COORDINATION_LEDGER_LIMIT:
+                raise ValueError("Dream coordination ledger byte limit exceeded")
+            event = _object(event_raw, "Dream coordination event")
+            state_value = event.get("state")
+            state_raw = _go_json(state_value)
+            state_hash = hashlib.sha256(state_raw).hexdigest()
+            if (set(event) != {"version", "sequence", "previous_state_hash", "state_hash", "actor", "reason", "at", "state"}
+                    or event.get("version") != "dream-coordination-v1" or event.get("sequence") != index
+                    or event.get("previous_state_hash") != previous or event.get("state_hash") != state_hash):
+                raise ValueError("Dream coordination event hash chain is invalid")
+            if not isinstance(event.get("actor"), str) or not event["actor"] or not isinstance(event.get("reason"), str) or not event["reason"] or not isinstance(event.get("at"), str):
+                raise ValueError("Dream coordination event metadata is invalid")
+            self._ledger_identity(kind, state_value, anchor)
+            generation = state_value["highest_generation"]
+            revision = state_value.get("authorization_revision", 0)
+            if generation < previous_generation or revision < previous_revision:
+                raise ValueError("Dream coordination state history rolled back")
+            previous_generation, previous_revision = generation, revision
+            states.append((state_hash, state_value)); previous = state_hash
+        try:
+            head_raw = _private_regular(root / "head.json", COORDINATION_FILE_LIMIT)
+        except FileNotFoundError:
+            return {"state": states[-1][1], "needs_recovery": True,
+                    "token": (len(states), states[-1][0], "missing")}
+        total_bytes += len(head_raw)
+        if total_bytes > COORDINATION_LEDGER_LIMIT:
+            raise ValueError("Dream coordination ledger byte limit exceeded")
+        head = _object(head_raw, "Dream coordination head")
+        sequence = head.get("sequence")
+        if (set(head) != {"version", "sequence", "state_hash", "state"} or head.get("version") != "dream-coordination-v1" or type(sequence) is not int or not 1 <= sequence <= len(states)
+                or head.get("state_hash") != states[sequence - 1][0] or head.get("state") != states[sequence - 1][1]):
+            raise ValueError("Dream coordination head does not match its event")
+        return {"state": states[-1][1], "needs_recovery": sequence != len(states),
+                "token": (len(states), states[-1][0], sequence, head.get("state_hash"))}
+
+    def _ledger_identity(self, kind, value, anchor):
+        if not isinstance(value, dict) or value.get("version") != "dream-coordination-v1":
+            raise ValueError("Dream coordination state is invalid")
+        if kind == "policy":
+            allowed = {"version", "policy_key", "policy_path", "highest_generation", "policy_digest", "state", "reason"}
+            required = allowed - {"reason"}
+            if (not required.issubset(value) or not set(value) <= allowed or value.get("policy_key") != anchor["policy_key"]
+                    or value.get("policy_path") != anchor["policy_path"] or type(value.get("highest_generation")) is not int
+                    or value["highest_generation"] < 1 or not _digest(value.get("policy_digest"))
+                    or value.get("state") not in {"active", "invalid"}
+                    or (value["state"] == "active" and value.get("reason", "") != "")
+                    or (value["state"] == "invalid" and not isinstance(value.get("reason"), str))
+                    or (value["state"] == "invalid" and not value.get("reason"))):
+                raise ValueError("Dream policy ledger identity mismatch")
+        else:
+            allowed = {"version", "target_key", "state_home", "config_id", "config_path", "hot_root", "policy_path",
+                       "policy_key", "partition", "mount_id", "canonical_person_id", "local_target", "highest_generation",
+                       "policy_digest", "binding_digest", "state", "reason", "authorization_revision", "last_committed_hot_digest"}
+            required = allowed - {"local_target", "reason", "last_committed_hot_digest"}
+            if (not required.issubset(value) or not set(value) <= allowed or value.get("target_key") != anchor["target_key"]
+                    or value.get("state_home") != anchor["state_home"] or value.get("config_id") != anchor["config_id"]
+                    or value.get("config_path") != anchor["config_path"] or value.get("hot_root") != anchor["hot_root"]
+                    or value.get("policy_path") != anchor["policy_path"] or value.get("policy_key") != anchor["policy_key"]
+                    or _partition(value.get("partition")) != _partition(anchor["partition"])
+                    or not _safe_id(value.get("mount_id")) or not _safe_id(value.get("canonical_person_id"))
+                    or type(value.get("local_target", False)) is not bool or type(value.get("highest_generation")) is not int
+                    or value["highest_generation"] < 1 or not _digest(value.get("policy_digest"))
+                    or not _digest(value.get("binding_digest")) or value.get("state") not in {"active", "invalid"}
+                    or type(value.get("authorization_revision")) is not int or value["authorization_revision"] < 1
+                    or (value.get("last_committed_hot_digest", "") != "" and not _digest(value["last_committed_hot_digest"]))
+                    or (value["state"] == "active" and value.get("reason", "") != "")
+                    or (value["state"] == "invalid" and (not isinstance(value.get("reason"), str) or not value.get("reason")))):
+                raise ValueError("Dream target ledger identity mismatch")
+
+    def _cleanup_intents(self, row):
+        try:
+            root = self._coordination_root() / "cleanup" / row["id"]
+            _private_directory(root.parent, "Dream cleanup root")
+            _private_directory(root, "Dream cleanup intent root")
+            names = _bounded_names(root, CLEANUP_INTENT_LIMIT, "Dream cleanup intent")
+            items = []
+            for name in names:
+                if not name.endswith(".json"):
+                    raise ValueError("unexpected Dream cleanup intent entry")
+                item = _object(_private_regular(root / name, COORDINATION_FILE_LIMIT), "Dream cleanup intent")
+                if (item.get("version") != "dream-current-cleanup-v1" or item.get("target_key") != row["id"]
+                        or item.get("state_home") != row["_metadata"]["source"]["state_home"]
+                        or item.get("config_id") != row["_metadata"]["source"]["config_id"]
+                        or item.get("hot_root") != str(self.root) or _partition(item.get("partition")) != _partition(row["partition"])
+                        or item.get("status") not in {"planned", "quarantined", "completed", "skipped"}):
+                    raise ValueError("Dream cleanup intent identity mismatch")
+                items.append({key: item.get(key) for key in ("id", "digest", "status", "reason", "planned_at", "quarantined_at", "completed_at")})
+            return {"status": "ready", "items": items}
+        except FileNotFoundError:
+            return {"status": "empty", "items": []}
+        except (OSError, ValueError, json.JSONDecodeError, KeyError) as error:
+            return {"status": "error", "error": str(error), "items": []}
 
     def _records(self, row):
         person, agent, audience, scope = _partition(row["partition"])

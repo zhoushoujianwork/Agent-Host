@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,6 +60,9 @@ func TestDreamSharingTwoExplicitChannelsAndFailClosedRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err = os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
 	configDir := filepath.Join(root, "config")
 	if err = os.Mkdir(configDir, 0700); err != nil {
 		t.Fatal(err)
@@ -80,12 +84,12 @@ func TestDreamSharingTwoExplicitChannelsAndFailClosedRefresh(t *testing.T) {
 		sharingMemory("z-one", ding.SenderID, "agent", "user:alice", "scope", "preference", "same preference", now.Add(time.Hour)))
 	twoHome := sharingStateFixture(t, twoPartition, sharingMemory("two", fei.SenderID, "agent", "user:alice", "scope", "preference", "same preference", now.Add(time.Hour)))
 	policyPath := filepath.Join(configDir, "dream-sharing.json")
-	policy := dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{{ID: "alice-share", CanonicalPersonID: "alice", TargetStateHome: targetHome, Target: target, TargetAccount: &ding, Sources: []dreamSharingSource{{ID: "ding", StateHome: oneHome, Partition: onePartition, Account: &ding, Kinds: []string{"preference"}}, {ID: "fei", StateHome: twoHome, Partition: twoPartition, Account: &fei, Kinds: []string{"preference"}}}}}}
+	policy := dreamSharingPolicy{Version: 2, Generation: 1, Mounts: []dreamSharingMount{{ID: "alice-share", CanonicalPersonID: "alice", TargetStateHome: targetHome, Target: target, TargetAccount: &ding, Sources: []dreamSharingSource{{ID: "ding", StateHome: oneHome, Partition: onePartition, Account: &ding, Kinds: []string{"preference"}}, {ID: "fei", StateHome: twoHome, Partition: twoPartition, Account: &fei, Kinds: []string{"preference"}}}}}}
 	writeBotJSON(t, policyPath, policy)
-	cache, _ := filepath.EvalSymlinks(t.TempDir())
-	hot, _ := filepath.EvalSymlinks(t.TempDir())
+	cache := filepath.Join(root, "cache")
+	hot := filepath.Join(root, "hot")
 	for _, path := range []string{cache, hot} {
-		if err = os.Chmod(path, 0700); err != nil {
+		if err = os.Mkdir(path, 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -110,6 +114,35 @@ func TestDreamSharingTwoExplicitChannelsAndFailClosedRefresh(t *testing.T) {
 	if err != nil || firstDigest != bundle.Digest || len(documents) == 0 || string(documents[0].Content) != "- [source:ding,fei] same preference\n" {
 		t.Fatalf("initial and request shared HOT differ: %+v %v", documents, err)
 	}
+	captured, err := loadDreamRuntime(dreamPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, builder, err := prepareRuntimeSharedHOT(context.Background(), store, o, captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configRaw, err := os.ReadFile(dreamPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changedConfig map[string]any
+	if err = json.Unmarshal(configRaw, &changedConfig); err != nil {
+		t.Fatal(err)
+	}
+	changedConfig["hot_root"] = cache
+	changedRaw, _ := json.Marshal(changedConfig)
+	if err = os.WriteFile(dreamPath, changedRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = builder(dream.HOTAuthority{ID: "target", Revision: 1})
+	var authorizationErr dream.AuthorizationFailure
+	if !errors.As(err, &authorizationErr) || !strings.Contains(err.Error(), "configuration changed") {
+		t.Fatal("second authorization read ignored Dream config change", err)
+	}
+	if err = os.WriteFile(dreamPath, configRaw, 0600); err != nil {
+		t.Fatal(err)
+	}
 
 	policy.Generation++
 	writeBotJSON(t, policyPath, policy)
@@ -118,6 +151,8 @@ func TestDreamSharingTwoExplicitChannelsAndFailClosedRefresh(t *testing.T) {
 		t.Fatal("generation did not rotate authorization digest", err)
 	}
 	extra := userAccount{Channel: "dingtalk", AccountID: "other-app", TenantID: "tenant", SenderID: "alice-other"}
+	policy.Generation++
+	writeBotJSON(t, policyPath, policy)
 	users.Users[0].Accounts = append(users.Users[0].Accounts, extra)
 	writeBotJSON(t, usersPath, users)
 	boundDocuments, bindingDigest, err := o.hotRefresh(context.Background())
@@ -152,17 +187,49 @@ func TestDreamSharingTwoExplicitChannelsAndFailClosedRefresh(t *testing.T) {
 		t.Fatal("deleted sharing policy fell back to old HOT")
 	}
 	writeBotJSON(t, policyPath, policy)
+	if _, _, err = o.hotRefresh(context.Background()); err == nil {
+		t.Fatal("restoring the same generation reactivated revoked sharing")
+	}
+	policy.Generation++
+	writeBotJSON(t, policyPath, policy)
+	if _, _, err = o.hotRefresh(context.Background()); err != nil {
+		t.Fatal("higher generation did not restore sharing", err)
+	}
 	users.Users[0].Accounts = []userAccount{ding}
 	writeBotJSON(t, usersPath, users)
 	if _, _, err = o.hotRefresh(context.Background()); err == nil {
 		t.Fatal("removed source binding was accepted")
 	}
 	writeBotJSON(t, usersPath, userCatalog{Version: 1, Users: []userDefinition{{ID: "alice", Accounts: []userAccount{ding, fei}}}})
+	policy.Generation++
+	writeBotJSON(t, policyPath, policy)
+	if _, _, err = o.hotRefresh(context.Background()); err != nil {
+		t.Fatal("higher generation did not restore binding authorization", err)
+	}
+	policy.Generation++
+	writeBotJSON(t, policyPath, policy)
 	if err = os.Rename(filepath.Join(twoHome, "state.db"), filepath.Join(twoHome, "state.db.missing")); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err = o.hotRefresh(context.Background()); err == nil {
 		t.Fatal("unreadable source fell back to old HOT")
+	}
+	status, statusErr := dream.ReadAuthorization(context.Background(), dream.CoordinationTarget{StateHome: targetHome, Partition: target})
+	if statusErr != nil || status.State != "active" || status.HighestGeneration != policy.Generation {
+		t.Fatal("temporary source failure permanently revoked authorization", status, statusErr)
+	}
+	policy.Generation--
+	writeBotJSON(t, policyPath, policy)
+	if _, _, err = o.hotRefresh(context.Background()); err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatal("generation rollback after a failed source snapshot was accepted", err)
+	}
+	policy.Generation++
+	writeBotJSON(t, policyPath, policy)
+	if err = os.Rename(filepath.Join(twoHome, "state.db.missing"), filepath.Join(twoHome, "state.db")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = o.hotRefresh(context.Background()); err != nil {
+		t.Fatal("same authorized generation did not recover after source repair", err)
 	}
 }
 
@@ -176,6 +243,11 @@ func TestDreamSharingPolicyBoundariesAndLegacyNoPolicy(t *testing.T) {
 	}
 	base := dreamSharingMount{ID: "mount", CanonicalPersonID: "alice", TargetStateHome: home, Target: target, TargetAccount: &ding}
 	valid := dreamSharingSource{ID: "source", StateHome: home, Partition: target, Account: &ding, Kinds: []string{"preference"}}
+	legacy := base
+	legacy.Sources = []dreamSharingSource{valid}
+	if _, err := selectDreamSharingMount(dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{legacy}}, users, home, target, dreamSharingIdentity{Account: &ding}); err == nil || !strings.Contains(err.Error(), "version 2") {
+		t.Fatal("version 1 sharing policy was accepted", err)
+	}
 	for name, mutate := range map[string]func(*dreamSharingMount){
 		"different agent": func(m *dreamSharingMount) { m.Sources[0].Partition.AgentID = "other" },
 		"cross scope fact": func(m *dreamSharingMount) {
@@ -191,7 +263,7 @@ func TestDreamSharingPolicyBoundariesAndLegacyNoPolicy(t *testing.T) {
 			mount := base
 			mount.Sources = []dreamSharingSource{valid}
 			mutate(&mount)
-			policy := dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{mount}}
+			policy := dreamSharingPolicy{Version: 2, Generation: 1, Mounts: []dreamSharingMount{mount}}
 			if _, err := selectDreamSharingMount(policy, users, home, target, dreamSharingIdentity{Account: &ding}); err == nil {
 				t.Fatal("unsafe mount accepted")
 			}
@@ -205,13 +277,13 @@ func TestDreamSharingPolicyBoundariesAndLegacyNoPolicy(t *testing.T) {
 	preference := base
 	preference.Sources = []dreamSharingSource{valid}
 	preference.Sources[0].Partition.Scope = "scope-b"
-	if _, err := selectDreamSharingMount(dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{preference}}, users, home, target, dreamSharingIdentity{Account: &ding}); err != nil {
+	if _, err := selectDreamSharingMount(dreamSharingPolicy{Version: 2, Generation: 1, Mounts: []dreamSharingMount{preference}}, users, home, target, dreamSharingIdentity{Account: &ding}); err != nil {
 		t.Fatal("explicit cross-scope preference rejected", err)
 	}
 	local := base
 	local.Sources = []dreamSharingSource{valid}
 	local.TargetAccount, local.TargetLocalOwner, local.CanonicalPersonID = nil, true, "alice"
-	if _, err := selectDreamSharingMount(dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{local}}, users, home, target, dreamSharingIdentity{LocalOwner: true}); err == nil || !strings.Contains(err.Error(), "reserved owner") {
+	if _, err := selectDreamSharingMount(dreamSharingPolicy{Version: 2, Generation: 1, Mounts: []dreamSharingMount{local}}, users, home, target, dreamSharingIdentity{LocalOwner: true}); err == nil || !strings.Contains(err.Error(), "reserved owner") {
 		t.Fatal("CLI self-reported another canonical person", err)
 	}
 	store, err := state.Open(home, false)
@@ -227,9 +299,17 @@ func TestDreamSharingPolicyBoundariesAndLegacyNoPolicy(t *testing.T) {
 
 func TestDreamSharingPolicyRequiresHOT(t *testing.T) {
 	policy := filepath.Join(t.TempDir(), "sharing.json")
-	writeBotJSON(t, policy, dreamSharingPolicy{Version: 1, Generation: 1, Mounts: []dreamSharingMount{}})
+	writeBotJSON(t, policy, dreamSharingPolicy{Version: 2, Generation: 1, Mounts: []dreamSharingMount{}})
 	path := writeDreamConfig(t, `{"sharing_policy":"`+policy+`"}`)
 	if _, err := loadDreamRuntime(path); err == nil || !strings.Contains(err.Error(), "requires hot_enabled") {
 		t.Fatal("sharing policy without HOT was accepted", err)
+	}
+	cache, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(cache, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path = writeDreamConfig(t, `{"hot_enabled":true,"cache_root":"`+cache+`","sharing_policy":"`+policy+`","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","batch":1}`)
+	if _, err := loadDreamRuntime(path); err == nil || !strings.Contains(err.Error(), "requires hot_root") {
+		t.Fatal("sharing policy without coordinated HOT root was accepted", err)
 	}
 }

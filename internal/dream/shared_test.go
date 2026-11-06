@@ -27,6 +27,33 @@ func TestHOTV1DigestRemainsByteCompatible(t *testing.T) {
 	}
 }
 
+func TestHOTV2AuthorityRevisionChangesDigest(t *testing.T) {
+	bundle := HOTBundle{Version: "dream-hot-v2", Partition: state.DreamPartition{PersonID: "p", AgentID: "a", AudienceID: "u", Scope: "s"}, Documents: map[string]string{"USER.md": "u", "MEMORY.md": "", "TASKS.md": ""}, Projection: &HOTProjection{CanonicalPersonID: "p", MountID: "m", Generation: 1, PolicyDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64)}}
+	legacyRaw, _ := json.Marshal(struct {
+		Version    string
+		Partition  state.DreamPartition
+		Documents  map[string]string
+		Memories   []HOTManifestEntry
+		Projection *HOTProjection
+	}{bundle.Version, bundle.Partition, bundle.Documents, bundle.Memories, bundle.Projection})
+	legacySum := sha256.Sum256(legacyRaw)
+	bundle.Digest = hotBundleDigest(bundle)
+	if bundle.Digest != hex.EncodeToString(legacySum[:]) {
+		t.Fatal("authority-free v2 digest lost phase 2 compatibility", bundle.Digest)
+	}
+	one, err := ApplyHOTAuthority(bundle, HOTAuthority{ID: "target", Revision: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := ApplyHOTAuthority(bundle, HOTAuthority{ID: "target", Revision: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one.Digest == two.Digest || one.Documents["USER.md"] != two.Documents["USER.md"] {
+		t.Fatal("authority revision did not independently rotate v2 digest")
+	}
+}
+
 func TestExportSharedHOTDeduplicatesExactTextAndPreservesSourceRefs(t *testing.T) {
 	target := state.DreamPartition{PersonID: "raw-target", AgentID: "agent", AudienceID: "user:alice", Scope: "scope"}
 	now := time.Now().UTC()

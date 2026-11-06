@@ -1,11 +1,13 @@
 """Validate the fixed-root, read-only Dream projection."""
 
 import hashlib
+import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 
@@ -99,6 +101,46 @@ class DreamViewTests(unittest.TestCase):
         metadata["manifest_sha256"][digest] = hashlib.sha256(raw).hexdigest()
         self.write_private(metadata_path, (json.dumps(metadata) + "\n").encode())
 
+    def coordination(self):
+        coordination = self.root.parent / "coordination"
+        anchor_dir = self.home / ".dream-coordination" / "targets"
+        anchor_dir.mkdir(parents=True, mode=0o700)
+        (self.home / ".dream-coordination").chmod(0o700)
+        policy_path = str(self.base / "sharing.json")
+        policy_key = hashlib.sha256(policy_path.encode()).hexdigest()
+        anchor = {"version": "dream-coordination-v1", "target_key": self.identifier,
+                  "coordination_root": str(coordination), "state_home": str(self.home), "config_id": "config-one",
+                  "config_path": str(self.base / "dream.json"), "hot_root": str(self.root), "policy_path": policy_path,
+                  "policy_key": policy_key, "partition": self.partition}
+        self.write_private(anchor_dir / f"{self.identifier}.json", (json.dumps(anchor) + "\n").encode())
+        policy_state = {"version": "dream-coordination-v1", "policy_key": policy_key, "policy_path": policy_path,
+                        "highest_generation": 2, "policy_digest": "b" * 64, "state": "active"}
+        target_state = {"version": "dream-coordination-v1", "target_key": self.identifier, "state_home": str(self.home),
+                        "config_id": "config-one", "config_path": str(self.base / "dream.json"), "hot_root": str(self.root),
+                        "policy_path": policy_path, "policy_key": policy_key, "partition": self.partition,
+                        "mount_id": "mount", "canonical_person_id": "person", "highest_generation": 2,
+                        "policy_digest": "b" * 64, "binding_digest": "c" * 64, "state": "active",
+                        "authorization_revision": 3, "last_committed_hot_digest": "a" * 64}
+        for kind, key, state_value in (("policies", policy_key, policy_state), ("targets", self.identifier, target_state)):
+            ledger = coordination / kind / key
+            events = ledger / "events"
+            events.mkdir(parents=True, mode=0o700)
+            for directory in (coordination, coordination / kind, ledger, events): directory.chmod(0o700)
+            state_hash = hashlib.sha256(json.dumps(state_value, separators=(",", ":")).encode()).hexdigest()
+            event = {"version": "dream-coordination-v1", "sequence": 1, "previous_state_hash": "0" * 64,
+                     "state_hash": state_hash, "actor": "test", "reason": "fixture", "at": "2026-01-01T00:00:00Z", "state": state_value}
+            head = {"version": "dream-coordination-v1", "sequence": 1, "state_hash": state_hash, "state": state_value}
+            self.write_private(events / "00000000000000000001.json", (json.dumps(event) + "\n").encode())
+            self.write_private(ledger / "head.json", (json.dumps(head) + "\n").encode())
+        cleanup = coordination / "cleanup" / self.identifier
+        cleanup.mkdir(parents=True, mode=0o700)
+        (coordination / "cleanup").chmod(0o700)
+        intent = {"version": "dream-current-cleanup-v1", "id": "intent", "target_key": self.identifier,
+                  "state_home": str(self.home), "config_id": "config-one", "hot_root": str(self.root),
+                  "partition": self.partition, "digest": "d" * 64, "status": "completed", "reason": "retained",
+                  "planned_at": "2026-01-01T00:00:00Z", "completed_at": "2026-01-02T00:00:00Z"}
+        self.write_private(cleanup / "intent.json", (json.dumps(intent) + "\n").encode())
+
     def test_current_and_exact_read_only_records(self):
         self.publication()
         self.records()
@@ -141,6 +183,76 @@ class DreamViewTests(unittest.TestCase):
         self.assertEqual(detail["status"], "error")
         self.assertIn("memory reference", detail["error"])
 
+    def test_authorization_and_unified_cleanup_are_read_only_metadata(self):
+        self.publication()
+        self.coordination()
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["authorization"]["status"], "active")
+        self.assertEqual(detail["authorization"]["highest_generation"], 2)
+        self.assertEqual(detail["authorization"]["authorization_revision"], 3)
+        self.assertEqual(detail["current_cleanup"]["items"][0]["status"], "completed")
+        (self.root.parent / "coordination" / "targets" / self.identifier / "head.json").unlink()
+        recovering = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(recovering["authorization"]["status"], "active")
+        self.assertTrue(recovering["authorization"]["needs_recovery"])
+        events = self.root.parent / "coordination" / "targets" / self.identifier / "events"
+        events.chmod(0o755)
+        unsafe = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(unsafe["status"], "current")
+        self.assertEqual(unsafe["authorization"]["status"], "unknown")
+
+    def test_real_go_ledger_hash_and_global_revocation_are_effective(self):
+        self.publication()
+        self.root.parent.chmod(0o700)
+        environment = dict(os.environ, DREAM_VIEWER_HOME=str(self.home), DREAM_VIEWER_HOT_ROOT=str(self.root))
+        completed = subprocess.run(["go", "test", "./internal/dream", "-run", "^TestWriteViewerCoordinationFixture$", "-count=1"],
+                                   cwd=HERE.parents[1], env=environment, check=False, capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "current")
+        self.assertEqual(detail["authorization"]["status"], "invalid")
+        self.assertEqual(detail["authorization"]["highest_generation"], 2)
+        self.assertIn("全局撤销 <&>", detail["authorization"]["reason"])
+
+    def test_real_go_policy_highwater_invalidates_lagging_target(self):
+        self.publication()
+        self.root.parent.chmod(0o700)
+        environment = dict(os.environ, DREAM_VIEWER_HOME=str(self.home), DREAM_VIEWER_HOT_ROOT=str(self.root),
+                           DREAM_VIEWER_FIXTURE_MODE="behind")
+        completed = subprocess.run(["go", "test", "./internal/dream", "-run", "^TestWriteViewerCoordinationFixture$", "-count=1"],
+                                   cwd=HERE.parents[1], env=environment, check=False, capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        authority = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)["authorization"]
+        self.assertEqual(authority["status"], "invalid")
+        self.assertEqual(authority["highest_generation"], 3)
+        self.assertIn("current policy generation", authority["reason"])
+
+    def test_authorization_sampling_retries_once_then_fails_unknown(self):
+        self.publication()
+        self.coordination()
+        reader = viewer.DreamReader(self.root, self.catalog)
+        row = reader._entries()[0][0]
+        original, calls = reader._ledger, {"count": 0}
+        def changes_once(root, kind, anchor):
+            value = original(root, kind, anchor)
+            calls["count"] += 1
+            if calls["count"] in {1, 3}:
+                value = dict(value); value["token"] = (calls["count"],)
+            return value
+        reader._ledger = changes_once
+        self.assertEqual(reader._authorization(row)["status"], "active")
+        self.assertEqual(calls["count"], 8)
+        calls["count"] = 0
+        def always_changes(root, kind, anchor):
+            value = original(root, kind, anchor)
+            calls["count"] += 1
+            value = dict(value); value["token"] = (calls["count"],)
+            return value
+        reader._ledger = always_changes
+        unstable = reader._authorization(row)
+        self.assertEqual(unstable["status"], "unknown")
+        self.assertIn("changed during read", unstable["error"])
+
     def test_truncation_expiry_empty_and_unmounted_source(self):
         self.publication(expiry="2020-01-01T00:00:00Z")
         self.records(matching=51, decoys=0)
@@ -178,6 +290,23 @@ class DreamViewTests(unittest.TestCase):
         self.assertEqual(detail["status"], "error")
         self.assertRegex(detail["error"], "exceeds limit|unsafe Dream file")
 
+    def test_reader_lock_is_shared_bounded_and_never_created(self):
+        root, _ = self.publication()
+        lock = root / ".publish.lock"
+        descriptor = os.open(lock, os.O_RDONLY)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+            self.assertEqual(detail["status"], "error")
+            self.assertIn("lock wait exceeded", detail["error"])
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
+        lock.unlink()
+        detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
+        self.assertEqual(detail["status"], "error")
+        self.assertFalse(lock.exists())
+
     def test_absent_and_unsafe_roots_fail_closed(self):
         absent = self.base / "absent"
         reader = viewer.DreamReader(absent, self.catalog)
@@ -214,8 +343,9 @@ class DreamViewTests(unittest.TestCase):
         conn.commit()
         conn.close()
         detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
-        self.assertEqual(detail["status"], "error")
-        self.assertIn("per-record byte limit", detail["error"])
+        self.assertEqual(detail["status"], "current")
+        self.assertIn("per-record byte limit", detail["records_error"])
+        self.assertTrue(detail["current"]["snapshot_valid"])
 
     def test_record_total_byte_limit_is_explicit(self):
         self.publication()
@@ -227,8 +357,8 @@ class DreamViewTests(unittest.TestCase):
         conn.commit()
         conn.close()
         detail = viewer.DreamReader(self.root, self.catalog).partition(self.identifier)
-        self.assertEqual(detail["status"], "error")
-        self.assertIn("response byte limit", detail["error"])
+        self.assertEqual(detail["status"], "current")
+        self.assertIn("response byte limit", detail["records_error"])
 
 
 if __name__ == "__main__":

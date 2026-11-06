@@ -75,8 +75,8 @@ func loadDreamSharingUsers(agentsConfig string) (*userCatalog, string, error) {
 }
 
 func selectDreamSharingMount(policy dreamSharingPolicy, users *userCatalog, home string, target state.DreamPartition, identity dreamSharingIdentity) (dreamSharingMount, error) {
-	if policy.Version != 1 || policy.Generation < 1 || policy.Mounts == nil || len(policy.Mounts) > 32 {
-		return dreamSharingMount{}, errors.New("dream sharing policy requires version 1, positive generation and at most 32 mounts")
+	if policy.Version != 2 || policy.Generation < 1 || policy.Mounts == nil || len(policy.Mounts) > 32 {
+		return dreamSharingMount{}, errors.New("dream sharing policy requires version 2, positive generation and at most 32 mounts")
 	}
 	if !validDreamSharingPartition(target) {
 		return dreamSharingMount{}, errors.New("dream sharing runtime partition is invalid")
@@ -222,47 +222,74 @@ func validDreamSharingPartition(partition state.DreamPartition) bool {
 
 func exportRuntimeHOT(ctx context.Context, store *state.Store, o options, config *dreamRuntimeConfig) (dream.HOTBundle, error) {
 	target := state.DreamPartition{PersonID: config.PersonID, AgentID: config.AgentID, AudienceID: config.AudienceID, Scope: config.Scope}
-	if config.SharingPolicy == "" {
-		return dream.ExportHOT(ctx, store.WithPartition(config.AgentID, config.AudienceID), target, time.Now().UTC(), config.Batch)
+	if config.SharingPolicy != "" {
+		return dream.HOTBundle{}, errors.New("shared HOT export requires durable coordinated publication")
+	}
+	return dream.ExportHOT(ctx, store.WithPartition(config.AgentID, config.AudienceID), target, time.Now().UTC(), config.Batch)
+}
+
+func prepareRuntimeSharedHOT(ctx context.Context, store *state.Store, o options, captured *dreamRuntimeConfig) (dream.AuthorizationObservation, dream.SharedHOTBuilder, error) {
+	target := state.DreamPartition{PersonID: captured.PersonID, AgentID: captured.AgentID, AudienceID: captured.AudienceID, Scope: captured.Scope}
+	config, err := loadDreamRuntime(o.dreamConfig)
+	if err != nil {
+		return dream.AuthorizationObservation{}, nil, dream.RevokeAuthorizationError(err)
+	}
+	if config == nil || !config.HotEnabled || config.SharingPolicy == "" || config.HotRoot != captured.HotRoot || config.SharingPolicy != captured.SharingPolicy || config.CacheRoot != captured.CacheRoot || (state.DreamPartition{PersonID: config.PersonID, AgentID: config.AgentID, AudienceID: config.AudienceID, Scope: config.Scope}) != target {
+		return dream.AuthorizationObservation{}, nil, dream.RevokeAuthorizationError(errors.New("dream shared runtime configuration changed or sharing was disabled"))
 	}
 	policy, policyDigest, err := loadDreamSharingPolicy(config.SharingPolicy)
 	if err != nil {
-		return dream.HOTBundle{}, err
+		return dream.AuthorizationObservation{}, nil, dream.RevokeAuthorizationError(err)
 	}
 	users, bindingDigest, err := loadDreamSharingUsers(o.agentsConfig)
 	if err != nil {
-		return dream.HOTBundle{}, err
+		return dream.AuthorizationObservation{}, nil, dream.RevokeAuthorizationError(err)
 	}
 	mount, err := selectDreamSharingMount(policy, users, store.Home(), target, o.dreamSharingIdentity)
 	if err != nil {
-		return dream.HOTBundle{}, err
+		return dream.AuthorizationObservation{}, nil, dream.RevokeAuthorizationError(err)
 	}
-	readNow := time.Now().UTC()
-	shared := make([]dream.SharedHOTSource, 0, len(mount.Sources))
-	for _, source := range mount.Sources {
-		memories, readErr := state.ReadDreamMemoriesSnapshot(ctx, source.StateHome, source.Partition, readNow, dreamSharingSourceReadLimit)
-		if readErr != nil {
-			return dream.HOTBundle{}, fmt.Errorf("dream sharing source %s: %w", source.ID, readErr)
+	observation := dream.AuthorizationObservation{Generation: policy.Generation, PolicyDigest: policyDigest, BindingDigest: bindingDigest, MountID: mount.ID, CanonicalPersonID: mount.CanonicalPersonID, LocalTarget: mount.TargetLocalOwner}
+	build := func(authority dream.HOTAuthority) (dream.HOTBundle, error) {
+		readNow := time.Now().UTC()
+		shared := make([]dream.SharedHOTSource, 0, len(mount.Sources))
+		for _, source := range mount.Sources {
+			memories, readErr := state.ReadDreamMemoriesSnapshot(ctx, source.StateHome, source.Partition, readNow, dreamSharingSourceReadLimit)
+			if readErr != nil {
+				return dream.HOTBundle{}, fmt.Errorf("dream sharing source %s: %w", source.ID, readErr)
+			}
+			metadata := dream.HOTProjectionSource{ID: source.ID, StateHome: source.StateHome, Partition: source.Partition, LocalOwner: source.LocalOwner, Kinds: append([]string(nil), source.Kinds...)}
+			if source.Account != nil {
+				metadata.Account = &dream.HOTProjectionAccount{Channel: source.Account.Channel, AccountID: source.Account.AccountID, TenantID: source.Account.TenantID, SenderID: source.Account.SenderID}
+			}
+			shared = append(shared, dream.SharedHOTSource{Metadata: metadata, Memories: memories})
 		}
-		metadata := dream.HOTProjectionSource{ID: source.ID, StateHome: source.StateHome, Partition: source.Partition, LocalOwner: source.LocalOwner, Kinds: append([]string(nil), source.Kinds...)}
-		if source.Account != nil {
-			metadata.Account = &dream.HOTProjectionAccount{Channel: source.Account.Channel, AccountID: source.Account.AccountID, TenantID: source.Account.TenantID, SenderID: source.Account.SenderID}
+		afterConfig, reloadErr := loadDreamRuntime(o.dreamConfig)
+		if reloadErr != nil {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(reloadErr)
 		}
-		shared = append(shared, dream.SharedHOTSource{Metadata: metadata, Memories: memories})
+		if afterConfig == nil || !afterConfig.HotEnabled || afterConfig.SharingPolicy == "" || afterConfig.HotRoot != config.HotRoot || afterConfig.SharingPolicy != config.SharingPolicy || afterConfig.CacheRoot != config.CacheRoot || (state.DreamPartition{PersonID: afterConfig.PersonID, AgentID: afterConfig.AgentID, AudienceID: afterConfig.AudienceID, Scope: afterConfig.Scope}) != target {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(errors.New("dream shared runtime configuration changed during source read"))
+		}
+		afterPolicy, afterPolicyDigest, reloadErr := loadDreamSharingPolicy(afterConfig.SharingPolicy)
+		if reloadErr != nil {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(reloadErr)
+		}
+		afterUsers, afterBindingDigest, reloadErr := loadDreamSharingUsers(o.agentsConfig)
+		if reloadErr != nil {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(reloadErr)
+		}
+		if policyDigest != afterPolicyDigest || bindingDigest != afterBindingDigest {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(errors.New("dream sharing authorization changed during source read"))
+		}
+		if _, reloadErr = selectDreamSharingMount(afterPolicy, afterUsers, store.Home(), target, o.dreamSharingIdentity); reloadErr != nil {
+			return dream.HOTBundle{}, dream.RevokeAuthorizationError(reloadErr)
+		}
+		bundle, buildErr := dream.ExportSharedHOT(target, mount.CanonicalPersonID, mount.ID, policy.Generation, policyDigest, bindingDigest, shared, time.Now().UTC())
+		if buildErr != nil {
+			return dream.HOTBundle{}, buildErr
+		}
+		return dream.ApplyHOTAuthority(bundle, authority)
 	}
-	afterPolicy, afterPolicyDigest, err := loadDreamSharingPolicy(config.SharingPolicy)
-	if err != nil {
-		return dream.HOTBundle{}, err
-	}
-	afterUsers, afterBindingDigest, err := loadDreamSharingUsers(o.agentsConfig)
-	if err != nil {
-		return dream.HOTBundle{}, err
-	}
-	if policyDigest != afterPolicyDigest || bindingDigest != afterBindingDigest {
-		return dream.HOTBundle{}, errors.New("dream sharing authorization changed during source read")
-	}
-	if _, err = selectDreamSharingMount(afterPolicy, afterUsers, store.Home(), target, o.dreamSharingIdentity); err != nil {
-		return dream.HOTBundle{}, err
-	}
-	return dream.ExportSharedHOT(target, mount.CanonicalPersonID, mount.ID, policy.Generation, policyDigest, bindingDigest, shared, time.Now().UTC())
+	return observation, build, nil
 }
