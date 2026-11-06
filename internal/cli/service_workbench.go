@@ -91,7 +91,8 @@ func launchServiceWorkbenchSources(ctx context.Context, layout serviceLayout, py
 		return nil, nil, errors.New("cannot open private viewer log")
 	}
 	childCtx, cancel := context.WithCancel(ctx)
-	args := []string{"-B", script, "--home", layout.State, "--no-reports", "--all-chats", "--port", fmt.Sprint(port)}
+	appRoot := serviceAppRoot(layout)
+	args := []string{"-B", script, "--home", layout.State, "--no-reports", "--all-chats", "--port", fmt.Sprint(port), "--dream-root", filepath.Join(appRoot, "dream", "hot")}
 	if directory := unifiedDirectory(layout.Root); directory != "" {
 		args = append(args, "--backup-root", filepath.Dir(directory))
 	}
@@ -168,6 +169,13 @@ func launchServiceWorkbenchSources(ctx context.Context, layout serviceLayout, py
 		}
 	}
 	return stop, done, nil
+}
+
+func serviceAppRoot(layout serviceLayout) string {
+	if directory := unifiedDirectory(layout.Root); directory != "" {
+		return filepath.Dir(directory)
+	}
+	return layout.Root
 }
 
 func openWorkbenchURL(ctx context.Context, address string) error {

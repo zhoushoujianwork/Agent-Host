@@ -32,6 +32,7 @@ type dreamRuntimeConfig struct {
 	SourceRoot           string   `json:"source_root"`
 	MemoryOffloadConfig  string   `json:"memory_offload_config"`
 	CacheRoot            string   `json:"cache_root"`
+	HotRoot              string   `json:"hot_root,omitempty"`
 	PersonID             string   `json:"person_id"`
 	AgentID              string   `json:"agent_id"`
 	AudienceID           string   `json:"audience_id"`
@@ -111,6 +112,9 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 			if _, publishErr := dream.PublishHOT(c.CacheRoot, bundle); publishErr != nil {
 				return receipts, errors.Join(processErr, publishErr)
 			}
+			if publishErr := publishDreamCurrent(c, o.dreamConfig, store.Home(), bundle); publishErr != nil {
+				return receipts, errors.Join(processErr, publishErr)
+			}
 			retention, _ := time.ParseDuration(c.CleanupRetention)
 			cleanup, cleanupErr := dream.CleanupHOT(runCtx, pstore, c.CacheRoot, bundle, time.Now().UTC(), retention, c.Batch)
 			if len(cleanup.Skipped) > 0 {
@@ -161,6 +165,14 @@ func loadDreamRuntime(path string) (*dreamRuntimeConfig, error) {
 	}
 	if c.DraftSkills && !c.Enabled {
 		return nil, errors.New("draft_skills requires enabled idle Dream lifecycle")
+	}
+	if c.HotRoot != "" {
+		if !c.HotEnabled {
+			return nil, errors.New("dream hot_root requires hot_enabled")
+		}
+		if err := validateDreamPath(c.HotRoot, true); err != nil {
+			return nil, errors.New("dream unified HOT root: " + err.Error())
+		}
 	}
 	if !c.Enabled && !c.HotEnabled {
 		return &c, nil
@@ -316,6 +328,9 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 	if _, err = dream.PublishHOT(c.CacheRoot, bundle); err != nil {
 		return err
 	}
+	if err = publishDreamCurrent(c, o.dreamConfig, store.Home(), bundle); err != nil {
+		return err
+	}
 	o.hotPersonID, o.hotAgentID, o.hotAudienceID, o.hotScope = c.PersonID, c.AgentID, c.AudienceID, c.Scope
 	o.hotRefresh = func(ctx context.Context) ([]harness.PresetDocument, string, error) {
 		next, e := dream.ExportHOT(ctx, store.WithPartition(c.AgentID, c.AudienceID), p, time.Now().UTC(), c.Batch)
@@ -325,9 +340,20 @@ func prepareDreamHOT(store *state.Store, o *options) error {
 		if _, e = dream.PublishHOT(c.CacheRoot, next); e != nil {
 			return nil, "", e
 		}
+		if e = publishDreamCurrent(c, o.dreamConfig, store.Home(), next); e != nil {
+			return nil, "", e
+		}
 		return dream.PresetDocuments(next), next.Digest, nil
 	}
 	return nil
+}
+
+func publishDreamCurrent(c *dreamRuntimeConfig, configPath, stateHome string, bundle dream.HOTBundle) error {
+	if c == nil || c.HotRoot == "" {
+		return nil
+	}
+	_, err := dream.PublishCurrent(c.HotRoot, dream.HOTSource{StateHome: stateHome, ConfigID: dreamRuntimeConfigID(configPath, c)}, bundle)
+	return err
 }
 
 func bindDreamHOT(store *state.Store, o *options, personID string, private bool) error {

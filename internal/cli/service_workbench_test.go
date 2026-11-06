@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/dream"
 	"agent-host/internal/state"
 )
 
@@ -41,6 +42,15 @@ func workbenchFixture(t *testing.T) serviceLayout {
 	}
 	store.Close()
 	return layout
+}
+
+func TestServiceAppRootMatchesManagedAndCLILayouts(t *testing.T) {
+	if got := serviceAppRoot(serviceLayout{Root: "/app/channels/dingtalk"}); got != "/app" {
+		t.Fatal("unified managed service root mismatch", got)
+	}
+	if got := serviceAppRoot(serviceLayout{Root: "/app", Config: "/app/config"}); got != "/app" {
+		t.Fatal("CLI workbench root mismatch", got)
+	}
 }
 
 func TestServiceWorkbenchBrowserAndLifetime(t *testing.T) {
@@ -222,6 +232,73 @@ func TestServiceWorkbenchIncludesCLIStateSource(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(index.Channels, ","), "cli") {
 		t.Fatal("workbench omitted the CLI chat source", index)
+	}
+}
+
+func TestServiceWorkbenchReadsGoPublishedDreamCurrent(t *testing.T) {
+	python, err := exec.LookPath(testWorkbenchPython())
+	if err != nil {
+		t.Fatal("workbench requires Python 3.9+:", err)
+	}
+	layout := workbenchFixture(t)
+	hotRoot := filepath.Join(layout.Root, "dream", "hot")
+	if err = os.MkdirAll(hotRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bundle := dream.HOTBundle{Version: "dream-hot-v1", Partition: state.DreamPartition{PersonID: "person", AgentID: "agent", AudienceID: "owner", Scope: "scope"}, Documents: map[string]string{"USER.md": "user\n", "MEMORY.md": "memory\n", "TASKS.md": "tasks\n"}}
+	// Export through the real Store so the digest and manifest bytes are produced
+	// by Go rather than duplicated in the Python verifier fixture.
+	store, err := state.Open(layout.State, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err = dream.ExportHOT(t.Context(), store.WithPartition("agent", "owner"), bundle.Partition, time.Now().UTC(), 10)
+	if closeErr := store.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = dream.PublishCurrent(hotRoot, dream.HOTSource{StateHome: layout.State, ConfigID: "config-id"}, bundle); err != nil {
+		t.Fatal(err)
+	}
+	var notice bytes.Buffer
+	stop, err := startServiceWorkbench(t.Context(), layout, python, 0, false, &notice, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	address := strings.Fields(notice.String())[2]
+	response, err := http.Get(address + "api/dream/partitions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var index struct {
+		Partitions []struct {
+			ID string `json:"id"`
+		} `json:"partitions"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&index)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || len(index.Partitions) != 1 {
+		t.Fatal("Go Dream publication was not listed", index, response.StatusCode, err)
+	}
+	response, err = http.Get(address + "api/dream/partition?id=" + index.Partitions[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var detail struct {
+		Status  string `json:"status"`
+		Error   string `json:"error"`
+		Current struct {
+			Digest    string            `json:"digest"`
+			Documents map[string]string `json:"documents"`
+		} `json:"current"`
+	}
+	err = json.NewDecoder(response.Body).Decode(&detail)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusOK || detail.Status != "current" || detail.Current.Digest != bundle.Digest || detail.Current.Documents["MEMORY.md"] != bundle.Documents["MEMORY.md"] {
+		t.Fatal("Python viewer did not verify Go Dream bytes", detail, response.StatusCode, err)
 	}
 }
 

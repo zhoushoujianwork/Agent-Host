@@ -29,6 +29,7 @@ from memory_view import memory_catalog, normalize_report
 from settings_store import SettingsStore, Conflict
 from agent_profiles import profiles as agent_profiles
 from platform_skills import export_skill, inspect as platform_skills
+from dream_view import DreamReader
 from chat_runtime import ChatRuntime, AgentChatRuntime, ChatConflict, default_config, settings_handoff
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -942,6 +943,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send(200, result)
             elif target.path == "/api/records":
                 self.send(200, self.server.catalog.index())
+            elif target.path == "/api/dream/partitions":
+                if target.query:
+                    self.send(400, {"error": "Dream partitions does not accept query parameters"})
+                else:
+                    self.send(200, self.server.dream_reader.partitions())
+            elif target.path == "/api/dream/partition":
+                query = parse_qs(target.query, keep_blank_values=True)
+                if set(query) != {"id"} or len(query["id"]) != 1 or not query["id"][0]:
+                    self.send(400, {"error": "Dream partition requires exactly one opaque id"})
+                else:
+                    self.send(200, self.server.dream_reader.partition(query["id"][0]))
             elif target.path == "/api/settings":
                 store = getattr(self.server, "settings_store", None)
                 result = store.index() if store else {"enabled": False, "files": []}
@@ -999,7 +1011,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = record_control.record(self.server.catalog, keys[0])
                     result["mutation_token"] = getattr(self.server, "mutation_token", None)
                     self.send(200, result)
-            elif target.path in {"/stats.html", "/stats.js", "/stats.css", "/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory-scope.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css", "/readiness.js", "/readiness.css"}:
+            elif target.path in {"/stats.html", "/stats.js", "/stats.css", "/dream.html", "/dream.js", "/dream.css", "/", "/index.html", "/logo.svg", "/markdown-parser.js", "/markdown.js", "/chat.js", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css", "/agent-profiles.js", "/agent-profiles.css", "/platform-skills.js", "/platform-skills.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/app.js", "/style.css", "/memory.html", "/memory.js", "/memory-scope.js", "/memory.css", "/settings.html", "/settings.js", "/settings.css", "/readiness.js", "/readiness.css"}:
                 name = "index.html" if target.path == "/" else target.path[1:]
                 mime = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml"}[Path(name).suffix]
                 self.send(200, (ASSETS / name).read_bytes(), mime + "; charset=utf-8")
@@ -1147,6 +1159,7 @@ def main():
     parser.add_argument("--all-chats", action="store_true", help="Show every Agent and chat partition in this local console")
     parser.add_argument("--host-binary", type=Path, default=ROOT / "bin" / "agent-host", help="Host executable used to verify file memory and rebuild its derived index")
     parser.add_argument("--backup-root", type=Path, help="Explicit Host root for backup health and local settings")
+    parser.add_argument("--dream-root", type=Path, help="Fixed owner-private unified Dream HOT root")
     parser.add_argument("--chat-config", type=Path, help="Private CLI handoff config for Web Chat; defaults only to a destination within --backup-root")
     parser.add_argument("--port", type=int, default=8765, help="Loopback port; 0 chooses an available port")
     args = parser.parse_args()
@@ -1164,6 +1177,7 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.maintenance_gate = MaintenanceGate()
     server.catalog = catalog
+    server.dream_reader = DreamReader(args.dream_root, catalog)
     server.backup_root = args.backup_root
     chat_config = args.chat_config or default_config(args.backup_root)
     server.settings_store = SettingsStore(args.backup_root, args.host_binary, settings_handoff(args.backup_root, chat_config), web_config=chat_config) if args.backup_root else None
