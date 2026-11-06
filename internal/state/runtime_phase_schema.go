@@ -1,6 +1,6 @@
 package state
 
-const SchemaVersion = 19
+const SchemaVersion = 20
 
 const schemaChannelReactionV14 = `
 ALTER TABLE channel_reactions ADD COLUMN provider_reaction_id TEXT NOT NULL DEFAULT '';

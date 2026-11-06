@@ -117,8 +117,8 @@ func OpenForProjectInspection(home string) (*Store, error) {
 	return open(home, true, true, false, false)
 }
 
-// OpenForMemoryInspection lets startup verify schema-14/15 file publications
-// before the owning worker performs additive receipt/room migrations. It never
+// OpenForMemoryInspection lets startup verify schema-14 through 19 file publications
+// before the owning worker performs additive operational migrations. It never
 // writes operational state or relies on the new tables.
 func OpenForMemoryInspection(home string) (*Store, error) {
 	return open(home, true, false, true, false)
@@ -187,7 +187,7 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 	}
 	if readOnly {
 		compatibleProjects := projectInspection && (version >= 7 && version < SchemaVersion)
-		compatibleMemory := memoryInspection && version >= 14 && version <= 17
+		compatibleMemory := memoryInspection && version >= 14 && version <= 19
 		if version != SchemaVersion && !compatibleProjects && !compatibleMemory {
 			return fail(fmt.Errorf("state schema %d requires migration; open the host for writing first", version))
 		}
@@ -321,6 +321,11 @@ func open(home string, readOnly, projectInspection, memoryInspection, historyIns
 			}
 			if version < 19 {
 				if err := migrateChannelProgressV19(tx); err != nil {
+					return err
+				}
+			}
+			if version < 20 {
+				if _, err := tx.Exec(schemaDreamWorkV20); err != nil {
 					return err
 				}
 			}

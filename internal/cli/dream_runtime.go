@@ -17,14 +17,18 @@ import (
 	"agent-host/internal/harness"
 	"agent-host/internal/harness/nativepolicy"
 	"agent-host/internal/host"
+	"agent-host/internal/managedskills"
 	"agent-host/internal/offloadchannel"
 	"agent-host/internal/offloadexec"
 	"agent-host/internal/state"
 )
 
 type dreamRuntimeConfig struct {
+	CleanupRetention     string   `json:"cleanup_retention,omitempty"`
 	Enabled              bool     `json:"enabled"`
 	HotEnabled           bool     `json:"hot_enabled"`
+	DraftSkills          bool     `json:"draft_skills,omitempty"`
+	SkillsRoot           string   `json:"skills_root,omitempty"`
 	SourceRoot           string   `json:"source_root"`
 	MemoryOffloadConfig  string   `json:"memory_offload_config"`
 	CacheRoot            string   `json:"cache_root"`
@@ -55,6 +59,10 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 	if c == nil || !c.Enabled {
 		return func() {}, nil, nil
 	}
+	partition := state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}
+	if c.DraftSkills && (o.dreamValidatedPartition == nil || *o.dreamValidatedPartition != partition) {
+		return nil, nil, errors.New("automatic Skill drafts require a matching authenticated channel Dream partition")
+	}
 	profile, _, err := offloadchannel.Load(c.MemoryOffloadConfig)
 	if err != nil {
 		return nil, nil, err
@@ -76,20 +84,39 @@ func startDreamBackground(ctx context.Context, store *state.Store, o options) (f
 	pstore := store.WithPartition(c.AgentID, c.AudienceID)
 	extractor := host.DreamExtractor{Runner: nativepolicy.NewWithLibrary("", library), Model: library.Model(), Backend: library.Backend()}
 	runner := dream.Background{Store: pstore, ConfigID: dreamRuntimeConfigID(o.dreamConfig, c), Interval: interval, Timeout: timeout, QuietWindow: idleFor, PollInterval: pollInterval, Probe: dreamActivityProbe(store, c.ActivityStateHomes), Run: func(runCtx context.Context) ([]state.DreamReceipt, error) {
-		count, archiveErr := pstore.ArchiveExpiredDream(runCtx, state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}, time.Now().UTC(), c.Batch)
+		count, archiveErr := pstore.ArchiveExpiredDream(runCtx, partition, time.Now().UTC(), c.Batch)
 		_ = count
 		if archiveErr != nil {
 			return nil, archiveErr
 		}
+		if _, retireErr := pstore.RetireExpiredDreamCandidates(runCtx, partition, time.Now().UTC(), c.Batch); retireErr != nil {
+			return nil, retireErr
+		}
 		receipts, processErr := (dream.Lifecycle{Store: pstore, Extractor: extractor, Batch: c.Batch}).Process(runCtx, c.SourceRoot, dream.Destination{PersonID: c.PersonID, Agent: c.AgentID, Audience: c.AudienceID, MemoryScope: c.Scope})
+		if c.DraftSkills {
+			procedures, listErr := pstore.PendingDreamProcedurePage(runCtx, partition, c.Batch)
+			processErr = errors.Join(processErr, listErr)
+			if listErr == nil {
+				for _, candidate := range procedures {
+					_, draftErr := dream.DraftSkillAutomatically(runCtx, pstore, candidate.ID, c.SkillsRoot, partition, time.Now().UTC())
+					processErr = errors.Join(processErr, draftErr)
+				}
+			}
+		}
 		if c.HotEnabled {
-			bundle, exportErr := dream.ExportHOT(runCtx, pstore, state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}, time.Now().UTC(), c.Batch)
+			bundle, exportErr := dream.ExportHOT(runCtx, pstore, partition, time.Now().UTC(), c.Batch)
 			if exportErr != nil {
 				return receipts, errors.Join(processErr, exportErr)
 			}
 			if _, publishErr := dream.PublishHOT(c.CacheRoot, bundle); publishErr != nil {
 				return receipts, errors.Join(processErr, publishErr)
 			}
+			retention, _ := time.ParseDuration(c.CleanupRetention)
+			cleanup, cleanupErr := dream.CleanupHOT(runCtx, pstore, c.CacheRoot, bundle, time.Now().UTC(), retention, c.Batch)
+			if len(cleanup.Skipped) > 0 {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("dream HOT cleanup skipped: %v", cleanup.Skipped))
+			}
+			processErr = errors.Join(processErr, cleanupErr)
 		}
 		return receipts, processErr
 	}}
@@ -132,15 +159,35 @@ func loadDreamRuntime(path string) (*dreamRuntimeConfig, error) {
 	if err = decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, errors.New("dream config must contain one JSON object")
 	}
+	if c.DraftSkills && !c.Enabled {
+		return nil, errors.New("draft_skills requires enabled idle Dream lifecycle")
+	}
 	if !c.Enabled && !c.HotEnabled {
 		return &c, nil
 	}
 	if c.PersonID == "" || c.AgentID == "" || c.AudienceID == "" || c.Scope == "" || c.Batch < 1 || c.Batch > 200 {
 		return nil, errors.New("enabled dream capability requires exact identity and batch 1..200")
 	}
+	if c.CleanupRetention == "" {
+		c.CleanupRetention = "720h"
+	}
+	if retention, e := time.ParseDuration(c.CleanupRetention); e != nil || retention < 24*time.Hour {
+		return nil, errors.New("dream cleanup retention must be at least 24h")
+	}
 	if c.HotEnabled {
 		if err := validateDreamPath(c.CacheRoot, true); err != nil {
 			return nil, errors.New("dream HOT cache root: " + err.Error())
+		}
+	}
+	if c.DraftSkills {
+		if c.AudienceID != state.OwnerAudienceID {
+			return nil, errors.New("draft_skills requires the trusted owner audience")
+		}
+		if err := validateDreamPath(c.SkillsRoot, true); err != nil {
+			return nil, errors.New("dream managed Skills root: " + err.Error())
+		}
+		if _, err := managedskills.Load(c.SkillsRoot); err != nil {
+			return nil, errors.New("dream managed Skills catalog: " + err.Error())
 		}
 	}
 	if !c.Enabled {
@@ -312,7 +359,8 @@ func validateFullHostChatDream(o options) error {
 	return nil
 }
 
-func validateFullHostChannelDream(ctx context.Context, store *state.Store, o options, agents agentCatalog, personID, channelID, accountID, tenantID string) error {
+func validateFullHostChannelDream(ctx context.Context, store *state.Store, o *options, agents agentCatalog, personID, channelID, accountID, tenantID string) error {
+	o.dreamValidatedPartition = nil
 	c, err := loadDreamRuntime(o.dreamConfig)
 	if err != nil || c == nil || !c.Enabled && !c.HotEnabled {
 		return err
@@ -338,7 +386,7 @@ func validateFullHostChannelDream(ctx context.Context, store *state.Store, o opt
 	if err != nil {
 		return errors.New("dream destination Agent is not present in the channel catalog")
 	}
-	selected, err := a.options(o, audience, false, false)
+	selected, err := a.options(*o, audience, false, false)
 	if err != nil {
 		return err
 	}
@@ -353,6 +401,8 @@ func validateFullHostChannelDream(ctx context.Context, store *state.Store, o opt
 	if !validScope {
 		return errors.New("dream destination scope is not selected by the configured channel Agent")
 	}
+	p := state.DreamPartition{PersonID: c.PersonID, AgentID: c.AgentID, AudienceID: c.AudienceID, Scope: c.Scope}
+	o.dreamValidatedPartition = &p
 	return nil
 }
 

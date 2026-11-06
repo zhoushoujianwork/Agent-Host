@@ -265,7 +265,7 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 			if err := resolveOptions(ctx, store, &o, true); err != nil {
 				return err
 			}
-			if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
+			if err := validateFullHostChannelDream(ctx, store, &o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
 				return err
 			}
 		} else if err := resolveKnowledge(&o); err != nil {
@@ -307,7 +307,7 @@ func runFeishuMeeting(ctx context.Context, args []string, out, errout io.Writer)
 	} else if dreamConfig != nil && (dreamConfig.Enabled || dreamConfig.HotEnabled) && !cfg.IMChat {
 		return errors.New("Full Host dream runtime requires authenticated private Feishu IM admission")
 	}
-	if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
+	if err := validateFullHostChannelDream(ctx, store, &o, agents, cfg.OwnerOpenID, state.ReplyTargetFeishu, cfg.AppID, cfg.TenantID); err != nil {
 		return err
 	}
 	o.defaultWorkspace, o.defaultScope = o.workspace, o.scope

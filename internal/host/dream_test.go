@@ -109,6 +109,28 @@ type dreamStructuredRunner struct {
 	output json.RawMessage
 }
 
+type dreamSkillTargetProbe struct{ t *testing.T }
+
+func (r dreamSkillTargetProbe) Run(_ context.Context, req harness.Request, _ func(harness.Observation) error) (harness.Result, error) {
+	for _, field := range []string{"target_skill_id", "target_skill_revision", "target_skill_digest"} {
+		if !strings.Contains(req.JSONSchema, field) {
+			r.t.Fatalf("dream schema omitted %s", field)
+		}
+	}
+	if !strings.Contains(req.Prompt, "Offered-only Skills are not targets") || !strings.Contains(req.Prompt, "kind loaded or reference_read") {
+		r.t.Fatal("dream prompt did not constrain Skill targets to actual completed evidence")
+	}
+	expires := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	return harness.Result{Status: "completed", StructuredOutput: json.RawMessage(`{"drafts":[{"kind":"procedure","text":"Correct the loaded Skill.","inferred":false,"expires_at":"` + expires + `","source_refs":["artifact:canonical-skill-evidence.json"],"target_skill_id":"managed","target_skill_revision":2,"target_skill_digest":"digest"}]}`)}, nil
+}
+
+func TestDreamExtractorAllowsExactSkillRevisionTargetFields(t *testing.T) {
+	drafts, err := (DreamExtractor{Runner: dreamSkillTargetProbe{t}, Model: "test", Backend: "claude"}).Extract(context.Background(), dream.ExtractionInput{})
+	if err != nil || len(drafts) != 1 || drafts[0].TargetSkillID != "managed" || drafts[0].TargetSkillRevision != 2 || drafts[0].TargetSkillDigest != "digest" {
+		t.Fatalf("Skill target fields were not retained: %+v %v", drafts, err)
+	}
+}
+
 func (r dreamStructuredRunner) Run(_ context.Context, req harness.Request, _ func(harness.Observation) error) (harness.Result, error) {
 	if len(req.Prompt) > dreamPromptLimit {
 		r.t.Fatalf("runner received oversized prompt: %d", len(req.Prompt))

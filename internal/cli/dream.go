@@ -14,9 +14,11 @@ const dreamUsage = `Read-only dream evidence preview:
 
 Manual dream lifecycle (all require exact person/agent/audience/scope and --format json):
   agent-host dream run --home PATH --source ABS --memory-offload-config FILE [partition flags]
-  agent-host dream list|show --home PATH [--id ID] [--status pending|accepted|rejected|promoted|all] [partition flags]
+  agent-host dream list|show --home PATH [--id ID] [--status pending|accepted|rejected|promoted|expired|all] [partition flags]
+  agent-host dream work-list|work-show --home PATH [--id ID] [--status pending|processed|missing_evidence|retryable|retired|all] [partition flags]
+  agent-host dream cleanup-list --home PATH [--status planned|completed|all] [partition flags]
   agent-host dream review --home PATH --id ID --status accept|reject --actor ID --note TEXT [partition flags]
-  agent-host dream promote --home PATH --id ID --skills-root ABS --actor ID [partition flags]
+  agent-host dream promote --home PATH --id ID --skills-root ABS --actor ID [--target-skill-id ID --target-skill-revision N --target-skill-digest DIGEST] [partition flags]
   agent-host dream export --home PATH --limit N [partition flags]
   agent-host dream archive --home PATH --limit N [partition flags]
   agent-host dream rotate|restore --home PATH --id MEMORY --revision N --actor ID --note TEXT [partition flags]

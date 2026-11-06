@@ -92,6 +92,10 @@ type Snapshot struct {
 	Digest     string            `json:"digest"`
 }
 
+type DraftRevisionChange struct {
+	Provenance, ReferencePath, ReferenceBody, SkillAppendix string
+}
+
 var identifier = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,95}$`)
 
 var localReference = regexp.MustCompile(`(?:references|scripts)/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+`)
@@ -359,16 +363,100 @@ func Update(root, action, id, actor, digest, note string, revision int, imported
 		}
 	}
 	c.Audit = append(c.Audit, Audit{At: time.Now().UTC(), Action: action, ID: id, Revision: revision, Actor: actor, Digest: digest})
+	return c, saveCatalog(root, c)
+}
+
+// AppendDraftRevision appends one immutable, unreviewed revision while holding
+// the catalog lock. Repeating the same provenance returns its exact revision.
+func AppendDraftRevision(root, id, actor string, expectedRevision int, expectedDigest string, change DraftRevisionChange) (Entry, error) {
+	if actor == "" || id == "" || expectedRevision < 1 || expectedDigest == "" || change.Provenance == "" || !SafePath(change.ReferencePath) || !strings.HasPrefix(change.ReferencePath, "references/") || !strings.HasSuffix(change.ReferencePath, ".md") || strings.TrimSpace(change.ReferenceBody) == "" || strings.TrimSpace(change.SkillAppendix) == "" || !utf8.ValidString(change.ReferenceBody) || !utf8.ValidString(change.SkillAppendix) || strings.Contains(change.ReferenceBody, "!`") || strings.Contains(change.SkillAppendix, "!`") {
+		return Entry{}, errors.New("draft revision requires actor, exact target and safe correction reference")
+	}
+	if _, err := Load(root); err != nil {
+		return Entry{}, err
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return Entry{}, err
+	}
+	release, err := state.Acquire(root)
+	if err != nil {
+		return Entry{}, err
+	}
+	defer release()
+	c, err := Load(root)
+	if err != nil {
+		return Entry{}, err
+	}
+	index := -1
+	for i := range c.Records {
+		if c.Records[i].ID != id {
+			continue
+		}
+		index = i
+		for _, revision := range c.Records[i].Revisions {
+			for _, provenance := range revision.Entry.Provenance {
+				if provenance == change.Provenance {
+					return revision.Entry, nil
+				}
+			}
+		}
+	}
+	if index < 0 {
+		return Entry{}, errors.New("target Skill is not an authored managed Skill; candidate remains pending")
+	}
+	record := &c.Records[index]
+	if len(record.Revisions) != expectedRevision {
+		return Entry{}, errors.New("target Skill revision changed; candidate remains pending")
+	}
+	latest := record.Revisions[len(record.Revisions)-1].Entry
+	if latest.Revision != expectedRevision || latest.Digest != expectedDigest || latest.Kind != "authored" {
+		return Entry{}, errors.New("target Skill digest changed or is not authored; candidate remains pending")
+	}
+	raw, err := json.Marshal(latest)
+	if err != nil {
+		return Entry{}, err
+	}
+	var next Entry
+	if err = json.Unmarshal(raw, &next); err != nil {
+		return Entry{}, err
+	}
+	if _, exists := next.Files[change.ReferencePath]; exists {
+		return Entry{}, errors.New("target Skill correction reference already exists without matching provenance")
+	}
+	next.Files[change.ReferencePath] = change.ReferenceBody
+	next.Files["SKILL.md"] = strings.TrimRight(next.Files["SKILL.md"], "\n") + "\n\n" + strings.TrimSpace(change.SkillAppendix) + "\n"
+	if len(next.Files[change.ReferencePath]) > MaxFileBytes || len(next.Files["SKILL.md"]) > MaxFileBytes {
+		return Entry{}, errors.New("draft Skill correction exceeds file budget")
+	}
+	totalBytes := 0
+	for _, body := range next.Files {
+		totalBytes += len(body)
+	}
+	if totalBytes > MaxCatalogBytes {
+		return Entry{}, errors.New("draft Skill correction exceeds authored tree budget")
+	}
+	next.Provenance = append(next.Provenance, change.Provenance)
+	next.Revision = len(record.Revisions) + 1
+	next.Digest = next.ContentDigest()
+	record.Revisions = append(record.Revisions, Revision{Entry: next})
+	c.Audit = append(c.Audit, Audit{At: time.Now().UTC(), Action: "draft-revision", ID: id, Revision: next.Revision, Actor: actor, Digest: next.Digest})
+	if err = saveCatalog(root, c); err != nil {
+		return Entry{}, err
+	}
+	return next, nil
+}
+
+func saveCatalog(root string, c Catalog) error {
 	raw, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return c, err
+		return err
 	}
 	if len(raw) > 32<<20 {
-		return c, errors.New("managed catalog exceeds storage budget; no lifecycle update was saved")
+		return errors.New("managed catalog exceeds storage budget; no lifecycle update was saved")
 	}
 	f, err := os.CreateTemp(root, ".catalog-")
 	if err != nil {
-		return c, err
+		return err
 	}
 	defer os.Remove(f.Name())
 	_, err = f.Write(append(raw, '\n'))
@@ -377,9 +465,9 @@ func Update(root, action, id, actor, digest, note string, revision int, imported
 	}
 	err = errors.Join(err, f.Close())
 	if err != nil {
-		return c, err
+		return err
 	}
-	return c, os.Rename(f.Name(), filepath.Join(root, "catalog.json"))
+	return os.Rename(f.Name(), filepath.Join(root, "catalog.json"))
 }
 
 func allows(values []string, value string) bool {

@@ -283,7 +283,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 			if err := resolveOptions(ctx, store, &o, true); err != nil {
 				return err
 			}
-			if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
+			if err := validateFullHostChannelDream(ctx, store, &o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
 				return err
 			}
 		} else if err := resolveKnowledge(&o); err != nil {
@@ -307,7 +307,7 @@ func runDingTalk(ctx context.Context, args []string, out, errout io.Writer) (run
 	if err := resolveOptions(ctx, store, &o, true); err != nil {
 		return err
 	}
-	if err := validateFullHostChannelDream(ctx, store, o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
+	if err := validateFullHostChannelDream(ctx, store, &o, agents, cfg.OwnerUserID, "dingtalk", cfg.ClientID, cfg.CorpID); err != nil {
 		return err
 	}
 	o.defaultWorkspace, o.defaultScope = o.workspace, o.scope
