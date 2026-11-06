@@ -1,6 +1,14 @@
 # Dream 统一 HOT 与身份分区：详细设计
 
-主方案见[设计主文档](dream-unified-hot.md)。状态：**仅设计，尚未实现。** 本稿只核对当前接口并限定后续实现契约，不修改现有代码、配置、数据库或生产运行时。
+主方案见[设计主文档](dream-unified-hot.md)。状态：**第一阶段已在源码实现，尚未部署；第二、三阶段仍仅设计。** 本稿区分当前单精确分区投影与尚未交付的身份、挂载和协调能力。
+
+## 0. 第一阶段源码行为
+
+- Dream 配置新增可选 `hot_root`。它必须是已存在、canonical、owner-private 的绝对目录；省略时旧发布、清理和模型注入行为完全不变。managed service 与 CLI workbench 从已知应用 ROOT 派生推荐路径 `ROOT/dream/hot`，不会创建缺失 root。
+- 原有 `<cache-root>/dream-hot/...` 发布成功后，Host 才把同一 bundle 发布到 `<hot_root>/<partition-hash>/versions/<digest>`，然后原子切换相对链接 `current -> versions/<digest>`。`partition.json` 固定记录四维分区、可信 state home、Dream config ID 和各 manifest 原始字节摘要；同一分区出现不同来源会失败，不合并。
+- 发布按分区文件锁串行，验证 owner、权限、普通文件、硬链接、固定文件集、manifest、文档字节和分区摘要。链接替换前的失败保留旧 `current`；链接替换后若父目录同步失败，发布结果明确标为不确定并要求重新核验，不能误报回滚。现有模型仍使用内存中的已验证 bundle；统一入口只是查看投影，不授予注入权限。
+- 工作台提供 GET-only `/api/dream/partitions` 与 `/api/dream/partition?id=<opaque-id>`。它只读取启动时固定 root，每次请求重新验证 root 的 canonical、owner-private 属性，且 metadata 的 state home 必须已经挂载。cycle/work 返回最近 50 条，candidate/cleanup 在没有可信时间列时只承诺有界的最多 50 条；各类均明确 `has_more/truncated`，cycle 只按该来源 config ID 查询。记录读取同时执行单条与整次响应字节上限，超限显式报错。
+- 第一阶段不清理 unified `versions`，避免误删 `current`。旧 cache 清理器保持原样。工作台把未过期且通过校验的内容标为“快照有效”，把过期内容标为“快照过期”；这不是运行时注入授权，授权仍由运行时独立检查。工作台不提供审核、发布、启用或路径选择动作。
 
 ## 1. 现有接口证据与缺口
 
@@ -24,18 +32,18 @@
 ### 1.3 HOT 发布与会话失效
 
 - HOT export 已从有效记忆生成 `USER.md`、`MEMORY.md`、`TASKS.md`，manifest 记录 memory ID/revision/kind/expiry，并对完整 bundle 求摘要（[`internal/dream/lifecycle.go:276-324`](../internal/dream/lifecycle.go#L276-L324)）。
-- 当前 `PublishHOT` 在 `<cache-root>/dream-hot/<partition-hash>/<digest>/` 创建并验证不可变快照；它写三份文档和 `manifest.json`，但没有稳定的 `current` 入口（[`internal/dream/hot.go:30-93`](../internal/dream/hot.go#L30-L93)）。清理器只处理已验证的派生快照，并保护当前摘要、记录 durable cleanup intent（[`internal/dream/cleanup.go:22-39`](../internal/dream/cleanup.go#L22-L39)、[`internal/dream/cleanup.go:76-120`](../internal/dream/cleanup.go#L76-L120)）。
+- 旧 `PublishHOT` 继续在 `<cache-root>/dream-hot/<partition-hash>/<digest>/` 创建并验证不可变快照；配置 `hot_root` 时，新增 `PublishCurrent` 再发布统一版本和稳定 `current`。旧清理器仍只处理 cache 派生快照，并保护当前摘要、记录 durable cleanup intent（[`internal/dream/cleanup.go:22-39`](../internal/dream/cleanup.go#L22-L39)、[`internal/dream/cleanup.go:76-120`](../internal/dream/cleanup.go#L76-L120)）。
 - Full Host 把 person 与 HOT digest 纳入 runtime fingerprint，并为一次已准入请求冻结文档（[`internal/host/host.go:86-136`](../internal/host/host.go#L86-L136)）。Offload channel 同样把 HOT digest 纳入 session fingerprint，并在摘要变化时拒绝继续旧 session（[`internal/offloadchannel/host.go:141-182`](../internal/offloadchannel/host.go#L141-L182)、[`internal/offloadchannel/host.go:425-448`](../internal/offloadchannel/host.go#L425-L448)）。
 - 运行时只在 person、Agent、audience、scope 全部匹配且是私人入口时绑定 HOT；不匹配和群聊不加载（[`internal/cli/dream_runtime.go:289-345`](../internal/cli/dream_runtime.go#L289-L345)）。
 
-缺口：当前摘要不包含独立的 identity/mount authorization generation，撤销授权但内容摘要恰好未变时，不能仅依赖文档 digest 证明旧会话已失效；当前发布目录也没有主文档要求的统一固定入口。
+缺口：当前摘要不包含独立的 identity/mount authorization generation，撤销授权但内容摘要恰好未变时，不能仅依赖文档 digest 证明旧会话已失效。第一阶段固定入口只是只读投影，尚未成为带授权代次的 runtime loader。
 
 ### 1.4 CLI 与本地工作台
 
 - CLI 已有精确分区的 `status`、`list/show`、`work-list/work-show`、`cleanup-list` 和 `export`，其中查询路径以只读 Store 打开（[`internal/cli/dream_lifecycle.go:19-81`](../internal/cli/dream_lifecycle.go#L19-L81)、[`internal/cli/dream_lifecycle.go:120-200`](../internal/cli/dream_lifecycle.go#L120-L200)）。
 - 工作台监听 `127.0.0.1`，GET 要求 loopback Host；静态页面与 GET API 是显式 allowlist（[`tools/run-viewer/server.py:920-1007`](../tools/run-viewer/server.py#L920-L1007)、[`tools/run-viewer/server.py:1136-1176`](../tools/run-viewer/server.py#L1136-L1176)）。写请求另受显式路由 allowlist、same-origin、随机 token 和长度限制约束（[`tools/run-viewer/server.py:1020-1034`](../tools/run-viewer/server.py#L1020-L1034)）。服务启动器会移除 provider 凭据并校验 loopback URL（[`internal/cli/service_workbench.go:93-124`](../internal/cli/service_workbench.go#L93-L124)、[`internal/cli/service_workbench.go:147-164`](../internal/cli/service_workbench.go#L147-L164)）。
 
-缺口：GET/静态 allowlist 中没有 Dream 页面或 Dream API，也没有分区目录选择模型。后续页面必须复用这些边界，而不是暴露通用文件浏览器。
+第一阶段已补齐 Dream GET/静态 allowlist和不透明分区选择；身份映射、共享挂载和授权代次仍未实现。
 
 ## 2. 规范数据模型
 
@@ -103,7 +111,7 @@ generation, actor, policy_digest
 
 ## 4. HOT 文件布局和发布协议
 
-建议固定在应用数据根内：
+第一阶段固定在显式 `hot_root`（推荐应用数据根的 `dream/hot`）内：
 
 ```text
 dream/hot/<opaque-partition-id>/
@@ -126,7 +134,7 @@ dream/hot/<opaque-partition-id>/
 4. 原子替换 `current` 指针并同步父目录。
 5. 写入 cycle/cleanup 观察记录。观察记录失败必须显式报告；不得声称未能证明的发布成功。
 
-快照发布后禁止修改。重复 digest 必须逐字验证后复用；内容不一致视为损坏。写入、校验或切换失败时保留上一个已验证 `current`。不存在有效旧版本时应无 HOT，而不是退回陈旧、越权或未审核内容。
+快照发布后禁止修改。重复 digest 必须逐字验证后复用；内容不一致视为损坏。写入、校验或链接替换前失败时保留上一个已验证 `current`。链接替换完成后若父目录同步失败，磁盘状态可能已提交，错误必须区分为“结果不确定、必须重新核验”，不得声称旧版仍在或已回滚。不存在有效旧版本时应无 HOT，而不是退回陈旧、越权或未审核内容。
 
 现有 `<cache-root>/dream-hot/<partition-hash>/<digest>` 目录只作为旧格式来源。Phase 1 可从它生成新固定入口，但不把任一渠道的“current”当作合并权威；统一 `current` 必须由统一投影重新验证并发布。
 
@@ -176,8 +184,8 @@ sha256(target_partition || sorted(source_identity + source_version) ||
 ### Phase 1：单分区 `current` 与只读页面
 
 - 从一个现有精确分区生成 immutable version 并原子切换统一 `current`。
-- 页面只接收 opaque partition ID，能查看 HOT、版本来源、cycle/work/missing/cleanup 和 Skill 草稿链接。
-- 证明中途失败、损坏版本和超界路径不会替换旧 `current`；关闭功能即可回到现有 HOT 路径。
+- 页面只接收 opaque partition ID，能查看 HOT、版本来源、cycle/work/missing/cleanup，以及 manifest memory 版本和 Skill 草稿 ID/revision/status。当前快照的更新时间只展示文件系统 mtime，并明确它不是内容生成时间。
+- 证明链接替换前失败、损坏版本和超界路径不会替换旧 `current`，并证明替换后同步失败会报告不确定状态；关闭功能即可回到现有 HOT 路径。
 
 ### Phase 2：显式身份、共享挂载与跨源投影
 
@@ -194,7 +202,7 @@ sha256(target_partition || sorted(source_identity + source_version) ||
 ## 9. 未决风险（不扩展本期架构）
 
 1. **canonical person 管理入口：** 现有 `users.json` 可提供显式绑定基础，但是否直接演进该格式或增加 Host-owned binding ledger，需要实现阶段依据可回退性决定；无论选择哪种，不能用自动摘要 ID 证明跨渠道同一人。
-2. **`current` 的跨平台原子表示：** Unix 可用受控相对链接原子替换，其他平台需验证等价目录指针；验收标准是读者只能看到完整旧版或完整新版。
-3. **viewer 的 Dream root 来源：** 应由现有 service layout 派生还是新增启动参数尚待确认；两者都必须是启动时固定、owner-private 的允许根，不能由 HTTP 请求指定。
+2. **`current` 的跨平台原子表示：** 第一阶段使用 Unix 受控相对 symlink；其他平台仍需验证等价目录指针，验收标准是读者只能看到完整旧版或完整新版。
+3. **统一版本保留：** 第一阶段故意不清理 `hot_root` 下的 immutable versions。后续清理器必须解析并保护已验证的 `current` 目标后才能启用。
 4. **撤销后的在途请求：** 已冻结并正在执行的请求无法从 native model 上下文中擦除内容；最小安全语义应是阻止后续 continuation 和新派发，并在撤销审计中记录可能已暴露的 run/session。是否主动取消在途执行需要单独策略决定。
 5. **多 DB 协调 lease 的持久位置：** 必须有一个 Host-owned 权威协调点，但不应通过合并旧 DB 实现。实现前需选定已有服务 Store 或独立派生状态目录，并验证崩溃恢复和单写者行为。

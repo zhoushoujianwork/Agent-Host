@@ -1,6 +1,6 @@
 # Dream 统一 HOT 与身份分区
 
-状态：**仅设计，尚未实现。** 本文不表示当前代码、配置、生产数据或部署已经具备下述统一能力。现有 Dream 的已交付范围仍以[梦境记忆轮转](dream-memory-rotation.md)和[增量整理](dream-incremental-learning.md)为准；接口证据、兼容方案与未决风险见[详细设计](dream-unified-hot-detail.md)。
+状态：**第一阶段已在源码实现，尚未部署；身份与共享阶段仍仅设计。** 当前源码可为一个现有精确分区发布统一本地 `current`，并在本地工作台只读查看。它不提供跨渠道身份映射、共享挂载或生产启用。现有 Dream 的其他已交付范围仍以[梦境记忆轮转](dream-memory-rotation.md)和[增量整理](dream-incremental-learning.md)为准；实现边界和后续风险见[详细设计](dream-unified-hot-detail.md)。
 
 ## 目标
 
@@ -8,22 +8,23 @@
 
 ## 使用方式
 
-1. 操作者显式绑定 `channel/account/tenant/native-user` 到 canonical person；不按姓名、昵称或相似文本猜测身份。
-2. 操作者为某个 `person + Agent + audience + scope` 显式挂载可共享的个人分区。只有已审核且挂载明确允许的个人偏好、个人事实或任务可以跨渠道投影；群聊和项目内容保留原 audience/scope。
-3. 业务请求只从应用数据根下的固定入口读取当前 HOT：
+1. 后续阶段将允许操作者显式绑定 `channel/account/tenant/native-user` 到 canonical person；第一阶段没有该入口，也不按姓名、昵称或相似文本猜测身份。
+2. 后续阶段将为 `person + Agent + audience + scope` 增加独立共享挂载。第一阶段只投影一个既有精确分区，不跨渠道共享；群聊和项目内容仍保留原 audience/scope。
+3. 配置 `hot_root` 后，Host 把已验证的现有 HOT bundle 投影到固定入口：
 
    ```text
    <app-data-root>/dream/hot/<opaque-partition-id>/current/{MEMORY,USER,TASKS}.md
    ```
 
-4. 本地工作台的 Dream 页面选择分区后，只读查看当前 HOT、版本来源、cycle/work/missing/cleanup 记录，并跳转到关联的 Skill 草稿。查看页面不等于允许把内容注入 Agent。
+   第一阶段的模型注入仍直接使用原有已验证 bundle，不从 `current` 反向加载。
+4. 本地工作台的 `/#dream` 页面选择分区后，只读查看当前 HOT、版本来源、cycle/work/missing/cleanup 记录和 Skill 草稿标识。查看页面不等于允许把内容注入 Agent。
 
 ## 方案
 
 - 分区键固定为规范 person、Agent、audience、scope。`opaque-partition-id` 由 Host 生成，只用于磁盘定位，不暴露原始渠道身份，也不替代分区元数据校验。
 - 身份映射和共享挂载是两项独立决定。映射只回答“这个渠道主体是谁”；挂载另行回答“这个运行分区可以读取哪些已授权个人内容”。拒绝隐式跨 Agent、跨 audience 或跨 scope 共享。
 - 每条源记录保留原 channel、account、tenant、native user、run/session 和 provenance。旧数据库不物理合并；通过可回退的只读投影适配到规范 person 分区。
-- 每个分区发布不可变快照，再原子切换 `current`。失败时保留上一个已验证版本；不能就地修改快照，也不能继续加载陈旧或已撤销权限产生的投影。
+- 每个分区发布不可变快照，再原子切换 `current`。切换前失败会保留上一个已验证版本；若链接替换已完成但父目录同步失败，结果明确报告为“不确定、必须重新核验”，不声称已经回滚。不能就地修改快照，也不能继续加载陈旧或已撤销权限产生的投影。
 - 一个逻辑协调者按分区串行共享写入，跨渠道以来源版本和策略摘要幂等，避免重复整理或双重发布。候选、冲突、审核、发布和启用继续使用现有门槛，不因统一视图而放宽。
 - 映射或挂载撤销后，新加载立即失败或排除相关来源；权限代次进入运行时指纹，已有 native 会话不能继续携带撤销前上下文，必须新建兼容会话。
 
@@ -35,7 +36,7 @@
 
 ## 实施顺序
 
-1. **单分区入口与只读页面：** 为一个现有精确分区生成不可变快照和原子 `current`，增加只读 Dream 页面，证明失败保留旧版本且页面不接受任意路径。
+1. **单分区入口与只读页面（源码已实现，未部署）：** 在 Dream 配置中显式设置既存、owner-private 的绝对 `hot_root`（推荐 `<ROOT>/dream/hot`），为一个现有精确分区生成不可变快照和原子 `current`。工作台只从固定 root 和已挂载 state home 读取，不接受任意路径。统一版本清理本阶段不启用。
 2. **显式身份与共享挂载：** 增加 canonical person 映射、独立授权挂载及跨源只读投影；证明绑定不自动共享、群聊/项目/Agent 边界不变。
 3. **协调去重、撤销回收与验证：** 按分区串行写入，以来源版本和策略摘要去重；撤销映射或挂载后重建投影、轮换权限代次并拒绝继续旧 native 会话。
 

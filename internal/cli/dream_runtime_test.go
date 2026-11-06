@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"agent-host/internal/dream"
 	"agent-host/internal/harness"
 	"agent-host/internal/state"
 )
@@ -51,6 +52,75 @@ func TestDreamRuntimeHotOnlyAndStrictConfig(t *testing.T) {
 	oversized := writeDreamConfig(t, strings.Repeat(" ", 65<<10))
 	if _, err = loadDreamRuntime(oversized); err == nil {
 		t.Fatal("oversized dream config was accepted")
+	}
+}
+
+func TestDreamRuntimeUnifiedHotRootOptInAndCompatibility(t *testing.T) {
+	cache, _ := filepath.EvalSymlinks(t.TempDir())
+	hotRoot, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(cache, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(hotRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	base := `"hot_enabled":true,"cache_root":"` + cache + `","person_id":"person","agent_id":"agent","audience_id":"owner","scope":"scope","batch":10`
+	path := writeDreamConfig(t, `{`+base+`,"hot_root":"`+hotRoot+`"}`)
+	c, err := loadDreamRuntime(path)
+	if err != nil || c.HotRoot != hotRoot {
+		t.Fatalf("unified HOT root did not load: %+v %v", c, err)
+	}
+	disabled := writeDreamConfig(t, `{"hot_root":"`+hotRoot+`"}`)
+	if _, err = loadDreamRuntime(disabled); err == nil || !strings.Contains(err.Error(), "requires hot_enabled") {
+		t.Fatal("disabled Dream accepted hot_root", err)
+	}
+	linked := filepath.Join(t.TempDir(), "hot")
+	if err = os.Symlink(hotRoot, linked); err != nil {
+		t.Fatal(err)
+	}
+	unsafe := writeDreamConfig(t, `{`+base+`,"hot_root":"`+linked+`"}`)
+	if _, err = loadDreamRuntime(unsafe); err == nil {
+		t.Fatal("symlinked hot_root was accepted")
+	}
+	home, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.Chmod(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	o := options{home: home, dreamConfig: path, agentID: "agent", audienceID: "owner", scope: "scope"}
+	if err = prepareDreamHOT(store, &o); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(hotRoot)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("unified HOT publication missing: %v %v", entries, err)
+	}
+	if _, err = os.Readlink(filepath.Join(hotRoot, entries[0].Name(), "current")); err != nil {
+		t.Fatal("unified current missing", err)
+	}
+	if o.hotRefresh == nil {
+		t.Fatal("HOT refresh was not installed")
+	}
+	if _, _, err = o.hotRefresh(t.Context()); err != nil {
+		t.Fatal("HOT refresh did not republish unified current", err)
+	}
+
+	legacyPath := writeDreamConfig(t, `{`+base+`}`)
+	legacy, err := loadDreamRuntime(legacyPath)
+	if err != nil || legacy.HotRoot != "" {
+		t.Fatalf("legacy config changed: %+v %v", legacy, err)
+	}
+	before, _ := os.ReadDir(hotRoot)
+	if err = publishDreamCurrent(legacy, legacyPath, home, dream.HOTBundle{}); err != nil {
+		t.Fatal("empty hot_root did not preserve legacy behavior", err)
+	}
+	after, _ := os.ReadDir(hotRoot)
+	if len(after) != len(before) {
+		t.Fatal("legacy config published unified HOT")
 	}
 }
 

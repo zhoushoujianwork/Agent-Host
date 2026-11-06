@@ -449,6 +449,7 @@ class HTTPTests(unittest.TestCase):
         self.server = viewer.ThreadingHTTPServer(("127.0.0.1", 0), viewer.Handler)
         self.server.catalog = self.catalog
         self.server.stats_reader = viewer.StatsReader(self.catalog)
+        self.server.dream_reader = viewer.DreamReader(None, self.catalog)
         self.worker = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.worker.start()
         self.base = f"http://127.0.0.1:{self.server.server_port}"
@@ -567,7 +568,7 @@ class HTTPTests(unittest.TestCase):
         error.exception.close()
 
     def test_assets_api_headers_and_write_boundary(self):
-        for asset in ("/", "/app.js", "/style.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/logo.svg", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css"):
+        for asset in ("/", "/app.js", "/style.css", "/workspace.js", "/workspace.css", "/theme.js", "/theme.css", "/pages.css", "/embedded.css", "/executions.html", "/dream.html", "/dream.js", "/dream.css", "/logo.svg", "/shortcuts.js", "/settings-fields.js", "/settings-simple.css"):
             with urlopen(self.base + asset) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
@@ -586,6 +587,8 @@ class HTTPTests(unittest.TestCase):
             ("/../server.py", "GET", {}, 404),
             ("/api/records", "GET", {"Host": "remote.example"}, 403),
             ("/api/records", "POST", {}, 405),
+            ("/api/dream/partitions?root=/tmp", "GET", {}, 400),
+            ("/api/dream/partition?id=x&path=/tmp", "GET", {}, 400),
         ]:
             with self.assertRaises(HTTPError) as error:
                 urlopen(Request(self.base + path, method=method, headers=headers))
@@ -596,6 +599,31 @@ class HTTPTests(unittest.TestCase):
             urlopen(self.base + "/api/records")
         self.assertEqual(error.exception.code, 500)
         error.exception.close()
+
+    def test_dream_routes_are_get_only_and_empty_without_a_fixed_root(self):
+        with urlopen(self.base + "/api/dream/partitions") as response:
+            data = json.load(response)
+        self.assertEqual(data["status"], "empty")
+        self.assertFalse(data["enabled"])
+        self.assertEqual(data["partitions"], [])
+        with self.assertRaises(HTTPError) as error:
+            urlopen(self.base + "/api/dream/partition?id=" + "0" * 24)
+        self.assertEqual(error.exception.code, 404)
+        error.exception.close()
+        with self.assertRaises(HTTPError) as error:
+            urlopen(Request(self.base + "/api/dream/partitions", data=b"{}", method="POST"))
+        self.assertEqual(error.exception.code, 405)
+        error.exception.close()
+
+    def test_unsafe_dream_root_fails_closed_without_breaking_other_pages(self):
+        unsafe = self.root / "unsafe-dream"
+        unsafe.mkdir(mode=0o755)
+        unsafe.chmod(0o755)
+        self.server.dream_reader = viewer.DreamReader(unsafe, self.catalog)
+        with urlopen(self.base + "/api/dream/partitions") as response:
+            self.assertEqual(json.load(response)["status"], "unsafe")
+        with urlopen(self.base + "/api/records") as response:
+            self.assertEqual(json.load(response)["database_count"], 1)
 
 
 if __name__ == "__main__":

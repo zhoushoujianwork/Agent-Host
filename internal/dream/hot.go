@@ -2,15 +2,34 @@ package dream
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 
 	"agent-host/internal/harness"
+	"agent-host/internal/state"
 )
+
+type HOTSource struct {
+	StateHome string `json:"state_home"`
+	ConfigID  string `json:"config_id"`
+}
+
+type currentPartition struct {
+	Version   string               `json:"version"`
+	ID        string               `json:"id"`
+	Partition state.DreamPartition `json:"partition"`
+	Source    HOTSource            `json:"source"`
+	Manifests map[string]string    `json:"manifest_sha256"`
+}
+
+const currentMetadataLimit = 4 << 20
 
 func PresetDocuments(bundle HOTBundle) []harness.PresetDocument {
 	documents := []harness.PresetDocument{}
@@ -90,6 +109,331 @@ func PublishHOT(cacheRoot string, bundle HOTBundle) (string, error) {
 		return "", err
 	}
 	return final, nil
+}
+
+// PublishCurrent publishes a read-only projection of an already verified HOT
+// bundle. It does not grant runtime access and is never read back for injection.
+func PublishCurrent(hotRoot string, source HOTSource, bundle HOTBundle) (string, error) {
+	if err := validateCurrentRoot(hotRoot); err != nil {
+		return "", err
+	}
+	if source.ConfigID == "" {
+		return "", errors.New("HOT current source requires a config ID")
+	}
+	if sourceErr := validatePrivateDir(source.StateHome); sourceErr != nil {
+		return "", fmt.Errorf("HOT current source requires a trusted private state home: %w", sourceErr)
+	}
+	canonicalHome, err := filepath.EvalSymlinks(source.StateHome)
+	if err != nil || canonicalHome != source.StateHome || !filepath.IsAbs(source.StateHome) || filepath.Clean(source.StateHome) != source.StateHome {
+		return "", errors.New("HOT current state home must be canonical")
+	}
+	if bundle.Digest == "" || hotBundleDigest(bundle) != bundle.Digest {
+		return "", errors.New("HOT current requires a valid bundle digest")
+	}
+	id := hashStrings(bundle.Partition.PersonID, bundle.Partition.AgentID, bundle.Partition.AudienceID, bundle.Partition.Scope)[:24]
+	partitionRoot, err := ensurePrivateChild(hotRoot, id)
+	if err != nil {
+		return "", err
+	}
+	release, err := acquireCurrentLock(partitionRoot)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+
+	metadata, err := loadCurrentPartition(partitionRoot, id, source, bundle.Partition)
+	if err != nil {
+		return "", err
+	}
+	versions, err := ensurePrivateChild(partitionRoot, "versions")
+	if err != nil {
+		return "", err
+	}
+	manifest, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	manifest = append(manifest, '\n')
+	final := filepath.Join(versions, bundle.Digest)
+	if err = publishCurrentSnapshot(versions, final, bundle, manifest); err != nil {
+		return "", err
+	}
+	manifestSum := fmt.Sprintf("%x", sha256.Sum256(manifest))
+	if prior := metadata.Manifests[bundle.Digest]; prior != "" && prior != manifestSum {
+		return "", errors.New("HOT current manifest record conflicts with immutable snapshot")
+	}
+	if metadata.Manifests[bundle.Digest] == "" {
+		metadata.Manifests[bundle.Digest] = manifestSum
+		if err = writeCurrentPartition(partitionRoot, metadata); err != nil {
+			return "", err
+		}
+	}
+	if err = validateExistingCurrent(partitionRoot, metadata); err != nil {
+		return "", err
+	}
+	target := filepath.ToSlash(filepath.Join("versions", bundle.Digest))
+	if err = replaceCurrentLink(partitionRoot, target); err != nil {
+		return "", err
+	}
+	return filepath.Join(partitionRoot, "current"), nil
+}
+
+func validateCurrentRoot(root string) error {
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return errors.New("HOT current root must be an absolute clean path")
+	}
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil || canonical != root || validatePrivateDir(root) != nil {
+		return errors.New("HOT current root must exist, be canonical and owner-private")
+	}
+	return nil
+}
+
+func acquireCurrentLock(root string) (func(), error) {
+	path := filepath.Join(root, ".publish.lock")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		return nil, err
+	}
+	valid := func() error {
+		opened, statErr := f.Stat()
+		pathInfo, pathErr := os.Lstat(path)
+		openedStat, openedOK := infoSys(opened)
+		pathStat, pathOK := infoSys(pathInfo)
+		if statErr != nil || pathErr != nil || !openedOK || !pathOK || !opened.Mode().IsRegular() || opened.Mode().Perm()&0077 != 0 || int(openedStat.Uid) != os.Geteuid() || openedStat.Nlink != 1 || pathInfo.Mode()&os.ModeSymlink != 0 || openedStat.Dev != pathStat.Dev || openedStat.Ino != pathStat.Ino {
+			return errors.New("HOT current publication lock is unsafe")
+		}
+		return nil
+	}
+	if err = valid(); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err = valid(); err != nil {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+		return nil, err
+	}
+	return func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }, nil
+}
+
+func loadCurrentPartition(root, id string, source HOTSource, partition state.DreamPartition) (currentPartition, error) {
+	path := filepath.Join(root, "partition.json")
+	want := currentPartition{Version: "dream-current-v1", ID: id, Partition: partition, Source: source, Manifests: map[string]string{}}
+	raw, err := readPrivateRegular(path, currentMetadataLimit)
+	if errors.Is(err, os.ErrNotExist) {
+		if err = writeCurrentPartition(root, want); err != nil {
+			return currentPartition{}, err
+		}
+		return want, nil
+	}
+	if err != nil {
+		return currentPartition{}, err
+	}
+	var got currentPartition
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err = decoder.Decode(&got); err != nil || !errors.Is(decoder.Decode(&struct{}{}), io.EOF) || got.Version != want.Version || got.ID != id || got.Partition != partition || got.Source != source || got.Manifests == nil {
+		return currentPartition{}, errors.New("HOT current partition metadata conflicts with requested source or partition")
+	}
+	for digest, sum := range got.Manifests {
+		if !validSnapshotDigest(digest) || !validSnapshotDigest(sum) {
+			return currentPartition{}, errors.New("HOT current partition metadata contains an invalid manifest record")
+		}
+	}
+	return got, nil
+}
+
+func writeCurrentPartition(root string, value currentPartition) error {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	raw = append(raw, '\n')
+	if len(raw) > currentMetadataLimit {
+		return errors.New("HOT current partition metadata exceeds its size limit")
+	}
+	f, err := os.CreateTemp(root, ".partition-")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	defer os.Remove(name)
+	if err = errors.Join(f.Chmod(0600), writeSyncClose(f, raw)); err != nil {
+		return err
+	}
+	if err = os.Rename(name, filepath.Join(root, "partition.json")); err != nil {
+		return err
+	}
+	return syncDirectory(root)
+}
+
+func publishCurrentSnapshot(parent, final string, bundle HOTBundle, manifest []byte) error {
+	if _, err := os.Lstat(final); err == nil {
+		return verifyHOTSnapshot(final, bundle, manifest)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	tmp, err := os.MkdirTemp(parent, ".publish-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if err = os.Chmod(tmp, 0700); err != nil {
+		return err
+	}
+	for _, name := range []string{"USER.md", "MEMORY.md", "TASKS.md"} {
+		if strings.Contains(bundle.Documents[name], "\x00") {
+			return errors.New("invalid HOT document")
+		}
+		if err = writePrivateFile(filepath.Join(tmp, name), []byte(bundle.Documents[name])); err != nil {
+			return err
+		}
+	}
+	if err = writePrivateFile(filepath.Join(tmp, "manifest.json"), manifest); err != nil {
+		return err
+	}
+	if err = syncDirectory(tmp); err != nil {
+		return err
+	}
+	if err = os.Rename(tmp, final); err != nil {
+		if verifyErr := verifyHOTSnapshot(final, bundle, manifest); verifyErr != nil {
+			return err
+		}
+	}
+	if err = syncDirectory(parent); err != nil {
+		return err
+	}
+	return verifyHOTSnapshot(final, bundle, manifest)
+}
+
+func validateExistingCurrent(root string, metadata currentPartition) error {
+	path := filepath.Join(root, "current")
+	info, statErr := os.Lstat(path)
+	if statErr == nil {
+		stat, ok := infoSys(info)
+		if !ok || info.Mode()&os.ModeSymlink == 0 || int(stat.Uid) != os.Geteuid() || stat.Nlink != 1 {
+			return errors.New("HOT current link is unsafe")
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+	target, err := os.Readlink(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil || !validCurrentTarget(target) {
+		return errors.New("HOT current link is unsafe")
+	}
+	digest := strings.TrimPrefix(filepath.ToSlash(target), "versions/")
+	if metadata.Manifests[digest] == "" {
+		return errors.New("HOT current link has no verified manifest record")
+	}
+	return verifyRecordedSnapshot(filepath.Join(root, filepath.FromSlash(target)), digest, metadata.Manifests[digest], metadata.Partition)
+}
+
+func validCurrentTarget(target string) bool {
+	target = filepath.ToSlash(target)
+	return strings.HasPrefix(target, "versions/") && len(target) == len("versions/")+64 && validSnapshotDigest(strings.TrimPrefix(target, "versions/"))
+}
+
+func verifyRecordedSnapshot(path, digest, manifestSum string, partition state.DreamPartition) error {
+	raw, err := readPrivateRegular(filepath.Join(path, "manifest.json"), 8<<20)
+	if err != nil || fmt.Sprintf("%x", sha256.Sum256(raw)) != manifestSum {
+		return errors.New("HOT current manifest bytes are unsafe or changed")
+	}
+	var bundle HOTBundle
+	if json.Unmarshal(raw, &bundle) != nil || bundle.Partition != partition || bundle.Digest != digest || hotBundleDigest(bundle) != digest {
+		return errors.New("HOT current manifest identity mismatch")
+	}
+	return verifyHOTSnapshot(path, bundle, raw)
+}
+
+func replaceCurrentLink(root, target string) error {
+	return replaceCurrentLinkWithSync(root, target, syncDirectory)
+}
+
+func replaceCurrentLinkWithSync(root, target string, syncParent func(string) error) error {
+	if !validCurrentTarget(target) {
+		return errors.New("invalid HOT current target")
+	}
+	tmp, err := os.CreateTemp(root, ".current-")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if err = tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err = os.Remove(name); err == nil {
+		err = os.Symlink(target, name)
+	}
+	if err == nil {
+		err = os.Rename(name, filepath.Join(root, "current"))
+	}
+	os.Remove(name)
+	if err != nil {
+		return err
+	}
+	if err = syncParent(root); err != nil {
+		return fmt.Errorf("HOT current switch committed but directory sync failed; publication result is uncertain and must be verified: %w", err)
+	}
+	return nil
+}
+
+func writePrivateFile(path string, body []byte) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	return writeSyncClose(f, body)
+}
+
+func writeSyncClose(f *os.File, body []byte) error {
+	_, writeErr := f.Write(body)
+	return errors.Join(writeErr, f.Sync(), f.Close())
+}
+
+func syncDirectory(path string) error {
+	d, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(d.Sync(), d.Close())
+}
+
+func readPrivateRegular(path string, limit int64) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	pathStat, ok := infoSys(info)
+	if !ok || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || int(pathStat.Uid) != os.Geteuid() || pathStat.Nlink != 1 {
+		return nil, errors.New("unsafe private file")
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	openedStat, openedOK := infoSys(opened)
+	if err != nil || !openedOK || !opened.Mode().IsRegular() || opened.Mode().Perm()&0077 != 0 || int(openedStat.Uid) != os.Geteuid() || openedStat.Nlink != 1 || openedStat.Dev != pathStat.Dev || openedStat.Ino != pathStat.Ino {
+		return nil, errors.New("unsafe private file")
+	}
+	body, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, errors.New("private file exceeds its size limit")
+	}
+	return body, nil
 }
 
 func validatePrivateDir(path string) error {

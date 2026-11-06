@@ -110,6 +110,7 @@ check:
 	$(PYTHON) -B tools/macos-app/check.py
 	node --test tools/run-viewer/app_test.cjs tools/run-viewer/execution-control_test.cjs
 	$(PYTHON) -B tools/run-viewer/memory_view_test.py
+	$(PYTHON) -B tools/run-viewer/dream_view_test.py
 	$(PYTHON) -B tools/run-viewer/settings_test.py
 	$(PYTHON) -B tools/run-viewer/platform_skills_test.py
 	node --test tools/run-viewer/platform-skills_test.cjs tools/run-viewer/stats_test.cjs tools/run-viewer/memory-scope_test.cjs
@@ -117,6 +118,6 @@ check:
 	node --test tools/run-viewer/agent-profiles_test.cjs
 	$(PYTHON) -B tools/run-viewer/chat_runtime_test.py
 	$(PYTHON) -B tools/run-viewer/session_chat_test.py
-	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs tools/run-viewer/readiness_test.cjs
+	node --test tools/run-viewer/chat_test.cjs tools/run-viewer/workspace_test.cjs tools/run-viewer/dream_test.cjs tools/run-viewer/readiness_test.cjs
 	$(PYTHON) -B experiments/history/dws_platform_test.py
 	$(PYTHON) -B experiments/experience/observe_test.py
